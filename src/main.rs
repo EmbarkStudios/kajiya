@@ -1,4 +1,4 @@
-mod error;
+mod device;
 mod instance;
 mod logging;
 mod physical_device;
@@ -50,6 +50,15 @@ fn main() -> anyhow::Result<()> {
 
     info!("Available physical devices: {:#?}", physical_devices);
 
+    let physical_device = Arc::new(
+        physical_devices
+            .into_iter()
+            .next()
+            .expect("valid physical device"),
+    );
+
+    let device = device::Device::new(&physical_device);
+
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
         // dispatched any events. This is ideal for games and similar applications.
@@ -65,7 +74,5 @@ fn main() -> anyhow::Result<()> {
             }
             _ => (),
         }
-    });
-
-    Ok(())
+    })
 }

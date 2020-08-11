@@ -1,12 +1,11 @@
 use anyhow::Result;
-use ash::{
-    extensions::{ext, khr},
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0, InstanceV1_1},
-    vk,
-};
+use ash::{extensions::ext, version::EntryV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::ffi::{CStr, CString};
+use std::{
+    ffi::{CStr, CString},
+    sync::Arc,
+};
 
 #[derive(Default)]
 pub struct DeviceBuilder {
@@ -15,8 +14,8 @@ pub struct DeviceBuilder {
 }
 
 impl DeviceBuilder {
-    pub fn build(self) -> Result<Instance> {
-        Instance::create(self)
+    pub fn build(self) -> Result<Arc<Instance>> {
+        Ok(Arc::new(Instance::create(self)?))
     }
 
     pub fn required_extensions(mut self, required_extensions: Vec<&'static CStr>) -> Self {
@@ -25,6 +24,7 @@ impl DeviceBuilder {
     }
 }
 
+#[allow(dead_code)]
 pub struct Instance {
     pub(crate) entry: ash::Entry,
     pub(crate) raw: ash::Instance,
@@ -64,8 +64,7 @@ impl Instance {
             .chain(Self::extension_names(&builder).into_iter())
             .collect::<Vec<_>>();
 
-        let mut layer_names = Self::layer_names(&builder);
-        let layer_names: Vec<*const i8> = layer_names
+        let layer_names: Vec<*const i8> = Self::layer_names(&builder)
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();

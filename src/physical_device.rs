@@ -1,13 +1,9 @@
 use crate::{instance::Instance, surface::Surface};
 use anyhow::Result;
-use ash::{
-    extensions::{ext, khr},
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0, InstanceV1_1},
-    vk,
-};
+use ash::{version::InstanceV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::ffi::{CStr, CString};
+use std::{ffi::CStr, sync::Arc};
 
 /// Properties of the physical device.
 #[derive(Clone, Debug)]
@@ -23,10 +19,18 @@ pub struct PhysicalDeviceProperties {
     pub sparse_properties: vk::PhysicalDeviceSparseProperties,
 }
 
+#[derive(Copy, Clone)]
+pub struct QueueFamily {
+    pub index: u32,
+    pub properties: vk::QueueFamilyProperties,
+}
+
 pub struct PhysicalDevice {
-    raw: vk::PhysicalDevice,
-    queue_family_properties: Vec<vk::QueueFamilyProperties>,
-    properties: PhysicalDeviceProperties,
+    pub(crate) instance: Arc<Instance>,
+    pub(crate) raw: vk::PhysicalDevice,
+    pub(crate) queue_families: Vec<QueueFamily>,
+    pub(crate) properties: PhysicalDeviceProperties,
+    pub(crate) presentation_requested: bool,
 }
 
 impl std::fmt::Debug for PhysicalDevice {
@@ -35,7 +39,7 @@ impl std::fmt::Debug for PhysicalDevice {
     }
 }
 
-pub fn enumerate_physical_devices(instance: &Instance) -> Result<Vec<PhysicalDevice>> {
+pub fn enumerate_physical_devices(instance: &Arc<Instance>) -> Result<Vec<PhysicalDevice>> {
     unsafe {
         let pdevices = instance.raw.enumerate_physical_devices()?;
 
@@ -58,12 +62,23 @@ pub fn enumerate_physical_devices(instance: &Instance) -> Result<Vec<PhysicalDev
                     sparse_properties: properties.sparse_properties.clone(),
                 };
 
+                let queue_families = instance
+                    .raw
+                    .get_physical_device_queue_family_properties(pdevice)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, properties)| QueueFamily {
+                        index: index as _,
+                        properties,
+                    })
+                    .collect();
+
                 PhysicalDevice {
                     raw: pdevice,
-                    queue_family_properties: instance
-                        .raw
-                        .get_physical_device_queue_family_properties(pdevice),
+                    queue_families,
                     properties,
+                    presentation_requested: true,
+                    instance: instance.clone(),
                 }
             })
             .collect())
@@ -75,22 +90,35 @@ pub trait PhysicalDeviceList {
 }
 
 impl PhysicalDeviceList for Vec<PhysicalDevice> {
-    fn with_presentation_support(mut self, surface: &Surface) -> Self {
+    fn with_presentation_support(self, surface: &Surface) -> Self {
         self.into_iter()
-            .filter(|pdevice| {
-                pdevice.queue_family_properties.iter().enumerate().any(
-                    |(queue_index, info)| unsafe {
-                        info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                            && surface
-                                .surface_loader
-                                .get_physical_device_surface_support(
-                                    pdevice.raw,
-                                    queue_index as u32,
-                                    surface.raw,
-                                )
-                                .unwrap()
-                    },
-                )
+            .filter_map(|mut pdevice| {
+                pdevice.presentation_requested = true;
+
+                let supports_presentation =
+                    pdevice
+                        .queue_families
+                        .iter()
+                        .enumerate()
+                        .any(|(queue_index, info)| unsafe {
+                            info.properties
+                                .queue_flags
+                                .contains(vk::QueueFlags::GRAPHICS)
+                                && surface
+                                    .surface_loader
+                                    .get_physical_device_surface_support(
+                                        pdevice.raw,
+                                        queue_index as u32,
+                                        surface.raw,
+                                    )
+                                    .unwrap()
+                        });
+
+                if supports_presentation {
+                    Some(pdevice)
+                } else {
+                    None
+                }
             })
             .collect()
     }
