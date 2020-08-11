@@ -3,7 +3,7 @@ use ash::{extensions::khr, vk};
 
 pub struct Surface {
     pub(crate) raw: vk::SurfaceKHR,
-    pub(crate) surface_loader: khr::Surface,
+    pub(crate) fns: khr::Surface,
 }
 
 impl Surface {
@@ -17,7 +17,7 @@ impl Surface {
 
         Ok(Self {
             raw: surface,
-            surface_loader,
+            fns: surface_loader,
         })
     }
 }

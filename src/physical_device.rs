@@ -58,8 +58,8 @@ pub fn enumerate_physical_devices(instance: &Arc<Instance>) -> Result<Vec<Physic
                         .unwrap()
                         .to_string(),
                     pipeline_cache_uuid: properties.pipeline_cache_uuid,
-                    limits: properties.limits.clone(),
-                    sparse_properties: properties.sparse_properties.clone(),
+                    limits: properties.limits,
+                    sparse_properties: properties.sparse_properties,
                 };
 
                 let queue_families = instance
@@ -105,7 +105,7 @@ impl PhysicalDeviceList for Vec<PhysicalDevice> {
                                 .queue_flags
                                 .contains(vk::QueueFlags::GRAPHICS)
                                 && surface
-                                    .surface_loader
+                                    .fns
                                     .get_physical_device_surface_support(
                                         pdevice.raw,
                                         queue_index as u32,
