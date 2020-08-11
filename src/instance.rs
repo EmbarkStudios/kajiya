@@ -22,6 +22,11 @@ impl DeviceBuilder {
         self.required_extensions = required_extensions;
         self
     }
+
+    pub fn graphics_debugging(mut self, graphics_debugging: bool) -> Self {
+        self.graphics_debugging = graphics_debugging;
+        self
+    }
 }
 
 #[allow(dead_code)]
@@ -64,7 +69,8 @@ impl Instance {
             .chain(Self::extension_names(&builder).into_iter())
             .collect::<Vec<_>>();
 
-        let layer_names: Vec<*const i8> = Self::layer_names(&builder)
+        let layer_names = Self::layer_names(&builder);
+        let layer_names: Vec<*const i8> = layer_names
             .iter()
             .map(|raw_name| raw_name.as_ptr())
             .collect();

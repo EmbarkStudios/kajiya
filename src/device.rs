@@ -7,7 +7,9 @@ use ash::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
+
+const DEVICE_FRAME_COUNT: usize = 2;
 
 #[allow(dead_code)]
 pub struct Queue {
@@ -16,9 +18,64 @@ pub struct Queue {
 }
 
 pub struct DeviceFrame {
-    // TODO: linear allocator
+    pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
     pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
     pub rendering_complete_semaphore: Option<vk::Semaphore>,
+    pub command_buffer: VkCommandBufferData,
+}
+
+pub struct VkCommandBufferData {
+    pub(crate) raw: vk::CommandBuffer,
+    pool: vk::CommandPool,
+}
+
+impl DeviceFrame {
+    pub fn new(
+        device: &ash::Device,
+        global_allocator: &vk_mem::Allocator,
+        queue_family_index: u32,
+    ) -> Self {
+        Self {
+            linear_allocator_pool: global_allocator
+                .create_pool(&{
+                    let mut info = vk_mem::AllocatorPoolCreateInfo::default();
+                    info.flags = vk_mem::AllocatorPoolCreateFlags::LINEAR_ALGORITHM;
+                    info
+                })
+                .expect("linear allocator"),
+            swapchain_acquired_semaphore: None,
+            rendering_complete_semaphore: None,
+            command_buffer: Self::allocate_frame_command_buffer(device, queue_family_index),
+        }
+    }
+
+    fn allocate_frame_command_buffer(
+        device: &ash::Device,
+        queue_family_index: u32,
+    ) -> VkCommandBufferData {
+        let pool_create_info = vk::CommandPoolCreateInfo::builder()
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(queue_family_index);
+
+        let pool = unsafe { device.create_command_pool(&pool_create_info, None).unwrap() };
+
+        let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
+            .command_buffer_count(1)
+            .command_pool(pool)
+            .level(vk::CommandBufferLevel::PRIMARY);
+
+        let cb = unsafe {
+            device
+                .allocate_command_buffers(&command_buffer_allocate_info)
+                .unwrap()
+        }[0];
+
+        VkCommandBufferData { raw: cb, pool }
+    }
+}
+
+pub(crate) struct CmdExt {
+    pub push_descriptor: khr::PushDescriptor,
 }
 
 pub struct Device {
@@ -27,6 +84,9 @@ pub struct Device {
     pub(crate) raw: ash::Device,
     pub(crate) universal_queue: Queue,
     pub(crate) global_allocator: vk_mem::Allocator,
+    pub(crate) frames: [DeviceFrame; DEVICE_FRAME_COUNT],
+    pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
+    pub(crate) cmd_ext: CmdExt,
 }
 
 impl Device {
@@ -42,11 +102,12 @@ impl Device {
             vk::KhrImagelessFramebufferFn::name().as_ptr(),
             vk::KhrImageFormatListFn::name().as_ptr(),
             vk::ExtFragmentShaderInterlockFn::name().as_ptr(),
+            vk::KhrPushDescriptorFn::name().as_ptr(),
+            vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
+            vk::KhrPipelineLibraryFn::name().as_ptr(), // rt dep
+            vk::KhrDeferredHostOperationsFn::name().as_ptr(), // rt dep
+            vk::KhrBufferDeviceAddressFn::name().as_ptr(), // rt dep
             khr::RayTracing::name().as_ptr(),
-            // rt dep
-            ash::vk::KhrPipelineLibraryFn::name().as_ptr(),
-            // rt dep
-            ash::vk::KhrDeferredHostOperationsFn::name().as_ptr(),
         ];
 
         if pdevice.presentation_requested {
@@ -147,7 +208,7 @@ impl Device {
                 heap_size_limits: None,
             };
 
-            let allocator = vk_mem::Allocator::new(&allocator_info)
+            let global_allocator = vk_mem::Allocator::new(&allocator_info)
                 .expect("Failed to initialize the Vulkan Memory Allocator");
 
             let universal_queue = Queue {
@@ -155,13 +216,85 @@ impl Device {
                 family: universal_queue,
             };
 
+            let frames = [
+                DeviceFrame::new(&device, &global_allocator, universal_queue.family.index),
+                DeviceFrame::new(&device, &global_allocator, universal_queue.family.index),
+            ];
+
+            let immutable_samplers = Self::create_samplers(&device);
+            let cmd_ext = CmdExt {
+                push_descriptor: khr::PushDescriptor::new(&pdevice.instance.raw, &device),
+            };
+
             Ok(Arc::new(Device {
                 pdevice: pdevice.clone(),
                 instance: pdevice.instance.clone(),
                 raw: device,
                 universal_queue,
-                global_allocator: allocator,
+                global_allocator,
+                frames,
+                immutable_samplers,
+                cmd_ext,
             }))
         }
     }
+
+    fn create_samplers(device: &ash::Device) -> HashMap<SamplerDesc, vk::Sampler> {
+        let texel_filters = [vk::Filter::NEAREST, vk::Filter::LINEAR];
+        let mipmap_modes = [
+            vk::SamplerMipmapMode::NEAREST,
+            vk::SamplerMipmapMode::LINEAR,
+        ];
+        let address_modes = [
+            vk::SamplerAddressMode::REPEAT,
+            vk::SamplerAddressMode::CLAMP_TO_EDGE,
+        ];
+
+        let mut result = HashMap::new();
+
+        for texel_filter in &texel_filters {
+            for mipmap_mode in &mipmap_modes {
+                for address_mode in &address_modes {
+                    result.insert(
+                        SamplerDesc {
+                            texel_filter: *texel_filter,
+                            mipmap_mode: *mipmap_mode,
+                            address_modes: *address_mode,
+                        },
+                        unsafe {
+                            device.create_sampler(
+                                &vk::SamplerCreateInfo::builder()
+                                    .mag_filter(*texel_filter)
+                                    .min_filter(*texel_filter)
+                                    .mipmap_mode(*mipmap_mode)
+                                    .address_mode_u(*address_mode)
+                                    .address_mode_v(*address_mode)
+                                    .address_mode_w(*address_mode)
+                                    .build(),
+                                None,
+                            )
+                        }
+                        .ok()
+                        .expect("create_sampler"),
+                    );
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn get_sampler(&self, desc: SamplerDesc) -> vk::Sampler {
+        *self
+            .immutable_samplers
+            .get(&desc)
+            .unwrap_or_else(|| panic!("Sampler not found: {:?}", desc))
+    }
+}
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct SamplerDesc {
+    pub texel_filter: vk::Filter,
+    pub mipmap_mode: vk::SamplerMipmapMode,
+    pub address_modes: vk::SamplerAddressMode,
 }
