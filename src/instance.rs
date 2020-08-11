@@ -1,0 +1,126 @@
+use anyhow::Result;
+use ash::{
+    extensions::{ext, khr},
+    version::{DeviceV1_0, EntryV1_0, InstanceV1_0, InstanceV1_1},
+    vk,
+};
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
+use std::ffi::{CStr, CString};
+
+#[derive(Default)]
+pub struct DeviceBuilder {
+    pub required_extensions: Vec<&'static CStr>,
+    pub graphics_debugging: bool,
+}
+
+impl DeviceBuilder {
+    pub fn build(self) -> Result<Instance> {
+        Instance::create(self)
+    }
+
+    pub fn required_extensions(mut self, required_extensions: Vec<&'static CStr>) -> Self {
+        self.required_extensions = required_extensions;
+        self
+    }
+}
+
+pub struct Instance {
+    pub(crate) entry: ash::Entry,
+    pub(crate) raw: ash::Instance,
+    pub(crate) debug_callback: Option<vk::DebugReportCallbackEXT>,
+    pub(crate) debug_loader: Option<ext::DebugReport>,
+}
+
+impl Instance {
+    pub fn builder() -> DeviceBuilder {
+        DeviceBuilder::default()
+    }
+
+    fn extension_names(builder: &DeviceBuilder) -> Vec<*const i8> {
+        let mut names = vec![vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr()];
+
+        if builder.graphics_debugging {
+            names.push(ext::DebugReport::name().as_ptr());
+        }
+
+        names
+    }
+
+    fn layer_names(builder: &DeviceBuilder) -> Vec<CString> {
+        let mut layer_names = Vec::new();
+        if builder.graphics_debugging {
+            layer_names.push(CString::new("VK_LAYER_KHRONOS_validation").unwrap());
+        }
+        layer_names
+    }
+
+    fn create(builder: DeviceBuilder) -> Result<Self> {
+        let entry = ash::Entry::new()?;
+        let instance_extensions = builder
+            .required_extensions
+            .iter()
+            .map(|ext| ext.as_ptr())
+            .chain(Self::extension_names(&builder).into_iter())
+            .collect::<Vec<_>>();
+
+        let mut layer_names = Self::layer_names(&builder);
+        let layer_names: Vec<*const i8> = layer_names
+            .iter()
+            .map(|raw_name| raw_name.as_ptr())
+            .collect();
+
+        let app_desc = vk::ApplicationInfo::builder().api_version(vk::make_version(1, 1, 0));
+
+        let instance_desc = vk::InstanceCreateInfo::builder()
+            .application_info(&app_desc)
+            .enabled_layer_names(&layer_names)
+            .enabled_extension_names(&instance_extensions);
+
+        let instance = unsafe { entry.create_instance(&instance_desc, None)? };
+        info!("Created a Vulkan instance");
+
+        let (debug_loader, debug_callback) = if builder.graphics_debugging {
+            let debug_info = ash::vk::DebugReportCallbackCreateInfoEXT {
+                flags: ash::vk::DebugReportFlagsEXT::ERROR
+                    | ash::vk::DebugReportFlagsEXT::WARNING
+                    | ash::vk::DebugReportFlagsEXT::PERFORMANCE_WARNING,
+                pfn_callback: Some(vulkan_debug_callback),
+                ..Default::default()
+            };
+
+            let debug_loader = ext::DebugReport::new(&entry, &instance);
+
+            let debug_callback = unsafe {
+                debug_loader
+                    .create_debug_report_callback(&debug_info, None)
+                    .unwrap()
+            };
+
+            (Some(debug_loader), Some(debug_callback))
+        } else {
+            (None, None)
+        };
+
+        Ok(Self {
+            entry,
+            raw: instance,
+            debug_callback,
+            debug_loader,
+        })
+    }
+}
+
+unsafe extern "system" fn vulkan_debug_callback(
+    _: ash::vk::DebugReportFlagsEXT,
+    _: ash::vk::DebugReportObjectTypeEXT,
+    _: u64,
+    _: usize,
+    _: i32,
+    _: *const std::os::raw::c_char,
+    p_message: *const std::os::raw::c_char,
+    _: *mut std::os::raw::c_void,
+) -> u32 {
+    error!("{:?}\n", CStr::from_ptr(p_message));
+    ash::vk::FALSE
+}
