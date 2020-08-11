@@ -5,11 +5,11 @@ mod physical_device;
 mod surface;
 mod swapchain;
 
-use ash::vk;
+use ash::{version::DeviceV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
-use swapchain::SwapchainDesc;
+use swapchain::{Swapchain, SwapchainDesc};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -19,6 +19,19 @@ use winit::{
 struct WindowConfig {
     width: u32,
     height: u32,
+}
+
+fn select_surface_format(formats: Vec<vk::SurfaceFormatKHR>) -> Option<vk::SurfaceFormatKHR> {
+    let preferred = vk::SurfaceFormatKHR {
+        format: vk::Format::B8G8R8A8_UNORM,
+        color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
+    };
+
+    if formats.contains(&preferred) {
+        Some(preferred)
+    } else {
+        None
+    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -45,7 +58,7 @@ fn main() -> anyhow::Result<()> {
     let instance = instance::Instance::builder()
         .required_extensions(ash_window::enumerate_required_extensions(&*window).unwrap())
         .build()?;
-    let surface = surface::Surface::new(&instance, &*window)?;
+    let surface = surface::Surface::create(&instance, &*window)?;
 
     use physical_device::*;
     let physical_devices =
@@ -60,21 +73,23 @@ fn main() -> anyhow::Result<()> {
             .expect("valid physical device"),
     );
 
-    let device = device::Device::new(&physical_device)?;
-    let swapchain = device.create_swapchain(
-        surface,
+    let device = device::Device::create(&physical_device)?;
+    let surface_formats = Swapchain::enumerate_surface_formats(&device, &surface)?;
+
+    info!("Available surface formats: {:#?}", surface_formats);
+
+    let mut swapchain = Swapchain::new(
+        &device,
+        &surface,
         SwapchainDesc {
-            surface_format: vk::SurfaceFormatKHR {
-                format: vk::Format::B8G8R8_UNORM,
-                color_space: vk::ColorSpaceKHR::SRGB_NONLINEAR,
-            },
-            surface_resolution: vk::Extent2D {
+            format: select_surface_format(surface_formats).expect("suitable surface format"),
+            dims: vk::Extent2D {
                 width: window_cfg.width,
                 height: window_cfg.height,
             },
             vsync: true,
         },
-    );
+    )?;
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -88,6 +103,30 @@ fn main() -> anyhow::Result<()> {
             } => *control_flow = ControlFlow::Exit,
             Event::MainEventsCleared => {
                 // Application update code.
+
+                let swapchain_image = swapchain
+                    .acquire_next_image()
+                    .ok()
+                    .expect("swapchain image");
+
+                let submit_info = vk::SubmitInfo::builder()
+                    .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
+
+                /*unsafe {
+                    device
+                        .raw
+                        .queue_submit(
+                            device.universal_queue.raw,
+                            &[submit_info.build()],
+                            vk::Fence::default(),
+                        )
+                        .expect("queue submit failed.");
+                }*/
+
+                swapchain.present_image(swapchain_image, &[]);
+
+                info!("Swapchain image acquired");
             }
             _ => (),
         }

@@ -1,8 +1,4 @@
-use crate::{
-    physical_device::{PhysicalDevice, QueueFamily},
-    surface::Surface,
-    swapchain::{Swapchain, SwapchainDesc},
-};
+use crate::physical_device::{PhysicalDevice, QueueFamily};
 use anyhow::Result;
 use ash::{
     extensions::khr,
@@ -13,16 +9,23 @@ use ash::{
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 
+#[allow(dead_code)]
 pub struct Queue {
     pub(crate) raw: vk::Queue,
     pub(crate) family: QueueFamily,
+}
+
+pub struct DeviceFrame {
+    // TODO: linear allocator
+    pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
+    pub rendering_complete_semaphore: Option<vk::Semaphore>,
 }
 
 pub struct Device {
     pub(crate) pdevice: Arc<PhysicalDevice>,
     pub(crate) instance: Arc<crate::instance::Instance>,
     pub(crate) raw: ash::Device,
-    pub(crate) main_queue: Queue,
+    pub(crate) universal_queue: Queue,
     pub(crate) allocator: vk_mem::Allocator,
 }
 
@@ -53,26 +56,26 @@ impl Device {
         device_extension_names_raw
     }
 
-    pub fn new(pdevice: &Arc<PhysicalDevice>) -> Result<Self> {
+    pub fn create(pdevice: &Arc<PhysicalDevice>) -> Result<Arc<Self>> {
         let device_extension_names = Self::extension_names(&pdevice);
 
         let priorities = [1.0];
 
-        let main_queue = pdevice
+        let universal_queue = pdevice
             .queue_families
             .iter()
             .filter(|qf| qf.properties.queue_flags.contains(vk::QueueFlags::GRAPHICS))
             .copied()
             .next();
 
-        let main_queue = if let Some(main_queue) = main_queue {
-            main_queue
+        let universal_queue = if let Some(universal_queue) = universal_queue {
+            universal_queue
         } else {
             anyhow::bail!("No suitable render queue found");
         };
 
-        let main_queue_info = [vk::DeviceQueueCreateInfo::builder()
-            .queue_family_index(main_queue.index)
+        let universal_queue_info = [vk::DeviceQueueCreateInfo::builder()
+            .queue_family_index(universal_queue.index)
             .queue_priorities(&priorities)
             .build()];
 
@@ -117,7 +120,7 @@ impl Device {
                 .get_physical_device_features2(pdevice.raw, &mut features2);
 
             let device_create_info = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(&main_queue_info)
+                .queue_create_infos(&universal_queue_info)
                 .enabled_extension_names(&device_extension_names)
                 .push_next(&mut features2)
                 .push_next(&mut scalar_block)
@@ -147,94 +150,18 @@ impl Device {
             let allocator = vk_mem::Allocator::new(&allocator_info)
                 .expect("Failed to initialize the Vulkan Memory Allocator");
 
-            let main_queue = Queue {
-                raw: device.get_device_queue(main_queue.index, 0),
-                family: main_queue,
+            let universal_queue = Queue {
+                raw: device.get_device_queue(universal_queue.index, 0),
+                family: universal_queue,
             };
 
-            Ok(Device {
+            Ok(Arc::new(Device {
                 pdevice: pdevice.clone(),
                 instance: pdevice.instance.clone(),
                 raw: device,
-                main_queue,
+                universal_queue,
                 allocator,
-            })
+            }))
         }
-    }
-
-    pub fn create_swapchain(
-        &self,
-        surface: Surface,
-        desc: SwapchainDesc,
-    ) -> Result<Arc<Swapchain>> {
-        let surface_capabilities = unsafe {
-            surface
-                .fns
-                .get_physical_device_surface_capabilities(self.pdevice.raw, surface.raw)
-        }?;
-
-        let mut desired_image_count = surface_capabilities.min_image_count + 1;
-        if surface_capabilities.max_image_count > 0
-            && desired_image_count > surface_capabilities.max_image_count
-        {
-            desired_image_count = surface_capabilities.max_image_count;
-        }
-
-        //dbg!(&surface_capabilities);
-        let surface_resolution = match surface_capabilities.current_extent.width {
-            std::u32::MAX => desc.surface_resolution,
-            _ => surface_capabilities.current_extent,
-        };
-
-        if 0 == surface_resolution.width || 0 == surface_resolution.height {
-            anyhow::bail!("Swapchain resolution cannot be zero");
-        }
-
-        let present_modes = unsafe {
-            surface
-                .fns
-                .get_physical_device_surface_present_modes(self.pdevice.raw, surface.raw)
-        }?;
-
-        let desired_present_mode = if desc.vsync {
-            vk::PresentModeKHR::FIFO
-        } else {
-            vk::PresentModeKHR::MAILBOX
-        };
-
-        let present_mode = present_modes
-            .iter()
-            .cloned()
-            .find(|&mode| mode == desired_present_mode)
-            .unwrap_or(vk::PresentModeKHR::FIFO);
-
-        let pre_transform = if surface_capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_capabilities.current_transform
-        };
-
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface.raw)
-            .min_image_count(desired_image_count)
-            .image_color_space(desc.surface_format.color_space)
-            .image_format(desc.surface_format.format)
-            .image_extent(surface_resolution)
-            .image_usage(vk::ImageUsageFlags::STORAGE)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-            .pre_transform(pre_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-            .present_mode(present_mode)
-            .clipped(true)
-            .image_array_layers(1)
-            .build();
-
-        let fns = khr::Swapchain::new(&self.instance.raw, &self.raw);
-        let raw = unsafe { fns.create_swapchain(&swapchain_create_info, None) }.unwrap();
-
-        Ok(Arc::new(Swapchain { fns, raw }))
     }
 }
