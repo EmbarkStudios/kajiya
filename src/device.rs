@@ -26,7 +26,7 @@ pub struct Device {
     pub(crate) instance: Arc<crate::instance::Instance>,
     pub(crate) raw: ash::Device,
     pub(crate) universal_queue: Queue,
-    pub(crate) allocator: vk_mem::Allocator,
+    pub(crate) global_allocator: vk_mem::Allocator,
 }
 
 impl Device {
@@ -160,7 +160,7 @@ impl Device {
                 instance: pdevice.instance.clone(),
                 raw: device,
                 universal_queue,
-                allocator,
+                global_allocator: allocator,
             }))
         }
     }

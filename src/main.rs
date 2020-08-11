@@ -103,17 +103,19 @@ fn main() -> anyhow::Result<()> {
             } => *control_flow = ControlFlow::Exit,
             Event::MainEventsCleared => {
                 // Application update code.
-
+                window.request_redraw();
+            }
+            Event::RedrawRequested(_) => {
                 let swapchain_image = swapchain
                     .acquire_next_image()
                     .ok()
                     .expect("swapchain image");
 
-                let submit_info = vk::SubmitInfo::builder()
+                /*let submit_info = vk::SubmitInfo::builder()
                     .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
 
-                /*unsafe {
+                unsafe {
                     device
                         .raw
                         .queue_submit(

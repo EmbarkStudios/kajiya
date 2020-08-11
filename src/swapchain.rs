@@ -1,21 +1,9 @@
-use crate::{
-    device::Device,
-    instance::Instance,
-    physical_device::{PhysicalDevice, QueueFamily},
-    surface::Surface,
-};
+use crate::{device::Device, surface::Surface};
 use anyhow::Result;
-use ash::{
-    extensions::{ext, khr},
-    version::{DeviceV1_0, EntryV1_0, InstanceV1_0, InstanceV1_1},
-    vk,
-};
+use ash::{extensions::khr, version::DeviceV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{
-    ffi::{CStr, CString},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 #[derive(Clone, Copy, Default)]
 pub struct SwapchainDesc {
@@ -129,7 +117,6 @@ impl Swapchain {
         let swapchain = unsafe { fns.create_swapchain(&swapchain_create_info, None) }.unwrap();
 
         let images = unsafe { fns.get_swapchain_images(swapchain) }.unwrap();
-        let semaphore_create_info = vk::SemaphoreCreateInfo::default();
 
         let semaphores = (0..images.len())
             .map(|_| {
