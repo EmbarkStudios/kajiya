@@ -314,11 +314,30 @@ impl Device {
         let mut frame1 = self.frame1.lock();
 
         let frame0: &mut DeviceFrame = Arc::get_mut(&mut frame0).unwrap_or_else(|| {
-            panic!("Unabel to finish frame: frame data is being held by user code")
+            panic!("Unable to finish frame: frame data is being held by user code")
         });
         let frame1: &mut DeviceFrame = Arc::get_mut(&mut frame1).unwrap();
 
         std::mem::swap(frame0, frame1);
+
+        // Wait for the the GPU to be done with the previously submitted frame,
+        // so that we can access its data again
+        unsafe {
+            self.raw
+                .wait_for_fences(
+                    std::slice::from_ref(&frame0.command_buffer.submit_done_fence),
+                    true,
+                    std::u64::MAX,
+                )
+                .expect("Wait for fence failed.");
+
+            self.raw
+                .reset_command_buffer(
+                    frame0.command_buffer.raw,
+                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                )
+                .unwrap();
+        }
     }
 }
 

@@ -127,27 +127,6 @@ fn main() -> anyhow::Result<()> {
                 unsafe {
                     device
                         .raw
-                        .wait_for_fences(
-                            std::slice::from_ref(&cb.submit_done_fence),
-                            true,
-                            std::u64::MAX,
-                        )
-                        .expect("Wait for fence failed.");
-                    device
-                        .raw
-                        .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
-                        .expect("reset_fences");
-
-                    device
-                        .raw
-                        .reset_command_buffer(
-                            cb.raw,
-                            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                        )
-                        .unwrap();
-
-                    device
-                        .raw
                         .begin_command_buffer(
                             cb.raw,
                             &vk::CommandBufferBeginInfo::builder()
@@ -250,6 +229,11 @@ fn main() -> anyhow::Result<()> {
                     .command_buffers(std::slice::from_ref(&cb.raw));
 
                 unsafe {
+                    device
+                        .raw
+                        .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
+                        .expect("reset_fences");
+
                     device
                         .raw
                         .queue_submit(
