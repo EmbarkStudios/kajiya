@@ -17,6 +17,7 @@ pub struct Swapchain {
     pub(crate) raw: vk::SwapchainKHR,
     pub format: vk::SurfaceFormatKHR,
     pub images: Vec<vk::Image>,
+    pub image_views: Vec<vk::ImageView>,
     pub semaphores: Vec<vk::Semaphore>,
     pub next_semaphore: usize,
 
@@ -27,6 +28,7 @@ pub struct Swapchain {
 
 pub struct SwapchainImage {
     pub image: vk::Image,
+    pub view: vk::ImageView,
     pub image_index: u32,
     pub acquire_semaphore: vk::Semaphore,
 }
@@ -117,6 +119,35 @@ impl Swapchain {
         let swapchain = unsafe { fns.create_swapchain(&swapchain_create_info, None) }.unwrap();
 
         let images = unsafe { fns.get_swapchain_images(swapchain) }.unwrap();
+        let image_views = images
+            .iter()
+            .map(|image| unsafe {
+                device
+                    .raw
+                    .create_image_view(
+                        &vk::ImageViewCreateInfo {
+                            image: *image,
+                            view_type: vk::ImageViewType::TYPE_2D,
+                            format: vk::Format::B8G8R8A8_UNORM,
+                            subresource_range: vk::ImageSubresourceRange {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                level_count: 1,
+                                layer_count: 1,
+                                ..Default::default()
+                            },
+                            components: vk::ComponentMapping {
+                                r: vk::ComponentSwizzle::R,
+                                g: vk::ComponentSwizzle::G,
+                                b: vk::ComponentSwizzle::B,
+                                a: vk::ComponentSwizzle::A,
+                            },
+                            ..Default::default()
+                        },
+                        None,
+                    )
+                    .expect("create_image_view")
+            })
+            .collect();
 
         let semaphores = (0..images.len())
             .map(|_| {
@@ -135,6 +166,7 @@ impl Swapchain {
             device: device.clone(),
             format: desc.format,
             images,
+            image_views,
             semaphores,
             next_semaphore: 0,
         })
@@ -159,6 +191,7 @@ impl Swapchain {
                 self.next_semaphore = (self.next_semaphore + 1) % self.images.len();
                 Ok(SwapchainImage {
                     image: self.images[present_index],
+                    view: self.image_views[present_index],
                     image_index: present_index as u32,
                     acquire_semaphore,
                 })

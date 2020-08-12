@@ -7,9 +7,8 @@ use ash::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use parking_lot::Mutex;
 use std::{collections::HashMap, sync::Arc};
-
-const DEVICE_FRAME_COUNT: usize = 2;
 
 #[allow(dead_code)]
 pub struct Queue {
@@ -21,41 +20,20 @@ pub struct DeviceFrame {
     pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
     pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
     pub rendering_complete_semaphore: Option<vk::Semaphore>,
-    pub command_buffer: VkCommandBufferData,
+    pub command_buffer: CommandBuffer,
 }
 
-pub struct VkCommandBufferData {
+pub struct CommandBuffer {
     pub(crate) raw: vk::CommandBuffer,
+    pub(crate) submit_done_fence: vk::Fence,
     pool: vk::CommandPool,
 }
 
-impl DeviceFrame {
-    pub fn new(
-        device: &ash::Device,
-        global_allocator: &vk_mem::Allocator,
-        queue_family_index: u32,
-    ) -> Self {
-        Self {
-            linear_allocator_pool: global_allocator
-                .create_pool(&{
-                    let mut info = vk_mem::AllocatorPoolCreateInfo::default();
-                    info.flags = vk_mem::AllocatorPoolCreateFlags::LINEAR_ALGORITHM;
-                    info
-                })
-                .expect("linear allocator"),
-            swapchain_acquired_semaphore: None,
-            rendering_complete_semaphore: None,
-            command_buffer: Self::allocate_frame_command_buffer(device, queue_family_index),
-        }
-    }
-
-    fn allocate_frame_command_buffer(
-        device: &ash::Device,
-        queue_family_index: u32,
-    ) -> VkCommandBufferData {
+impl CommandBuffer {
+    fn new(device: &ash::Device, queue_family: &QueueFamily) -> Result<Self> {
         let pool_create_info = vk::CommandPoolCreateInfo::builder()
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-            .queue_family_index(queue_family_index);
+            .queue_family_index(queue_family.index);
 
         let pool = unsafe { device.create_command_pool(&pool_create_info, None).unwrap() };
 
@@ -70,7 +48,41 @@ impl DeviceFrame {
                 .unwrap()
         }[0];
 
-        VkCommandBufferData { raw: cb, pool }
+        let submit_done_fence = unsafe {
+            device.create_fence(
+                &vk::FenceCreateInfo::builder()
+                    .flags(vk::FenceCreateFlags::SIGNALED)
+                    .build(),
+                None,
+            )
+        }?;
+
+        Ok(CommandBuffer {
+            raw: cb,
+            pool,
+            submit_done_fence,
+        })
+    }
+}
+
+impl DeviceFrame {
+    pub fn new(
+        device: &ash::Device,
+        global_allocator: &vk_mem::Allocator,
+        queue_family: &QueueFamily,
+    ) -> Self {
+        Self {
+            linear_allocator_pool: global_allocator
+                .create_pool(&{
+                    let mut info = vk_mem::AllocatorPoolCreateInfo::default();
+                    info.flags = vk_mem::AllocatorPoolCreateFlags::LINEAR_ALGORITHM;
+                    info
+                })
+                .expect("linear allocator"),
+            swapchain_acquired_semaphore: None,
+            rendering_complete_semaphore: None,
+            command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
+        }
     }
 }
 
@@ -84,9 +96,10 @@ pub struct Device {
     pub(crate) raw: ash::Device,
     pub(crate) universal_queue: Queue,
     pub(crate) global_allocator: vk_mem::Allocator,
-    pub(crate) frames: [DeviceFrame; DEVICE_FRAME_COUNT],
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) cmd_ext: CmdExt,
+    frame0: Mutex<Arc<DeviceFrame>>,
+    frame1: Mutex<Arc<DeviceFrame>>,
 }
 
 impl Device {
@@ -216,10 +229,8 @@ impl Device {
                 family: universal_queue,
             };
 
-            let frames = [
-                DeviceFrame::new(&device, &global_allocator, universal_queue.family.index),
-                DeviceFrame::new(&device, &global_allocator, universal_queue.family.index),
-            ];
+            let frame0 = DeviceFrame::new(&device, &global_allocator, &universal_queue.family);
+            let frame1 = DeviceFrame::new(&device, &global_allocator, &universal_queue.family);
 
             let immutable_samplers = Self::create_samplers(&device);
             let cmd_ext = CmdExt {
@@ -232,9 +243,10 @@ impl Device {
                 raw: device,
                 universal_queue,
                 global_allocator,
-                frames,
                 immutable_samplers,
                 cmd_ext,
+                frame0: Mutex::new(Arc::new(frame0)),
+                frame1: Mutex::new(Arc::new(frame1)),
             }))
         }
     }
@@ -289,6 +301,24 @@ impl Device {
             .immutable_samplers
             .get(&desc)
             .unwrap_or_else(|| panic!("Sampler not found: {:?}", desc))
+    }
+
+    pub fn current_frame(&self) -> Arc<DeviceFrame> {
+        self.frame0.lock().clone()
+    }
+
+    pub fn finish_frame(&self, frame: Arc<DeviceFrame>) {
+        drop(frame);
+
+        let mut frame0 = self.frame0.lock();
+        let mut frame1 = self.frame1.lock();
+
+        let frame0: &mut DeviceFrame = Arc::get_mut(&mut frame0).unwrap_or_else(|| {
+            panic!("Could not finish frame: frame data is being held by user code")
+        });
+        let frame1: &mut DeviceFrame = Arc::get_mut(&mut frame1).unwrap();
+
+        std::mem::swap(frame0, frame1);
     }
 }
 

@@ -120,14 +120,35 @@ fn main() -> anyhow::Result<()> {
                     .ok()
                     .expect("swapchain image");
 
-                // TODO
-                let command_buffer = device.frames[0].command_buffer.raw;
+                let current_frame = device.current_frame();
+                let cb = &current_frame.command_buffer;
 
                 unsafe {
                     device
                         .raw
+                        .wait_for_fences(
+                            std::slice::from_ref(&cb.submit_done_fence),
+                            true,
+                            std::u64::MAX,
+                        )
+                        .expect("Wait for fence failed.");
+                    device
+                        .raw
+                        .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
+                        .expect("reset_fences");
+
+                    device
+                        .raw
+                        .reset_command_buffer(
+                            cb.raw,
+                            vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+                        )
+                        .unwrap();
+
+                    device
+                        .raw
                         .begin_command_buffer(
-                            command_buffer,
+                            cb.raw,
                             &vk::CommandBufferBeginInfo::builder()
                                 .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                         )
@@ -135,7 +156,7 @@ fn main() -> anyhow::Result<()> {
 
                     record_image_barrier(
                         &device.raw,
-                        command_buffer,
+                        cb.raw,
                         ImageBarrier::new(
                             swapchain_image.image,
                             vk_sync::AccessType::Present,
@@ -144,38 +165,19 @@ fn main() -> anyhow::Result<()> {
                         .with_discard(true),
                     );
 
-                    let present_image_view = device
-                        .raw
-                        .create_image_view(
-                            &vk::ImageViewCreateInfo {
-                                image: swapchain_image.image,
-                                view_type: vk::ImageViewType::TYPE_2D,
-                                format: vk::Format::B8G8R8A8_UNORM,
-                                subresource_range: vk::ImageSubresourceRange {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    level_count: 1,
-                                    layer_count: 1,
-                                    ..Default::default()
-                                },
-                                components: vk::ComponentMapping {
-                                    r: vk::ComponentSwizzle::R,
-                                    g: vk::ComponentSwizzle::G,
-                                    b: vk::ComponentSwizzle::B,
-                                    a: vk::ComponentSwizzle::A,
-                                },
-                                ..Default::default()
-                            },
-                            None,
-                        )
-                        .expect("create_image_view");
-
                     let present_image_info = vk::DescriptorImageInfo::builder()
                         .image_layout(vk::ImageLayout::GENERAL)
-                        .image_view(present_image_view)
+                        .image_view(swapchain_image.view)
                         .build();
 
+                    device.raw.cmd_bind_pipeline(
+                        cb.raw,
+                        vk::PipelineBindPoint::COMPUTE,
+                        present_pipeline,
+                    );
+
                     device.cmd_ext.push_descriptor.cmd_push_descriptor_set(
-                        command_buffer,
+                        cb.raw,
                         vk::PipelineBindPoint::COMPUTE,
                         present_pipeline_layout,
                         0,
@@ -206,19 +208,13 @@ fn main() -> anyhow::Result<()> {
                         ],
                     );
 
-                    device.raw.cmd_bind_pipeline(
-                        command_buffer,
-                        vk::PipelineBindPoint::COMPUTE,
-                        present_pipeline,
-                    );
-
                     let output_size_pixels = (1280u32, 720u32); // TODO
                     let push_constants: (f32, f32) = (
                         1.0 / output_size_pixels.0 as f32,
                         1.0 / output_size_pixels.1 as f32,
                     );
                     device.raw.cmd_push_constants(
-                        command_buffer,
+                        cb.raw,
                         present_pipeline_layout,
                         vk::ShaderStageFlags::COMPUTE,
                         0,
@@ -228,7 +224,7 @@ fn main() -> anyhow::Result<()> {
                         ),
                     );
                     device.raw.cmd_dispatch(
-                        command_buffer,
+                        cb.raw,
                         (output_size_pixels.0 + 7) / 8,
                         (output_size_pixels.1 + 7) / 8,
                         1,
@@ -236,7 +232,7 @@ fn main() -> anyhow::Result<()> {
 
                     record_image_barrier(
                         &device.raw,
-                        command_buffer,
+                        cb.raw,
                         ImageBarrier::new(
                             swapchain_image.image,
                             vk_sync::AccessType::ComputeShaderWrite,
@@ -244,13 +240,13 @@ fn main() -> anyhow::Result<()> {
                         ),
                     );
 
-                    device.raw.end_command_buffer(command_buffer).unwrap();
+                    device.raw.end_command_buffer(cb.raw).unwrap();
                 }
 
                 let submit_info = vk::SubmitInfo::builder()
                     .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-                    .command_buffers(std::slice::from_ref(&command_buffer));
+                    .command_buffers(std::slice::from_ref(&cb.raw));
 
                 unsafe {
                     device
@@ -258,14 +254,13 @@ fn main() -> anyhow::Result<()> {
                         .queue_submit(
                             device.universal_queue.raw,
                             &[submit_info.build()],
-                            vk::Fence::default(),
+                            cb.submit_done_fence,
                         )
                         .expect("queue submit failed.");
                 }
 
                 swapchain.present_image(swapchain_image, &[]);
-
-                std::process::exit(0);
+                device.finish_frame(current_frame);
             }
             _ => (),
         }
