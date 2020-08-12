@@ -314,11 +314,33 @@ impl Device {
         let mut frame1 = self.frame1.lock();
 
         let frame0: &mut DeviceFrame = Arc::get_mut(&mut frame0).unwrap_or_else(|| {
-            panic!("Could not finish frame: frame data is being held by user code")
+            panic!("Unabel to finish frame: frame data is being held by user code")
         });
         let frame1: &mut DeviceFrame = Arc::get_mut(&mut frame1).unwrap();
 
         std::mem::swap(frame0, frame1);
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        let mut frame0 = self.frame0.lock();
+        let mut frame1 = self.frame1.lock();
+
+        let frame0: &mut DeviceFrame = Arc::get_mut(&mut frame0).unwrap_or_else(|| {
+            panic!("Unable to deallocate DeviceFrame: frame data is being held by user code")
+        });
+        let frame1: &mut DeviceFrame = Arc::get_mut(&mut frame1).unwrap_or_else(|| {
+            panic!("Unable to deallocate DeviceFrame: frame data is being held by user code(2)")
+        });
+
+        self.global_allocator
+            .destroy_pool(&frame0.linear_allocator_pool)
+            .unwrap();
+
+        self.global_allocator
+            .destroy_pool(&frame1.linear_allocator_pool)
+            .unwrap();
     }
 }
 
