@@ -1,3 +1,6 @@
+#![allow(dead_code)]
+#![allow(unused_imports)]
+
 use crate::bytes::into_byte_vec;
 use glam::{Mat4, Vec3};
 /*use render_core::{

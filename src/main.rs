@@ -5,6 +5,7 @@ mod mesh;
 
 use backend::{
     barrier::*,
+    image::*,
     swapchain::{Swapchain, SwapchainDesc},
 };
 
@@ -43,6 +44,7 @@ struct Renderer {
     //surface: Arc<backend::surface::Surface>,
     device: Arc<backend::device::Device>,
     swapchain: backend::swapchain::Swapchain,
+    images: ImageStorage,
 }
 
 impl Renderer {
@@ -89,11 +91,16 @@ impl Renderer {
             //surface,
             device,
             swapchain,
+            images: Default::default(),
         })
+    }
+
+    fn maintain(&mut self) {
+        self.images.maintain();
     }
 }
 
-fn main() -> anyhow::Result<()> {
+fn try_main() -> anyhow::Result<()> {
     logging::set_up_logging()?;
 
     let event_loop = EventLoop::new();
@@ -120,6 +127,16 @@ fn main() -> anyhow::Result<()> {
         backend::presentation::create_present_descriptor_set_and_pipeline(&*renderer.device);
 
     let lazy_cache = LazyCache::create();
+
+    let output_img = renderer.images.create(
+        &*renderer.device,
+        &ImageDesc::new_2d([1280, 720])
+            .format(vk::Format::R16G16B16A16_SFLOAT)
+            .usage(vk::ImageUsageFlags::STORAGE)
+            .build()
+            .unwrap(),
+        None,
+    );
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -277,8 +294,15 @@ fn main() -> anyhow::Result<()> {
 
                 renderer.swapchain.present_image(swapchain_image, &[]);
                 renderer.device.finish_frame(current_frame);
+                renderer.maintain();
             }
             _ => (),
         }
     })
+}
+
+fn main() {
+    if let Err(err) = try_main() {
+        eprintln!("ERROR: {:?}", err);
+    }
 }
