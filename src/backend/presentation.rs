@@ -1,13 +1,7 @@
-use crate::device::{Device, SamplerDesc};
-use anyhow::Result;
-use ash::{
-    extensions::khr,
-    version::{DeviceV1_0, InstanceV1_0, InstanceV1_1},
-    vk,
-};
+use super::device::{Device, SamplerDesc};
+use ash::{version::DeviceV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
 
 pub fn create_present_descriptor_set_and_pipeline(
     device: &Device,
@@ -55,27 +49,10 @@ pub fn create_present_descriptor_set_and_pipeline(
             .unwrap()
     };
 
-    let descriptor_sizes = [
-        vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::SAMPLED_IMAGE,
-            descriptor_count: 2,
-        },
-        vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::STORAGE_IMAGE,
-            descriptor_count: 1,
-        },
-        vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::SAMPLER,
-            descriptor_count: 1,
-        },
-    ];
+    let (pipeline_layout, pipeline) =
+        create_present_compute_pipeline(&device.raw, descriptor_set_layout);
 
-    unsafe {
-        let (pipeline_layout, pipeline) =
-            create_present_compute_pipeline(&device.raw, descriptor_set_layout);
-
-        (pipeline_layout, pipeline)
-    }
+    (pipeline_layout, pipeline)
 }
 
 fn create_present_compute_pipeline(
@@ -86,7 +63,7 @@ fn create_present_compute_pipeline(
     use std::io::Cursor;
 
     let shader_entry_name = CString::new("main").unwrap();
-    let mut shader_spv = Cursor::new(&include_bytes!("final_blit.spv")[..]);
+    let mut shader_spv = Cursor::new(&include_bytes!("../final_blit.spv")[..]);
     let shader_code = ash::util::read_spv(&mut shader_spv).expect("Failed to read shader spv");
 
     let descriptor_set_layouts = [descriptor_set_layout];

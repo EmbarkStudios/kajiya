@@ -9,7 +9,7 @@ pub struct Surface {
 
 impl Surface {
     pub fn create(
-        instance: &crate::instance::Instance,
+        instance: &super::instance::Instance,
         window: &impl raw_window_handle::HasRawWindowHandle,
     ) -> Result<Arc<Self>> {
         let surface =

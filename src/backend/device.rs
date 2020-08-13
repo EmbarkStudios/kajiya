@@ -1,4 +1,4 @@
-use crate::physical_device::{PhysicalDevice, QueueFamily};
+use super::physical_device::{PhysicalDevice, QueueFamily};
 use anyhow::Result;
 use ash::{
     extensions::khr,
@@ -92,7 +92,7 @@ pub(crate) struct CmdExt {
 
 pub struct Device {
     pub(crate) pdevice: Arc<PhysicalDevice>,
-    pub(crate) instance: Arc<crate::instance::Instance>,
+    pub(crate) instance: Arc<super::instance::Instance>,
     pub(crate) raw: ash::Device,
     pub(crate) universal_queue: Queue,
     pub(crate) global_allocator: vk_mem::Allocator,
