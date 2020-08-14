@@ -40,26 +40,29 @@ pub fn create_descriptor_set_layouts(
                     }
                     ReflectResourceTypeFlags::SAMPLER => {
                         let name_prefix = "sampler_";
-                        if let Some(spec) = binding.name.strip_prefix(name_prefix) {
-                            let parts: Vec<_> = spec.split('_').collect();
-                            assert!(parts.len() == 3);
-                            let texel_filter = match parts[0] {
-                                "nearest" => vk::Filter::NEAREST,
-                                "linear" => vk::Filter::LINEAR,
-                                _ => panic!("{}", parts[0]),
+                        if let Some(mut spec) = binding.name.strip_prefix(name_prefix) {
+                            let texel_filter = match &spec[..1] {
+                                "n" => vk::Filter::NEAREST,
+                                "l" => vk::Filter::LINEAR,
+                                _ => panic!("{}", &spec[..1]),
                             };
-                            let mipmap_mode = match parts[1] {
-                                "nearest" => vk::SamplerMipmapMode::NEAREST,
-                                "linear" => vk::SamplerMipmapMode::LINEAR,
-                                _ => panic!("{}", parts[1]),
+                            spec = &spec[1..];
+
+                            let mipmap_mode = match &spec[..1] {
+                                "n" => vk::SamplerMipmapMode::NEAREST,
+                                "l" => vk::SamplerMipmapMode::LINEAR,
+                                _ => panic!("{}", &spec[..1]),
                             };
-                            let address_modes = match parts[2] {
-                                "repeat" => vk::SamplerAddressMode::REPEAT,
-                                "mirroredrepeat" => vk::SamplerAddressMode::MIRRORED_REPEAT,
-                                "clamp" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
-                                "clamptoborder" => vk::SamplerAddressMode::CLAMP_TO_BORDER,
-                                _ => panic!("{}", parts[2]),
+                            spec = &spec[1..];
+
+                            let address_modes = match spec {
+                                "r" => vk::SamplerAddressMode::REPEAT,
+                                "mr" => vk::SamplerAddressMode::MIRRORED_REPEAT,
+                                "c" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+                                "cb" => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+                                _ => panic!("{}", spec),
                             };
+
                             bindings.push(
                                 vk::DescriptorSetLayoutBinding::builder()
                                     .descriptor_count(1)

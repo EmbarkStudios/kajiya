@@ -13,7 +13,6 @@ use backend::{
 use ash::{version::DeviceV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use mesh::LoadGltfScene;
 use std::sync::Arc;
 use turbosloth::*;
 use winit::{
