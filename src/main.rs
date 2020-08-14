@@ -120,9 +120,7 @@ fn try_main() -> anyhow::Result<()> {
     );
 
     let mut renderer = Renderer::new(&*window, &window_cfg)?;
-
-    let (present_pipeline_layout, present_pipeline) =
-        backend::presentation::create_present_descriptor_set_and_pipeline(&*renderer.device);
+    let present_shader = backend::presentation::create_present_compute_shader(&*renderer.device);
 
     let lazy_cache = LazyCache::create();
 
@@ -207,7 +205,7 @@ fn try_main() -> anyhow::Result<()> {
                     renderer.device.raw.cmd_bind_pipeline(
                         cb.raw,
                         vk::PipelineBindPoint::COMPUTE,
-                        present_pipeline,
+                        present_shader.pipeline,
                     );
 
                     record_image_barrier(
@@ -227,7 +225,7 @@ fn try_main() -> anyhow::Result<()> {
                         .cmd_push_descriptor_set(
                             cb.raw,
                             vk::PipelineBindPoint::COMPUTE,
-                            present_pipeline_layout,
+                            present_shader.pipeline_layout,
                             0,
                             &[
                                 vk::WriteDescriptorSet::builder()
@@ -262,7 +260,7 @@ fn try_main() -> anyhow::Result<()> {
                     );
                     renderer.device.raw.cmd_push_constants(
                         cb.raw,
-                        present_pipeline_layout,
+                        present_shader.pipeline_layout,
                         vk::ShaderStageFlags::COMPUTE,
                         0,
                         std::slice::from_raw_parts(
