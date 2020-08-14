@@ -72,7 +72,7 @@ impl Renderer {
 
         info!("Available surface formats: {:#?}", surface_formats);
 
-        let mut swapchain = Swapchain::new(
+        let swapchain = Swapchain::new(
             &device,
             &surface,
             SwapchainDesc {
