@@ -44,7 +44,6 @@ struct Renderer {
     //surface: Arc<backend::surface::Surface>,
     device: Arc<backend::device::Device>,
     swapchain: backend::swapchain::Swapchain,
-    images: ImageStorage,
 }
 
 impl Renderer {
@@ -91,13 +90,12 @@ impl Renderer {
             //surface,
             device,
             swapchain,
-            images: Default::default(),
         })
     }
 
-    fn maintain(&mut self) {
+    /*fn maintain(&mut self) {
         self.images.maintain();
-    }
+    }*/
 }
 
 fn try_main() -> anyhow::Result<()> {
@@ -128,15 +126,22 @@ fn try_main() -> anyhow::Result<()> {
 
     let lazy_cache = LazyCache::create();
 
-    let output_img = renderer.images.create(
-        &*renderer.device,
-        &ImageDesc::new_2d([1280, 720])
+    let output_img = renderer.device.create_image(
+        ImageDesc::new_2d([1280, 720])
             .format(vk::Format::R16G16B16A16_SFLOAT)
-            .usage(vk::ImageUsageFlags::STORAGE)
+            //.format(vk::Format::R8G8B8A8_UNORM)
+            .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
             .build()
             .unwrap(),
         None,
-    );
+    )?;
+
+    let output_img_view = renderer.device.create_image_view(
+        ImageViewDesc::builder()
+            .image(output_img.clone())
+            .build()
+            .unwrap(),
+    )?;
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -153,6 +158,8 @@ fn try_main() -> anyhow::Result<()> {
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => {
+                let present_source_image_view = output_img_view.raw;
+
                 // Note: this can be done at the end of the frame, not at the start.
                 // The image can be acquired just in time for a blit into it,
                 // after all the other rendering commands have been recorded.
@@ -187,6 +194,11 @@ fn try_main() -> anyhow::Result<()> {
                         .with_discard(true),
                     );
 
+                    let source_image_info = vk::DescriptorImageInfo::builder()
+                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        .image_view(present_source_image_view)
+                        .build();
+
                     let present_image_info = vk::DescriptorImageInfo::builder()
                         .image_layout(vk::ImageLayout::GENERAL)
                         .image_view(swapchain_image.view)
@@ -196,6 +208,16 @@ fn try_main() -> anyhow::Result<()> {
                         cb.raw,
                         vk::PipelineBindPoint::COMPUTE,
                         present_pipeline,
+                    );
+
+                    record_image_barrier(
+                        &renderer.device.raw,
+                        cb.raw,
+                        ImageBarrier::new(
+                            output_img.raw,
+                            vk_sync::AccessType::Nothing,
+                            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+                        ),
                     );
 
                     renderer
@@ -208,23 +230,22 @@ fn try_main() -> anyhow::Result<()> {
                             present_pipeline_layout,
                             0,
                             &[
-                                /*vk::WriteDescriptorSet::builder()
-                                    .dst_set(present_descriptor_set)
+                                vk::WriteDescriptorSet::builder()
                                     .dst_binding(0)
                                     .dst_array_element(0)
                                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                                    .image_info(std::slice::from_ref(&image_info))
+                                    .image_info(std::slice::from_ref(&source_image_info))
                                     .build(),
-                                vk::WriteDescriptorSet::builder()
-                                    .dst_set(present_descriptor_set)
-                                    .dst_binding(1)
-                                    .dst_array_element(0)
-                                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                                    .image_info(&[vk::DescriptorImageInfo::builder()
-                                        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                        .image_view(gui_texture_view)
-                                        .build()])
-                                    .build(),*/
+                                /*vk::WriteDescriptorSet::builder()
+                                .dst_set(present_descriptor_set)
+                                .dst_binding(1)
+                                .dst_array_element(0)
+                                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                                .image_info(&[vk::DescriptorImageInfo::builder()
+                                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                                    .image_view(gui_texture_view)
+                                    .build()])
+                                .build(),*/
                                 vk::WriteDescriptorSet::builder()
                                     .dst_binding(2)
                                     .dst_array_element(0)
@@ -294,7 +315,7 @@ fn try_main() -> anyhow::Result<()> {
 
                 renderer.swapchain.present_image(swapchain_image, &[]);
                 renderer.device.finish_frame(current_frame);
-                renderer.maintain();
+                //renderer.maintain();
             }
             _ => (),
         }

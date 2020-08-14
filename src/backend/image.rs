@@ -1,7 +1,10 @@
-use super::{device::Device, resource_storage::*};
-use ash::vk;
+use super::device::Device;
+use anyhow::Result;
+use ash::{version::DeviceV1_0, vk};
 use derive_builder::Builder;
+use std::sync::Arc;
 
+#[derive(Clone, Copy)]
 #[allow(dead_code)]
 pub enum ImageType {
     Tex1d = 0,
@@ -13,7 +16,7 @@ pub enum ImageType {
     CubeArray = 6,
 }
 
-#[derive(Builder)]
+#[derive(Builder, Clone, Copy)]
 #[builder(pattern = "owned")]
 pub struct ImageDesc {
     pub image_type: ImageType,
@@ -56,23 +59,38 @@ pub struct ImageSubResourceData<'a> {
 
 pub struct Image {
     pub raw: vk::Image,
+    pub desc: ImageDesc,
     allocation: vk_mem::Allocation,
 }
 
-pub struct ImageHandle(ResourceHandle);
-
-#[derive(Default)]
-pub struct ImageStorage {
-    storage: ResourceStorage<Image>,
+#[derive(Clone, Builder)]
+pub struct ImageViewDesc {
+    pub image: Arc<Image>,
+    #[builder(setter(strip_option), default)]
+    pub view_type: Option<vk::ImageViewType>,
+    #[builder(setter(strip_option), default)]
+    pub format: Option<vk::Format>,
+    // TODO
 }
 
-impl ImageStorage {
-    pub fn create(
+impl ImageViewDesc {
+    pub fn builder() -> ImageViewDescBuilder {
+        Default::default()
+    }
+}
+
+pub struct ImageView {
+    pub raw: vk::ImageView,
+    desc: ImageViewDesc,
+}
+
+impl Device {
+    pub fn create_image(
         &self,
-        device: &Device,
-        desc: &ImageDesc,
+        desc: ImageDesc,
         initial_data: Option<ImageSubResourceData>,
-    ) -> ImageHandle {
+    ) -> Result<Arc<Image>> {
+        let desc = desc.into();
         let create_info = get_image_create_info(&desc, initial_data.is_some());
 
         if initial_data.is_some() {
@@ -84,33 +102,81 @@ impl ImageStorage {
             ..Default::default()
         };
 
-        let (image, allocation, _allocation_info) = device
+        let (image, allocation, _allocation_info) = self
             .global_allocator
-            .create_image(&create_info, &allocation_info)
-            .unwrap();
+            .create_image(&create_info, &allocation_info)?;
 
-        let handle = self.storage.insert(Image {
+        /*        let handle = self.storage.insert(Image {
             raw: image,
             allocation,
         });
 
-        ImageHandle(handle)
+        ImageHandle(handle)*/
+        Ok(Arc::new(Image {
+            raw: image,
+            allocation,
+            desc,
+        }))
     }
 
-    pub fn get(&self, handle: ImageHandle) -> &Image {
+    pub fn create_image_view(&self, desc: ImageViewDesc) -> Result<ImageView> {
+        let image = &*desc.image;
+        let create_info = vk::ImageViewCreateInfo::builder()
+            .format(desc.format.unwrap_or(image.desc.format))
+            .image(image.raw)
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::R,
+                g: vk::ComponentSwizzle::G,
+                b: vk::ComponentSwizzle::B,
+                a: vk::ComponentSwizzle::A,
+            })
+            .view_type(
+                desc.view_type
+                    .unwrap_or_else(|| convert_image_type_to_view_type(image.desc.image_type)),
+            )
+            // TODO
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                base_mip_level: 0,
+                level_count: 1,
+                base_array_layer: 0,
+                layer_count: match image.desc.image_type {
+                    ImageType::Cube | ImageType::CubeArray => 6,
+                    _ => 1,
+                },
+            })
+            .build();
+
+        let raw = unsafe { self.raw.create_image_view(&create_info, None)? };
+        Ok(ImageView { raw, desc })
+    }
+
+    /*pub fn get(&self, handle: ImageHandle) -> &Image {
         self.storage.get(handle.0)
     }
 
     pub fn maintain(&mut self) {
         self.storage.maintain()
+    }*/
+}
+
+pub fn convert_image_type_to_view_type(image_type: ImageType) -> vk::ImageViewType {
+    match image_type {
+        ImageType::Tex1d => vk::ImageViewType::TYPE_1D,
+        ImageType::Tex1dArray => vk::ImageViewType::TYPE_1D_ARRAY,
+        ImageType::Tex2d => vk::ImageViewType::TYPE_2D,
+        ImageType::Tex2dArray => vk::ImageViewType::TYPE_2D_ARRAY,
+        ImageType::Tex3d => vk::ImageViewType::TYPE_3D,
+        ImageType::Cube => vk::ImageViewType::CUBE,
+        ImageType::CubeArray => vk::ImageViewType::CUBE_ARRAY,
     }
 }
 
-pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::ImageCreateInfo {
+pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> vk::ImageCreateInfo {
     let (image_type, image_extent, image_layers) = match desc.image_type {
         ImageType::Tex1d => (
-            ash::vk::ImageType::TYPE_1D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_1D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: 1,
                 depth: 1,
@@ -118,8 +184,8 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
             1,
         ),
         ImageType::Tex1dArray => (
-            ash::vk::ImageType::TYPE_1D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_1D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: 1,
                 depth: 1,
@@ -127,8 +193,8 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
             desc.array_elements,
         ),
         ImageType::Tex2d => (
-            ash::vk::ImageType::TYPE_2D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_2D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: desc.extent[1],
                 depth: 1,
@@ -136,8 +202,8 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
             1,
         ),
         ImageType::Tex2dArray => (
-            ash::vk::ImageType::TYPE_2D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_2D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: desc.extent[1],
                 depth: 1,
@@ -145,8 +211,8 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
             desc.array_elements,
         ),
         ImageType::Tex3d => (
-            ash::vk::ImageType::TYPE_3D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_3D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: desc.extent[1],
                 depth: desc.extent[2] as u32,
@@ -154,8 +220,8 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
             1,
         ),
         ImageType::Cube => (
-            ash::vk::ImageType::TYPE_2D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_2D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: desc.extent[1],
                 depth: 1,
@@ -163,8 +229,8 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
             6,
         ),
         ImageType::CubeArray => (
-            ash::vk::ImageType::TYPE_2D,
-            ash::vk::Extent3D {
+            vk::ImageType::TYPE_2D,
+            vk::Extent3D {
                 width: desc.extent[0],
                 height: desc.extent[1],
                 depth: 1,
@@ -179,24 +245,24 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> ash::vk::I
         image_usage |= vk::ImageUsageFlags::TRANSFER_DST;
     }
 
-    ash::vk::ImageCreateInfo {
+    vk::ImageCreateInfo {
         flags: match desc.image_type {
-            ImageType::Cube => ash::vk::ImageCreateFlags::CUBE_COMPATIBLE,
-            ImageType::CubeArray => ash::vk::ImageCreateFlags::CUBE_COMPATIBLE,
-            _ => ash::vk::ImageCreateFlags::empty(), // ImageCreateFlags::CREATE_MUTABLE_FORMAT
+            ImageType::Cube => vk::ImageCreateFlags::CUBE_COMPATIBLE,
+            ImageType::CubeArray => vk::ImageCreateFlags::CUBE_COMPATIBLE,
+            _ => vk::ImageCreateFlags::empty(), // ImageCreateFlags::CREATE_MUTABLE_FORMAT
         },
         image_type,
         format: desc.format,
         extent: image_extent,
         mip_levels: desc.mip_levels as u32,
         array_layers: image_layers as u32,
-        samples: ash::vk::SampleCountFlags::TYPE_1, // TODO: desc.sample_count
+        samples: vk::SampleCountFlags::TYPE_1, // TODO: desc.sample_count
         tiling: desc.tiling,
         usage: image_usage,
-        sharing_mode: ash::vk::SharingMode::EXCLUSIVE,
+        sharing_mode: vk::SharingMode::EXCLUSIVE,
         initial_layout: match initial_data {
-            true => ash::vk::ImageLayout::PREINITIALIZED,
-            false => ash::vk::ImageLayout::UNDEFINED,
+            true => vk::ImageLayout::PREINITIALIZED,
+            false => vk::ImageLayout::UNDEFINED,
         },
         ..Default::default()
     }
