@@ -1,18 +1,22 @@
 mod backend;
 mod bytes;
+mod file;
 mod logging;
 mod mesh;
+mod shader_compiler;
 
 use backend::{
     barrier::*,
     image::*,
     presentation::blit_image_to_swapchain,
+    shader::*,
     swapchain::{Swapchain, SwapchainDesc},
 };
 
 use ash::{version::DeviceV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use shader_compiler::CompileShader;
 use std::sync::Arc;
 use turbosloth::*;
 use winit::{
@@ -141,6 +145,28 @@ fn try_main() -> anyhow::Result<()> {
             .unwrap(),
     )?;
 
+    let gradients_shader = smol::block_on(
+        CompileShader {
+            path: "/assets/shaders/gradients.hlsl".into(),
+            profile: "cs".to_owned(),
+        }
+        .into_lazy()
+        .eval(&lazy_cache),
+    )?;
+
+    let gradients_shader = create_compute_shader(
+        &*renderer.device,
+        ComputeShaderDesc::builder()
+            .spirv(&gradients_shader.spirv)
+            .entry_name("main")
+            .descriptor_set_layout_flags(&[(
+                0,
+                vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
+            )])
+            .build()
+            .unwrap(),
+    );
+
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
         // dispatched any events. This is ideal for games and similar applications.
@@ -185,6 +211,57 @@ fn try_main() -> anyhow::Result<()> {
                         ImageBarrier::new(
                             output_img.raw,
                             vk_sync::AccessType::Nothing,
+                            vk_sync::AccessType::ComputeShaderWrite,
+                        ),
+                    );
+
+                    let image_info = vk::DescriptorImageInfo::builder()
+                        .image_layout(vk::ImageLayout::GENERAL)
+                        .image_view(output_img_view.raw)
+                        .build();
+
+                    unsafe {
+                        renderer.device.raw.cmd_bind_pipeline(
+                            cb.raw,
+                            vk::PipelineBindPoint::COMPUTE,
+                            gradients_shader.pipeline,
+                        );
+                    }
+
+                    unsafe {
+                        renderer
+                            .device
+                            .cmd_ext
+                            .push_descriptor
+                            .cmd_push_descriptor_set(
+                                cb.raw,
+                                vk::PipelineBindPoint::COMPUTE,
+                                gradients_shader.pipeline_layout,
+                                0,
+                                &[vk::WriteDescriptorSet::builder()
+                                    .dst_binding(0)
+                                    .dst_array_element(0)
+                                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                                    .image_info(std::slice::from_ref(&image_info))
+                                    .build()],
+                            );
+
+                        // TODO
+                        let output_size_pixels = (1280u32, 720u32); // TODO
+                        renderer.device.raw.cmd_dispatch(
+                            cb.raw,
+                            (output_size_pixels.0 + 7) / 8,
+                            (output_size_pixels.1 + 7) / 8,
+                            1,
+                        );
+                    }
+
+                    record_image_barrier(
+                        &renderer.device.raw,
+                        cb.raw,
+                        ImageBarrier::new(
+                            output_img.raw,
+                            vk_sync::AccessType::ComputeShaderWrite,
                             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
                         ),
                     );

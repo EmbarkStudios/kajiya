@@ -1,6 +1,7 @@
 use super::device::{Device, SamplerDesc};
 use ash::{version::DeviceV1_0, vk};
 use byte_slice_cast::AsSliceOf as _;
+use derive_builder::Builder;
 use spirv_reflect::types::ReflectResourceTypeFlags;
 
 pub fn create_descriptor_set_layouts(
@@ -121,24 +122,34 @@ pub struct ComputeShader {
     pub pipeline: vk::Pipeline,
 }
 
+#[derive(Builder)]
+#[builder(pattern = "owned")]
 pub struct ComputeShaderDesc<'a, 'b> {
-    pub spv: &'a [u8],
+    pub spirv: &'a [u8],
     pub entry_name: &'b str,
-    pub descriptor_set_layout_flags: &'a [(usize, vk::DescriptorSetLayoutCreateFlags)],
+    #[builder(setter(strip_option), default)]
+    pub descriptor_set_layout_flags: Option<&'a [(usize, vk::DescriptorSetLayoutCreateFlags)]>,
+    #[builder(default)]
     pub push_constants_bytes: usize,
+}
+
+impl<'a, 'b> ComputeShaderDesc<'a, 'b> {
+    pub fn builder() -> ComputeShaderDescBuilder<'a, 'b> {
+        ComputeShaderDescBuilder::default()
+    }
 }
 
 pub fn create_compute_shader(device: &Device, desc: ComputeShaderDesc) -> ComputeShader {
     use std::ffi::CString;
 
     let shader_entry_name = CString::new(desc.entry_name).unwrap();
-    let shader_spv = desc.spv;
+    let shader_spv = desc.spirv;
     let module = spirv_reflect::ShaderModule::load_u8_data(shader_spv).unwrap();
 
     let descriptor_set_layouts = super::shader::create_descriptor_set_layouts(
         device,
         &module,
-        desc.descriptor_set_layout_flags,
+        desc.descriptor_set_layout_flags.unwrap_or(&[]),
     );
 
     let mut layout_create_info =

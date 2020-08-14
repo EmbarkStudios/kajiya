@@ -75,7 +75,7 @@ impl Instance {
             .map(|raw_name| raw_name.as_ptr())
             .collect();
 
-        let app_desc = vk::ApplicationInfo::builder().api_version(vk::make_version(1, 1, 0));
+        let app_desc = vk::ApplicationInfo::builder().api_version(vk::make_version(1, 2, 0));
 
         let instance_desc = vk::InstanceCreateInfo::builder()
             .application_info(&app_desc)

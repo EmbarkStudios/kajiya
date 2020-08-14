@@ -15,13 +15,18 @@ ash-window = "0.5"
 chrono = "0.4"
 #derive_builder = { git = "https://github.com/colin-kiegel/rust-derive-builder.git", rev = "44f629c", features = ["logging"] }   # dyn Error instead of String
 derive_builder = { version = "0.9", default-features = false }
+failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 fern = { version = "0.6", features = ["colored"] }
 glam = "0.9"
 gltf = "0.15"
 hassle-rs = "0.4"
+hotwatch = "0.4"
+lazy_static = "1.4"
 log = "0.4"
 parking_lot = "0.11"
 raw-window-handle = "0.3"
+relative-path = "1.3"
+rspirv = { git = "https://github.com/Traverse-Research/rspirv.git" }
 serde = { version = "1.0", features = ["derive"] }
 shader-prepper = "0.2"
 smol = "0.3"

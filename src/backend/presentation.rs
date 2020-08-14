@@ -11,12 +11,12 @@ pub fn create_present_compute_shader(device: &Device) -> ComputeShader {
     create_compute_shader(
         device,
         ComputeShaderDesc {
-            spv: include_bytes!("../final_blit.spv"),
+            spirv: include_bytes!("../final_blit.spv"),
             entry_name: "main",
-            descriptor_set_layout_flags: &[(
+            descriptor_set_layout_flags: Some(&[(
                 0,
                 vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
-            )],
+            )]),
             push_constants_bytes: 2 * 4,
         },
     )

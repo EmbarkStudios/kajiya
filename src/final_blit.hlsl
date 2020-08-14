@@ -31,10 +31,10 @@ void main(in uint2 dispatch_id : SV_DispatchThreadID) {
         float2(dispatch_id + 0.5) * push_constants.main_tex_size,
         0);
     //float4 gui = gui_tex.Load(uint3(dispatch_id, 0));
-    float4 gui = float4(0.7, 0.4, 0.1, 0.5);
+    //float4 gui = float4(0.7, 0.4, 0.1, 0.5);
     float4 result = main;
     result.rgb = linear_to_srgb(clamp(result.rgb, 0.0, 1.0));
-    result.rgb = result.rgb * (1.0 - gui.a) + gui.rgb;
+    //result.rgb = result.rgb * (1.0 - gui.a) + gui.rgb;
     #else
     float4 result = float4(0.7, 0.4, 0.1, 1.0);
     #endif

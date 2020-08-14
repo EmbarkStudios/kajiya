@@ -1,7 +1,7 @@
 #include "inc/color.hlsl"
 #include "inc/uv.hlsl"
 
-RWTexture2D<float4> output_tex;
+[[vk::binding(0)]] RWTexture2D<float4> output_tex;
 
 /*cbuffer globals {
     float4 output_tex_size;
