@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 anyhow = "1.0"
+arrayvec = "0.5"
 bincode = "1.3"
 byte-slice-cast = "0.3"
 ash = "0.31"
@@ -31,7 +32,6 @@ serde = { version = "1.0", features = ["derive"] }
 rspirv-reflect = { git = "https://github.com/Traverse-Research/rspirv-reflect.git", rev = "396a6fa" }
 shader-prepper = "0.2"
 smol = "0.3"
-smallvec = "1.4"
 thiserror = "1.0"
 turbosloth = "0.2.0"
 vk-mem = { git = "https://github.com/cheako/vk-mem-rs.git", rev = "4a5f613" }   # Ray tracing and VK 1.2 support

@@ -10,11 +10,11 @@ use std::sync::Arc;
 use turbosloth::*;
 
 pub struct Renderer {
-    present_shader: ComputeShader,
+    present_shader: ComputePipeline,
     output_img: Arc<Image>,
     output_img_view: ImageView,
 
-    gradients_shader: ComputeShader,
+    gradients_shader: ComputePipeline,
 }
 
 impl Renderer {
@@ -49,9 +49,9 @@ impl Renderer {
             .eval(&lazy_cache),
         )?;
 
-        let gradients_shader = create_compute_shader(
+        let gradients_shader = create_compute_pipeline(
             &*backend.device,
-            ComputeShaderDesc::builder()
+            ComputePipelineDesc::builder()
                 .spirv(&gradients_shader.spirv)
                 .entry_name("main")
                 .descriptor_set_layout_flags(&[(
@@ -61,6 +61,49 @@ impl Renderer {
                 .build()
                 .unwrap(),
         );
+
+        let vertex_shader = smol::block_on(
+            CompileShader {
+                path: "/assets/shaders/raster_simple_vs.hlsl".into(),
+                profile: "vs".to_owned(),
+            }
+            .into_lazy()
+            .eval(&lazy_cache),
+        )?;
+
+        let pixel_shader = smol::block_on(
+            CompileShader {
+                path: "/assets/shaders/raster_simple_ps.hlsl".into(),
+                profile: "ps".to_owned(),
+            }
+            .into_lazy()
+            .eval(&lazy_cache),
+        )?;
+
+        let raster_simple_render_pass = create_render_pass(
+            &*backend.device,
+            RenderPassDesc {
+                color_attachments: &[RenderPassAttachmentDesc::new(
+                    vk::Format::R16G16B16A16_SFLOAT,
+                )],
+                depth_attachment: None,
+            },
+        )?;
+
+        let raster_simple = create_raster_pipeline(
+            &*backend.device,
+            RasterPipelineDesc {
+                shaders: &[
+                    RasterShaderDesc::new(RasterStage::Vertex, &vertex_shader.spirv, "main")
+                        .build()
+                        .unwrap(),
+                    RasterShaderDesc::new(RasterStage::Pixel, &pixel_shader.spirv, "main")
+                        .build()
+                        .unwrap(),
+                ],
+                render_pass: raster_simple_render_pass,
+            },
+        )?;
 
         Ok(Renderer {
             present_shader,

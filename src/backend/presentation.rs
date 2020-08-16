@@ -2,15 +2,15 @@ use super::{
     barrier::*,
     device::{CommandBuffer, Device},
     image::ImageView,
-    shader::{create_compute_shader, ComputeShader, ComputeShaderDesc},
+    shader::{create_compute_pipeline, ComputePipeline, ComputePipelineDesc},
     swapchain::SwapchainImage,
 };
 use ash::{version::DeviceV1_0, vk};
 
-pub fn create_present_compute_shader(device: &Device) -> ComputeShader {
-    create_compute_shader(
+pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
+    create_compute_pipeline(
         device,
-        ComputeShaderDesc {
+        ComputePipelineDesc {
             spirv: include_bytes!("../final_blit.spv"),
             entry_name: "main",
             descriptor_set_layout_flags: Some(&[(
@@ -27,7 +27,7 @@ pub fn blit_image_to_swapchain(
     cb: &CommandBuffer,
     swapchain_image: &SwapchainImage,
     present_source_image_view: &ImageView,
-    present_shader: &ComputeShader,
+    present_shader: &ComputePipeline,
 ) {
     record_image_barrier(
         &device.raw,
