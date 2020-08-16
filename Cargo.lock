@@ -1396,6 +1396,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "rspirv"
+version = "0.6.0"
+source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
+dependencies = [
+ "derive_more",
+ "fxhash",
+ "num-traits",
+ "spirv_headers 1.4.2 (git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83)",
+]
+
+[[package]]
+name = "rspirv-reflect"
+version = "0.1.0"
+source = "git+https://github.com/Traverse-Research/rspirv-reflect.git?rev=396a6fa#396a6fad344ca4fb0b569ad7c12669ef3cc45c68"
+dependencies = [
+ "rspirv 0.6.0 (git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83)",
+ "thiserror",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1569,18 +1589,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "spirv-reflect"
-version = "0.2.5"
-source = "git+https://github.com/h3r2tic/spirv-reflect-rs.git?rev=a51ba47#a51ba47c05d801ed066e4917c7106f119cc9f006"
-dependencies = [
- "bitflags",
- "num-traits",
- "serde",
- "serde_derive",
- "spirv_headers 1.4.2 (git+https://github.com/Traverse-Research/rspirv.git?rev=9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633)",
-]
-
-[[package]]
 name = "spirv_headers"
 version = "1.4.2"
 source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
@@ -1592,7 +1600,7 @@ dependencies = [
 [[package]]
 name = "spirv_headers"
 version = "1.4.2"
-source = "git+https://github.com/Traverse-Research/rspirv.git?rev=9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
+source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
 dependencies = [
  "bitflags",
  "num-traits",
@@ -1743,12 +1751,12 @@ dependencies = [
  "parking_lot 0.11.0",
  "raw-window-handle",
  "relative-path",
- "rspirv",
+ "rspirv 0.6.0 (git+https://github.com/Traverse-Research/rspirv.git)",
+ "rspirv-reflect",
  "serde",
  "shader-prepper",
  "smallvec",
  "smol",
- "spirv-reflect",
  "thiserror",
  "turbosloth",
  "vk-mem",

@@ -2,44 +2,37 @@ use super::device::{Device, SamplerDesc};
 use ash::{version::DeviceV1_0, vk};
 use byte_slice_cast::AsSliceOf as _;
 use derive_builder::Builder;
-use spirv_reflect::types::ReflectResourceTypeFlags;
 
 pub fn create_descriptor_set_layouts(
     device: &Device,
-    module: &spirv_reflect::ShaderModule,
+    module: &rspirv_reflect::Reflection,
     set_flags: &[(usize, vk::DescriptorSetLayoutCreateFlags)],
 ) -> Vec<vk::DescriptorSetLayout> {
-    let descriptor_sets = module.enumerate_descriptor_sets(None).unwrap();
+    let descriptor_sets = module.get_descriptor_sets().unwrap();
     //println!("Shader descriptor sets: {:#?}", descriptor_sets);
 
     let stage_flags = vk::ShaderStageFlags::COMPUTE;
 
     descriptor_sets
         .into_iter()
-        .enumerate()
         .map(|(set_index, set)| {
-            let set = &set.value;
+            let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
 
-            let mut bindings: Vec<vk::DescriptorSetLayoutBinding> =
-                Vec::with_capacity(set.binding_refs.len());
-
-            for binding in set.binding_refs.iter() {
-                let binding = &binding.value;
-
-                assert_ne!(binding.resource_type, ReflectResourceTypeFlags::UNDEFINED);
-                match binding.resource_type {
-                    ReflectResourceTypeFlags::CONSTANT_BUFFER_VIEW => todo!(),
-                    ReflectResourceTypeFlags::SHADER_RESOURCE_VIEW => {
+            for (binding_index, binding) in set.into_iter() {
+                match binding.ty {
+                    rspirv_reflect::DescriptorType::UNIFORM_BUFFER => todo!(),
+                    rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
                         bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
-                                .binding(binding.binding)
-                                .descriptor_count(binding.count)
+                                .binding(binding_index)
+                                //.descriptor_count(binding.count)
+                                .descriptor_count(1) // TODO
                                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                                 .stage_flags(stage_flags)
                                 .build(),
                         );
                     }
-                    ReflectResourceTypeFlags::SAMPLER => {
+                    rspirv_reflect::DescriptorType::SAMPLER => {
                         let name_prefix = "sampler_";
                         if let Some(mut spec) = binding.name.strip_prefix(name_prefix) {
                             let texel_filter = match &spec[..1] {
@@ -66,10 +59,11 @@ pub fn create_descriptor_set_layouts(
 
                             bindings.push(
                                 vk::DescriptorSetLayoutBinding::builder()
-                                    .descriptor_count(1)
+                                    //.descriptor_count(binding.count)
+                                    .descriptor_count(1) // TODO
                                     .descriptor_type(vk::DescriptorType::SAMPLER)
                                     .stage_flags(stage_flags)
-                                    .binding(binding.binding)
+                                    .binding(binding_index)
                                     .immutable_samplers(&[device.get_sampler(SamplerDesc {
                                         texel_filter,
                                         mipmap_mode,
@@ -81,11 +75,12 @@ pub fn create_descriptor_set_layouts(
                             panic!("{}", binding.name);
                         }
                     }
-                    ReflectResourceTypeFlags::UNORDERED_ACCESS_VIEW => {
+                    rspirv_reflect::DescriptorType::STORAGE_IMAGE => {
                         bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
-                                .binding(binding.binding)
-                                .descriptor_count(binding.count)
+                                .binding(binding_index)
+                                //.descriptor_count(binding.count)
+                                .descriptor_count(1) // TODO
                                 .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
                                 .stage_flags(stage_flags)
                                 .build(),
@@ -97,7 +92,7 @@ pub fn create_descriptor_set_layouts(
 
             let flags = set_flags
                 .iter()
-                .find(|item| item.0 == set_index)
+                .find(|item| item.0 == set_index as usize)
                 .map(|flags| flags.1)
                 .unwrap_or_default();
 
@@ -144,7 +139,7 @@ pub fn create_compute_shader(device: &Device, desc: ComputeShaderDesc) -> Comput
 
     let shader_entry_name = CString::new(desc.entry_name).unwrap();
     let shader_spv = desc.spirv;
-    let module = spirv_reflect::ShaderModule::load_u8_data(shader_spv).unwrap();
+    let module = rspirv_reflect::Reflection::new_from_spirv(shader_spv).unwrap();
 
     let descriptor_set_layouts = super::shader::create_descriptor_set_layouts(
         device,
