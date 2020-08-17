@@ -4,7 +4,9 @@ mod chunky_list;
 mod file;
 mod logging;
 mod mesh;
+mod pipeline_cache;
 mod renderer;
+mod shader_cache;
 mod shader_compiler;
 
 use backend::RenderBackend;
@@ -61,9 +63,10 @@ fn try_main() -> anyhow::Result<()> {
                 // Application update code.
                 window.request_redraw();
             }
-            Event::RedrawRequested(_) => {
-                renderer.draw_frame(&mut backend);
-            }
+            Event::RedrawRequested(_) => match renderer.prepare_frame(&backend) {
+                Ok(()) => renderer.draw_frame(&mut backend),
+                Err(err) => println!("{:?}", err),
+            },
             _ => (),
         }
     })

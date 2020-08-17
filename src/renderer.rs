@@ -2,7 +2,7 @@ use crate::backend::{
     self, barrier::*, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
 };
 
-use crate::shader_compiler::CompileShader;
+use crate::{pipeline_cache::*, shader_compiler::CompileShader};
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use backend::device::CommandBuffer;
@@ -12,11 +12,13 @@ use std::sync::Arc;
 use turbosloth::*;
 
 pub struct Renderer {
+    cs_cache: ComputePipelineCache,
+
     present_shader: ComputePipeline,
     output_img: Arc<Image>,
     output_img_view: ImageView,
 
-    gradients_shader: ComputePipeline,
+    gradients_shader: ComputePipelineHandle,
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipeline,
 }
@@ -59,6 +61,7 @@ impl Renderer {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
 
         let lazy_cache = LazyCache::create();
+        let mut cs_cache = ComputePipelineCache::new(&lazy_cache);
 
         let output_img = backend.device.create_image(
             ImageDesc::new_2d([1280, 720])
@@ -81,7 +84,17 @@ impl Renderer {
                 .unwrap(),
         )?;
 
-        let gradients_shader = smol::block_on(
+        let gradients_shader =
+            cs_cache.register("/assets/shaders/gradients.hlsl", |compiled_shader| {
+                ComputePipelineDesc::builder()
+                    .spirv(&compiled_shader.spirv)
+                    .descriptor_set_layout_flags(&[(
+                        0,
+                        vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
+                    )])
+            });
+
+        /*let gradients_shader = smol::block_on(
             CompileShader {
                 path: "/assets/shaders/gradients.hlsl".into(),
                 profile: "cs".to_owned(),
@@ -101,7 +114,7 @@ impl Renderer {
                 )])
                 .build()
                 .unwrap(),
-        );
+        );*/
 
         let vertex_shader = smol::block_on(
             CompileShader {
@@ -147,7 +160,17 @@ impl Renderer {
             },
         )?;
 
+        let sdf_img = backend.device.create_image(
+            ImageDesc::new_3d([256, 256, 256])
+                .format(vk::Format::R16_SFLOAT)
+                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+                .build()
+                .unwrap(),
+            None,
+        )?;
+
         Ok(Renderer {
+            cs_cache,
             present_shader,
             output_img,
             output_img_view,
@@ -281,10 +304,12 @@ impl Renderer {
                 .image_view(self.output_img_view.raw)
                 .build();
 
+            let gradients_shader = self.cs_cache.get(self.gradients_shader);
+
             backend.device.raw.cmd_bind_pipeline(
                 cb.raw,
                 vk::PipelineBindPoint::COMPUTE,
-                self.gradients_shader.pipeline,
+                gradients_shader.pipeline,
             );
 
             // TODO: vkCmdPushDescriptorSetWithTemplateKHR
@@ -295,7 +320,7 @@ impl Renderer {
                 .cmd_push_descriptor_set(
                     cb.raw,
                     vk::PipelineBindPoint::COMPUTE,
-                    self.gradients_shader.pipeline_layout,
+                    gradients_shader.pipeline_layout,
                     0,
                     &[vk::WriteDescriptorSet::builder()
                         .dst_binding(0)
@@ -383,5 +408,11 @@ impl Renderer {
 
         backend.swapchain.present_image(swapchain_image, &[]);
         backend.device.finish_frame(current_frame);
+    }
+
+    pub fn prepare_frame(&mut self, backend: &RenderBackend) -> anyhow::Result<()> {
+        self.cs_cache.prepare_frame(&backend.device)?;
+
+        Ok(())
     }
 }
