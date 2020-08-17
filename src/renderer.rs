@@ -15,6 +15,43 @@ pub struct Renderer {
     output_img_view: ImageView,
 
     gradients_shader: ComputePipeline,
+    raster_simple_render_pass: Arc<RenderPass>,
+    raster_simple: RasterPipeline,
+}
+
+pub struct LocalStateTracker<'device> {
+    resource: vk::Image,
+    initial_state: vk_sync::AccessType,
+    current_state: vk_sync::AccessType,
+    cb: vk::CommandBuffer,
+    device: &'device ash::Device,
+}
+
+impl<'device> LocalStateTracker<'device> {
+    pub fn new(
+        resource: vk::Image,
+        current_state: vk_sync::AccessType,
+        cb: vk::CommandBuffer,
+        device: &'device ash::Device,
+    ) -> Self {
+        Self {
+            resource,
+            initial_state: current_state,
+            current_state,
+            cb,
+            device,
+        }
+    }
+
+    pub fn barrier(&mut self, state: vk_sync::AccessType) {
+        record_image_barrier(
+            &self.device,
+            self.cb,
+            ImageBarrier::new(self.resource, self.current_state, state),
+        );
+
+        self.current_state = state;
+    }
 }
 
 impl Renderer {
@@ -27,7 +64,11 @@ impl Renderer {
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
                 //.format(vk::Format::R8G8B8A8_UNORM)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+                .usage(
+                    vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                )
                 .build()
                 .unwrap(),
             None,
@@ -85,7 +126,8 @@ impl Renderer {
             RenderPassDesc {
                 color_attachments: &[RenderPassAttachmentDesc::new(
                     vk::Format::R16G16B16A16_SFLOAT,
-                )],
+                )
+                .garbage_input()],
                 depth_attachment: None,
             },
         )?;
@@ -101,7 +143,7 @@ impl Renderer {
                         .build()
                         .unwrap(),
                 ],
-                render_pass: raster_simple_render_pass,
+                render_pass: raster_simple_render_pass.clone(),
             },
         )?;
 
@@ -110,6 +152,8 @@ impl Renderer {
             output_img,
             output_img_view,
             gradients_shader,
+            raster_simple_render_pass,
+            raster_simple,
         })
     }
 
@@ -126,6 +170,13 @@ impl Renderer {
         let current_frame = backend.device.current_frame();
         let cb = &current_frame.command_buffer;
 
+        let mut output_img_tracker = LocalStateTracker::new(
+            self.output_img.raw,
+            vk_sync::AccessType::Nothing,
+            cb.raw,
+            &backend.device.raw,
+        );
+
         unsafe {
             backend
                 .device
@@ -137,15 +188,7 @@ impl Renderer {
                 )
                 .unwrap();
 
-            record_image_barrier(
-                &backend.device.raw,
-                cb.raw,
-                ImageBarrier::new(
-                    self.output_img.raw,
-                    vk_sync::AccessType::Nothing,
-                    vk_sync::AccessType::ComputeShaderWrite,
-                ),
-            );
+            output_img_tracker.barrier(vk_sync::AccessType::ComputeShaderWrite);
 
             let image_info = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
@@ -185,15 +228,88 @@ impl Renderer {
                 1,
             );
 
-            record_image_barrier(
-                &backend.device.raw,
-                cb.raw,
-                ImageBarrier::new(
-                    self.output_img.raw,
-                    vk_sync::AccessType::ComputeShaderWrite,
-                    vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-                ),
-            );
+            {
+                // TODO
+                let width = 1280;
+                let height = 720;
+
+                output_img_tracker.barrier(vk_sync::AccessType::ColorAttachmentWrite);
+                let render_pass = &self.raster_simple_render_pass;
+                let raster_pipe = &self.raster_simple;
+
+                let framebuffer_desc = vk::FramebufferCreateInfo::builder()
+                    .render_pass(render_pass.raw)
+                    .width(width as _)
+                    .height(height as _)
+                    .layers(1)
+                    .attachments(std::slice::from_ref(&self.output_img_view.raw));
+
+                let framebuffer = backend
+                    .device
+                    .raw
+                    .create_framebuffer(&framebuffer_desc, None)
+                    .unwrap();
+
+                // TODO: destroy the framebuffer (or use imageless)
+
+                let pass_begin_desc = vk::RenderPassBeginInfo::builder()
+                    .render_pass(render_pass.raw)
+                    .framebuffer(framebuffer)
+                    .render_area(vk::Rect2D {
+                        offset: vk::Offset2D { x: 0, y: 0 },
+                        extent: vk::Extent2D {
+                            width: width as _,
+                            height: height as _,
+                        },
+                    })
+                    //.clear_values(&clear_values)
+                    ;
+
+                backend.device.raw.cmd_begin_render_pass(
+                    cb.raw,
+                    &pass_begin_desc,
+                    vk::SubpassContents::INLINE,
+                );
+
+                {
+                    backend.device.raw.cmd_bind_pipeline(
+                        cb.raw,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        raster_pipe.pipeline,
+                    );
+
+                    backend.device.raw.cmd_set_viewport(
+                        cb.raw,
+                        0,
+                        &[vk::Viewport {
+                            x: 0.0,
+                            y: (height as f32),
+                            width: width as _,
+                            height: -(height as f32),
+                            min_depth: 0.0,
+                            max_depth: 1.0,
+                        }],
+                    );
+                    backend.device.raw.cmd_set_scissor(
+                        cb.raw,
+                        0,
+                        &[vk::Rect2D {
+                            offset: vk::Offset2D { x: 0, y: 0 },
+                            extent: vk::Extent2D {
+                                width: width as _,
+                                height: height as _,
+                            },
+                        }],
+                    );
+
+                    backend.device.raw.cmd_draw(cb.raw, 3, 1, 0, 0);
+                }
+
+                backend.device.raw.cmd_end_render_pass(cb.raw);
+            }
+
+            output_img_tracker
+                .barrier(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
             blit_image_to_swapchain(
                 &*backend.device,

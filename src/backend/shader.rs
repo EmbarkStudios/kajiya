@@ -537,45 +537,6 @@ pub fn create_raster_pipeline(
             )
             .expect("Unable to create graphics pipeline")[0];
 
-        /*let width = 1;
-        let height = 1;
-        let framebuffer = {
-            let color_formats = [surface_format];
-            let color_attachment = vk::FramebufferAttachmentImageInfoKHR::builder()
-                .width(width as _)
-                .height(height as _)
-                .flags(vk::ImageCreateFlags::MUTABLE_FORMAT)
-                .layer_count(1)
-                .view_formats(&color_formats)
-                .usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::TRANSFER_DST
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                )
-                .build();
-            let depth_attachment = vk::FramebufferAttachmentImageInfoKHR::builder()
-                .width(width as _)
-                .height(height as _)
-                .layer_count(1)
-                .view_formats(&[vk::Format::D32_SFLOAT])
-                .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-                .build();
-            let attachments = [color_attachment, depth_attachment];
-            let mut imageless_desc = vk::FramebufferAttachmentsCreateInfoKHR::builder()
-                .attachment_image_infos(&attachments);
-            let mut fbo_desc = vk::FramebufferCreateInfo::builder()
-                .flags(vk::FramebufferCreateFlags::IMAGELESS_KHR)
-                .render_pass(render_pass)
-                .width(width as _)
-                .height(height as _)
-                .layers(1)
-                .push_next(&mut imageless_desc);
-            fbo_desc.attachment_count = 2;
-
-            device.raw.create_framebuffer(&fbo_desc, None)?
-        };*/
-
         Ok(RasterPipeline {
             pipeline_layout,
             pipeline,
