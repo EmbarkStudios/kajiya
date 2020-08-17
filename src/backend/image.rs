@@ -83,7 +83,7 @@ impl ImageViewDesc {
 
 pub struct ImageView {
     pub raw: vk::ImageView,
-    desc: ImageViewDesc,
+    pub desc: ImageViewDesc,
 }
 
 impl Device {

@@ -3,7 +3,9 @@ use crate::backend::{
 };
 
 use crate::shader_compiler::CompileShader;
+use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
+use backend::device::CommandBuffer;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -19,14 +21,14 @@ pub struct Renderer {
     raster_simple: RasterPipeline,
 }
 
-pub struct LocalStateTracker<'device> {
+pub struct LocalImageStateTracker<'device> {
     resource: vk::Image,
     current_state: vk_sync::AccessType,
     cb: vk::CommandBuffer,
     device: &'device ash::Device,
 }
 
-impl<'device> LocalStateTracker<'device> {
+impl<'device> LocalImageStateTracker<'device> {
     pub fn new(
         resource: vk::Image,
         current_state: vk_sync::AccessType,
@@ -41,7 +43,7 @@ impl<'device> LocalStateTracker<'device> {
         }
     }
 
-    pub fn barrier(&mut self, state: vk_sync::AccessType) {
+    pub fn transition(&mut self, state: vk_sync::AccessType) {
         record_image_barrier(
             &self.device,
             self.cb,
@@ -155,6 +157,92 @@ impl Renderer {
         })
     }
 
+    fn begin_render_pass(
+        &self,
+        backend: &RenderBackend,
+        cb: &CommandBuffer,
+        render_pass: &RenderPass,
+        dims: [u32; 2],
+        attachments: &[&ImageView],
+    ) {
+        let framebuffer = render_pass
+            .framebuffer_cache
+            .get_or_create(
+                &backend.device.raw,
+                FramebufferCacheKey::new(
+                    dims,
+                    attachments.iter().copied().map(|a| &a.desc.image.desc),
+                    false,
+                ),
+            )
+            .unwrap();
+
+        // Bind images to the imageless framebuffer
+        let image_attachments: ArrayVec<[_; MAX_COLOR_ATTACHMENTS]> =
+            attachments.iter().copied().map(|a| a.raw).collect();
+
+        let mut pass_attachment_desc =
+            vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
+
+        let [width, height] = dims;
+
+        let pass_begin_desc = vk::RenderPassBeginInfo::builder()
+        .render_pass(render_pass.raw)
+        .framebuffer(framebuffer)
+        .render_area(vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D {
+                width: width as _,
+                height: height as _,
+            },
+        })
+        .push_next(&mut pass_attachment_desc)
+        //.clear_values(&clear_values)
+        ;
+
+        unsafe {
+            backend.device.raw.cmd_begin_render_pass(
+                cb.raw,
+                &pass_begin_desc,
+                vk::SubpassContents::INLINE,
+            );
+        }
+    }
+
+    pub fn set_default_view_and_scissor(
+        &self,
+        backend: &RenderBackend,
+        cb: &CommandBuffer,
+        [width, height]: [u32; 2],
+    ) {
+        unsafe {
+            backend.device.raw.cmd_set_viewport(
+                cb.raw,
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: (height as f32),
+                    width: width as _,
+                    height: -(height as f32),
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+
+            backend.device.raw.cmd_set_scissor(
+                cb.raw,
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: vk::Extent2D {
+                        width: width as _,
+                        height: height as _,
+                    },
+                }],
+            );
+        }
+    }
+
     pub fn draw_frame(&mut self, backend: &mut RenderBackend) {
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
@@ -168,7 +256,7 @@ impl Renderer {
         let current_frame = backend.device.current_frame();
         let cb = &current_frame.command_buffer;
 
-        let mut output_img_tracker = LocalStateTracker::new(
+        let mut output_img_tracker = LocalImageStateTracker::new(
             self.output_img.raw,
             vk_sync::AccessType::Nothing,
             cb.raw,
@@ -186,7 +274,7 @@ impl Renderer {
                 )
                 .unwrap();
 
-            output_img_tracker.barrier(vk_sync::AccessType::ComputeShaderWrite);
+            output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
 
             let image_info = vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
@@ -231,72 +319,23 @@ impl Renderer {
                 let width = 1280;
                 let height = 720;
 
-                output_img_tracker.barrier(vk_sync::AccessType::ColorAttachmentWrite);
-                let render_pass = &self.raster_simple_render_pass;
-                let raster_pipe = &self.raster_simple;
+                output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
 
-                let framebuffer = render_pass
-                    .framebuffer_cache
-                    .get_or_create(
-                        &backend.device.raw,
-                        FramebufferCacheKey::new([width, height], &[&self.output_img.desc], false),
-                    )
-                    .unwrap();
-
-                // Bind images to the imageless framebuffer
-                let image_attachments = [self.output_img_view.raw];
-                let mut pass_attachment_desc =
-                    vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
-
-                let pass_begin_desc = vk::RenderPassBeginInfo::builder()
-                    .render_pass(render_pass.raw)
-                    .framebuffer(framebuffer)
-                    .render_area(vk::Rect2D {
-                        offset: vk::Offset2D { x: 0, y: 0 },
-                        extent: vk::Extent2D {
-                            width: width as _,
-                            height: height as _,
-                        },
-                    })
-                    .push_next(&mut pass_attachment_desc)
-                    //.clear_values(&clear_values)
-                    ;
-
-                backend.device.raw.cmd_begin_render_pass(
-                    cb.raw,
-                    &pass_begin_desc,
-                    vk::SubpassContents::INLINE,
+                self.begin_render_pass(
+                    backend,
+                    cb,
+                    &*self.raster_simple_render_pass,
+                    [width, height],
+                    &[&self.output_img_view],
                 );
+
+                self.set_default_view_and_scissor(backend, cb, [width, height]);
 
                 {
                     backend.device.raw.cmd_bind_pipeline(
                         cb.raw,
                         vk::PipelineBindPoint::GRAPHICS,
-                        raster_pipe.pipeline,
-                    );
-
-                    backend.device.raw.cmd_set_viewport(
-                        cb.raw,
-                        0,
-                        &[vk::Viewport {
-                            x: 0.0,
-                            y: (height as f32),
-                            width: width as _,
-                            height: -(height as f32),
-                            min_depth: 0.0,
-                            max_depth: 1.0,
-                        }],
-                    );
-                    backend.device.raw.cmd_set_scissor(
-                        cb.raw,
-                        0,
-                        &[vk::Rect2D {
-                            offset: vk::Offset2D { x: 0, y: 0 },
-                            extent: vk::Extent2D {
-                                width: width as _,
-                                height: height as _,
-                            },
-                        }],
+                        self.raster_simple.pipeline,
                     );
 
                     backend.device.raw.cmd_draw(cb.raw, 3, 1, 0, 0);
@@ -306,7 +345,7 @@ impl Renderer {
             }
 
             output_img_tracker
-                .barrier(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
+                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
             blit_image_to_swapchain(
                 &*backend.device,

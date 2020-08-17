@@ -317,7 +317,7 @@ impl RenderPassAttachmentDesc {
     }
 }
 
-const MAX_COLOR_ATTACHMENTS: usize = 8;
+pub const MAX_COLOR_ATTACHMENTS: usize = 8;
 
 #[derive(Eq, PartialEq, Hash)]
 pub struct FramebufferCacheKey {
@@ -328,9 +328,12 @@ pub struct FramebufferCacheKey {
 }
 
 impl FramebufferCacheKey {
-    pub fn new(dims: [u32; 2], color_attachments: &[&ImageDesc], use_depth_stencil: bool) -> Self {
+    pub fn new<'a>(
+        dims: [u32; 2],
+        color_attachments: impl Iterator<Item = &'a ImageDesc>,
+        use_depth_stencil: bool,
+    ) -> Self {
         let color_attachments = color_attachments
-            .iter()
             .copied()
             .map(|attachment| (attachment.usage, attachment.flags))
             .collect();
