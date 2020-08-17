@@ -21,6 +21,8 @@ pub enum ImageType {
 pub struct ImageDesc {
     pub image_type: ImageType,
     pub usage: vk::ImageUsageFlags,
+    #[builder(default = "vk::ImageCreateFlags::MUTABLE_FORMAT")]
+    pub flags: vk::ImageCreateFlags, // TODO: CUBE_COMPATIBLE
     pub format: vk::Format,
     pub extent: [u32; 3],
     #[builder(default = "vk::ImageTiling::OPTIMAL")]
@@ -246,11 +248,7 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> vk::ImageC
     }
 
     vk::ImageCreateInfo {
-        flags: match desc.image_type {
-            ImageType::Cube => vk::ImageCreateFlags::CUBE_COMPATIBLE,
-            ImageType::CubeArray => vk::ImageCreateFlags::CUBE_COMPATIBLE,
-            _ => vk::ImageCreateFlags::empty(), // ImageCreateFlags::CREATE_MUTABLE_FORMAT
-        },
+        flags: desc.flags,
         image_type,
         format: desc.format,
         extent: image_extent,

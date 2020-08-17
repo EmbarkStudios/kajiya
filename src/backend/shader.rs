@@ -1,8 +1,13 @@
-use super::device::{Device, SamplerDesc};
+use super::{
+    device::{Device, SamplerDesc},
+    image::ImageDesc,
+};
 use crate::chunky_list::TempList;
+use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use byte_slice_cast::AsSliceOf as _;
 use derive_builder::Builder;
+use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
     ffi::CString,
@@ -261,6 +266,7 @@ pub struct RasterPipeline {
     //pub framebuffer: vk::Framebuffer,
 }
 
+#[derive(Clone, Copy)]
 pub struct RenderPassAttachmentDesc {
     pub format: vk::Format,
     pub load_op: vk::AttachmentLoadOp,
@@ -311,6 +317,124 @@ impl RenderPassAttachmentDesc {
     }
 }
 
+const MAX_COLOR_ATTACHMENTS: usize = 8;
+
+#[derive(Eq, PartialEq, Hash)]
+pub struct FramebufferCacheKey {
+    pub dims: [u32; 2],
+    pub color_attachments:
+        ArrayVec<[(vk::ImageUsageFlags, vk::ImageCreateFlags); MAX_COLOR_ATTACHMENTS]>,
+    pub use_depth_stencil: bool,
+}
+
+impl FramebufferCacheKey {
+    pub fn new(dims: [u32; 2], color_attachments: &[&ImageDesc], use_depth_stencil: bool) -> Self {
+        let color_attachments = color_attachments
+            .iter()
+            .copied()
+            .map(|attachment| (attachment.usage, attachment.flags))
+            .collect();
+
+        Self {
+            dims,
+            color_attachments,
+            use_depth_stencil,
+        }
+    }
+}
+
+// TODO: nuke when resizing
+pub struct FramebufferCache {
+    entries: Mutex<HashMap<FramebufferCacheKey, vk::Framebuffer>>,
+    color_attachment_desc: ArrayVec<[RenderPassAttachmentDesc; MAX_COLOR_ATTACHMENTS]>,
+    depth_attachment_desc: Option<RenderPassAttachmentDesc>,
+    render_pass: vk::RenderPass,
+}
+
+impl FramebufferCache {
+    fn new(
+        render_pass: vk::RenderPass,
+        color_attachments: &[RenderPassAttachmentDesc],
+        depth_attachment: Option<RenderPassAttachmentDesc>,
+    ) -> Self {
+        let mut color_attachment_desc = ArrayVec::new();
+        color_attachment_desc
+            .try_extend_from_slice(color_attachments)
+            .unwrap();
+
+        Self {
+            entries: Default::default(),
+            color_attachment_desc,
+            depth_attachment_desc: depth_attachment,
+            render_pass,
+        }
+    }
+
+    pub fn get_or_create(
+        &self,
+        device: &ash::Device,
+        key: FramebufferCacheKey,
+    ) -> anyhow::Result<vk::Framebuffer> {
+        let mut entries = self.entries.lock();
+
+        if let Some(entry) = entries.get(&key) {
+            Ok(*entry)
+        } else {
+            let entry = {
+                let color_formats = TempList::new();
+                let [width, height] = key.dims;
+
+                let mut attachments = self
+                    .color_attachment_desc
+                    .iter()
+                    .zip(key.color_attachments.iter())
+                    .map(|(desc, (usage, flags))| {
+                        vk::FramebufferAttachmentImageInfoKHR::builder()
+                            .width(width as _)
+                            .height(height as _)
+                            .flags(*flags)
+                            .layer_count(1)
+                            .view_formats(std::slice::from_ref(color_formats.add(desc.format)))
+                            .usage(*usage)
+                            .build()
+                    })
+                    .collect::<ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]>>();
+
+                if key.use_depth_stencil {
+                    let desc = self.depth_attachment_desc.unwrap();
+                    attachments.push(
+                        vk::FramebufferAttachmentImageInfoKHR::builder()
+                            .width(width as _)
+                            .height(height as _)
+                            .layer_count(1)
+                            .view_formats(std::slice::from_ref(color_formats.add(desc.format)))
+                            .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
+                            .build(),
+                    );
+                }
+
+                let mut imageless_desc = vk::FramebufferAttachmentsCreateInfoKHR::builder()
+                    .attachment_image_infos(&attachments);
+
+                let mut fbo_desc = vk::FramebufferCreateInfo::builder()
+                    .flags(vk::FramebufferCreateFlags::IMAGELESS_KHR)
+                    .render_pass(self.render_pass)
+                    .width(width as _)
+                    .height(height as _)
+                    .layers(1)
+                    .push_next(&mut imageless_desc);
+
+                fbo_desc.attachment_count = attachments.len() as _;
+
+                unsafe { device.create_framebuffer(&fbo_desc, None)? }
+            };
+
+            entries.insert(key, entry);
+            Ok(entry)
+        }
+    }
+}
+
 pub struct RenderPassDesc<'a> {
     pub color_attachments: &'a [RenderPassAttachmentDesc],
     pub depth_attachment: Option<RenderPassAttachmentDesc>,
@@ -318,6 +442,7 @@ pub struct RenderPassDesc<'a> {
 
 pub struct RenderPass {
     pub raw: vk::RenderPass,
+    pub framebuffer_cache: FramebufferCache,
 }
 
 pub fn create_render_pass(
@@ -381,14 +506,21 @@ pub fn create_render_pass(
         .attachments(&renderpass_attachments)
         .subpasses(&subpasses);
 
-    unsafe {
-        Ok(Arc::new(RenderPass {
-            raw: device
-                .raw
-                .create_render_pass(&render_pass_create_info, None)
-                .unwrap(),
-        }))
-    }
+    let render_pass = unsafe {
+        device
+            .raw
+            .create_render_pass(&render_pass_create_info, None)
+            .unwrap()
+    };
+
+    Ok(Arc::new(RenderPass {
+        raw: render_pass,
+        framebuffer_cache: FramebufferCache::new(
+            render_pass,
+            &desc.color_attachments,
+            desc.depth_attachment,
+        ),
+    }))
 }
 
 pub fn create_raster_pipeline(

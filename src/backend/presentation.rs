@@ -11,7 +11,8 @@ pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
     create_compute_pipeline(
         device,
         ComputePipelineDesc {
-            spirv: include_bytes!("../final_blit.spv"),
+            // include_bytes! doesn't do u32 alignment, so copy it to a vector.
+            spirv: &(&include_bytes!("../final_blit.spv")[..]).to_owned(),
             entry_name: "main",
             descriptor_set_layout_flags: Some(&[(
                 0,

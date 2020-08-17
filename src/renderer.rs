@@ -21,7 +21,6 @@ pub struct Renderer {
 
 pub struct LocalStateTracker<'device> {
     resource: vk::Image,
-    initial_state: vk_sync::AccessType,
     current_state: vk_sync::AccessType,
     cb: vk::CommandBuffer,
     device: &'device ash::Device,
@@ -36,7 +35,6 @@ impl<'device> LocalStateTracker<'device> {
     ) -> Self {
         Self {
             resource,
-            initial_state: current_state,
             current_state,
             cb,
             device,
@@ -237,20 +235,18 @@ impl Renderer {
                 let render_pass = &self.raster_simple_render_pass;
                 let raster_pipe = &self.raster_simple;
 
-                let framebuffer_desc = vk::FramebufferCreateInfo::builder()
-                    .render_pass(render_pass.raw)
-                    .width(width as _)
-                    .height(height as _)
-                    .layers(1)
-                    .attachments(std::slice::from_ref(&self.output_img_view.raw));
-
-                let framebuffer = backend
-                    .device
-                    .raw
-                    .create_framebuffer(&framebuffer_desc, None)
+                let framebuffer = render_pass
+                    .framebuffer_cache
+                    .get_or_create(
+                        &backend.device.raw,
+                        FramebufferCacheKey::new([width, height], &[&self.output_img.desc], false),
+                    )
                     .unwrap();
 
-                // TODO: destroy the framebuffer (or use imageless)
+                // Bind images to the imageless framebuffer
+                let image_attachments = [self.output_img_view.raw];
+                let mut pass_attachment_desc =
+                    vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
 
                 let pass_begin_desc = vk::RenderPassBeginInfo::builder()
                     .render_pass(render_pass.raw)
@@ -262,6 +258,7 @@ impl Renderer {
                             height: height as _,
                         },
                     })
+                    .push_next(&mut pass_attachment_desc)
                     //.clear_values(&clear_values)
                     ;
 
