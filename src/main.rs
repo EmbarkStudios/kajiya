@@ -6,7 +6,6 @@ mod logging;
 mod mesh;
 mod pipeline_cache;
 mod renderer;
-mod shader_cache;
 mod shader_compiler;
 
 use backend::RenderBackend;
