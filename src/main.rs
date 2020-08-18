@@ -48,6 +48,7 @@ fn try_main() -> anyhow::Result<()> {
 
     let mut backend = RenderBackend::new(&*window, &window_cfg)?;
     let mut renderer = renderer::Renderer::new(&backend)?;
+    let mut last_error_text = None;
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -64,8 +65,17 @@ fn try_main() -> anyhow::Result<()> {
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => match renderer.prepare_frame(&backend) {
-                Ok(()) => renderer.draw_frame(&mut backend),
-                Err(err) => println!("{:?}", err),
+                Ok(()) => {
+                    renderer.draw_frame(&mut backend);
+                    last_error_text = None;
+                }
+                Err(e) => {
+                    let error_text = Some(format!("{:?}", e));
+                    if error_text != last_error_text {
+                        println!("{}", error_text.as_ref().unwrap());
+                        last_error_text = error_text;
+                    }
+                }
             },
             _ => (),
         }

@@ -1,18 +1,8 @@
 #include "inc/color.hlsl"
 #include "inc/uv.hlsl"
+#include "inc/frame_constants.hlsl"
 
 [[vk::binding(0)]] RWTexture2D<float4> output_tex;
-
-struct FrameConstants {
-    uint frame_index;
-};
-
-[[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;
-
-/*cbuffer globals {
-    float4 output_tex_size;
-    float time;
-};*/
 
 [numthreads(8, 8, 1)]
 void main(in uint2 pix : SV_DispatchThreadID) {
