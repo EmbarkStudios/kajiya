@@ -2,7 +2,9 @@ use super::{
     barrier::*,
     device::{CommandBuffer, Device},
     image::ImageView,
-    shader::{create_compute_pipeline, ComputePipeline, ComputePipelineDesc},
+    shader::{
+        create_compute_pipeline, ComputePipeline, ComputePipelineDesc, DescriptorSetLayoutOpts,
+    },
     swapchain::SwapchainImage,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -10,16 +12,17 @@ use ash::{version::DeviceV1_0, vk};
 pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
     create_compute_pipeline(
         device,
-        ComputePipelineDesc {
-            // include_bytes! doesn't do u32 alignment, so copy it to a vector.
-            spirv: &(&include_bytes!("../final_blit.spv")[..]).to_owned(),
-            entry_name: "main",
-            descriptor_set_layout_flags: Some(&[(
+        ComputePipelineDesc::builder()
+            .spirv(&(&include_bytes!("../final_blit.spv")[..]).to_owned())
+            .entry_name("main")
+            .descriptor_set_opts(&[(
                 0,
-                vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
-            )]),
-            push_constants_bytes: 2 * 4,
-        },
+                DescriptorSetLayoutOpts::builder()
+                    .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
+            )])
+            .push_constants_bytes(2 * 4)
+            .build()
+            .unwrap(),
     )
 }
 

@@ -14,22 +14,35 @@ use std::{
     sync::Arc,
 };
 
-type StageDescriptorSetLayout = HashMap<u32, HashMap<u32, rspirv_reflect::DescriptorInfo>>;
+const MAX_DESCRIPTOR_SETS: usize = 4;
+
+type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
+type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
 
 pub fn create_descriptor_set_layouts(
     device: &Device,
-    mut descriptor_sets: StageDescriptorSetLayout,
+    mut descriptor_sets: StageDescriptorSetLayouts,
     stage_flags: vk::ShaderStageFlags,
-    set_flags: &[(usize, vk::DescriptorSetLayoutCreateFlags)],
+    mut set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
 ) -> Vec<vk::DescriptorSetLayout> {
     let samplers = TempList::new();
 
-    //println!("{:#?}", descriptor_sets);
+    // Find the number of sets in `descriptor_sets`
     let set_count = descriptor_sets
         .iter()
         .map(|(set_index, _)| *set_index + 1)
         .max()
         .unwrap_or(0u32);
+
+    // Max that with the highest set in `set_opts`
+    let set_count = set_count.max(
+        set_opts
+            .iter()
+            .filter_map(|opt| opt.as_ref())
+            .map(|(set_index, _)| *set_index + 1)
+            .max()
+            .unwrap_or(0u32),
+    );
 
     (0..set_count)
         .map(|set_index| {
@@ -44,7 +57,24 @@ pub fn create_descriptor_set_layouts(
                     | vk::ShaderStageFlags::RAYGEN_KHR
             };
 
-            if let Some(set) = descriptor_sets.remove(&set_index) {
+            // Find the descriptor set opts corresponding to the set index, and remove them from the opts list
+            let set_opts = {
+                let mut resolved_set_opts: DescriptorSetLayoutOpts = Default::default();
+
+                for maybe_opt in set_opts.iter_mut() {
+                    if let Some(opt) = maybe_opt.as_mut() {
+                        if opt.0 == set_index {
+                            resolved_set_opts = std::mem::take(maybe_opt).unwrap().1;
+                        }
+                    }
+                }
+                resolved_set_opts
+            };
+
+            // Use the specified override, or the layout parsed from the shader if no override was provided
+            let set = set_opts.replace.or(descriptor_sets.remove(&set_index));
+
+            if let Some(set) = set {
                 let mut bindings: Vec<vk::DescriptorSetLayoutBinding> =
                     Vec::with_capacity(set.len());
 
@@ -133,18 +163,12 @@ pub fn create_descriptor_set_layouts(
                     }
                 }
 
-                let flags = set_flags
-                    .iter()
-                    .find(|item| item.0 == set_index as usize)
-                    .map(|flags| flags.1)
-                    .unwrap_or_default();
-
                 unsafe {
                     device
                         .raw
                         .create_descriptor_set_layout(
                             &vk::DescriptorSetLayoutCreateInfo::builder()
-                                .flags(flags)
+                                .flags(set_opts.flags.unwrap_or_default())
                                 .bindings(&bindings)
                                 .build(),
                             None,
@@ -166,15 +190,43 @@ pub fn create_descriptor_set_layouts(
         .collect()
 }
 
+#[derive(Builder, Default, Debug)]
+#[builder(pattern = "owned", derive(Clone))]
+pub struct DescriptorSetLayoutOpts {
+    #[builder(setter(strip_option), default)]
+    pub flags: Option<vk::DescriptorSetLayoutCreateFlags>,
+    #[builder(setter(strip_option), default)]
+    pub replace: Option<DescriptorSetLayout>,
+}
+
+impl DescriptorSetLayoutOpts {
+    pub fn builder() -> DescriptorSetLayoutOptsBuilder {
+        DescriptorSetLayoutOptsBuilder::default()
+    }
+}
+
 #[derive(Builder)]
 #[builder(pattern = "owned")]
 pub struct ComputePipelineDesc<'a, 'b> {
     pub spirv: &'a [u8],
     pub entry_name: &'b str,
-    #[builder(setter(strip_option), default)]
-    pub descriptor_set_layout_flags: Option<&'a [(usize, vk::DescriptorSetLayoutCreateFlags)]>,
+    #[builder(setter(name = "descriptor_set_opts_impl"))]
+    pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
+}
+
+impl<'a, 'b> ComputePipelineDescBuilder<'a, 'b> {
+    pub fn descriptor_set_opts(mut self, opts: &[(u32, DescriptorSetLayoutOptsBuilder)]) -> Self {
+        assert!(opts.len() <= MAX_DESCRIPTOR_SETS);
+        let mut descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS] =
+            Default::default();
+        for (i, (opt_set, opt)) in opts.iter().cloned().enumerate() {
+            descriptor_set_opts[i] = Some((opt_set, opt.build().unwrap()));
+        }
+        self.descriptor_set_opts = Some(descriptor_set_opts);
+        self
+    }
 }
 
 impl<'a, 'b> ComputePipelineDesc<'a, 'b> {
@@ -196,7 +248,7 @@ pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> Co
             .get_descriptor_sets()
             .unwrap(),
         vk::ShaderStageFlags::COMPUTE,
-        desc.descriptor_set_layout_flags.unwrap_or(&[]),
+        desc.descriptor_set_opts,
     );
 
     let mut layout_create_info =
@@ -576,7 +628,7 @@ pub fn create_raster_pipeline(
         merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL_GRAPHICS,
         //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
-        &[],
+        Default::default(),
     );
 
     unsafe {
@@ -712,8 +764,8 @@ pub fn create_raster_pipeline(
 }
 
 fn merge_shader_stage_layout_pair(
-    src: StageDescriptorSetLayout,
-    dst: &mut StageDescriptorSetLayout,
+    src: StageDescriptorSetLayouts,
+    dst: &mut StageDescriptorSetLayouts,
 ) {
     for (set_idx, set) in src.into_iter() {
         match dst.entry(set_idx) {
@@ -739,7 +791,7 @@ fn merge_shader_stage_layout_pair(
     }
 }
 
-fn merge_shader_stage_layouts(stages: Vec<StageDescriptorSetLayout>) -> StageDescriptorSetLayout {
+fn merge_shader_stage_layouts(stages: Vec<StageDescriptorSetLayouts>) -> StageDescriptorSetLayouts {
     let mut stages = stages.into_iter();
     let mut result = stages.next().unwrap_or_default();
 

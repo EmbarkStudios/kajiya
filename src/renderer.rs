@@ -7,7 +7,7 @@ use ash::{version::DeviceV1_0, vk};
 use backend::{buffer::Buffer, device::CommandBuffer};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 
 #[repr(C)]
@@ -62,6 +62,26 @@ impl<'device> LocalImageStateTracker<'device> {
 
         self.current_state = state;
     }
+}
+
+lazy_static::lazy_static! {
+    static ref FRAME_CONSTANTS_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [(
+        0,
+        rspirv_reflect::DescriptorInfo {
+            ty: rspirv_reflect::DescriptorType::UNIFORM_BUFFER,
+            is_bindless: false,
+            stages: rspirv_reflect::ShaderStageFlags(
+                (vk::ShaderStageFlags::COMPUTE
+                    | vk::ShaderStageFlags::ALL_GRAPHICS
+                    | vk::ShaderStageFlags::RAYGEN_KHR)
+                    .as_raw(),
+            ),
+            name: Default::default(),
+        },
+    )]
+    .iter()
+    .cloned()
+    .collect();
 }
 
 impl Renderer {
@@ -127,10 +147,18 @@ impl Renderer {
             cs_cache.register("/assets/shaders/gradients.hlsl", |compiled_shader| {
                 ComputePipelineDesc::builder()
                     .spirv(&compiled_shader.spirv)
-                    .descriptor_set_layout_flags(&[(
-                        0,
-                        vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
-                    )])
+                    .descriptor_set_opts(&[
+                        (
+                            0,
+                            DescriptorSetLayoutOpts::builder()
+                                .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
+                        ),
+                        (
+                            2,
+                            DescriptorSetLayoutOpts::builder()
+                                .replace(FRAME_CONSTANTS_LAYOUT.clone()),
+                        ),
+                    ])
             });
 
         let vertex_shader = smol::block_on(
