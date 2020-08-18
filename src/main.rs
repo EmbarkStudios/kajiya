@@ -4,6 +4,8 @@ mod camera;
 mod chunky_list;
 mod dynamic_constants;
 mod file;
+mod input;
+mod keyboard;
 mod logging;
 mod math;
 mod mesh;
@@ -14,13 +16,15 @@ mod viewport;
 
 use backend::RenderBackend;
 use camera::*;
+use input::*;
+use keyboard::KeyboardState;
+use math::*;
 
-use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use winit::{
-    event::{Event, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
@@ -58,18 +62,62 @@ fn try_main() -> anyhow::Result<()> {
     #[allow(unused_mut)]
     let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 2.0, 10.0));
 
+    let mut mouse_state: MouseState = Default::default();
+    let mut keyboard: KeyboardState = Default::default();
+
+    let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
+    let mut new_mouse_state: MouseState = Default::default();
+    let mut last_frame_instant = std::time::Instant::now();
+
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
         // dispatched any events. This is ideal for games and similar applications.
         *control_flow = ControlFlow::Poll;
 
         match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::KeyboardInput { input, .. } => {
+                    keyboard_events.push(input);
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
+                }
+                WindowEvent::MouseInput { state, button, .. } => {
+                    let button_id = match button {
+                        MouseButton::Left => 0,
+                        MouseButton::Middle => 1,
+                        MouseButton::Right => 2,
+                        _ => 0,
+                    };
+
+                    if let ElementState::Pressed = state {
+                        new_mouse_state.button_mask |= 1 << button_id;
+                    } else {
+                        new_mouse_state.button_mask &= !(1 << button_id);
+                    }
+                }
+                _ => (),
+            },
             Event::MainEventsCleared => {
                 // Application update code.
+
+                let now = std::time::Instant::now();
+                let dt = now - last_frame_instant;
+                last_frame_instant = now;
+                let dt = dt.as_secs_f32();
+
+                keyboard.update(std::mem::take(&mut keyboard_events), dt);
+                mouse_state.update(&new_mouse_state);
+                new_mouse_state = mouse_state.clone();
+
+                let frame_state = FrameState {
+                    mouse: &mouse_state,
+                    keys: &keyboard,
+                    dt,
+                };
+                camera.update(&frame_state);
+
                 window.request_redraw();
             }
             Event::RedrawRequested(_) => match renderer.prepare_frame(&backend) {

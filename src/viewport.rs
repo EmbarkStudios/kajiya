@@ -63,6 +63,7 @@ pub struct VieportConstantBuilder {
 }
 
 impl VieportConstantBuilder {
+    #[allow(dead_code)]
     pub fn pixel_offset(mut self, v: Vec2) -> Self {
         self.pixel_offset = v;
         self

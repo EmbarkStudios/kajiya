@@ -20,6 +20,7 @@ struct FrameConstants {
     frame_idx: u32,
 }
 
+#[allow(dead_code)]
 pub struct Renderer {
     cs_cache: ComputePipelineCache,
     dynamic_constants: DynamicConstants,
@@ -396,6 +397,7 @@ impl Renderer {
         set
     }
 
+    #[allow(dead_code)]
     fn begin_render_pass(
         &self,
         backend: &RenderBackend,
@@ -447,6 +449,7 @@ impl Renderer {
         }
     }
 
+    #[allow(dead_code)]
     pub fn set_default_view_and_scissor(
         &self,
         backend: &RenderBackend,

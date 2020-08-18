@@ -1,4 +1,5 @@
-use crate::math::*;
+use crate::{input::FrameState, math::*};
+use winit::event::VirtualKeyCode;
 
 #[derive(PartialEq, Clone, Copy)]
 pub struct CameraMatrices {
@@ -47,7 +48,7 @@ pub struct FirstPersonCameraInput {
     dt: f32,
 }
 
-/*impl<'a> From<&FrameState<'a>> for FirstPersonCameraInput {
+impl<'a> From<&FrameState<'a>> for FirstPersonCameraInput {
     fn from(frame_state: &FrameState<'a>) -> FirstPersonCameraInput {
         let mut yaw_delta = 0.0;
         let mut pitch_delta = 0.0;
@@ -89,7 +90,7 @@ pub struct FirstPersonCameraInput {
             dt: frame_state.dt,
         }
     }
-}*/
+}
 
 impl FirstPersonCamera {
     fn rotate_yaw(&mut self, delta: f32) {
@@ -125,13 +126,13 @@ impl FirstPersonCamera {
             roll: 0_f32,
             fov: 45_f32,
             position,
-            near_dist: 0.1_f32,
+            near_dist: 0.01_f32, // 1mm
             aspect: 1.6_f32,
             interp_rot: Quat::from_axis_angle(Vec3::unit_y(), -0.0f32.to_radians()),
             interp_pos: position,
             move_smoothness: 1.0,
             look_smoothness: 1.0,
-            move_speed: 12.0,
+            move_speed: 1.0,
         }
     }
 }

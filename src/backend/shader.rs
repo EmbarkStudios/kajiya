@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::{
     device::{Device, SamplerDesc},
     image::ImageDesc,
