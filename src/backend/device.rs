@@ -17,7 +17,7 @@ pub struct Queue {
 }
 
 pub struct DeviceFrame {
-    pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
+    //pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
     pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
     pub rendering_complete_semaphore: Option<vk::Semaphore>,
     pub command_buffer: CommandBuffer,
@@ -26,7 +26,7 @@ pub struct DeviceFrame {
 pub struct CommandBuffer {
     pub(crate) raw: vk::CommandBuffer,
     pub(crate) submit_done_fence: vk::Fence,
-    pool: vk::CommandPool,
+    //pool: vk::CommandPool,
 }
 
 impl CommandBuffer {
@@ -59,7 +59,7 @@ impl CommandBuffer {
 
         Ok(CommandBuffer {
             raw: cb,
-            pool,
+            //pool,
             submit_done_fence,
         })
     }
@@ -68,17 +68,17 @@ impl CommandBuffer {
 impl DeviceFrame {
     pub fn new(
         device: &ash::Device,
-        global_allocator: &vk_mem::Allocator,
+        //global_allocator: &vk_mem::Allocator,
         queue_family: &QueueFamily,
     ) -> Self {
         Self {
-            linear_allocator_pool: global_allocator
-                .create_pool(&{
-                    let mut info = vk_mem::AllocatorPoolCreateInfo::default();
-                    info.flags = vk_mem::AllocatorPoolCreateFlags::LINEAR_ALGORITHM;
-                    info
-                })
-                .expect("linear allocator"),
+            /*linear_allocator_pool: global_allocator
+            .create_pool(&{
+                let mut info = vk_mem::AllocatorPoolCreateInfo::default();
+                info.flags = vk_mem::AllocatorPoolCreateFlags::LINEAR_ALGORITHM;
+                info
+            })
+            .expect("linear allocator"),*/
             swapchain_acquired_semaphore: None,
             rendering_complete_semaphore: None,
             command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
@@ -229,8 +229,8 @@ impl Device {
                 family: universal_queue,
             };
 
-            let frame0 = DeviceFrame::new(&device, &global_allocator, &universal_queue.family);
-            let frame1 = DeviceFrame::new(&device, &global_allocator, &universal_queue.family);
+            let frame0 = DeviceFrame::new(&device, &universal_queue.family);
+            let frame1 = DeviceFrame::new(&device, &universal_queue.family);
 
             let immutable_samplers = Self::create_samplers(&device);
             let cmd_ext = CmdExt {
@@ -341,7 +341,8 @@ impl Device {
     }
 }
 
-impl Drop for Device {
+// TODO
+/*impl Drop for Device {
     fn drop(&mut self) {
         let mut frame0 = self.frame0.lock();
         let mut frame1 = self.frame1.lock();
@@ -353,15 +354,15 @@ impl Drop for Device {
             panic!("Unable to deallocate DeviceFrame: frame data is being held by user code(2)")
         });
 
-        self.global_allocator
+        /*self.global_allocator
             .destroy_pool(&frame0.linear_allocator_pool)
             .unwrap();
 
         self.global_allocator
             .destroy_pool(&frame1.linear_allocator_pool)
-            .unwrap();
+            .unwrap();*/
     }
-}
+}*/
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct SamplerDesc {

@@ -1,18 +1,26 @@
 use crate::backend::{
     self, barrier::*, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
 };
-
-use crate::{pipeline_cache::*, shader_compiler::CompileShader};
+use crate::{dynamic_constants::*, pipeline_cache::*, shader_compiler::CompileShader};
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
-use backend::device::CommandBuffer;
+use backend::{buffer::Buffer, device::CommandBuffer};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use turbosloth::*;
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct FrameConstants {
+    frame_idx: u32,
+}
+
 pub struct Renderer {
     cs_cache: ComputePipelineCache,
+    dynamic_constants: DynamicConstants,
+    frame_descriptor_set: vk::DescriptorSet,
+    frame_idx: u32,
 
     present_shader: ComputePipeline,
     output_img: Arc<Image>,
@@ -63,6 +71,37 @@ impl Renderer {
         let lazy_cache = LazyCache::create();
         let mut cs_cache = ComputePipelineCache::new(&lazy_cache);
 
+        let dynamic_constants = DynamicConstants::new({
+            let buffer_info = vk::BufferCreateInfo {
+                // Allocate twice the size for even and odd frames
+                size: (DYNAMIC_CONSTANTS_SIZE_BYTES * 2) as u64,
+                usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                ..Default::default()
+            };
+
+            let buffer_mem_info = vk_mem::AllocationCreateInfo {
+                usage: vk_mem::MemoryUsage::CpuToGpu,
+                flags: vk_mem::AllocationCreateFlags::MAPPED,
+                ..Default::default()
+            };
+
+            let (buffer, allocation, allocation_info) = backend
+                .device
+                .global_allocator
+                .create_buffer(&buffer_info, &buffer_mem_info)
+                .expect("vma::create_buffer");
+
+            Buffer {
+                raw: buffer,
+                allocation,
+                allocation_info,
+            }
+        });
+
+        let frame_descriptor_set =
+            Self::create_frame_descriptor_set(backend, &dynamic_constants.buffer);
+
         let output_img = backend.device.create_image(
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
@@ -93,28 +132,6 @@ impl Renderer {
                         vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
                     )])
             });
-
-        /*let gradients_shader = smol::block_on(
-            CompileShader {
-                path: "/assets/shaders/gradients.hlsl".into(),
-                profile: "cs".to_owned(),
-            }
-            .into_lazy()
-            .eval(&lazy_cache),
-        )?;
-
-        let gradients_shader = create_compute_pipeline(
-            &*backend.device,
-            ComputePipelineDesc::builder()
-                .spirv(&gradients_shader.spirv)
-                .entry_name("main")
-                .descriptor_set_layout_flags(&[(
-                    0,
-                    vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR,
-                )])
-                .build()
-                .unwrap(),
-        );*/
 
         let vertex_shader = smol::block_on(
             CompileShader {
@@ -170,6 +187,9 @@ impl Renderer {
         )?;
 
         Ok(Renderer {
+            dynamic_constants,
+            frame_descriptor_set,
+            frame_idx: !0,
             cs_cache,
             present_shader,
             output_img,
@@ -178,6 +198,77 @@ impl Renderer {
             raster_simple_render_pass,
             raster_simple,
         })
+    }
+
+    fn create_frame_descriptor_set(
+        backend: &RenderBackend,
+        dynamic_constants: &Buffer,
+    ) -> vk::DescriptorSet {
+        let device = &backend.device.raw;
+        let descriptor_set_layout = unsafe {
+            device
+                .create_descriptor_set_layout(
+                    &vk::DescriptorSetLayoutCreateInfo::builder()
+                        .bindings(&[vk::DescriptorSetLayoutBinding::builder()
+                            .descriptor_count(1)
+                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                            .stage_flags(
+                                vk::ShaderStageFlags::COMPUTE
+                                    | vk::ShaderStageFlags::ALL_GRAPHICS
+                                    | vk::ShaderStageFlags::RAYGEN_KHR,
+                            )
+                            .binding(0)
+                            .build()])
+                        .build(),
+                    None,
+                )
+                .unwrap()
+        };
+
+        let descriptor_sizes = [vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+            descriptor_count: 1,
+        }];
+
+        let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
+            .pool_sizes(&descriptor_sizes)
+            .max_sets(1);
+
+        let descriptor_pool = unsafe {
+            device
+                .create_descriptor_pool(&descriptor_pool_info, None)
+                .unwrap()
+        };
+
+        let set = unsafe {
+            device
+                .allocate_descriptor_sets(
+                    &vk::DescriptorSetAllocateInfo::builder()
+                        .descriptor_pool(descriptor_pool)
+                        .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+                        .build(),
+                )
+                .unwrap()[0]
+        };
+
+        {
+            let buffer_info = vk::DescriptorBufferInfo::builder()
+                .buffer(dynamic_constants.raw)
+                .range(16384)
+                .build();
+
+            let write_descriptor_set = vk::WriteDescriptorSet::builder()
+                .dst_set(set)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                .buffer_info(std::slice::from_ref(&buffer_info))
+                .build();
+
+            unsafe {
+                device.update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[])
+            };
+        }
+
+        set
     }
 
     fn begin_render_pass(
@@ -209,19 +300,18 @@ impl Renderer {
 
         let [width, height] = dims;
 
-        let pass_begin_desc = vk::RenderPassBeginInfo::builder()
-        .render_pass(render_pass.raw)
-        .framebuffer(framebuffer)
-        .render_area(vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent: vk::Extent2D {
-                width: width as _,
-                height: height as _,
-            },
-        })
-        .push_next(&mut pass_attachment_desc)
         //.clear_values(&clear_values)
-        ;
+        let pass_begin_desc = vk::RenderPassBeginInfo::builder()
+            .render_pass(render_pass.raw)
+            .framebuffer(framebuffer)
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: width as _,
+                    height: height as _,
+                },
+            })
+            .push_next(&mut pass_attachment_desc);
 
         unsafe {
             backend.device.raw.cmd_begin_render_pass(
@@ -267,6 +357,13 @@ impl Renderer {
     }
 
     pub fn draw_frame(&mut self, backend: &mut RenderBackend) {
+        self.dynamic_constants.advance_frame();
+        self.frame_idx += 1;
+
+        let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
+            frame_idx: self.frame_idx,
+        });
+
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
         // after all the other rendering commands have been recorded.
@@ -329,6 +426,15 @@ impl Renderer {
                         .image_info(std::slice::from_ref(&image_info))
                         .build()],
                 );
+
+            backend.device.raw.cmd_bind_descriptor_sets(
+                cb.raw,
+                vk::PipelineBindPoint::COMPUTE,
+                gradients_shader.pipeline_layout,
+                2,
+                &[self.frame_descriptor_set],
+                &[frame_constants_offset],
+            );
 
             // TODO
             let output_size_pixels = (1280u32, 720u32); // TODO

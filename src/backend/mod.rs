@@ -1,4 +1,5 @@
 pub mod barrier;
+pub mod buffer;
 pub mod device;
 pub mod image;
 pub mod instance;

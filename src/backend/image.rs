@@ -59,6 +59,7 @@ pub struct ImageSubResourceData<'a> {
     pub slice_pitch: usize,
 }
 
+#[allow(dead_code)]
 pub struct Image {
     pub raw: vk::Image,
     pub desc: ImageDesc,
