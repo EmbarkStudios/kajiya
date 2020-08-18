@@ -24,7 +24,12 @@ pub fn create_descriptor_set_layouts(
     mut descriptor_sets: StageDescriptorSetLayouts,
     stage_flags: vk::ShaderStageFlags,
     mut set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
-) -> Vec<vk::DescriptorSetLayout> {
+) -> (
+    Vec<vk::DescriptorSetLayout>,
+    Vec<HashMap<u32, vk::DescriptorType>>,
+) {
+    // dbg!(&descriptor_sets);
+
     let samplers = TempList::new();
 
     // Find the number of sets in `descriptor_sets`
@@ -44,150 +49,164 @@ pub fn create_descriptor_set_layouts(
             .unwrap_or(0u32),
     );
 
-    (0..set_count)
-        .map(|set_index| {
-            let stage_flags = if 0 == set_index {
-                stage_flags
-            } else {
-                // Set 0 is for draw params,
-                // Further sets are for pass/frame bindings, and use all stage flags
-                // TODO: pass those as a parameter here?
-                vk::ShaderStageFlags::COMPUTE
-                    | vk::ShaderStageFlags::ALL_GRAPHICS
-                    | vk::ShaderStageFlags::RAYGEN_KHR
-            };
+    let mut set_layouts: Vec<vk::DescriptorSetLayout> = Vec::with_capacity(set_count as usize);
+    let mut set_layout_info: Vec<HashMap<u32, vk::DescriptorType>> =
+        Vec::with_capacity(set_count as usize);
 
-            // Find the descriptor set opts corresponding to the set index, and remove them from the opts list
-            let set_opts = {
-                let mut resolved_set_opts: DescriptorSetLayoutOpts = Default::default();
+    for set_index in 0..set_count {
+        let stage_flags = if 0 == set_index {
+            stage_flags
+        } else {
+            // Set 0 is for draw params,
+            // Further sets are for pass/frame bindings, and use all stage flags
+            // TODO: pass those as a parameter here?
+            vk::ShaderStageFlags::COMPUTE
+                | vk::ShaderStageFlags::ALL_GRAPHICS
+                | vk::ShaderStageFlags::RAYGEN_KHR
+        };
 
-                for maybe_opt in set_opts.iter_mut() {
-                    if let Some(opt) = maybe_opt.as_mut() {
-                        if opt.0 == set_index {
-                            resolved_set_opts = std::mem::take(maybe_opt).unwrap().1;
-                        }
+        // Find the descriptor set opts corresponding to the set index, and remove them from the opts list
+        let set_opts = {
+            let mut resolved_set_opts: DescriptorSetLayoutOpts = Default::default();
+
+            for maybe_opt in set_opts.iter_mut() {
+                if let Some(opt) = maybe_opt.as_mut() {
+                    if opt.0 == set_index {
+                        resolved_set_opts = std::mem::take(maybe_opt).unwrap().1;
                     }
                 }
-                resolved_set_opts
-            };
+            }
+            resolved_set_opts
+        };
 
-            // Use the specified override, or the layout parsed from the shader if no override was provided
-            let set = set_opts.replace.or(descriptor_sets.remove(&set_index));
+        // Use the specified override, or the layout parsed from the shader if no override was provided
+        let set = set_opts.replace.or(descriptor_sets.remove(&set_index));
 
-            if let Some(set) = set {
-                let mut bindings: Vec<vk::DescriptorSetLayoutBinding> =
-                    Vec::with_capacity(set.len());
+        if let Some(set) = set {
+            let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
 
-                for (binding_index, binding) in set.into_iter() {
-                    match binding.ty {
-                        rspirv_reflect::DescriptorType::UNIFORM_BUFFER
-                        | rspirv_reflect::DescriptorType::STORAGE_IMAGE
-                        | rspirv_reflect::DescriptorType::STORAGE_BUFFER => bindings.push(
+            for (binding_index, binding) in set.into_iter() {
+                match binding.ty {
+                    rspirv_reflect::DescriptorType::UNIFORM_BUFFER
+                    | rspirv_reflect::DescriptorType::STORAGE_IMAGE
+                    | rspirv_reflect::DescriptorType::STORAGE_BUFFER => bindings.push(
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(binding_index)
+                            //.descriptor_count(binding.count)
+                            .descriptor_count(1) // TODO
+                            .descriptor_type(match binding.ty {
+                                rspirv_reflect::DescriptorType::UNIFORM_BUFFER => {
+                                    vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+                                }
+                                rspirv_reflect::DescriptorType::STORAGE_IMAGE => {
+                                    vk::DescriptorType::STORAGE_IMAGE
+                                }
+                                rspirv_reflect::DescriptorType::STORAGE_BUFFER => {
+                                    vk::DescriptorType::STORAGE_BUFFER
+                                }
+                                _ => unimplemented!("{:?}", binding),
+                            })
+                            .stage_flags(stage_flags)
+                            .build(),
+                    ),
+                    rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
+                        bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
                                 .binding(binding_index)
                                 //.descriptor_count(binding.count)
                                 .descriptor_count(1) // TODO
-                                .descriptor_type(match binding.ty {
-                                    rspirv_reflect::DescriptorType::UNIFORM_BUFFER => {
-                                        vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
-                                    }
-                                    rspirv_reflect::DescriptorType::STORAGE_IMAGE => {
-                                        vk::DescriptorType::STORAGE_IMAGE
-                                    }
-                                    rspirv_reflect::DescriptorType::STORAGE_BUFFER => {
-                                        vk::DescriptorType::STORAGE_BUFFER
-                                    }
-                                    _ => unimplemented!("{:?}", binding),
-                                })
+                                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                                 .stage_flags(stage_flags)
                                 .build(),
-                        ),
-                        rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
+                        );
+                    }
+                    rspirv_reflect::DescriptorType::SAMPLER => {
+                        let name_prefix = "sampler_";
+                        if let Some(mut spec) = binding.name.strip_prefix(name_prefix) {
+                            let texel_filter = match &spec[..1] {
+                                "n" => vk::Filter::NEAREST,
+                                "l" => vk::Filter::LINEAR,
+                                _ => panic!("{}", &spec[..1]),
+                            };
+                            spec = &spec[1..];
+
+                            let mipmap_mode = match &spec[..1] {
+                                "n" => vk::SamplerMipmapMode::NEAREST,
+                                "l" => vk::SamplerMipmapMode::LINEAR,
+                                _ => panic!("{}", &spec[..1]),
+                            };
+                            spec = &spec[1..];
+
+                            let address_modes = match spec {
+                                "r" => vk::SamplerAddressMode::REPEAT,
+                                "mr" => vk::SamplerAddressMode::MIRRORED_REPEAT,
+                                "c" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
+                                "cb" => vk::SamplerAddressMode::CLAMP_TO_BORDER,
+                                _ => panic!("{}", spec),
+                            };
+
                             bindings.push(
                                 vk::DescriptorSetLayoutBinding::builder()
-                                    .binding(binding_index)
                                     //.descriptor_count(binding.count)
                                     .descriptor_count(1) // TODO
-                                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                                    .descriptor_type(vk::DescriptorType::SAMPLER)
                                     .stage_flags(stage_flags)
+                                    .binding(binding_index)
+                                    .immutable_samplers(std::slice::from_ref(samplers.add(
+                                        device.get_sampler(SamplerDesc {
+                                            texel_filter,
+                                            mipmap_mode,
+                                            address_modes,
+                                        }),
+                                    )))
                                     .build(),
                             );
+                        } else {
+                            panic!("{}", binding.name);
                         }
-                        rspirv_reflect::DescriptorType::SAMPLER => {
-                            let name_prefix = "sampler_";
-                            if let Some(mut spec) = binding.name.strip_prefix(name_prefix) {
-                                let texel_filter = match &spec[..1] {
-                                    "n" => vk::Filter::NEAREST,
-                                    "l" => vk::Filter::LINEAR,
-                                    _ => panic!("{}", &spec[..1]),
-                                };
-                                spec = &spec[1..];
-
-                                let mipmap_mode = match &spec[..1] {
-                                    "n" => vk::SamplerMipmapMode::NEAREST,
-                                    "l" => vk::SamplerMipmapMode::LINEAR,
-                                    _ => panic!("{}", &spec[..1]),
-                                };
-                                spec = &spec[1..];
-
-                                let address_modes = match spec {
-                                    "r" => vk::SamplerAddressMode::REPEAT,
-                                    "mr" => vk::SamplerAddressMode::MIRRORED_REPEAT,
-                                    "c" => vk::SamplerAddressMode::CLAMP_TO_EDGE,
-                                    "cb" => vk::SamplerAddressMode::CLAMP_TO_BORDER,
-                                    _ => panic!("{}", spec),
-                                };
-
-                                bindings.push(
-                                    vk::DescriptorSetLayoutBinding::builder()
-                                        //.descriptor_count(binding.count)
-                                        .descriptor_count(1) // TODO
-                                        .descriptor_type(vk::DescriptorType::SAMPLER)
-                                        .stage_flags(stage_flags)
-                                        .binding(binding_index)
-                                        .immutable_samplers(std::slice::from_ref(samplers.add(
-                                            device.get_sampler(SamplerDesc {
-                                                texel_filter,
-                                                mipmap_mode,
-                                                address_modes,
-                                            }),
-                                        )))
-                                        .build(),
-                                );
-                            } else {
-                                panic!("{}", binding.name);
-                            }
-                        }
-
-                        _ => unimplemented!("{:?}", binding),
                     }
-                }
 
-                unsafe {
-                    device
-                        .raw
-                        .create_descriptor_set_layout(
-                            &vk::DescriptorSetLayoutCreateInfo::builder()
-                                .flags(set_opts.flags.unwrap_or_default())
-                                .bindings(&bindings)
-                                .build(),
-                            None,
-                        )
-                        .unwrap()
-                }
-            } else {
-                unsafe {
-                    device
-                        .raw
-                        .create_descriptor_set_layout(
-                            &vk::DescriptorSetLayoutCreateInfo::builder().build(),
-                            None,
-                        )
-                        .unwrap()
+                    _ => unimplemented!("{:?}", binding),
                 }
             }
-        })
-        .collect()
+
+            let set_layout = unsafe {
+                device
+                    .raw
+                    .create_descriptor_set_layout(
+                        &vk::DescriptorSetLayoutCreateInfo::builder()
+                            .flags(set_opts.flags.unwrap_or_default())
+                            .bindings(&bindings)
+                            .build(),
+                        None,
+                    )
+                    .unwrap()
+            };
+
+            set_layouts.push(set_layout);
+            set_layout_info.push(
+                bindings
+                    .iter()
+                    .map(|binding| (binding.binding, binding.descriptor_type))
+                    .collect(),
+            );
+        } else {
+            let set_layout = unsafe {
+                device
+                    .raw
+                    .create_descriptor_set_layout(
+                        &vk::DescriptorSetLayoutCreateInfo::builder().build(),
+                        None,
+                    )
+                    .unwrap()
+            };
+
+            set_layouts.push(set_layout);
+            set_layout_info.push(Default::default());
+        }
+    }
+
+    (set_layouts, set_layout_info)
 }
 
 #[derive(Builder, Default, Debug)]
@@ -238,10 +257,11 @@ impl<'a, 'b> ComputePipelineDesc<'a, 'b> {
 pub struct ComputePipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
+    pub set_layout_info: Vec<HashMap<u32, vk::DescriptorType>>,
 }
 
 pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> ComputePipeline {
-    let descriptor_set_layouts = super::shader::create_descriptor_set_layouts(
+    let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
         rspirv_reflect::Reflection::new_from_spirv(desc.spirv)
             .unwrap()
@@ -250,6 +270,8 @@ pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> Co
         vk::ShaderStageFlags::COMPUTE,
         desc.descriptor_set_opts,
     );
+
+    // dbg!(&set_layout_info);
 
     let mut layout_create_info =
         vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
@@ -299,6 +321,7 @@ pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> Co
         ComputePipeline {
             pipeline_layout,
             pipeline,
+            set_layout_info,
         }
     }
 }
@@ -623,7 +646,7 @@ pub fn create_raster_pipeline(
         })
         .collect::<Vec<_>>();
 
-    let descriptor_set_layouts = super::shader::create_descriptor_set_layouts(
+    let (descriptor_set_layouts, _set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
         merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL_GRAPHICS,

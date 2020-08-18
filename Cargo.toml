@@ -36,7 +36,7 @@ thiserror = "1.0"
 turbosloth = "0.2.0"
 vk-mem = { git = "https://github.com/cheako/vk-mem-rs.git", rev = "4a5f613" }   # Ray tracing and VK 1.2 support
 vk-sync = { git = "https://github.com/zedrian/vk-sync-rs.git", rev = "e28c05d" }
-winit = "0.22"
+winit = "0.21"  # 0.22 panics in NSight with this error: https://github.com/rust-windowing/winit/issues/1585
 
 [patch.crates-io]
 turbosloth = { path = "../turbosloth" }

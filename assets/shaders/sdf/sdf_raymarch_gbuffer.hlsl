@@ -2,26 +2,18 @@
 //#include "rtoy-samples::shaders/inc/uv.inc"
 //#include "rtoy-samples::shaders/inc/pack_unpack.inc"
 #include "sdf_consts.hlsl"
+#include "../inc/frame_constants.hlsl"
+#include "../inc/uv.hlsl"
 
-Texture3D<float> sdf_tex;
-RWTexture2D<float4> output_tex;
+[[vk::binding(0)]] RWTexture2D<float4> output_tex;
+[[vk::binding(1)]] Texture3D<float> sdf_tex;
+[[vk::binding(2)]] SamplerState sampler_lnc;
 
-[numthreads(8, 8, 1)]
-void main(in uint2 pix : SV_DispatchThreadID) {
-    output_tex[pix] = float4(1, 0, 0, 1);
-}
-
-
-/*vec3 sample_lambert_convolved_environment_light(vec3 dir) {
-    dir = normalize(dir);
-    return texelFetch(skyLambertTex, ivec2(skyLambertTex_size.xy * octa_encode(dir)), 0).rgb;
-}
-
-bool is_inside_volume(vec3 p) {
+bool is_inside_volume(float3 p) {
     return abs(p.x) < HSIZE && abs(p.y) < HSIZE && abs(p.z) < HSIZE;
 }
 
-float sd_sphere(vec3 p, float s) {
+float sd_sphere(float3 p, float s) {
   return length(p) - s;
 }
 
@@ -33,49 +25,56 @@ float op_union(float d1, float d2) {
     return min(d1, d2);
 }
 
-vec3 mouse_pos;
-float sample_volume(vec3 p) {
-    vec3 uv = (p / HSIZE / 2.0) + 0.5.xxx;
-    float d0 = textureLod(sampler3D(sdf_tex, linear_clamp_sampler), uv, 0.0).r;
-    float d1 = sd_sphere(p - mouse_pos, 0.4);
+float3 mouse_pos;
+float sample_volume(float3 p) {
+    float3 uv = (p / HSIZE / 2.0) + 0.5.xxx;
+    float d0 = sdf_tex.SampleLevel(sampler_lnc, uv, 0);
+    //float d0 = sdf_tex[uint3(0, 0, 0)];
+    /*float d1 = sd_sphere(p - mouse_pos, 0.4);
     if (mouse.w > 0.0) {
         return op_union(d0, d1);
     } else {
         return op_sub(d1, d0);
-    }
+    }*/
+    return d0;
 }
 
-vec3 intersect_ray_plane(vec3 normal, vec3 plane_pt, vec3 o, vec3 dir) {
+float3 intersect_ray_plane(float3 normal, float3 plane_pt, float3 o, float3 dir) {
     return o - dir * (dot(o - plane_pt, normal) / dot(dir, normal));
 }
 
-layout (local_size_x = 8, local_size_y = 8) in;
-void main() {
-    ivec2 pix = ivec2(gl_GlobalInvocationID.xy);
-    vec2 uv = get_uv(outputTex_size);
-    vec3 result = textureLod(sampler2D(sky_tex, linear_clamp_sampler), uv, 0.0).rgb;
+[numthreads(8, 8, 1)]
+void main(in uint2 pix : SV_DispatchThreadID) {
+    #if 1
+    float4 output_tex_size = float4(1280, 720, 1.0 / 1280, 1.0 / 720);
+    ViewConstants view_constants = frame_constants.view_constants;
 
-    vec4 ray_origin_cs = vec4(uv_to_cs(uv), 1.0, 1.0);
-    vec4 ray_origin_ws = view_constants.view_to_world * (view_constants.sample_to_view * ray_origin_cs);
+    //output_tex[pix] = float4(1, sdf_tex[uint3(0, 0, 0)], 0, 1);
+    //output_tex[pix] = float4(1, 0, 0, 1);
+
+    float2 uv = get_uv(pix, output_tex_size);
+
+    float4 ray_origin_cs = float4(uv_to_cs(uv), 1.0, 1.0);
+    float4 ray_origin_ws = mul(view_constants.view_to_world, mul(view_constants.sample_to_view, ray_origin_cs));
     ray_origin_ws /= ray_origin_ws.w;
 
-    vec4 ray_dir_cs = vec4(uv_to_cs(uv), 0.0, 1.0);
-    vec4 ray_dir_ws = view_constants.view_to_world * (view_constants.sample_to_view * ray_dir_cs);
-    vec3 v = -normalize(ray_dir_ws.xyz);
+    float4 ray_dir_cs = float4(uv_to_cs(uv), 0.0, 1.0);
+    float4 ray_dir_ws = mul(view_constants.view_to_world, mul(view_constants.sample_to_view, ray_dir_cs));
+    float3 v = -normalize(ray_dir_ws.xyz);
 
-    vec3 eye_pos_ws = (view_constants.view_to_world * vec4(0, 0, 0, 1)).xyz;
-    vec3 eye_dir_ws = normalize((view_constants.view_to_world * (view_constants.sample_to_view * vec4(0.0, 0.0, 0.0, 1.0))).xyz);
-    vec4 mouse_dir_cs = vec4(uv_to_cs(mouse.xy), 0.0, 1.0);
-    vec4 mouse_dir_ws = view_constants.view_to_world * (view_constants.sample_to_view * mouse_dir_cs);
-    mouse_pos = intersect_ray_plane(eye_dir_ws, eye_pos_ws + eye_dir_ws * 8.0, eye_pos_ws, mouse_dir_ws.xyz);
+    float3 eye_pos_ws = mul(view_constants.view_to_world, float4(0, 0, 0, 1)).xyz;
+    float3 eye_dir_ws = normalize(mul(view_constants.view_to_world, mul(view_constants.sample_to_view, float4(0.0, 0.0, 0.0, 1.0))).xyz);
+    /*float4 mouse_dir_cs = float4(uv_to_cs(mouse.xy), 0.0, 1.0);
+    float4 mouse_dir_ws = view_constants.view_to_world * (view_constants.sample_to_view * mouse_dir_cs);
+    mouse_pos = intersect_ray_plane(eye_dir_ws, eye_pos_ws + eye_dir_ws * 8.0, eye_pos_ws, mouse_dir_ws.xyz);*/
 
     const uint ITERS = 128;
     float dist = 1.0;
 
-    vec3 p = ray_origin_ws.xyz;
+    float3 p = ray_origin_ws.xyz;
 
     if (!is_inside_volume(p)) {
-        vec3 d = ((HSIZE - 0.01).xxx * sign(v) - p) / -v;
+        float3 d = ((HSIZE - 0.01).xxx * sign(v) - p) / -v;
         p += max(0.0, max(max(d.x, d.y), d.z)) * -v;
     }
 
@@ -88,27 +87,31 @@ void main() {
         }
     }
 
-    vec4 res = 0.0.xxxx;
+    //float4 res = 0.0.xxxx;
+    float4 res = float4(0.1, 0.2, 0.5, 1);
     
     if (is_inside_volume(p)) {
-        vec3 uv = (p / HSIZE / 2.0) + 0.5.xxx;
+        float3 uv = (p / HSIZE / 2.0) + 0.5.xxx;
         float dstep = 2.0 * HSIZE / SDFRES;
-        float dx = sample_volume(p + vec3(dstep, 0, 0));
-        float dy = sample_volume(p + vec3(0, dstep, 0));
-        float dz = sample_volume(p + vec3(0, 0, dstep));
+        float dx = sample_volume(p + float3(dstep, 0, 0));
+        float dy = sample_volume(p + float3(0, dstep, 0));
+        float dz = sample_volume(p + float3(0, 0, dstep));
 
-        vec3 normal = normalize(vec3(dx, dy, dz));
-        float roughness = 0.1;
-        vec3 albedo = 0.5.xxx;
-        vec4 p_cs = view_constants.view_to_sample * (view_constants.world_to_view * vec4(p, 1));
+        float3 normal = normalize(float3(dx, dy, dz));
+        /*float roughness = 0.1;
+        float3 albedo = 0.5.xxx;
+        float4 p_cs = view_constants.view_to_sample * (view_constants.world_to_view * float4(p, 1));
         float z_over_w = p_cs.z / p_cs.w;
 
         res.x = pack_normal_11_10_11(normal);
         res.y = roughness * roughness;      // UE4 remap
         res.z = uintBitsToFloat(pack_color_888(albedo));
-        res.w = z_over_w;
+        res.w = z_over_w;*/
+        res = float4(pow(normal * 0.5 + 0.5, 2), 1);
     }
 
-    imageStore(outputTex, pix, res);
+    output_tex[pix] = res;
+    #else
+        output_tex[pix] = sample_volume(float3(0, 0, 0)).xxxx;
+    #endif
 }
-*/

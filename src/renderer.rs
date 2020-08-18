@@ -2,7 +2,8 @@ use crate::backend::{
     self, barrier::*, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
 };
 use crate::{
-    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*, shader_compiler::CompileShader,
+    camera::CameraMatrices, chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
+    shader_compiler::CompileShader, viewport::ViewConstants,
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
@@ -15,6 +16,7 @@ use turbosloth::*;
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct FrameConstants {
+    view_constants: ViewConstants,
     frame_idx: u32,
 }
 
@@ -33,6 +35,7 @@ pub struct Renderer {
     raster_simple: RasterPipeline,
 
     sdf_img: Arc<Image>,
+    sdf_img_view: ImageView,
     //gbuffer_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
@@ -102,6 +105,15 @@ pub mod view {
         DescriptorSetBinding::Image(
             vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
+                .image_view(view.raw)
+                .build(),
+        )
+    }
+
+    pub fn image(view: &ImageView) -> DescriptorSetBinding {
+        DescriptorSetBinding::Image(
+            vk::DescriptorImageInfo::builder()
+                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                 .image_view(view.raw)
                 .build(),
         )
@@ -238,6 +250,13 @@ impl Renderer {
             None,
         )?;
 
+        let sdf_img_view = backend.device.create_image_view(
+            ImageViewDesc::builder()
+                .image(sdf_img.clone())
+                .build()
+                .unwrap(),
+        )?;
+
         /*let gbuffer_img = backend.device.create_image(
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R32G32B32A32_SFLOAT)
@@ -299,6 +318,7 @@ impl Renderer {
             raster_simple_render_pass,
             raster_simple,
             sdf_img,
+            sdf_img_view,
             //gbuffer_img,
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
@@ -470,11 +490,13 @@ impl Renderer {
         bindings: &[DescriptorSetBinding],
     ) {
         let image_info = TempList::new();
+        let shader_set_info = &shader.set_layout_info[set_index as usize];
 
         unsafe {
             let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
                 .iter()
                 .enumerate()
+                .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
                 .map(|(binding_idx, binding)| {
                     let write = vk::WriteDescriptorSet::builder()
                         .dst_binding(binding_idx as _)
@@ -482,7 +504,13 @@ impl Renderer {
 
                     match binding {
                         DescriptorSetBinding::Image(image) => write
-                            .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
+                            .descriptor_type(match image.image_layout {
+                                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                                    vk::DescriptorType::SAMPLED_IMAGE
+                                }
+                                vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
+                                _ => unimplemented!("{:?}", image.image_layout),
+                            })
                             .image_info(std::slice::from_ref(image_info.add(*image)))
                             .build(),
                     }
@@ -522,11 +550,16 @@ impl Renderer {
         }
     }
 
-    pub fn draw_frame(&mut self, backend: &mut RenderBackend) {
+    pub fn draw_frame(&mut self, backend: &mut RenderBackend, camera_matrices: CameraMatrices) {
         self.dynamic_constants.advance_frame();
         self.frame_idx += 1;
 
+        // TODO
+        let width = 1280;
+        let height = 720;
+
         let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
+            view_constants: ViewConstants::builder(camera_matrices, width, height).build(),
             frame_idx: self.frame_idx,
         });
 
@@ -570,38 +603,67 @@ impl Renderer {
             output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
 
-            let gradients_shader = self.cs_cache.get(self.gradients_shader);
+            {
+                let shader = self.cs_cache.get(self.gen_empty_sdf);
 
-            backend.device.raw.cmd_bind_pipeline(
-                cb.raw,
-                vk::PipelineBindPoint::COMPUTE,
-                gradients_shader.pipeline,
-            );
+                backend.device.raw.cmd_bind_pipeline(
+                    cb.raw,
+                    vk::PipelineBindPoint::COMPUTE,
+                    shader.pipeline,
+                );
 
-            self.push_descriptor_set(
-                backend,
-                cb,
-                &*gradients_shader,
-                0,
-                &[view::image_rw(&self.output_img_view)],
-            );
+                self.push_descriptor_set(
+                    backend,
+                    cb,
+                    &*shader,
+                    0,
+                    &[view::image_rw(&self.sdf_img_view)],
+                );
 
-            self.bind_frame_constants(backend, cb, &*gradients_shader, frame_constants_offset);
+                self.bind_frame_constants(backend, cb, &*shader, frame_constants_offset);
 
-            // TODO
-            let output_size_pixels = (1280u32, 720u32); // TODO
-            backend.device.raw.cmd_dispatch(
-                cb.raw,
-                (output_size_pixels.0 + 7) / 8,
-                (output_size_pixels.1 + 7) / 8,
-                1,
-            );
+                backend
+                    .device
+                    .raw
+                    .cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
+            }
+
+            sdf_img_tracker
+                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
             {
-                // TODO
-                let width = 1280;
-                let height = 720;
+                let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
 
+                backend.device.raw.cmd_bind_pipeline(
+                    cb.raw,
+                    vk::PipelineBindPoint::COMPUTE,
+                    shader.pipeline,
+                );
+
+                self.push_descriptor_set(
+                    backend,
+                    cb,
+                    &*shader,
+                    0,
+                    &[
+                        view::image_rw(&self.output_img_view),
+                        view::image(&self.sdf_img_view),
+                    ],
+                );
+
+                self.bind_frame_constants(backend, cb, &*shader, frame_constants_offset);
+
+                // TODO
+                let output_size_pixels = (1280u32, 720u32); // TODO
+                backend.device.raw.cmd_dispatch(
+                    cb.raw,
+                    (output_size_pixels.0 + 7) / 8,
+                    (output_size_pixels.1 + 7) / 8,
+                    1,
+                );
+            }
+
+            /*{
                 output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
 
                 self.begin_render_pass(
@@ -625,7 +687,7 @@ impl Renderer {
                 }
 
                 backend.device.raw.cmd_end_render_pass(cb.raw);
-            }
+            }*/
 
             output_img_tracker
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);

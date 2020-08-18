@@ -179,7 +179,12 @@ fn compile_generic_shader_hlsl_impl(
         &source_text,
         "main",
         target_profile,
-        &["-spirv", "-fspv-target-env=vulkan1.2"],
+        &[
+            "-spirv",
+            "-fspv-target-env=vulkan1.2",
+            "-WX",  // warnings as errors
+            "-Ges", // strict mode
+        ],
         &[],
     )
     .map_err(|err| anyhow!("{}", err))?;
