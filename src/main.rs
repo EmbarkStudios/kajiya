@@ -5,7 +5,6 @@ mod chunky_list;
 mod dynamic_constants;
 mod file;
 mod input;
-mod keyboard;
 mod logging;
 mod math;
 mod mesh;
@@ -17,7 +16,6 @@ mod viewport;
 use backend::RenderBackend;
 use camera::*;
 use input::*;
-use keyboard::KeyboardState;
 use math::*;
 
 #[allow(unused_imports)]
@@ -111,12 +109,12 @@ fn try_main() -> anyhow::Result<()> {
                 mouse_state.update(&new_mouse_state);
                 new_mouse_state = mouse_state.clone();
 
-                let frame_state = FrameState {
+                let input_state = InputState {
                     mouse: &mouse_state,
                     keys: &keyboard,
                     dt,
                 };
-                camera.update(&frame_state);
+                camera.update(&input_state);
 
                 window.request_redraw();
             }

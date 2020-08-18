@@ -1,4 +1,4 @@
-use crate::{input::FrameState, math::*};
+use crate::{input::InputState, math::*};
 use winit::event::VirtualKeyCode;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -48,38 +48,38 @@ pub struct FirstPersonCameraInput {
     dt: f32,
 }
 
-impl<'a> From<&FrameState<'a>> for FirstPersonCameraInput {
-    fn from(frame_state: &FrameState<'a>) -> FirstPersonCameraInput {
+impl<'a> From<&InputState<'a>> for FirstPersonCameraInput {
+    fn from(input_state: &InputState<'a>) -> FirstPersonCameraInput {
         let mut yaw_delta = 0.0;
         let mut pitch_delta = 0.0;
 
-        if (frame_state.mouse.button_mask & 4) == 4 {
-            yaw_delta = -0.1 * frame_state.mouse.delta.x();
-            pitch_delta = -0.1 * frame_state.mouse.delta.y();
+        if (input_state.mouse.button_mask & 4) == 4 {
+            yaw_delta = -0.1 * input_state.mouse.delta.x();
+            pitch_delta = -0.1 * input_state.mouse.delta.y();
         }
 
         let mut move_vec = Vec3::zero();
 
-        if frame_state.keys.is_down(VirtualKeyCode::W) {
+        if input_state.keys.is_down(VirtualKeyCode::W) {
             move_vec += Vec3::unit_z() * -1.0;
         }
-        if frame_state.keys.is_down(VirtualKeyCode::S) {
+        if input_state.keys.is_down(VirtualKeyCode::S) {
             move_vec += Vec3::unit_z() * 1.0;
         }
-        if frame_state.keys.is_down(VirtualKeyCode::A) {
+        if input_state.keys.is_down(VirtualKeyCode::A) {
             move_vec += Vec3::unit_x() * -1.0;
         }
-        if frame_state.keys.is_down(VirtualKeyCode::D) {
+        if input_state.keys.is_down(VirtualKeyCode::D) {
             move_vec += Vec3::unit_x() * 1.0;
         }
-        if frame_state.keys.is_down(VirtualKeyCode::Q) {
+        if input_state.keys.is_down(VirtualKeyCode::Q) {
             move_vec += Vec3::unit_y() * -1.0;
         }
-        if frame_state.keys.is_down(VirtualKeyCode::E) {
+        if input_state.keys.is_down(VirtualKeyCode::E) {
             move_vec += Vec3::unit_y() * 1.0;
         }
 
-        if frame_state.keys.is_down(VirtualKeyCode::LControl) {
+        if input_state.keys.is_down(VirtualKeyCode::LControl) {
             move_vec *= 0.1;
         }
 
@@ -87,7 +87,7 @@ impl<'a> From<&FrameState<'a>> for FirstPersonCameraInput {
             move_vec,
             yaw_delta,
             pitch_delta,
-            dt: frame_state.dt,
+            dt: input_state.dt,
         }
     }
 }
