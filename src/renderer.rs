@@ -43,6 +43,7 @@ pub struct Renderer {
     //gbuffer_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
+    edit_sdf: ComputePipelineHandle,
 }
 
 pub struct LocalImageStateTracker<'device> {
@@ -290,6 +291,22 @@ impl Renderer {
             },
         );
 
+        let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", |compiled_shader| {
+            ComputePipelineDesc::builder()
+                .spirv(&compiled_shader.spirv)
+                .descriptor_set_opts(&[
+                    (
+                        0,
+                        DescriptorSetLayoutOpts::builder()
+                            .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
+                    ),
+                    (
+                        2,
+                        DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
+                    ),
+                ])
+        });
+
         let sdf_raymarch_gbuffer = cs_cache.register(
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
             |compiled_shader| {
@@ -326,6 +343,7 @@ impl Renderer {
             //gbuffer_img,
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
+            edit_sdf,
         })
     }
 
@@ -615,7 +633,11 @@ impl Renderer {
 
         let mut sdf_img_tracker = LocalImageStateTracker::new(
             self.sdf_img.raw,
-            vk_sync::AccessType::Nothing,
+            if self.frame_idx == 0 {
+                vk_sync::AccessType::Nothing
+            } else {
+                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
+            },
             cb.raw,
             &backend.device.raw,
         );
@@ -635,7 +657,11 @@ impl Renderer {
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
 
             {
-                let shader = self.cs_cache.get(self.gen_empty_sdf);
+                let shader = self.cs_cache.get(if self.frame_idx == 0 {
+                    self.gen_empty_sdf
+                } else {
+                    self.edit_sdf
+                });
 
                 backend.device.raw.cmd_bind_pipeline(
                     cb.raw,

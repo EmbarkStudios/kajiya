@@ -132,7 +132,7 @@ impl FirstPersonCamera {
             interp_pos: position,
             move_smoothness: 1.0,
             look_smoothness: 1.0,
-            move_speed: 1.0,
+            move_speed: 0.2,
         }
     }
 }

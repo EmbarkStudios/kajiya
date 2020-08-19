@@ -1,3 +1,6 @@
+#ifndef FRAME_CONSTANTS_HLSL
+#define FRAME_CONSTANTS_HLSL
+
 struct ViewConstants {
     float4x4 view_to_clip;
     float4x4 clip_to_view;
@@ -16,3 +19,5 @@ struct FrameConstants {
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;
+
+#endif

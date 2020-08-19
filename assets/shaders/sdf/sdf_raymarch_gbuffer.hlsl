@@ -1,9 +1,9 @@
 //#include "rendertoy::shaders/view_constants.inc"
 //#include "rtoy-samples::shaders/inc/uv.inc"
 //#include "rtoy-samples::shaders/inc/pack_unpack.inc"
-#include "sdf_consts.hlsl"
-#include "../inc/frame_constants.hlsl"
-#include "../inc/uv.hlsl"
+#include "sdf_common.hlsl"
+//#include "../inc/frame_constants.hlsl"
+//#include "../inc/uv.hlsl"
 
 [[vk::binding(0)]] RWTexture2D<float4> output_tex;
 [[vk::binding(1)]] Texture3D<float> sdf_tex;
@@ -25,11 +25,11 @@ float op_union(float d1, float d2) {
     return min(d1, d2);
 }
 
-static float3 mouse_pos;
+static float3 g_mouse_pos;
 float sample_volume(float3 p) {
     float3 uv = (p / HSIZE / 2.0) + 0.5.xxx;
     float d0 = sdf_tex.SampleLevel(sampler_lnc, uv, 0);
-    float d1 = sd_sphere(p - mouse_pos, 0.4);
+    float d1 = sd_sphere(p - g_mouse_pos, 0.4);
     if (frame_constants.mouse.w > 0.0) {
         return op_union(d0, d1);
     } else {
@@ -37,13 +37,10 @@ float sample_volume(float3 p) {
     }
 }
 
-float3 intersect_ray_plane(float3 normal, float3 plane_pt, float3 o, float3 dir) {
-    return o - dir * (dot(o - plane_pt, normal) / dot(dir, normal));
-}
-
 [numthreads(8, 8, 1)]
 void main(in uint2 pix : SV_DispatchThreadID) {
     #if 1
+    // TODO
     float4 output_tex_size = float4(1280, 720, 1.0 / 1280, 1.0 / 720);
     ViewConstants view_constants = frame_constants.view_constants;
 
@@ -57,12 +54,7 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     float4 ray_dir_ws = mul(view_constants.view_to_world, mul(view_constants.sample_to_view, ray_dir_cs));
     float3 v = -normalize(ray_dir_ws.xyz);
 
-    float3 eye_pos_ws = mul(view_constants.view_to_world, float4(0, 0, 0, 1)).xyz;
-    float3 eye_dir_ws = normalize(mul(view_constants.view_to_world, mul(view_constants.sample_to_view, float4(0.0, 0.0, 0.0, 1.0))).xyz);
-    float4 mouse = frame_constants.mouse;
-    float4 mouse_dir_cs = float4(uv_to_cs(mouse.xy), 0.0, 1.0);
-    float4 mouse_dir_ws = mul(view_constants.view_to_world, mul(view_constants.sample_to_view, mouse_dir_cs));
-    mouse_pos = intersect_ray_plane(eye_dir_ws, eye_pos_ws + eye_dir_ws * 8.0, eye_pos_ws, mouse_dir_ws.xyz);
+    g_mouse_pos = get_sdf_brush_pos();
 
     const uint ITERS = 128;
     float dist = 1.0;
