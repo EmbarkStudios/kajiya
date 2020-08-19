@@ -1,20 +1,21 @@
 use crate::backend::{
-    self, barrier::*, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
+    self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
 };
 use crate::{
-    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*, shader_compiler::CompileShader,
-    viewport::ViewConstants, FrameState,
+    chunky_list::TempList,
+    dynamic_constants::*,
+    pipeline_cache::*,
+    shader_compiler::{CompileShader, CompiledShader},
+    state_tracker::LocalImageStateTracker,
+    viewport::ViewConstants,
+    FrameState,
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
-use backend::{
-    buffer::Buffer,
-    device::{CommandBuffer, Device},
-};
+use backend::{buffer::Buffer, device::CommandBuffer};
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use parking_lot::Mutex;
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 use winit::event::VirtualKeyCode;
@@ -43,43 +44,9 @@ pub struct Renderer {
     raster_simple: RasterPipeline,
 
     sdf_img: ImageWithViews,
-    //gbuffer_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
-}
-
-pub struct LocalImageStateTracker<'device> {
-    resource: vk::Image,
-    current_state: vk_sync::AccessType,
-    cb: vk::CommandBuffer,
-    device: &'device ash::Device,
-}
-
-impl<'device> LocalImageStateTracker<'device> {
-    pub fn new(
-        resource: vk::Image,
-        current_state: vk_sync::AccessType,
-        cb: vk::CommandBuffer,
-        device: &'device ash::Device,
-    ) -> Self {
-        Self {
-            resource,
-            current_state,
-            cb,
-            device,
-        }
-    }
-
-    pub fn transition(&mut self, state: vk_sync::AccessType) {
-        record_image_barrier(
-            &self.device,
-            self.cb,
-            ImageBarrier::new(self.resource, self.current_state, state),
-        );
-
-        self.current_state = state;
-    }
 }
 
 lazy_static::lazy_static! {
@@ -128,43 +95,8 @@ pub mod view {
     }
 }
 
-pub struct ImageWithViews {
-    pub image: Arc<Image>,
-    pub views: Mutex<HashMap<ImageViewDesc, Arc<ImageView>>>,
-    pub device: Arc<Device>,
-}
-
-impl ImageWithViews {
-    pub fn view(&self, desc: ImageViewDescBuilder) -> Arc<ImageView> {
-        let desc = desc.build().unwrap();
-        let mut views = self.views.lock();
-        views
-            .entry(desc)
-            .or_insert_with(|| Arc::new(self.device.create_image_view(desc, &self.image).unwrap()))
-            .clone()
-    }
-
-    pub fn raw(&self) -> vk::Image {
-        self.image.raw
-    }
-}
-
-pub trait IntoImageWithViews {
-    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews;
-}
-
-impl IntoImageWithViews for Image {
-    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews {
-        ImageWithViews {
-            image: self,
-            views: Default::default(),
-            device: device.clone(),
-        }
-    }
-}
-
 impl Renderer {
-    pub fn new(backend: RenderBackend) -> anyhow::Result<Self> {
+    pub fn new(backend: RenderBackend, output_dims: [u32; 2]) -> anyhow::Result<Self> {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
 
         let lazy_cache = LazyCache::create();
@@ -204,7 +136,7 @@ impl Renderer {
         let output_img = backend
             .device
             .create_image(
-                ImageDesc::new_2d([1280, 720])
+                ImageDesc::new_2d(output_dims)
                     .format(vk::Format::R16G16B16A16_SFLOAT)
                     //.format(vk::Format::R8G8B8A8_UNORM)
                     .usage(
@@ -291,36 +223,8 @@ impl Renderer {
                 None,
             )?
             .with_views(&backend.device);
-        /*let gbuffer_img = backend.device.create_image(
-            ImageDesc::new_2d([1280, 720])
-                .format(vk::Format::R32G32B32A32_SFLOAT)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
-                .build()
-                .unwrap(),
-            None,
-        )?;*/
 
-        let gen_empty_sdf = cs_cache.register(
-            "/assets/shaders/sdf/gen_empty_sdf.hlsl",
-            |compiled_shader| {
-                ComputePipelineDesc::builder()
-                    .spirv(&compiled_shader.spirv)
-                    .descriptor_set_opts(&[
-                        (
-                            0,
-                            DescriptorSetLayoutOpts::builder()
-                                .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
-                        ),
-                        (
-                            2,
-                            DescriptorSetLayoutOpts::builder()
-                                .replace(FRAME_CONSTANTS_LAYOUT.clone()),
-                        ),
-                    ])
-            },
-        );
-
-        let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", |compiled_shader| {
+        fn sdf_shader_ctor(compiled_shader: &CompiledShader) -> ComputePipelineDescBuilder {
             ComputePipelineDesc::builder()
                 .spirv(&compiled_shader.spirv)
                 .descriptor_set_opts(&[
@@ -334,26 +238,14 @@ impl Renderer {
                         DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
                     ),
                 ])
-        });
+        }
 
+        let gen_empty_sdf =
+            cs_cache.register("/assets/shaders/sdf/gen_empty_sdf.hlsl", sdf_shader_ctor);
+        let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", sdf_shader_ctor);
         let sdf_raymarch_gbuffer = cs_cache.register(
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
-            |compiled_shader| {
-                ComputePipelineDesc::builder()
-                    .spirv(&compiled_shader.spirv)
-                    .descriptor_set_opts(&[
-                        (
-                            0,
-                            DescriptorSetLayoutOpts::builder()
-                                .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
-                        ),
-                        (
-                            2,
-                            DescriptorSetLayoutOpts::builder()
-                                .replace(FRAME_CONSTANTS_LAYOUT.clone()),
-                        ),
-                    ])
-            },
+            sdf_shader_ctor,
         );
 
         Ok(Renderer {
@@ -368,11 +260,174 @@ impl Renderer {
             raster_simple_render_pass,
             raster_simple,
             sdf_img,
-            //gbuffer_img,
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
             edit_sdf,
         })
+    }
+
+    pub fn draw_frame(&mut self, frame_state: FrameState) {
+        self.dynamic_constants.advance_frame();
+        self.frame_idx += 1;
+
+        let width = frame_state.window_cfg.width;
+        let height = frame_state.window_cfg.height;
+
+        let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
+            view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
+                .build(),
+            mouse: gen_shader_mouse_state(&frame_state),
+            frame_idx: self.frame_idx,
+        });
+
+        // Note: this can be done at the end of the frame, not at the start.
+        // The image can be acquired just in time for a blit into it,
+        // after all the other rendering commands have been recorded.
+        let swapchain_image = self
+            .backend
+            .swapchain
+            .acquire_next_image()
+            .ok()
+            .expect("swapchain image");
+
+        let current_frame = self.backend.device.current_frame();
+        let cb = &current_frame.command_buffer;
+        let raw_device = &self.backend.device.raw;
+
+        let mut output_img_tracker = LocalImageStateTracker::new(
+            self.output_img.raw(),
+            vk_sync::AccessType::Nothing,
+            cb.raw,
+            raw_device,
+        );
+
+        let mut sdf_img_tracker = LocalImageStateTracker::new(
+            self.sdf_img.raw(),
+            if self.frame_idx == 0 {
+                vk_sync::AccessType::Nothing
+            } else {
+                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
+            },
+            cb.raw,
+            raw_device,
+        );
+
+        unsafe {
+            raw_device
+                .begin_command_buffer(
+                    cb.raw,
+                    &vk::CommandBufferBeginInfo::builder()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                )
+                .unwrap();
+
+            output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
+            sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
+
+            // Edit the SDF
+            {
+                let shader = self.cs_cache.get(if self.frame_idx == 0 {
+                    // Clear if this is the first frame
+                    self.gen_empty_sdf
+                } else {
+                    self.edit_sdf
+                });
+
+                self.bind_compute_pipeline(cb, &*shader);
+                self.push_descriptor_set(
+                    cb,
+                    &*shader,
+                    0,
+                    &[view::image_rw(&self.sdf_img.view(Default::default()))],
+                );
+                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
+
+                raw_device.cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
+            }
+
+            sdf_img_tracker
+                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
+
+            // Raymarch the SDF
+            {
+                let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
+
+                self.bind_compute_pipeline(cb, &*shader);
+                self.push_descriptor_set(
+                    cb,
+                    &*shader,
+                    0,
+                    &[
+                        view::image_rw(&self.output_img.view(Default::default())),
+                        view::image(&self.sdf_img.view(Default::default())),
+                    ],
+                );
+                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
+
+                raw_device.cmd_dispatch(cb.raw, (width + 7) / 8, (height + 7) / 8, 1);
+            }
+
+            /*{
+                output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
+
+                self.begin_render_pass(
+                    backend,
+                    cb,
+                    &*self.raster_simple_render_pass,
+                    [width, height],
+                    &[&self.output_img_view],
+                );
+
+                self.set_default_view_and_scissor(backend, cb, [width, height]);
+
+                {
+                    raw_device.cmd_bind_pipeline(
+                        cb.raw,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        self.raster_simple.pipeline,
+                    );
+
+                    raw_device.cmd_draw(cb.raw, 3, 1, 0, 0);
+                }
+
+                raw_device.cmd_end_render_pass(cb.raw);
+            }*/
+
+            output_img_tracker
+                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
+
+            blit_image_to_swapchain(
+                &*self.backend.device,
+                cb,
+                &swapchain_image,
+                &self.output_img.view(Default::default()),
+                &self.present_shader,
+            );
+
+            raw_device.end_command_buffer(cb.raw).unwrap();
+        }
+
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
+            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+            .command_buffers(std::slice::from_ref(&cb.raw));
+
+        unsafe {
+            raw_device
+                .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
+                .expect("reset_fences");
+
+            raw_device
+                .queue_submit(
+                    self.backend.device.universal_queue.raw,
+                    &[submit_info.build()],
+                    cb.submit_done_fence,
+                )
+                .expect("queue submit failed.");
+        }
+
+        self.backend.swapchain.present_image(swapchain_image, &[]);
+        self.backend.device.finish_frame(current_frame);
     }
 
     fn create_frame_descriptor_set(
@@ -608,171 +663,6 @@ impl Renderer {
                 &[frame_constants_offset],
             );
         }
-    }
-
-    pub fn draw_frame(&mut self, frame_state: FrameState) {
-        self.dynamic_constants.advance_frame();
-        self.frame_idx += 1;
-
-        // TODO
-        let width = 1280;
-        let height = 720;
-
-        let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
-            view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
-                .build(),
-            mouse: gen_shader_mouse_state(&frame_state),
-            frame_idx: self.frame_idx,
-        });
-
-        // Note: this can be done at the end of the frame, not at the start.
-        // The image can be acquired just in time for a blit into it,
-        // after all the other rendering commands have been recorded.
-        let swapchain_image = self
-            .backend
-            .swapchain
-            .acquire_next_image()
-            .ok()
-            .expect("swapchain image");
-
-        let current_frame = self.backend.device.current_frame();
-        let cb = &current_frame.command_buffer;
-        let raw_device = &self.backend.device.raw;
-
-        let mut output_img_tracker = LocalImageStateTracker::new(
-            self.output_img.raw(),
-            vk_sync::AccessType::Nothing,
-            cb.raw,
-            raw_device,
-        );
-
-        let mut sdf_img_tracker = LocalImageStateTracker::new(
-            self.sdf_img.raw(),
-            if self.frame_idx == 0 {
-                vk_sync::AccessType::Nothing
-            } else {
-                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
-            },
-            cb.raw,
-            raw_device,
-        );
-
-        unsafe {
-            raw_device
-                .begin_command_buffer(
-                    cb.raw,
-                    &vk::CommandBufferBeginInfo::builder()
-                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-                )
-                .unwrap();
-
-            output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
-            sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
-
-            // Edit the SDF
-            {
-                let shader = self.cs_cache.get(if self.frame_idx == 0 {
-                    // Clear if this is the first frame
-                    self.gen_empty_sdf
-                } else {
-                    self.edit_sdf
-                });
-
-                self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(
-                    cb,
-                    &*shader,
-                    0,
-                    &[view::image_rw(&self.sdf_img.view(Default::default()))],
-                );
-                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
-
-                raw_device.cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
-            }
-
-            sdf_img_tracker
-                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
-
-            // Raymarch the SDF
-            {
-                let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
-
-                self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(
-                    cb,
-                    &*shader,
-                    0,
-                    &[
-                        view::image_rw(&self.output_img.view(Default::default())),
-                        view::image(&self.sdf_img.view(Default::default())),
-                    ],
-                );
-                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
-
-                raw_device.cmd_dispatch(cb.raw, (width + 7) / 8, (height + 7) / 8, 1);
-            }
-
-            /*{
-                output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
-
-                self.begin_render_pass(
-                    backend,
-                    cb,
-                    &*self.raster_simple_render_pass,
-                    [width, height],
-                    &[&self.output_img_view],
-                );
-
-                self.set_default_view_and_scissor(backend, cb, [width, height]);
-
-                {
-                    raw_device.cmd_bind_pipeline(
-                        cb.raw,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.raster_simple.pipeline,
-                    );
-
-                    raw_device.cmd_draw(cb.raw, 3, 1, 0, 0);
-                }
-
-                raw_device.cmd_end_render_pass(cb.raw);
-            }*/
-
-            output_img_tracker
-                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
-
-            blit_image_to_swapchain(
-                &*self.backend.device,
-                cb,
-                &swapchain_image,
-                &self.output_img.view(Default::default()),
-                &self.present_shader,
-            );
-
-            raw_device.end_command_buffer(cb.raw).unwrap();
-        }
-
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
-            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
-            .command_buffers(std::slice::from_ref(&cb.raw));
-
-        unsafe {
-            raw_device
-                .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
-                .expect("reset_fences");
-
-            raw_device
-                .queue_submit(
-                    self.backend.device.universal_queue.raw,
-                    &[submit_info.build()],
-                    cb.submit_done_fence,
-                )
-                .expect("queue submit failed.");
-        }
-
-        self.backend.swapchain.present_image(swapchain_image, &[]);
-        self.backend.device.finish_frame(current_frame);
     }
 
     pub fn prepare_frame(&mut self) -> anyhow::Result<()> {

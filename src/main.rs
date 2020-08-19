@@ -11,6 +11,7 @@ mod mesh;
 mod pipeline_cache;
 mod renderer;
 mod shader_compiler;
+mod state_tracker;
 mod viewport;
 
 use backend::RenderBackend;
@@ -31,6 +32,12 @@ use winit::{
 pub struct WindowConfig {
     pub width: u32,
     pub height: u32,
+}
+
+impl WindowConfig {
+    pub fn dims(self) -> [u32; 2] {
+        [self.width, self.height]
+    }
 }
 
 pub struct FrameState {
@@ -60,7 +67,10 @@ fn try_main() -> anyhow::Result<()> {
             .expect("window"),
     );
 
-    let mut renderer = renderer::Renderer::new(RenderBackend::new(&*window, &window_cfg)?)?;
+    let mut renderer = renderer::Renderer::new(
+        RenderBackend::new(&*window, &window_cfg)?,
+        window_cfg.dims(),
+    )?;
     let mut last_error_text = None;
 
     #[allow(unused_mut)]

@@ -2,7 +2,8 @@ use super::device::Device;
 use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
 use derive_builder::Builder;
-use std::sync::Arc;
+use parking_lot::Mutex;
+use std::{collections::HashMap, sync::Arc};
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -76,6 +77,7 @@ pub struct ImageViewDesc {
 }
 
 impl ImageViewDesc {
+    #[allow(dead_code)]
     pub fn builder() -> ImageViewDescBuilder {
         Default::default()
     }
@@ -268,5 +270,40 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> vk::ImageC
             false => vk::ImageLayout::UNDEFINED,
         },
         ..Default::default()
+    }
+}
+
+pub struct ImageWithViews {
+    pub image: Arc<Image>,
+    pub views: Mutex<HashMap<ImageViewDesc, Arc<ImageView>>>,
+    pub device: Arc<Device>,
+}
+
+impl ImageWithViews {
+    pub fn view(&self, desc: ImageViewDescBuilder) -> Arc<ImageView> {
+        let desc = desc.build().unwrap();
+        let mut views = self.views.lock();
+        views
+            .entry(desc)
+            .or_insert_with(|| Arc::new(self.device.create_image_view(desc, &self.image).unwrap()))
+            .clone()
+    }
+
+    pub fn raw(&self) -> vk::Image {
+        self.image.raw
+    }
+}
+
+pub trait IntoImageWithViews {
+    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews;
+}
+
+impl IntoImageWithViews for Image {
+    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews {
+        ImageWithViews {
+            image: self,
+            views: Default::default(),
+            device: device.clone(),
+        }
     }
 }
