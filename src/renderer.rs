@@ -7,10 +7,14 @@ use crate::{
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
-use backend::{buffer::Buffer, device::CommandBuffer};
+use backend::{
+    buffer::Buffer,
+    device::{CommandBuffer, Device},
+};
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use parking_lot::Mutex;
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 use winit::event::VirtualKeyCode;
@@ -32,15 +36,13 @@ pub struct Renderer {
     frame_idx: u32,
 
     present_shader: ComputePipeline,
-    output_img: Arc<Image>,
-    output_img_view: ImageView,
+    output_img: ImageWithViews,
 
     gradients_shader: ComputePipelineHandle,
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipeline,
 
-    sdf_img: Arc<Image>,
-    sdf_img_view: ImageView,
+    sdf_img: ImageWithViews,
     //gbuffer_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
@@ -126,6 +128,41 @@ pub mod view {
     }
 }
 
+pub struct ImageWithViews {
+    pub image: Arc<Image>,
+    pub views: Mutex<HashMap<ImageViewDesc, Arc<ImageView>>>,
+    pub device: Arc<Device>,
+}
+
+impl ImageWithViews {
+    pub fn view(&self, desc: ImageViewDescBuilder) -> Arc<ImageView> {
+        let desc = desc.build().unwrap();
+        let mut views = self.views.lock();
+        views
+            .entry(desc)
+            .or_insert_with(|| Arc::new(self.device.create_image_view(desc, &self.image).unwrap()))
+            .clone()
+    }
+
+    pub fn raw(&self) -> vk::Image {
+        self.image.raw
+    }
+}
+
+pub trait IntoImageWithViews {
+    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews;
+}
+
+impl IntoImageWithViews for Image {
+    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews {
+        ImageWithViews {
+            image: self,
+            views: Default::default(),
+            device: device.clone(),
+        }
+    }
+}
+
 impl Renderer {
     pub fn new(backend: RenderBackend) -> anyhow::Result<Self> {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
@@ -164,26 +201,22 @@ impl Renderer {
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
-        let output_img = backend.device.create_image(
-            ImageDesc::new_2d([1280, 720])
-                .format(vk::Format::R16G16B16A16_SFLOAT)
-                //.format(vk::Format::R8G8B8A8_UNORM)
-                .usage(
-                    vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                )
-                .build()
-                .unwrap(),
-            None,
-        )?;
-
-        let output_img_view = backend.device.create_image_view(
-            ImageViewDesc::builder()
-                .image(output_img.clone())
-                .build()
-                .unwrap(),
-        )?;
+        let output_img = backend
+            .device
+            .create_image(
+                ImageDesc::new_2d([1280, 720])
+                    .format(vk::Format::R16G16B16A16_SFLOAT)
+                    //.format(vk::Format::R8G8B8A8_UNORM)
+                    .usage(
+                        vk::ImageUsageFlags::STORAGE
+                            | vk::ImageUsageFlags::SAMPLED
+                            | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                    )
+                    .build()
+                    .unwrap(),
+                None,
+            )?
+            .with_views(&backend.device);
 
         let gradients_shader =
             cs_cache.register("/assets/shaders/gradients.hlsl", |compiled_shader| {
@@ -247,22 +280,17 @@ impl Renderer {
             },
         )?;
 
-        let sdf_img = backend.device.create_image(
-            ImageDesc::new_3d([256, 256, 256])
-                .format(vk::Format::R16_SFLOAT)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
-                .build()
-                .unwrap(),
-            None,
-        )?;
-
-        let sdf_img_view = backend.device.create_image_view(
-            ImageViewDesc::builder()
-                .image(sdf_img.clone())
-                .build()
-                .unwrap(),
-        )?;
-
+        let sdf_img = backend
+            .device
+            .create_image(
+                ImageDesc::new_3d([256, 256, 256])
+                    .format(vk::Format::R16_SFLOAT)
+                    .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+                    .build()
+                    .unwrap(),
+                None,
+            )?
+            .with_views(&backend.device);
         /*let gbuffer_img = backend.device.create_image(
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R32G32B32A32_SFLOAT)
@@ -336,12 +364,10 @@ impl Renderer {
             cs_cache,
             present_shader,
             output_img,
-            output_img_view,
             gradients_shader,
             raster_simple_render_pass,
             raster_simple,
             sdf_img,
-            sdf_img_view,
             //gbuffer_img,
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
@@ -435,7 +461,7 @@ impl Renderer {
                 &backend.device.raw,
                 FramebufferCacheKey::new(
                     dims,
-                    attachments.iter().copied().map(|a| &a.desc.image.desc),
+                    attachments.iter().copied().map(|a| &a.image.desc),
                     false,
                 ),
             )
@@ -614,14 +640,14 @@ impl Renderer {
         let raw_device = &self.backend.device.raw;
 
         let mut output_img_tracker = LocalImageStateTracker::new(
-            self.output_img.raw,
+            self.output_img.raw(),
             vk_sync::AccessType::Nothing,
             cb.raw,
             raw_device,
         );
 
         let mut sdf_img_tracker = LocalImageStateTracker::new(
-            self.sdf_img.raw,
+            self.sdf_img.raw(),
             if self.frame_idx == 0 {
                 vk_sync::AccessType::Nothing
             } else {
@@ -643,15 +669,22 @@ impl Renderer {
             output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
 
+            // Edit the SDF
             {
                 let shader = self.cs_cache.get(if self.frame_idx == 0 {
+                    // Clear if this is the first frame
                     self.gen_empty_sdf
                 } else {
                     self.edit_sdf
                 });
 
                 self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(cb, &*shader, 0, &[view::image_rw(&self.sdf_img_view)]);
+                self.push_descriptor_set(
+                    cb,
+                    &*shader,
+                    0,
+                    &[view::image_rw(&self.sdf_img.view(Default::default()))],
+                );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
 
                 raw_device.cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
@@ -660,6 +693,7 @@ impl Renderer {
             sdf_img_tracker
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
+            // Raymarch the SDF
             {
                 let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
 
@@ -669,8 +703,8 @@ impl Renderer {
                     &*shader,
                     0,
                     &[
-                        view::image_rw(&self.output_img_view),
-                        view::image(&self.sdf_img_view),
+                        view::image_rw(&self.output_img.view(Default::default())),
+                        view::image(&self.sdf_img.view(Default::default())),
                     ],
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
@@ -711,7 +745,7 @@ impl Renderer {
                 &*self.backend.device,
                 cb,
                 &swapchain_image,
-                &self.output_img_view,
+                &self.output_img.view(Default::default()),
                 &self.present_shader,
             );
 

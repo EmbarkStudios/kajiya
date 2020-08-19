@@ -66,9 +66,8 @@ pub struct Image {
     allocation: vk_mem::Allocation,
 }
 
-#[derive(Clone, Builder)]
+#[derive(Clone, Copy, Builder, Eq, PartialEq, Hash)]
 pub struct ImageViewDesc {
-    pub image: Arc<Image>,
     #[builder(setter(strip_option), default)]
     pub view_type: Option<vk::ImageViewType>,
     #[builder(setter(strip_option), default)]
@@ -85,6 +84,7 @@ impl ImageViewDesc {
 pub struct ImageView {
     pub raw: vk::ImageView,
     pub desc: ImageViewDesc,
+    pub image: Arc<Image>,
 }
 
 impl Device {
@@ -122,8 +122,8 @@ impl Device {
         }))
     }
 
-    pub fn create_image_view(&self, desc: ImageViewDesc) -> Result<ImageView> {
-        let image = &*desc.image;
+    pub fn create_image_view(&self, desc: ImageViewDesc, image: &Arc<Image>) -> Result<ImageView> {
+        let image = &*image;
         let create_info = vk::ImageViewCreateInfo::builder()
             .format(desc.format.unwrap_or(image.desc.format))
             .image(image.raw)
@@ -151,7 +151,11 @@ impl Device {
             .build();
 
         let raw = unsafe { self.raw.create_image_view(&create_info, None)? };
-        Ok(ImageView { raw, desc })
+        Ok(ImageView {
+            raw,
+            desc,
+            image: image.clone(),
+        })
     }
 
     /*pub fn get(&self, handle: ImageHandle) -> &Image {
