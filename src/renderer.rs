@@ -2,8 +2,8 @@ use crate::backend::{
     self, barrier::*, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
 };
 use crate::{
-    camera::CameraMatrices, chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
-    shader_compiler::CompileShader, viewport::ViewConstants, FrameState,
+    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*, shader_compiler::CompileShader,
+    viewport::ViewConstants, FrameState,
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
@@ -25,6 +25,7 @@ struct FrameConstants {
 
 #[allow(dead_code)]
 pub struct Renderer {
+    backend: RenderBackend,
     cs_cache: ComputePipelineCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
@@ -126,7 +127,7 @@ pub mod view {
 }
 
 impl Renderer {
-    pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
+    pub fn new(backend: RenderBackend) -> anyhow::Result<Self> {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
 
         let lazy_cache = LazyCache::create();
@@ -161,7 +162,7 @@ impl Renderer {
         });
 
         let frame_descriptor_set =
-            Self::create_frame_descriptor_set(backend, &dynamic_constants.buffer);
+            Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
         let output_img = backend.device.create_image(
             ImageDesc::new_2d([1280, 720])
@@ -328,6 +329,7 @@ impl Renderer {
         );
 
         Ok(Renderer {
+            backend,
             dynamic_constants,
             frame_descriptor_set,
             frame_idx: !0,
@@ -505,9 +507,18 @@ impl Renderer {
         }
     }
 
+    pub fn bind_compute_pipeline(&self, cb: &CommandBuffer, shader: &ComputePipeline) {
+        unsafe {
+            self.backend.device.raw.cmd_bind_pipeline(
+                cb.raw,
+                vk::PipelineBindPoint::COMPUTE,
+                shader.pipeline,
+            );
+        }
+    }
+
     pub fn push_descriptor_set(
         &self,
-        backend: &RenderBackend,
         cb: &CommandBuffer,
         shader: &ComputePipeline,
         set_index: u32,
@@ -541,7 +552,7 @@ impl Renderer {
                 })
                 .collect();
 
-            backend
+            self.backend
                 .device
                 .cmd_ext
                 .push_descriptor
@@ -557,13 +568,12 @@ impl Renderer {
 
     pub fn bind_frame_constants(
         &self,
-        backend: &RenderBackend,
         cb: &CommandBuffer,
         shader: &ComputePipeline,
         frame_constants_offset: u32,
     ) {
         unsafe {
-            backend.device.raw.cmd_bind_descriptor_sets(
+            self.backend.device.raw.cmd_bind_descriptor_sets(
                 cb.raw,
                 vk::PipelineBindPoint::COMPUTE,
                 shader.pipeline_layout,
@@ -574,30 +584,7 @@ impl Renderer {
         }
     }
 
-    fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
-        let pos = frame_state.input.mouse.pos
-            / Vec2::new(
-                frame_state.window_cfg.width as f32,
-                frame_state.window_cfg.height as f32,
-            );
-
-        [
-            pos.x(),
-            pos.y(),
-            if (frame_state.input.mouse.button_mask & 1) != 0 {
-                1.0
-            } else {
-                0.0
-            },
-            if frame_state.input.keys.is_down(VirtualKeyCode::LShift) {
-                -1.0
-            } else {
-                1.0
-            },
-        ]
-    }
-
-    pub fn draw_frame(&mut self, backend: &mut RenderBackend, frame_state: FrameState) {
+    pub fn draw_frame(&mut self, frame_state: FrameState) {
         self.dynamic_constants.advance_frame();
         self.frame_idx += 1;
 
@@ -608,27 +595,29 @@ impl Renderer {
         let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
             view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
                 .build(),
-            mouse: Self::gen_shader_mouse_state(&frame_state),
+            mouse: gen_shader_mouse_state(&frame_state),
             frame_idx: self.frame_idx,
         });
 
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
         // after all the other rendering commands have been recorded.
-        let swapchain_image = backend
+        let swapchain_image = self
+            .backend
             .swapchain
             .acquire_next_image()
             .ok()
             .expect("swapchain image");
 
-        let current_frame = backend.device.current_frame();
+        let current_frame = self.backend.device.current_frame();
         let cb = &current_frame.command_buffer;
+        let raw_device = &self.backend.device.raw;
 
         let mut output_img_tracker = LocalImageStateTracker::new(
             self.output_img.raw,
             vk_sync::AccessType::Nothing,
             cb.raw,
-            &backend.device.raw,
+            raw_device,
         );
 
         let mut sdf_img_tracker = LocalImageStateTracker::new(
@@ -639,13 +628,11 @@ impl Renderer {
                 vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
             },
             cb.raw,
-            &backend.device.raw,
+            raw_device,
         );
 
         unsafe {
-            backend
-                .device
-                .raw
+            raw_device
                 .begin_command_buffer(
                     cb.raw,
                     &vk::CommandBufferBeginInfo::builder()
@@ -663,26 +650,11 @@ impl Renderer {
                     self.edit_sdf
                 });
 
-                backend.device.raw.cmd_bind_pipeline(
-                    cb.raw,
-                    vk::PipelineBindPoint::COMPUTE,
-                    shader.pipeline,
-                );
+                self.bind_compute_pipeline(cb, &*shader);
+                self.push_descriptor_set(cb, &*shader, 0, &[view::image_rw(&self.sdf_img_view)]);
+                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
 
-                self.push_descriptor_set(
-                    backend,
-                    cb,
-                    &*shader,
-                    0,
-                    &[view::image_rw(&self.sdf_img_view)],
-                );
-
-                self.bind_frame_constants(backend, cb, &*shader, frame_constants_offset);
-
-                backend
-                    .device
-                    .raw
-                    .cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
+                raw_device.cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
             }
 
             sdf_img_tracker
@@ -691,14 +663,8 @@ impl Renderer {
             {
                 let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
 
-                backend.device.raw.cmd_bind_pipeline(
-                    cb.raw,
-                    vk::PipelineBindPoint::COMPUTE,
-                    shader.pipeline,
-                );
-
+                self.bind_compute_pipeline(cb, &*shader);
                 self.push_descriptor_set(
-                    backend,
                     cb,
                     &*shader,
                     0,
@@ -707,17 +673,9 @@ impl Renderer {
                         view::image(&self.sdf_img_view),
                     ],
                 );
+                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
 
-                self.bind_frame_constants(backend, cb, &*shader, frame_constants_offset);
-
-                // TODO
-                let output_size_pixels = (1280u32, 720u32); // TODO
-                backend.device.raw.cmd_dispatch(
-                    cb.raw,
-                    (output_size_pixels.0 + 7) / 8,
-                    (output_size_pixels.1 + 7) / 8,
-                    1,
-                );
+                raw_device.cmd_dispatch(cb.raw, (width + 7) / 8, (height + 7) / 8, 1);
             }
 
             /*{
@@ -734,30 +692,30 @@ impl Renderer {
                 self.set_default_view_and_scissor(backend, cb, [width, height]);
 
                 {
-                    backend.device.raw.cmd_bind_pipeline(
+                    raw_device.cmd_bind_pipeline(
                         cb.raw,
                         vk::PipelineBindPoint::GRAPHICS,
                         self.raster_simple.pipeline,
                     );
 
-                    backend.device.raw.cmd_draw(cb.raw, 3, 1, 0, 0);
+                    raw_device.cmd_draw(cb.raw, 3, 1, 0, 0);
                 }
 
-                backend.device.raw.cmd_end_render_pass(cb.raw);
+                raw_device.cmd_end_render_pass(cb.raw);
             }*/
 
             output_img_tracker
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
             blit_image_to_swapchain(
-                &*backend.device,
+                &*self.backend.device,
                 cb,
                 &swapchain_image,
                 &self.output_img_view,
                 &self.present_shader,
             );
 
-            backend.device.raw.end_command_buffer(cb.raw).unwrap();
+            raw_device.end_command_buffer(cb.raw).unwrap();
         }
 
         let submit_info = vk::SubmitInfo::builder()
@@ -766,30 +724,49 @@ impl Renderer {
             .command_buffers(std::slice::from_ref(&cb.raw));
 
         unsafe {
-            backend
-                .device
-                .raw
+            raw_device
                 .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
                 .expect("reset_fences");
 
-            backend
-                .device
-                .raw
+            raw_device
                 .queue_submit(
-                    backend.device.universal_queue.raw,
+                    self.backend.device.universal_queue.raw,
                     &[submit_info.build()],
                     cb.submit_done_fence,
                 )
                 .expect("queue submit failed.");
         }
 
-        backend.swapchain.present_image(swapchain_image, &[]);
-        backend.device.finish_frame(current_frame);
+        self.backend.swapchain.present_image(swapchain_image, &[]);
+        self.backend.device.finish_frame(current_frame);
     }
 
-    pub fn prepare_frame(&mut self, backend: &RenderBackend) -> anyhow::Result<()> {
-        self.cs_cache.prepare_frame(&backend.device)?;
+    pub fn prepare_frame(&mut self) -> anyhow::Result<()> {
+        self.cs_cache.prepare_frame(&self.backend.device)?;
 
         Ok(())
     }
+}
+
+fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
+    let pos = frame_state.input.mouse.pos
+        / Vec2::new(
+            frame_state.window_cfg.width as f32,
+            frame_state.window_cfg.height as f32,
+        );
+
+    [
+        pos.x(),
+        pos.y(),
+        if (frame_state.input.mouse.button_mask & 1) != 0 {
+            1.0
+        } else {
+            0.0
+        },
+        if frame_state.input.keys.is_down(VirtualKeyCode::LShift) {
+            -1.0
+        } else {
+            1.0
+        },
+    ]
 }

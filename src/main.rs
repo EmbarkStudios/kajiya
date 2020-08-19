@@ -60,8 +60,7 @@ fn try_main() -> anyhow::Result<()> {
             .expect("window"),
     );
 
-    let mut backend = RenderBackend::new(&*window, &window_cfg)?;
-    let mut renderer = renderer::Renderer::new(&backend)?;
+    let mut renderer = renderer::Renderer::new(RenderBackend::new(&*window, &window_cfg)?)?;
     let mut last_error_text = None;
 
     #[allow(unused_mut)]
@@ -126,20 +125,17 @@ fn try_main() -> anyhow::Result<()> {
 
                 window.request_redraw();
             }
-            Event::RedrawRequested(_) => match renderer.prepare_frame(&backend) {
+            Event::RedrawRequested(_) => match renderer.prepare_frame() {
                 Ok(()) => {
-                    renderer.draw_frame(
-                        &mut backend,
-                        FrameState {
-                            camera_matrices: camera.calc_matrices(),
-                            window_cfg: window_cfg,
-                            input: InputState {
-                                mouse: mouse_state,
-                                keys: keyboard.clone(),
-                                dt,
-                            },
+                    renderer.draw_frame(FrameState {
+                        camera_matrices: camera.calc_matrices(),
+                        window_cfg: window_cfg,
+                        input: InputState {
+                            mouse: mouse_state,
+                            keys: keyboard.clone(),
+                            dt,
                         },
-                    );
+                    });
                     last_error_text = None;
                 }
                 Err(e) => {

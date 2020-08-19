@@ -13,18 +13,6 @@ bool is_inside_volume(float3 p) {
     return abs(p.x) < HSIZE && abs(p.y) < HSIZE && abs(p.z) < HSIZE;
 }
 
-float sd_sphere(float3 p, float s) {
-  return length(p) - s;
-}
-
-float op_sub(float d1, float d2) {
-    return max(-d1, d2);
-}
-
-float op_union(float d1, float d2) {
-    return min(d1, d2);
-}
-
 static float3 g_mouse_pos;
 float sample_volume(float3 p) {
     float3 uv = (p / HSIZE / 2.0) + 0.5.xxx;

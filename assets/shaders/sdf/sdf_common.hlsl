@@ -19,3 +19,15 @@ float3 get_sdf_brush_pos() {
 float get_sdf_brush_radius() {
     return 0.4;
 }
+
+float sd_sphere(float3 p, float s) {
+  return length(p) - s;
+}
+
+float op_sub(float d1, float d2) {
+    return max(-d1, d2);
+}
+
+float op_union(float d1, float d2) {
+    return min(d1, d2);
+}

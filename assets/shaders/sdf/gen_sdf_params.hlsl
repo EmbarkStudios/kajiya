@@ -1,10 +1,4 @@
-#include "rendertoy::shaders/view_constants.inc"
-#include "rtoy-samples::shaders/inc/uv.inc"
-
-layout(std430) buffer constants {
-    ViewConstants view_constants;
-    vec4 mouse;
-};
+#include "sdf_common.hlsl"
 
 layout(std430) buffer outputBuf {
     uint groupsX;
@@ -16,8 +10,6 @@ layout(std430) buffer outputBuf {
     int offsetZ;
     uint pad1;
 };
-
-#include "sdf_common.inc"
 
 layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 void main() {
