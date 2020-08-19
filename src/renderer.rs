@@ -3,20 +3,23 @@ use crate::backend::{
 };
 use crate::{
     camera::CameraMatrices, chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
-    shader_compiler::CompileShader, viewport::ViewConstants,
+    shader_compiler::CompileShader, viewport::ViewConstants, FrameState,
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use backend::{buffer::Buffer, device::CommandBuffer};
+use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
+use winit::event::VirtualKeyCode;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct FrameConstants {
     view_constants: ViewConstants,
+    mouse: [f32; 4],
     frame_idx: u32,
 }
 
@@ -553,7 +556,30 @@ impl Renderer {
         }
     }
 
-    pub fn draw_frame(&mut self, backend: &mut RenderBackend, camera_matrices: CameraMatrices) {
+    fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
+        let pos = frame_state.input.mouse.pos
+            / Vec2::new(
+                frame_state.window_cfg.width as f32,
+                frame_state.window_cfg.height as f32,
+            );
+
+        [
+            pos.x(),
+            pos.y(),
+            if (frame_state.input.mouse.button_mask & 1) != 0 {
+                1.0
+            } else {
+                0.0
+            },
+            if frame_state.input.keys.is_down(VirtualKeyCode::LShift) {
+                -1.0
+            } else {
+                1.0
+            },
+        ]
+    }
+
+    pub fn draw_frame(&mut self, backend: &mut RenderBackend, frame_state: FrameState) {
         self.dynamic_constants.advance_frame();
         self.frame_idx += 1;
 
@@ -562,7 +588,9 @@ impl Renderer {
         let height = 720;
 
         let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
-            view_constants: ViewConstants::builder(camera_matrices, width, height).build(),
+            view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
+                .build(),
+            mouse: Self::gen_shader_mouse_state(&frame_state),
             frame_idx: self.frame_idx,
         });
 

@@ -48,8 +48,8 @@ pub struct FirstPersonCameraInput {
     dt: f32,
 }
 
-impl<'a> From<&InputState<'a>> for FirstPersonCameraInput {
-    fn from(input_state: &InputState<'a>) -> FirstPersonCameraInput {
+impl From<&InputState> for FirstPersonCameraInput {
+    fn from(input_state: &InputState) -> FirstPersonCameraInput {
         let mut yaw_delta = 0.0;
         let mut pitch_delta = 0.0;
 

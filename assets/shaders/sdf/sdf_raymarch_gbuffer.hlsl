@@ -25,18 +25,16 @@ float op_union(float d1, float d2) {
     return min(d1, d2);
 }
 
-float3 mouse_pos;
+static float3 mouse_pos;
 float sample_volume(float3 p) {
     float3 uv = (p / HSIZE / 2.0) + 0.5.xxx;
     float d0 = sdf_tex.SampleLevel(sampler_lnc, uv, 0);
-    //float d0 = sdf_tex[uint3(0, 0, 0)];
-    /*float d1 = sd_sphere(p - mouse_pos, 0.4);
-    if (mouse.w > 0.0) {
+    float d1 = sd_sphere(p - mouse_pos, 0.4);
+    if (frame_constants.mouse.w > 0.0) {
         return op_union(d0, d1);
     } else {
         return op_sub(d1, d0);
-    }*/
-    return d0;
+    }
 }
 
 float3 intersect_ray_plane(float3 normal, float3 plane_pt, float3 o, float3 dir) {
@@ -48,9 +46,6 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     #if 1
     float4 output_tex_size = float4(1280, 720, 1.0 / 1280, 1.0 / 720);
     ViewConstants view_constants = frame_constants.view_constants;
-
-    //output_tex[pix] = float4(1, sdf_tex[uint3(0, 0, 0)], 0, 1);
-    //output_tex[pix] = float4(1, 0, 0, 1);
 
     float2 uv = get_uv(pix, output_tex_size);
 
@@ -64,9 +59,10 @@ void main(in uint2 pix : SV_DispatchThreadID) {
 
     float3 eye_pos_ws = mul(view_constants.view_to_world, float4(0, 0, 0, 1)).xyz;
     float3 eye_dir_ws = normalize(mul(view_constants.view_to_world, mul(view_constants.sample_to_view, float4(0.0, 0.0, 0.0, 1.0))).xyz);
-    /*float4 mouse_dir_cs = float4(uv_to_cs(mouse.xy), 0.0, 1.0);
-    float4 mouse_dir_ws = view_constants.view_to_world * (view_constants.sample_to_view * mouse_dir_cs);
-    mouse_pos = intersect_ray_plane(eye_dir_ws, eye_pos_ws + eye_dir_ws * 8.0, eye_pos_ws, mouse_dir_ws.xyz);*/
+    float4 mouse = frame_constants.mouse;
+    float4 mouse_dir_cs = float4(uv_to_cs(mouse.xy), 0.0, 1.0);
+    float4 mouse_dir_ws = mul(view_constants.view_to_world, mul(view_constants.sample_to_view, mouse_dir_cs));
+    mouse_pos = intersect_ray_plane(eye_dir_ws, eye_pos_ws + eye_dir_ws * 8.0, eye_pos_ws, mouse_dir_ws.xyz);
 
     const uint ITERS = 128;
     float dist = 1.0;

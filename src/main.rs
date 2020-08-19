@@ -27,9 +27,16 @@ use winit::{
     window::WindowBuilder,
 };
 
+#[derive(Copy, Clone)]
 pub struct WindowConfig {
     pub width: u32,
     pub height: u32,
+}
+
+pub struct FrameState {
+    pub camera_matrices: CameraMatrices,
+    pub window_cfg: WindowConfig,
+    pub input: InputState,
 }
 
 fn try_main() -> anyhow::Result<()> {
@@ -66,6 +73,7 @@ fn try_main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
     let mut last_frame_instant = std::time::Instant::now();
+    let mut dt = 1.0 / 60.0;
 
     event_loop.run(move |event, _, control_flow| {
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
@@ -101,17 +109,17 @@ fn try_main() -> anyhow::Result<()> {
                 // Application update code.
 
                 let now = std::time::Instant::now();
-                let dt = now - last_frame_instant;
+                let dt_duration = now - last_frame_instant;
                 last_frame_instant = now;
-                let dt = dt.as_secs_f32();
+                dt = dt_duration.as_secs_f32();
 
                 keyboard.update(std::mem::take(&mut keyboard_events), dt);
                 mouse_state.update(&new_mouse_state);
                 new_mouse_state = mouse_state.clone();
 
                 let input_state = InputState {
-                    mouse: &mouse_state,
-                    keys: &keyboard,
+                    mouse: mouse_state,
+                    keys: keyboard.clone(),
                     dt,
                 };
                 camera.update(&input_state);
@@ -120,7 +128,18 @@ fn try_main() -> anyhow::Result<()> {
             }
             Event::RedrawRequested(_) => match renderer.prepare_frame(&backend) {
                 Ok(()) => {
-                    renderer.draw_frame(&mut backend, camera.calc_matrices());
+                    renderer.draw_frame(
+                        &mut backend,
+                        FrameState {
+                            camera_matrices: camera.calc_matrices(),
+                            window_cfg: window_cfg,
+                            input: InputState {
+                                mouse: mouse_state,
+                                keys: keyboard.clone(),
+                                dt,
+                            },
+                        },
+                    );
                     last_error_text = None;
                 }
                 Err(e) => {

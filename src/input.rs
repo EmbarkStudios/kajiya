@@ -4,13 +4,13 @@ use crate::math::*;
 use std::collections::HashMap;
 pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
-#[allow(dead_code)]
+#[derive(Clone)]
 pub struct KeyState {
     pub ticks: u32,
     pub seconds: f32,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct KeyboardState {
     keys_down: HashMap<VirtualKeyCode, KeyState>,
     events: Vec<KeyboardInput>,
@@ -56,7 +56,7 @@ impl KeyboardState {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub struct MouseState {
     pub pos: Vec2,
     pub delta: Vec2,
@@ -81,8 +81,8 @@ impl MouseState {
     }
 }
 
-pub struct InputState<'a> {
-    pub mouse: &'a MouseState,
-    pub keys: &'a KeyboardState,
+pub struct InputState {
+    pub mouse: MouseState,
+    pub keys: KeyboardState,
     pub dt: f32,
 }

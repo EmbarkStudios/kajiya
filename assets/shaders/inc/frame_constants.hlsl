@@ -11,6 +11,7 @@ struct ViewConstants {
 
 struct FrameConstants {
     ViewConstants view_constants;
+    float4 mouse;
     uint frame_index;
 };
 
