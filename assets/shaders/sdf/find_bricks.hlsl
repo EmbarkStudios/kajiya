@@ -20,17 +20,17 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
         }
     }
 
-    mind = WaveActiveMin(mind);
+    bool occupied_brick = WaveActiveAnyTrue(mind < 0.0);
 
-    if (0 == idx_within_group) {
-        if (mind < 0.0) {
-            uint brick_addr = 0;
-            bricks_meta.InterlockedAdd(0, 1, brick_addr);
+    if (0 == idx_within_group && occupied_brick) {
+        uint brick_addr = 0;
 
-            BrickInstance binst = (BrickInstance)0;
-            binst.position = float3(pix);   // TODO
+        // TODO: make `bricks_meta`'s layout match instanced indirect drawing
+        bricks_meta.InterlockedAdd(0, 1, brick_addr);
 
-            bricks_buffer[brick_addr] = binst;
-        }
+        BrickInstance binst = (BrickInstance)0;
+        binst.position = float3(pix);   // TODO
+
+        bricks_buffer[brick_addr] = binst;
     }
 }
