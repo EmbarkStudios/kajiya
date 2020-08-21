@@ -401,7 +401,7 @@ impl Renderer {
                     ],
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
-                raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
+                raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2);
             }
 
             // Raymarch the SDF

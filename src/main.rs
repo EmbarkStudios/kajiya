@@ -21,7 +21,7 @@ use math::*;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{panic, sync::Arc};
 use winit::{
     event::{ElementState, Event, KeyboardInput, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -162,7 +162,14 @@ fn try_main() -> anyhow::Result<()> {
 }
 
 fn main() {
+    panic::set_hook(Box::new(|panic_info| {
+        println!("rust panic: {:#?}", panic_info);
+        loop {}
+    }));
+
     if let Err(err) = try_main() {
         eprintln!("ERROR: {:?}", err);
+        // std::thread::sleep(std::time::Duration::from_secs(1));
+        loop {}
     }
 }

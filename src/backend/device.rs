@@ -117,11 +117,20 @@ impl Device {
             vk::ExtFragmentShaderInterlockFn::name().as_ptr(),
             vk::KhrPushDescriptorFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
-            vk::KhrPipelineLibraryFn::name().as_ptr(), // rt dep
-            vk::KhrDeferredHostOperationsFn::name().as_ptr(), // rt dep
-            vk::KhrBufferDeviceAddressFn::name().as_ptr(), // rt dep
-            khr::RayTracing::name().as_ptr(),
         ];
+
+        #[cfg(feature = "ray-tracing")]
+        {
+            device_extension_names_raw.extend(
+                [
+                    vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
+                    vk::KhrDeferredHostOperationsFn::name().as_ptr(), // rt dep
+                    vk::KhrBufferDeviceAddressFn::name().as_ptr(),    // rt dep
+                    khr::RayTracing::name().as_ptr(),
+                ]
+                .iter(),
+            );
+        }
 
         if pdevice.presentation_requested {
             device_extension_names_raw.push(khr::Swapchain::name().as_ptr());
