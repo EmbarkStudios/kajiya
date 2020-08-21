@@ -12,13 +12,18 @@ use crate::{
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
-use backend::{buffer::Buffer, device::CommandBuffer};
+use backend::{
+    buffer::{Buffer, BufferDesc},
+    device::CommandBuffer,
+};
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 use winit::event::VirtualKeyCode;
+
+const SDF_DIM: u32 = 256;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -43,10 +48,14 @@ pub struct Renderer {
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipeline,
 
+    brick_meta_buffer: Buffer,
+    brick_inst_buffer: Buffer,
     sdf_img: ImageWithViews,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
+    clear_bricks_meta: ComputePipelineHandle,
+    find_sdf_bricks: ComputePipelineHandle,
 }
 
 lazy_static::lazy_static! {
@@ -71,6 +80,8 @@ lazy_static::lazy_static! {
 
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
+    Buffer(vk::DescriptorBufferInfo),
+    Sampler,
 }
 
 pub mod view {
@@ -92,6 +103,19 @@ pub mod view {
                 .image_view(view.raw)
                 .build(),
         )
+    }
+
+    pub fn buffer_rw(buffer: &Buffer) -> DescriptorSetBinding {
+        DescriptorSetBinding::Buffer(
+            vk::DescriptorBufferInfo::builder()
+                .buffer(buffer.raw)
+                .range(vk::WHOLE_SIZE)
+                .build(),
+        )
+    }
+
+    pub fn sampler() -> DescriptorSetBinding {
+        DescriptorSetBinding::Sampler
     }
 }
 
@@ -215,7 +239,7 @@ impl Renderer {
         let sdf_img = backend
             .device
             .create_image(
-                ImageDesc::new_3d([256, 256, 256])
+                ImageDesc::new_3d([SDF_DIM, SDF_DIM, SDF_DIM])
                     .format(vk::Format::R16_SFLOAT)
                     .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
                     .build()
@@ -240,9 +264,26 @@ impl Renderer {
                 ])
         }
 
+        let brick_meta_buffer = backend.device.create_buffer(BufferDesc {
+            size: 4,
+            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+        })?;
+
+        let brick_inst_buffer = backend.device.create_buffer(BufferDesc {
+            size: (SDF_DIM as usize).pow(3) * 4 * 4,
+            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+        })?;
+
         let gen_empty_sdf =
             cs_cache.register("/assets/shaders/sdf/gen_empty_sdf.hlsl", sdf_shader_ctor);
         let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", sdf_shader_ctor);
+        let clear_bricks_meta = cs_cache.register(
+            "/assets/shaders/sdf/clear_bricks_meta.hlsl",
+            sdf_shader_ctor,
+        );
+        let find_sdf_bricks =
+            cs_cache.register("/assets/shaders/sdf/find_bricks.hlsl", sdf_shader_ctor);
+
         let sdf_raymarch_gbuffer = cs_cache.register(
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
             sdf_shader_ctor,
@@ -259,16 +300,21 @@ impl Renderer {
             gradients_shader,
             raster_simple_render_pass,
             raster_simple,
+
+            brick_meta_buffer,
+            brick_inst_buffer,
             sdf_img,
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
             edit_sdf,
+            clear_bricks_meta,
+            find_sdf_bricks,
         })
     }
 
     pub fn draw_frame(&mut self, frame_state: FrameState) {
         self.dynamic_constants.advance_frame();
-        self.frame_idx += 1;
+        self.frame_idx = self.frame_idx.overflowing_add(1).0;
 
         let width = frame_state.window_cfg.width;
         let height = frame_state.window_cfg.height;
@@ -342,11 +388,41 @@ impl Renderer {
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
 
-                raw_device.cmd_dispatch(cb.raw, 256 / 4, 256 / 4, 256 / 4);
+                raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4, SDF_DIM / 4, SDF_DIM / 4);
             }
 
             sdf_img_tracker
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
+
+            {
+                let shader = self.cs_cache.get(self.clear_bricks_meta);
+                self.bind_compute_pipeline(cb, &*shader);
+                self.push_descriptor_set(
+                    cb,
+                    &*shader,
+                    0,
+                    &[view::buffer_rw(&self.brick_meta_buffer)],
+                );
+                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
+                raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
+            }
+
+            {
+                let shader = self.cs_cache.get(self.find_sdf_bricks);
+                self.bind_compute_pipeline(cb, &*shader);
+                self.push_descriptor_set(
+                    cb,
+                    &*shader,
+                    0,
+                    &[
+                        view::image(&self.sdf_img.view(Default::default())),
+                        view::buffer_rw(&self.brick_meta_buffer),
+                        view::buffer_rw(&self.brick_inst_buffer),
+                    ],
+                );
+                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
+                raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
+            }
 
             // Raymarch the SDF
             {
@@ -360,6 +436,7 @@ impl Renderer {
                     &[
                         view::image_rw(&self.output_img.view(Default::default())),
                         view::image(&self.sdf_img.view(Default::default())),
+                        view::sampler(),
                     ],
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
@@ -606,6 +683,7 @@ impl Renderer {
         bindings: &[DescriptorSetBinding],
     ) {
         let image_info = TempList::new();
+        let buffer_info = TempList::new();
         let shader_set_info = &shader.set_layout_info[set_index as usize];
 
         unsafe {
@@ -629,6 +707,16 @@ impl Renderer {
                             })
                             .image_info(std::slice::from_ref(image_info.add(*image)))
                             .build(),
+                        DescriptorSetBinding::Buffer(buffer) => write
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
+                            .build(),
+                        DescriptorSetBinding::Sampler => {
+                            let mut write =
+                                write.descriptor_type(vk::DescriptorType::SAMPLER).build();
+                            write.descriptor_count = 1;
+                            write
+                        }
                     }
                 })
                 .collect();

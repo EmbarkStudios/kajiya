@@ -3,7 +3,8 @@ use ash::{extensions::ext, version::EntryV1_0, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
-    ffi::{CStr, CString},
+    ffi::{c_void, CStr, CString},
+    os::raw::c_char,
     sync::Arc,
 };
 
@@ -117,15 +118,26 @@ impl Instance {
 }
 
 unsafe extern "system" fn vulkan_debug_callback(
-    _: ash::vk::DebugReportFlagsEXT,
-    _: ash::vk::DebugReportObjectTypeEXT,
-    _: u64,
-    _: usize,
-    _: i32,
-    _: *const std::os::raw::c_char,
-    p_message: *const std::os::raw::c_char,
-    _: *mut std::os::raw::c_void,
+    _flags: vk::DebugReportFlagsEXT,
+    _obj_type: vk::DebugReportObjectTypeEXT,
+    _src_obj: u64,
+    _location: usize,
+    _msg_code: i32,
+    _layer_prefix: *const c_char,
+    message: *const c_char,
+    _user_data: *mut c_void,
 ) -> u32 {
-    error!("{:?}\n", CStr::from_ptr(p_message));
+    let message = CStr::from_ptr(message).to_str().unwrap();
+    if message.starts_with("Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-00322")
+        || message.starts_with("Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-02752")
+    {
+        // Validation layers incorrectly report an error in pushing immutable sampler descriptors.
+        //
+        // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushDescriptorSetKHR.html
+        // This documentation claims that it's necessary to push immutable samplers.
+    } else {
+        error!("{}\n", message);
+    }
+
     ash::vk::FALSE
 }

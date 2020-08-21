@@ -88,6 +88,6 @@ void main(in uint2 pix : SV_DispatchThreadID) {
 
     output_tex[pix] = res;
     #else
-        output_tex[pix] = sample_volume(float3(0, 0, 0)).xxxx;
+        output_tex[pix] = float4(0.1, 0.3, 0.7, 1.0);
     #endif
 }
