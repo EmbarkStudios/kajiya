@@ -260,6 +260,8 @@ pub struct ComputePipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
     pub set_layout_info: Vec<HashMap<u32, vk::DescriptorType>>,
+    pub descriptor_pool_sizes: Vec<vk::DescriptorPoolSize>,
+    pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
 }
 
 pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> ComputePipeline {
@@ -320,10 +322,27 @@ pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> Co
             .create_compute_pipelines(vk::PipelineCache::null(), &[pipeline_info.build()], None)
             .expect("pipeline")[0];
 
+        let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
+        for bindings in set_layout_info.iter() {
+            for ty in bindings.values() {
+                if let Some(mut dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty)
+                {
+                    dps.descriptor_count += 1;
+                } else {
+                    descriptor_pool_sizes.push(vk::DescriptorPoolSize {
+                        ty: *ty,
+                        descriptor_count: 1,
+                    })
+                }
+            }
+        }
+
         ComputePipeline {
             pipeline_layout,
             pipeline,
             set_layout_info,
+            descriptor_pool_sizes,
+            descriptor_set_layouts,
         }
     }
 }

@@ -81,7 +81,6 @@ lazy_static::lazy_static! {
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
     Buffer(vk::DescriptorBufferInfo),
-    Sampler,
 }
 
 pub mod view {
@@ -112,10 +111,6 @@ pub mod view {
                 .range(vk::WHOLE_SIZE)
                 .build(),
         )
-    }
-
-    pub fn sampler() -> DescriptorSetBinding {
-        DescriptorSetBinding::Sampler
     }
 }
 
@@ -178,18 +173,10 @@ impl Renderer {
             cs_cache.register("/assets/shaders/gradients.hlsl", |compiled_shader| {
                 ComputePipelineDesc::builder()
                     .spirv(&compiled_shader.spirv)
-                    .descriptor_set_opts(&[
-                        (
-                            0,
-                            DescriptorSetLayoutOpts::builder()
-                                .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
-                        ),
-                        (
-                            2,
-                            DescriptorSetLayoutOpts::builder()
-                                .replace(FRAME_CONSTANTS_LAYOUT.clone()),
-                        ),
-                    ])
+                    .descriptor_set_opts(&[(
+                        2,
+                        DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
+                    )])
             });
 
         let vertex_shader = smol::block_on(
@@ -251,17 +238,10 @@ impl Renderer {
         fn sdf_shader_ctor(compiled_shader: &CompiledShader) -> ComputePipelineDescBuilder {
             ComputePipelineDesc::builder()
                 .spirv(&compiled_shader.spirv)
-                .descriptor_set_opts(&[
-                    (
-                        0,
-                        DescriptorSetLayoutOpts::builder()
-                            .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
-                    ),
-                    (
-                        2,
-                        DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
-                    ),
-                ])
+                .descriptor_set_opts(&[(
+                    2,
+                    DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
+                )])
         }
 
         let brick_meta_buffer = backend.device.create_buffer(BufferDesc {
@@ -380,7 +360,7 @@ impl Renderer {
                 });
 
                 self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(
+                self.bind_descriptor_set(
                     cb,
                     &*shader,
                     0,
@@ -397,7 +377,7 @@ impl Renderer {
             {
                 let shader = self.cs_cache.get(self.clear_bricks_meta);
                 self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(
+                self.bind_descriptor_set(
                     cb,
                     &*shader,
                     0,
@@ -410,7 +390,7 @@ impl Renderer {
             {
                 let shader = self.cs_cache.get(self.find_sdf_bricks);
                 self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(
+                self.bind_descriptor_set(
                     cb,
                     &*shader,
                     0,
@@ -429,14 +409,13 @@ impl Renderer {
                 let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
 
                 self.bind_compute_pipeline(cb, &*shader);
-                self.push_descriptor_set(
+                self.bind_descriptor_set(
                     cb,
                     &*shader,
                     0,
                     &[
                         view::image_rw(&self.output_img.view(Default::default())),
                         view::image(&self.sdf_img.view(Default::default())),
-                        view::sampler(),
                     ],
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
@@ -675,7 +654,7 @@ impl Renderer {
         }
     }
 
-    pub fn push_descriptor_set(
+    pub fn bind_descriptor_set(
         &self,
         cb: &CommandBuffer,
         shader: &ComputePipeline,
@@ -686,6 +665,29 @@ impl Renderer {
         let buffer_info = TempList::new();
         let shader_set_info = &shader.set_layout_info[set_index as usize];
 
+        let raw_device = &self.backend.device.raw;
+
+        // TODO: destroy the pool at the right time
+        let descriptor_pool = {
+            let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+                .max_sets(1)
+                .pool_sizes(&shader.descriptor_pool_sizes);
+
+            unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }
+                .unwrap()
+        };
+
+        let descriptor_set = {
+            let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+                .descriptor_pool(descriptor_pool)
+                .set_layouts(std::slice::from_ref(
+                    &shader.descriptor_set_layouts[set_index as usize],
+                ));
+
+            unsafe { raw_device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()
+                [0]
+        };
+
         unsafe {
             let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
                 .iter()
@@ -693,6 +695,7 @@ impl Renderer {
                 .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
                 .map(|(binding_idx, binding)| {
                     let write = vk::WriteDescriptorSet::builder()
+                        .dst_set(descriptor_set)
                         .dst_binding(binding_idx as _)
                         .dst_array_element(0);
 
@@ -711,27 +714,23 @@ impl Renderer {
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                             .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
                             .build(),
-                        DescriptorSetBinding::Sampler => {
-                            let mut write =
-                                write.descriptor_type(vk::DescriptorType::SAMPLER).build();
-                            write.descriptor_count = 1;
-                            write
-                        }
                     }
                 })
                 .collect();
 
             self.backend
                 .device
-                .cmd_ext
-                .push_descriptor
-                .cmd_push_descriptor_set(
-                    cb.raw,
-                    vk::PipelineBindPoint::COMPUTE,
-                    shader.pipeline_layout,
-                    set_index,
-                    &descriptor_writes,
-                );
+                .raw
+                .update_descriptor_sets(&descriptor_writes, &[]);
+
+            self.backend.device.raw.cmd_bind_descriptor_sets(
+                cb.raw,
+                vk::PipelineBindPoint::COMPUTE,
+                shader.pipeline_layout,
+                set_index,
+                &[descriptor_set],
+                &[],
+            );
         }
     }
 
