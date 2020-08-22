@@ -11,14 +11,12 @@ use crate::{
     FrameState,
 };
 use arrayvec::ArrayVec;
-use ash::{
-    version::{DeviceV1_0, DeviceV1_2},
-    vk,
-};
+use ash::{version::DeviceV1_0, vk};
 use backend::{
     buffer::{Buffer, BufferDesc},
     device::CommandBuffer,
 };
+use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -59,6 +57,7 @@ pub struct Renderer {
     edit_sdf: ComputePipelineHandle,
     clear_bricks_meta: ComputePipelineHandle,
     find_sdf_bricks: ComputePipelineHandle,
+    cube_index_buffer: Buffer,
 }
 
 lazy_static::lazy_static! {
@@ -256,15 +255,21 @@ impl Renderer {
                 )])
         }
 
-        let brick_meta_buffer = backend.device.create_buffer(BufferDesc {
-            size: 16, // size of VkDrawIndirectCommand
-            usage: vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::INDIRECT_BUFFER,
-        })?;
+        let brick_meta_buffer = backend.device.create_buffer(
+            BufferDesc {
+                size: 20, // size of VkDrawIndexedIndirectCommand
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::INDIRECT_BUFFER,
+            },
+            None,
+        )?;
 
-        let brick_inst_buffer = backend.device.create_buffer(BufferDesc {
-            size: (SDF_DIM as usize).pow(3) * 4 * 4,
-            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-        })?;
+        let brick_inst_buffer = backend.device.create_buffer(
+            BufferDesc {
+                size: (SDF_DIM as usize).pow(3) * 4 * 4,
+                usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+            },
+            None,
+        )?;
 
         let gen_empty_sdf =
             cs_cache.register("/assets/shaders/sdf/gen_empty_sdf.hlsl", sdf_shader_ctor);
@@ -280,6 +285,15 @@ impl Renderer {
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
             sdf_shader_ctor,
         );
+
+        let cube_indices = cube_indices();
+        let cube_index_buffer = backend.device.create_buffer(
+            BufferDesc {
+                size: cube_indices.len() * 4,
+                usage: vk::BufferUsageFlags::INDEX_BUFFER,
+            },
+            Some((&cube_indices).as_byte_slice()),
+        )?;
 
         Ok(Renderer {
             backend,
@@ -301,6 +315,7 @@ impl Renderer {
             edit_sdf,
             clear_bricks_meta,
             find_sdf_bricks,
+            cube_index_buffer,
         })
     }
 
@@ -482,7 +497,21 @@ impl Renderer {
                         &[view::buffer(&self.brick_inst_buffer)],
                     );
                     self.bind_frame_constants(cb, &self.raster_simple, frame_constants_offset);
-                    raw_device.cmd_draw_indirect(cb.raw, self.brick_meta_buffer.raw, 0, 1, 0);
+
+                    raw_device.cmd_bind_index_buffer(
+                        cb.raw,
+                        self.cube_index_buffer.raw,
+                        0,
+                        vk::IndexType::UINT32,
+                    );
+
+                    raw_device.cmd_draw_indexed_indirect(
+                        cb.raw,
+                        self.brick_meta_buffer.raw,
+                        0,
+                        1,
+                        0,
+                    );
 
                     // TODO: dispatch indirect. just one draw, but with many instances.
                     //raw_device.cmd_draw_indexed_indirect();
@@ -712,7 +741,6 @@ impl Renderer {
 
         let raw_device = &self.backend.device.raw;
 
-        // TODO: destroy the pool at the right time
         let descriptor_pool = {
             let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
                 .max_sets(1)
@@ -721,6 +749,7 @@ impl Renderer {
             unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }
                 .unwrap()
         };
+        self.backend.device.defer_release(descriptor_pool);
 
         let descriptor_set = {
             let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
@@ -832,4 +861,23 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
             1.0
         },
     ]
+}
+
+// Vertices: bits 0, 1, 2, map to +/- X, Y, Z
+fn cube_indices() -> Vec<u32> {
+    let mut res = Vec::with_capacity(6 * 2 * 3);
+
+    for (ndim, dim0, dim1) in [(1, 2, 4), (2, 4, 1), (4, 1, 2)].iter().copied() {
+        for (nbit, dim0, dim1) in [(0, dim0, dim1), (ndim, dim1, dim0)].iter().copied() {
+            res.push(nbit);
+            res.push(nbit + dim0);
+            res.push(nbit + dim1);
+
+            res.push(nbit + dim1);
+            res.push(nbit + dim0);
+            res.push(nbit + dim0 + dim1);
+        }
+    }
+
+    res
 }

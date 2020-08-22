@@ -16,11 +16,37 @@ pub struct Queue {
     pub(crate) family: QueueFamily,
 }
 
+pub trait DeferredRelease: Copy {
+    fn enqueue_release(self, pending: &mut PendingResourceReleases);
+}
+
+impl DeferredRelease for vk::DescriptorPool {
+    fn enqueue_release(self, pending: &mut PendingResourceReleases) {
+        pending.descriptor_pools.push(self);
+    }
+}
+
+#[derive(Default)]
+pub struct PendingResourceReleases {
+    pub descriptor_pools: Vec<vk::DescriptorPool>,
+}
+
+impl PendingResourceReleases {
+    fn release_all(&mut self, device: &ash::Device) {
+        unsafe {
+            for res in self.descriptor_pools.drain(..) {
+                device.destroy_descriptor_pool(res, None);
+            }
+        }
+    }
+}
+
 pub struct DeviceFrame {
     //pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
     pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
     pub rendering_complete_semaphore: Option<vk::Semaphore>,
     pub command_buffer: CommandBuffer,
+    pub pending_resource_releases: Mutex<PendingResourceReleases>,
 }
 
 pub struct CommandBuffer {
@@ -82,6 +108,7 @@ impl DeviceFrame {
             swapchain_acquired_semaphore: None,
             rendering_complete_semaphore: None,
             command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
+            pending_resource_releases: Default::default(),
         }
     }
 }
@@ -98,6 +125,7 @@ pub struct Device {
     pub(crate) global_allocator: vk_mem::Allocator,
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) cmd_ext: CmdExt,
+    pub(crate) setup_cb: Mutex<CommandBuffer>,
     frame0: Mutex<Arc<DeviceFrame>>,
     frame1: Mutex<Arc<DeviceFrame>>,
 }
@@ -247,6 +275,8 @@ impl Device {
                 push_descriptor: khr::PushDescriptor::new(&pdevice.instance.raw, &device),
             };
 
+            let setup_cb = CommandBuffer::new(&device, &universal_queue.family).unwrap();
+
             Ok(Arc::new(Device {
                 pdevice: pdevice.clone(),
                 instance: pdevice.instance.clone(),
@@ -255,6 +285,7 @@ impl Device {
                 global_allocator,
                 immutable_samplers,
                 cmd_ext,
+                setup_cb: Mutex::new(setup_cb),
                 frame0: Mutex::new(Arc::new(frame0)),
                 frame1: Mutex::new(Arc::new(frame1)),
             }))
@@ -317,6 +348,10 @@ impl Device {
         self.frame0.lock().clone()
     }
 
+    pub fn defer_release(&self, resource: impl DeferredRelease) {
+        resource.enqueue_release(&mut *self.current_frame().pending_resource_releases.lock());
+    }
+
     pub fn finish_frame(&self, frame: Arc<DeviceFrame>) {
         drop(frame);
 
@@ -348,6 +383,11 @@ impl Device {
                 )
                 .unwrap();
         }
+
+        frame0
+            .pending_resource_releases
+            .get_mut()
+            .release_all(&self.raw);
     }
 }
 

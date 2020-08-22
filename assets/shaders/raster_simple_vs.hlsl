@@ -8,7 +8,7 @@ struct VsOut {
 
 struct BrickInstance {
     float3 position;
-    float pad;
+    float half_extent;
 };
 
 [[vk::binding(0)]] StructuredBuffer<BrickInstance> bricks_buffer;
@@ -19,16 +19,15 @@ VsOut main(
 ) {
     VsOut vsout;
 
-    const float TAU = 6.28318530717958647692528676655900577;
-    float a = vid * TAU / 3;
-    float3 pos = float3(cos(a), sin(a), 0) * 0.125;
-    pos += bricks_buffer[instance_id].position;
+    BrickInstance binst = bricks_buffer[instance_id];
+    float3 pos = (float3(vid & 1, (vid >> 1) & 1, (vid >> 2) & 1) * 2.0 - 1.0) * binst.half_extent;
+    pos += binst.position;
 
     float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(pos, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
     vsout.position = cs_pos;
-    vsout.color = float4(vid == 0, vid == 1, vid == 2, 1.0);
+    vsout.color = float4(vid % 3 == 0, vid % 3 == 1, vid % 3 == 2, 1.0);
 
     return vsout;
 }
