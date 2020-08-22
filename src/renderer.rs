@@ -443,20 +443,12 @@ impl Renderer {
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
                 raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
 
-                // TODO: make a wrapper
-                vk_sync::cmd::pipeline_barrier(
-                    raw_device.fp_v1_0(),
-                    cb.raw,
-                    Some(vk_sync::GlobalBarrier {
-                        previous_accesses: &[vk_sync::AccessType::ComputeShaderWrite],
-                        next_accesses: &[vk_sync::AccessType::ComputeShaderWrite],
-                    }),
-                    &[],
-                    &[],
+                self.global_barrier(
+                    cb,
+                    &[vk_sync::AccessType::ComputeShaderWrite],
+                    &[vk_sync::AccessType::ComputeShaderWrite],
                 );
             }
-
-            // TODO: barrier
 
             {
                 let shader = self.cs_cache.get(self.find_sdf_bricks);
@@ -474,16 +466,10 @@ impl Renderer {
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
                 raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2);
 
-                // TODO: make a wrapper
-                vk_sync::cmd::pipeline_barrier(
-                    raw_device.fp_v1_0(),
-                    cb.raw,
-                    Some(vk_sync::GlobalBarrier {
-                        previous_accesses: &[vk_sync::AccessType::ComputeShaderWrite],
-                        next_accesses: &[vk_sync::AccessType::IndirectBuffer],
-                    }),
-                    &[],
-                    &[],
+                self.global_barrier(
+                    cb,
+                    &[vk_sync::AccessType::ComputeShaderWrite],
+                    &[vk_sync::AccessType::IndirectBuffer],
                 );
             }
 
@@ -890,6 +876,24 @@ impl Renderer {
                 );
             }
         }
+    }
+
+    fn global_barrier(
+        &self,
+        cb: &CommandBuffer,
+        previous_accesses: &[vk_sync::AccessType],
+        next_accesses: &[vk_sync::AccessType],
+    ) {
+        vk_sync::cmd::pipeline_barrier(
+            self.backend.device.raw.fp_v1_0(),
+            cb.raw,
+            Some(vk_sync::GlobalBarrier {
+                previous_accesses,
+                next_accesses,
+            }),
+            &[],
+            &[],
+        );
     }
 
     pub fn prepare_frame(&mut self) -> anyhow::Result<()> {
