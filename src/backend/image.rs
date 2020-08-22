@@ -68,11 +68,14 @@ pub struct Image {
 }
 
 #[derive(Clone, Copy, Builder, Eq, PartialEq, Hash)]
+#[builder(pattern = "owned")]
 pub struct ImageViewDesc {
     #[builder(setter(strip_option), default)]
     pub view_type: Option<vk::ImageViewType>,
     #[builder(setter(strip_option), default)]
     pub format: Option<vk::Format>,
+    #[builder(default = "vk::ImageAspectFlags::COLOR")]
+    pub aspect_mask: vk::ImageAspectFlags,
     // TODO
 }
 
@@ -141,7 +144,7 @@ impl Device {
             )
             // TODO
             .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: ash::vk::ImageAspectFlags::COLOR,
+                aspect_mask: desc.aspect_mask,
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,

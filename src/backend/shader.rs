@@ -452,26 +452,25 @@ pub const MAX_COLOR_ATTACHMENTS: usize = 8;
 #[derive(Eq, PartialEq, Hash)]
 pub struct FramebufferCacheKey {
     pub dims: [u32; 2],
-    pub color_attachments:
-        ArrayVec<[(vk::ImageUsageFlags, vk::ImageCreateFlags); MAX_COLOR_ATTACHMENTS]>,
-    pub use_depth_stencil: bool,
+    pub attachments:
+        ArrayVec<[(vk::ImageUsageFlags, vk::ImageCreateFlags); MAX_COLOR_ATTACHMENTS + 1]>,
 }
 
 impl FramebufferCacheKey {
     pub fn new<'a>(
         dims: [u32; 2],
         color_attachments: impl Iterator<Item = &'a ImageDesc>,
-        use_depth_stencil: bool,
+        depth_stencil_attachment: Option<&'a ImageDesc>,
     ) -> Self {
         let color_attachments = color_attachments
+            .chain(depth_stencil_attachment.into_iter())
             .copied()
             .map(|attachment| (attachment.usage, attachment.flags))
             .collect();
 
         Self {
             dims,
-            color_attachments,
-            use_depth_stencil,
+            attachments: color_attachments,
         }
     }
 }
@@ -479,8 +478,7 @@ impl FramebufferCacheKey {
 // TODO: nuke when resizing
 pub struct FramebufferCache {
     entries: Mutex<HashMap<FramebufferCacheKey, vk::Framebuffer>>,
-    color_attachment_desc: ArrayVec<[RenderPassAttachmentDesc; MAX_COLOR_ATTACHMENTS]>,
-    depth_attachment_desc: Option<RenderPassAttachmentDesc>,
+    attachment_desc: ArrayVec<[RenderPassAttachmentDesc; MAX_COLOR_ATTACHMENTS + 1]>,
     render_pass: vk::RenderPass,
 }
 
@@ -490,15 +488,19 @@ impl FramebufferCache {
         color_attachments: &[RenderPassAttachmentDesc],
         depth_attachment: Option<RenderPassAttachmentDesc>,
     ) -> Self {
-        let mut color_attachment_desc = ArrayVec::new();
-        color_attachment_desc
+        let mut attachment_desc = ArrayVec::new();
+
+        attachment_desc
             .try_extend_from_slice(color_attachments)
             .unwrap();
 
+        if let Some(depth_attachment) = depth_attachment {
+            attachment_desc.push(depth_attachment)
+        }
+
         Self {
             entries: Default::default(),
-            color_attachment_desc,
-            depth_attachment_desc: depth_attachment,
+            attachment_desc,
             render_pass,
         }
     }
@@ -517,10 +519,10 @@ impl FramebufferCache {
                 let color_formats = TempList::new();
                 let [width, height] = key.dims;
 
-                let mut attachments = self
-                    .color_attachment_desc
+                let attachments = self
+                    .attachment_desc
                     .iter()
-                    .zip(key.color_attachments.iter())
+                    .zip(key.attachments.iter())
                     .map(|(desc, (usage, flags))| {
                         vk::FramebufferAttachmentImageInfoKHR::builder()
                             .width(width as _)
@@ -532,19 +534,6 @@ impl FramebufferCache {
                             .build()
                     })
                     .collect::<ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]>>();
-
-                if key.use_depth_stencil {
-                    let desc = self.depth_attachment_desc.unwrap();
-                    attachments.push(
-                        vk::FramebufferAttachmentImageInfoKHR::builder()
-                            .width(width as _)
-                            .height(height as _)
-                            .layer_count(1)
-                            .view_formats(std::slice::from_ref(color_formats.add(desc.format)))
-                            .usage(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT)
-                            .build(),
-                    );
-                }
 
                 let mut imageless_desc = vk::FramebufferAttachmentsCreateInfoKHR::builder()
                     .attachment_image_infos(&attachments);
@@ -593,8 +582,8 @@ pub fn create_render_pass(
         })
         .chain(desc.depth_attachment.as_ref().map(|a| {
             a.to_vk(
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
             )
         }))
         .collect::<Vec<_>>();

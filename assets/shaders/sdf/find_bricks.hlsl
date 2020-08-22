@@ -31,11 +31,11 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
     bool occupied_brick = WaveActiveAnyTrue(mind < 0.0);
 
     if (WaveIsFirstLane()) {
-        bool _orig;
+        uint _orig;
         InterlockedOr(group_any_brick_occupied, uint(occupied_brick), _orig);
     }
 
-    GroupMemoryBarrierWithGroupSync();    
+    GroupMemoryBarrierWithGroupSync();
 
     if (0 == idx_within_group && group_any_brick_occupied) {
         uint brick_addr = 0;

@@ -40,6 +40,7 @@ pub fn blit_image_to_swapchain(
             swapchain_image.image,
             vk_sync::AccessType::Present,
             vk_sync::AccessType::ComputeShaderWrite,
+            vk::ImageAspectFlags::COLOR,
         )
         .with_discard(true),
     );
@@ -122,6 +123,7 @@ pub fn blit_image_to_swapchain(
             swapchain_image.image,
             vk_sync::AccessType::ComputeShaderWrite,
             vk_sync::AccessType::Present,
+            vk::ImageAspectFlags::COLOR,
         ),
     );
 }

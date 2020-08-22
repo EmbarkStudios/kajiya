@@ -44,6 +44,7 @@ pub struct Renderer {
 
     present_shader: ShaderPipeline,
     output_img: ImageWithViews,
+    depth_img: ImageWithViews,
 
     gradients_shader: ComputePipelineHandle,
     raster_simple_render_pass: Arc<RenderPass>,
@@ -180,6 +181,21 @@ impl Renderer {
             )?
             .with_views(&backend.device);
 
+        let depth_img = backend
+            .device
+            .create_image(
+                ImageDesc::new_2d(output_dims)
+                    .format(vk::Format::D24_UNORM_S8_UINT)
+                    .usage(
+                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                            | vk::ImageUsageFlags::TRANSFER_DST,
+                    )
+                    .build()
+                    .unwrap(),
+                None,
+            )?
+            .with_views(&backend.device);
+
         let gradients_shader =
             cs_cache.register("/assets/shaders/gradients.hlsl", |compiled_shader| {
                 ComputePipelineDesc::builder()
@@ -215,7 +231,9 @@ impl Renderer {
                     vk::Format::R16G16B16A16_SFLOAT,
                 )
                 .garbage_input()],
-                depth_attachment: None,
+                depth_attachment: Some(RenderPassAttachmentDesc::new(
+                    vk::Format::D24_UNORM_S8_UINT,
+                )),
             },
         )?;
 
@@ -302,7 +320,9 @@ impl Renderer {
             frame_idx: !0,
             cs_cache,
             present_shader,
+
             output_img,
+            depth_img,
             gradients_shader,
             raster_simple_render_pass,
             raster_simple,
@@ -349,6 +369,15 @@ impl Renderer {
 
         let mut output_img_tracker = LocalImageStateTracker::new(
             self.output_img.raw(),
+            vk::ImageAspectFlags::COLOR,
+            vk_sync::AccessType::Nothing,
+            cb.raw,
+            raw_device,
+        );
+
+        let mut depth_img_tracker = LocalImageStateTracker::new(
+            self.depth_img.raw(),
+            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
             vk_sync::AccessType::Nothing,
             cb.raw,
             raw_device,
@@ -356,6 +385,7 @@ impl Renderer {
 
         let mut sdf_img_tracker = LocalImageStateTracker::new(
             self.sdf_img.raw(),
+            vk::ImageAspectFlags::COLOR,
             if self.frame_idx == 0 {
                 vk_sync::AccessType::Nothing
             } else {
@@ -477,6 +507,25 @@ impl Renderer {
             }
 
             {
+                depth_img_tracker.transition(vk_sync::AccessType::TransferWrite);
+
+                raw_device.cmd_clear_depth_stencil_image(
+                    cb.raw,
+                    self.depth_img.raw(),
+                    ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &ash::vk::ClearDepthStencilValue {
+                        depth: 0f32,
+                        stencil: 0,
+                    },
+                    std::slice::from_ref(&ash::vk::ImageSubresourceRange {
+                        aspect_mask: vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                        level_count: 1 as u32,
+                        layer_count: 1,
+                        ..Default::default()
+                    }),
+                );
+
+                depth_img_tracker.transition(vk_sync::AccessType::DepthStencilAttachmentWrite);
                 output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
 
                 self.begin_render_pass(
@@ -484,6 +533,11 @@ impl Renderer {
                     &*self.raster_simple_render_pass,
                     [width, height],
                     &[&self.output_img.view(Default::default())],
+                    Some(&self.depth_img.view(
+                        ImageViewDesc::builder().aspect_mask(
+                            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                        ),
+                    )),
                 );
 
                 self.set_default_view_and_scissor(cb, [width, height]);
@@ -634,7 +688,8 @@ impl Renderer {
         cb: &CommandBuffer,
         render_pass: &RenderPass,
         dims: [u32; 2],
-        attachments: &[&ImageView],
+        color_attachments: &[&ImageView],
+        depth_attachment: Option<&ImageView>,
     ) {
         let framebuffer = render_pass
             .framebuffer_cache
@@ -642,15 +697,19 @@ impl Renderer {
                 &self.backend.device.raw,
                 FramebufferCacheKey::new(
                     dims,
-                    attachments.iter().copied().map(|a| &a.image.desc),
-                    false,
+                    color_attachments.iter().copied().map(|a| &a.image.desc),
+                    depth_attachment.map(|a| &a.image.desc),
                 ),
             )
             .unwrap();
 
         // Bind images to the imageless framebuffer
-        let image_attachments: ArrayVec<[_; MAX_COLOR_ATTACHMENTS]> =
-            attachments.iter().copied().map(|a| a.raw).collect();
+        let image_attachments: ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]> = color_attachments
+            .iter()
+            .chain(depth_attachment.as_ref().into_iter())
+            .copied()
+            .map(|a| a.raw)
+            .collect();
 
         let mut pass_attachment_desc =
             vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);

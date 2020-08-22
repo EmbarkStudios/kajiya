@@ -4,12 +4,13 @@ pub struct ImageBarrier {
     image: vk::Image,
     prev_access: vk_sync::AccessType,
     next_access: vk_sync::AccessType,
+    aspect_mask: vk::ImageAspectFlags,
     discard: bool,
 }
 
 pub fn record_image_barrier(device: &ash::Device, cb: vk::CommandBuffer, barrier: ImageBarrier) {
     let range = vk::ImageSubresourceRange {
-        aspect_mask: vk::ImageAspectFlags::COLOR,
+        aspect_mask: barrier.aspect_mask,
         base_mip_level: 0,
         level_count: 1,
         base_array_layer: 0,
@@ -40,12 +41,14 @@ impl ImageBarrier {
         image: vk::Image,
         prev_access: vk_sync::AccessType,
         next_access: vk_sync::AccessType,
+        aspect_mask: vk::ImageAspectFlags,
     ) -> Self {
         Self {
             image,
             prev_access,
             next_access,
             discard: false,
+            aspect_mask,
         }
     }
 
