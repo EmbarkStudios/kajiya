@@ -256,15 +256,16 @@ impl<'a, 'b> ComputePipelineDesc<'a, 'b> {
     }
 }
 
-pub struct ComputePipeline {
+pub struct ShaderPipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
     pub set_layout_info: Vec<HashMap<u32, vk::DescriptorType>>,
     pub descriptor_pool_sizes: Vec<vk::DescriptorPoolSize>,
     pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    pub pipeline_bind_point: vk::PipelineBindPoint,
 }
 
-pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> ComputePipeline {
+pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> ShaderPipeline {
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
         rspirv_reflect::Reflection::new_from_spirv(desc.spirv)
@@ -337,12 +338,13 @@ pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> Co
             }
         }
 
-        ComputePipeline {
+        ShaderPipeline {
             pipeline_layout,
             pipeline,
             set_layout_info,
             descriptor_pool_sizes,
             descriptor_set_layouts,
+            pipeline_bind_point: vk::PipelineBindPoint::COMPUTE,
         }
     }
 }
@@ -385,12 +387,14 @@ pub struct RasterPipelineDesc<'a, 'b> {
     pub render_pass: Arc<RenderPass>,
 }
 
-pub struct RasterPipeline {
+/*pub struct RasterPipeline {
     pub pipeline_layout: vk::PipelineLayout,
     pub pipeline: vk::Pipeline,
-    pub render_pass: Arc<RenderPass>,
-    //pub framebuffer: vk::Framebuffer,
-}
+    pub set_layout_info: Vec<HashMap<u32, vk::DescriptorType>>,
+    pub descriptor_pool_sizes: Vec<vk::DescriptorPoolSize>,
+    pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    //pub render_pass: Arc<RenderPass>,
+}*/
 
 #[derive(Clone, Copy)]
 pub struct RenderPassAttachmentDesc {
@@ -655,7 +659,7 @@ pub fn create_render_pass(
 pub fn create_raster_pipeline(
     device: &Device,
     desc: RasterPipelineDesc,
-) -> anyhow::Result<RasterPipeline> {
+) -> anyhow::Result<ShaderPipeline> {
     let stage_layouts = desc
         .shaders
         .iter()
@@ -667,7 +671,7 @@ pub fn create_raster_pipeline(
         })
         .collect::<Vec<_>>();
 
-    let (descriptor_set_layouts, _set_layout_info) = super::shader::create_descriptor_set_layouts(
+    let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
         merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL_GRAPHICS,
@@ -798,11 +802,29 @@ pub fn create_raster_pipeline(
             )
             .expect("Unable to create graphics pipeline")[0];
 
-        Ok(RasterPipeline {
+        let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
+        for bindings in set_layout_info.iter() {
+            for ty in bindings.values() {
+                if let Some(mut dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty)
+                {
+                    dps.descriptor_count += 1;
+                } else {
+                    descriptor_pool_sizes.push(vk::DescriptorPoolSize {
+                        ty: *ty,
+                        descriptor_count: 1,
+                    })
+                }
+            }
+        }
+
+        Ok(ShaderPipeline {
             pipeline_layout,
             pipeline,
-            render_pass: desc.render_pass.clone(),
-            //framebuffer,
+            //render_pass: desc.render_pass.clone(),
+            set_layout_info,
+            descriptor_pool_sizes,
+            descriptor_set_layouts,
+            pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
         })
     }
 }

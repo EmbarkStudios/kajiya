@@ -11,7 +11,7 @@ pub struct ComputePipelineHandle(usize);
 struct ComputePipelineCacheEntry {
     lazy_handle: Lazy<CompiledShader>,
     ctor: Box<dyn Fn(&CompiledShader) -> ComputePipelineDescBuilder<'_, '_>>,
-    pipeline: Option<Arc<ComputePipeline>>,
+    pipeline: Option<Arc<ShaderPipeline>>,
 }
 
 pub struct ComputePipelineCache {
@@ -47,7 +47,7 @@ impl ComputePipelineCache {
         handle
     }
 
-    pub fn get(&mut self, handle: ComputePipelineHandle) -> Arc<ComputePipeline> {
+    pub fn get(&mut self, handle: ComputePipelineHandle) -> Arc<ShaderPipeline> {
         self.entries.get(&handle).unwrap().pipeline.clone().unwrap()
     }
 

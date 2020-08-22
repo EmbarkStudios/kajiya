@@ -25,11 +25,13 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
     if (0 == idx_within_group && occupied_brick) {
         uint brick_addr = 0;
 
-        // TODO: make `bricks_meta`'s layout match instanced indirect drawing
-        bricks_meta.InterlockedAdd(0, 1, brick_addr);
+        // Add to the `instanceCount` field of `VkDrawIndirectCommand` stored in `bricks_meta`
+        bricks_meta.InterlockedAdd(4, 1, brick_addr);
 
         BrickInstance binst = (BrickInstance)0;
-        binst.position = float3(pix);   // TODO
+
+        // TODO: figure out the math
+        binst.position = ((pix * 4.0 + 4.0) / SDFRES - 1.0) * HSIZE;
 
         bricks_buffer[brick_addr] = binst;
     }

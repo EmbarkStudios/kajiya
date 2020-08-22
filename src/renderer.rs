@@ -11,7 +11,10 @@ use crate::{
     FrameState,
 };
 use arrayvec::ArrayVec;
-use ash::{version::DeviceV1_0, vk};
+use ash::{
+    version::{DeviceV1_0, DeviceV1_2},
+    vk,
+};
 use backend::{
     buffer::{Buffer, BufferDesc},
     device::CommandBuffer,
@@ -41,12 +44,12 @@ pub struct Renderer {
     frame_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
 
-    present_shader: ComputePipeline,
+    present_shader: ShaderPipeline,
     output_img: ImageWithViews,
 
     gradients_shader: ComputePipelineHandle,
     raster_simple_render_pass: Arc<RenderPass>,
-    raster_simple: RasterPipeline,
+    raster_simple: ShaderPipeline,
 
     brick_meta_buffer: Buffer,
     brick_inst_buffer: Buffer,
@@ -105,6 +108,15 @@ pub mod view {
     }
 
     pub fn buffer_rw(buffer: &Buffer) -> DescriptorSetBinding {
+        DescriptorSetBinding::Buffer(
+            vk::DescriptorBufferInfo::builder()
+                .buffer(buffer.raw)
+                .range(vk::WHOLE_SIZE)
+                .build(),
+        )
+    }
+
+    pub fn buffer(buffer: &Buffer) -> DescriptorSetBinding {
         DescriptorSetBinding::Buffer(
             vk::DescriptorBufferInfo::builder()
                 .buffer(buffer.raw)
@@ -245,8 +257,8 @@ impl Renderer {
         }
 
         let brick_meta_buffer = backend.device.create_buffer(BufferDesc {
-            size: 4,
-            usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+            size: 16, // size of VkDrawIndirectCommand
+            usage: vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::INDIRECT_BUFFER,
         })?;
 
         let brick_inst_buffer = backend.device.create_buffer(BufferDesc {
@@ -359,7 +371,7 @@ impl Renderer {
                     self.edit_sdf
                 });
 
-                self.bind_compute_pipeline(cb, &*shader);
+                self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
                     cb,
                     &*shader,
@@ -376,7 +388,7 @@ impl Renderer {
 
             {
                 let shader = self.cs_cache.get(self.clear_bricks_meta);
-                self.bind_compute_pipeline(cb, &*shader);
+                self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
                     cb,
                     &*shader,
@@ -385,13 +397,25 @@ impl Renderer {
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
                 raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
+
+                // TODO: make a wrapper
+                vk_sync::cmd::pipeline_barrier(
+                    raw_device.fp_v1_0(),
+                    cb.raw,
+                    Some(vk_sync::GlobalBarrier {
+                        previous_accesses: &[vk_sync::AccessType::ComputeShaderWrite],
+                        next_accesses: &[vk_sync::AccessType::ComputeShaderWrite],
+                    }),
+                    &[],
+                    &[],
+                );
             }
 
             // TODO: barrier
 
             {
                 let shader = self.cs_cache.get(self.find_sdf_bricks);
-                self.bind_compute_pipeline(cb, &*shader);
+                self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
                     cb,
                     &*shader,
@@ -404,19 +428,25 @@ impl Renderer {
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
                 raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2);
-            }
 
-            // TODO: barrier
-
-            {
-                // TODO: dispatch indirect
+                // TODO: make a wrapper
+                vk_sync::cmd::pipeline_barrier(
+                    raw_device.fp_v1_0(),
+                    cb.raw,
+                    Some(vk_sync::GlobalBarrier {
+                        previous_accesses: &[vk_sync::AccessType::ComputeShaderWrite],
+                        next_accesses: &[vk_sync::AccessType::IndirectBuffer],
+                    }),
+                    &[],
+                    &[],
+                );
             }
 
             // Raymarch the SDF
             {
                 let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
 
-                self.bind_compute_pipeline(cb, &*shader);
+                self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
                     cb,
                     &*shader,
@@ -431,31 +461,35 @@ impl Renderer {
                 raw_device.cmd_dispatch(cb.raw, (width + 7) / 8, (height + 7) / 8, 1);
             }
 
-            /*{
+            {
                 output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
 
                 self.begin_render_pass(
-                    backend,
                     cb,
                     &*self.raster_simple_render_pass,
                     [width, height],
-                    &[&self.output_img_view],
+                    &[&self.output_img.view(Default::default())],
                 );
 
-                self.set_default_view_and_scissor(backend, cb, [width, height]);
+                self.set_default_view_and_scissor(cb, [width, height]);
 
                 {
-                    raw_device.cmd_bind_pipeline(
-                        cb.raw,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.raster_simple.pipeline,
+                    self.bind_pipeline(cb, &self.raster_simple);
+                    self.bind_descriptor_set(
+                        cb,
+                        &self.raster_simple,
+                        0,
+                        &[view::buffer(&self.brick_inst_buffer)],
                     );
+                    self.bind_frame_constants(cb, &self.raster_simple, frame_constants_offset);
+                    raw_device.cmd_draw_indirect(cb.raw, self.brick_meta_buffer.raw, 0, 1, 0);
 
-                    raw_device.cmd_draw(cb.raw, 3, 1, 0, 0);
+                    // TODO: dispatch indirect. just one draw, but with many instances.
+                    //raw_device.cmd_draw_indexed_indirect();
                 }
 
                 raw_device.cmd_end_render_pass(cb.raw);
-            }*/
+            }
 
             output_img_tracker
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
@@ -568,7 +602,6 @@ impl Renderer {
     #[allow(dead_code)]
     fn begin_render_pass(
         &self,
-        backend: &RenderBackend,
         cb: &CommandBuffer,
         render_pass: &RenderPass,
         dims: [u32; 2],
@@ -577,7 +610,7 @@ impl Renderer {
         let framebuffer = render_pass
             .framebuffer_cache
             .get_or_create(
-                &backend.device.raw,
+                &self.backend.device.raw,
                 FramebufferCacheKey::new(
                     dims,
                     attachments.iter().copied().map(|a| &a.image.desc),
@@ -609,7 +642,7 @@ impl Renderer {
             .push_next(&mut pass_attachment_desc);
 
         unsafe {
-            backend.device.raw.cmd_begin_render_pass(
+            self.backend.device.raw.cmd_begin_render_pass(
                 cb.raw,
                 &pass_begin_desc,
                 vk::SubpassContents::INLINE,
@@ -618,14 +651,9 @@ impl Renderer {
     }
 
     #[allow(dead_code)]
-    pub fn set_default_view_and_scissor(
-        &self,
-        backend: &RenderBackend,
-        cb: &CommandBuffer,
-        [width, height]: [u32; 2],
-    ) {
+    pub fn set_default_view_and_scissor(&self, cb: &CommandBuffer, [width, height]: [u32; 2]) {
         unsafe {
-            backend.device.raw.cmd_set_viewport(
+            self.backend.device.raw.cmd_set_viewport(
                 cb.raw,
                 0,
                 &[vk::Viewport {
@@ -638,7 +666,7 @@ impl Renderer {
                 }],
             );
 
-            backend.device.raw.cmd_set_scissor(
+            self.backend.device.raw.cmd_set_scissor(
                 cb.raw,
                 0,
                 &[vk::Rect2D {
@@ -652,11 +680,11 @@ impl Renderer {
         }
     }
 
-    pub fn bind_compute_pipeline(&self, cb: &CommandBuffer, shader: &ComputePipeline) {
+    pub fn bind_pipeline(&self, cb: &CommandBuffer, shader: &ShaderPipeline) {
         unsafe {
             self.backend.device.raw.cmd_bind_pipeline(
                 cb.raw,
-                vk::PipelineBindPoint::COMPUTE,
+                shader.pipeline_bind_point,
                 shader.pipeline,
             );
         }
@@ -665,13 +693,22 @@ impl Renderer {
     pub fn bind_descriptor_set(
         &self,
         cb: &CommandBuffer,
-        shader: &ComputePipeline,
+        shader: &ShaderPipeline,
         set_index: u32,
         bindings: &[DescriptorSetBinding],
     ) {
+        let shader_set_info = if let Some(info) = shader.set_layout_info.get(set_index as usize) {
+            info
+        } else {
+            println!(
+                "bind_descriptor_set: set index {} does not exist",
+                set_index
+            );
+            return;
+        };
+
         let image_info = TempList::new();
         let buffer_info = TempList::new();
-        let shader_set_info = &shader.set_layout_info[set_index as usize];
 
         let raw_device = &self.backend.device.raw;
 
@@ -733,7 +770,7 @@ impl Renderer {
 
             self.backend.device.raw.cmd_bind_descriptor_sets(
                 cb.raw,
-                vk::PipelineBindPoint::COMPUTE,
+                shader.pipeline_bind_point,
                 shader.pipeline_layout,
                 set_index,
                 &[descriptor_set],
@@ -745,18 +782,25 @@ impl Renderer {
     pub fn bind_frame_constants(
         &self,
         cb: &CommandBuffer,
-        shader: &ComputePipeline,
+        shader: &ShaderPipeline,
         frame_constants_offset: u32,
     ) {
-        unsafe {
-            self.backend.device.raw.cmd_bind_descriptor_sets(
-                cb.raw,
-                vk::PipelineBindPoint::COMPUTE,
-                shader.pipeline_layout,
-                2,
-                &[self.frame_descriptor_set],
-                &[frame_constants_offset],
-            );
+        if shader
+            .set_layout_info
+            .get(2)
+            .map(|set| !set.is_empty())
+            .unwrap_or_default()
+        {
+            unsafe {
+                self.backend.device.raw.cmd_bind_descriptor_sets(
+                    cb.raw,
+                    shader.pipeline_bind_point,
+                    shader.pipeline_layout,
+                    2,
+                    &[self.frame_descriptor_set],
+                    &[frame_constants_offset],
+                );
+            }
         }
     }
 

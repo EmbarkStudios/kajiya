@@ -117,6 +117,7 @@ impl Device {
             vk::ExtFragmentShaderInterlockFn::name().as_ptr(),
             vk::KhrPushDescriptorFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
+            vk::KhrDrawIndirectCountFn::name().as_ptr(),
         ];
 
         #[cfg(feature = "ray-tracing")]
