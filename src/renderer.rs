@@ -364,7 +364,7 @@ impl Renderer {
             if self.frame_idx == 0 {
                 vk_sync::AccessType::Nothing
             } else {
-                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
+                vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
             },
             cb.raw,
             raw_device,
@@ -404,7 +404,7 @@ impl Renderer {
             }
 
             sdf_img_tracker
-                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
+                .transition(vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer);
 
             {
                 let shader = self.pipeline_cache.get_compute(self.clear_bricks_meta);
@@ -512,7 +512,10 @@ impl Renderer {
                         cb,
                         pipeline,
                         0,
-                        &[view::buffer(&self.brick_inst_buffer)],
+                        &[
+                            view::buffer(&self.brick_inst_buffer),
+                            view::image(&self.sdf_img.view(Default::default())),
+                        ],
                     );
                     self.bind_frame_constants(cb, pipeline, frame_constants_offset);
 

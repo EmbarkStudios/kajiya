@@ -1,9 +1,4 @@
-//#include "rendertoy::shaders/view_constants.inc"
-//#include "rtoy-samples::shaders/inc/uv.inc"
-//#include "rtoy-samples::shaders/inc/pack_unpack.inc"
 #include "sdf_common.hlsl"
-//#include "../inc/frame_constants.hlsl"
-//#include "../inc/uv.hlsl"
 
 [[vk::binding(0)]] RWTexture2D<float4> output_tex;
 [[vk::binding(1)]] Texture3D<float> sdf_tex;

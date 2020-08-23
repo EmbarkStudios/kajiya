@@ -5,6 +5,8 @@
 struct VsOut {
 	float4 position: SV_Position;
     [[vk::location(0)]] float4 color: COLOR0;
+    [[vk::location(1)]] float4 vs_pos: COLOR1;
+    [[vk::location(2)]] float4 cell_pos_extent: COLOR2;
 };
 
 struct BrickInstance {
@@ -34,6 +36,8 @@ VsOut main(
 
     vsout.position = cs_pos;
     vsout.color = float4(vid % 3 == 0, vid % 3 == 1, vid % 3 == 2, 1.0);
+    vsout.vs_pos = vs_pos;
+    vsout.cell_pos_extent = float4(brick_center, brick_size);
 
     return vsout;
 }
