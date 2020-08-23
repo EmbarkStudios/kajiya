@@ -23,7 +23,7 @@ type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
 
 pub fn create_descriptor_set_layouts(
     device: &Device,
-    mut descriptor_sets: StageDescriptorSetLayouts,
+    descriptor_sets: &StageDescriptorSetLayouts,
     stage_flags: vk::ShaderStageFlags,
     set_opts: &[Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
 ) -> (
@@ -243,6 +243,8 @@ pub struct ComputePipelineDesc {
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
+    #[builder(setter(into), default = "\"main\".to_owned()")]
+    pub entry_name: String,
 }
 
 impl ComputePipelineDescBuilder {
@@ -276,12 +278,11 @@ pub struct ShaderPipeline {
 pub fn create_compute_pipeline(
     device: &Device,
     spirv: &[u8],
-    entry_name: &str,
     desc: &ComputePipelineDesc,
 ) -> ShaderPipeline {
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
-        rspirv_reflect::Reflection::new_from_spirv(spirv)
+        &rspirv_reflect::Reflection::new_from_spirv(spirv)
             .unwrap()
             .get_descriptor_sets()
             .unwrap(),
@@ -314,7 +315,7 @@ pub fn create_compute_pipeline(
             )
             .unwrap();
 
-        let entry_name = CString::new(entry_name).unwrap();
+        let entry_name = CString::new(desc.entry_name.as_str()).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
@@ -367,35 +368,34 @@ pub enum RasterStage {
     Pixel,
 }
 
-#[derive(Builder)]
+#[derive(Builder, Hash, Clone)]
 #[builder(pattern = "owned")]
-pub struct RasterShaderDesc<'a, 'b> {
+pub struct RasterShaderDesc {
     pub stage: RasterStage,
-    pub spirv: &'a [u8],
-    pub entry_name: &'b str,
     #[builder(setter(strip_option), default)]
-    pub descriptor_set_layout_flags: Option<&'a [(usize, vk::DescriptorSetLayoutCreateFlags)]>,
+    pub descriptor_set_layout_flags: Option<Vec<(usize, vk::DescriptorSetLayoutCreateFlags)>>,
     #[builder(default)]
     pub push_constants_bytes: usize,
+    #[builder(default = "\"main\".to_owned()")]
+    pub entry_name: String,
 }
 
-impl<'a, 'b> RasterShaderDesc<'a, 'b> {
-    pub fn new(
-        stage: RasterStage,
-        spirv: &'a [u8],
-        entry_name: &'b str,
-    ) -> RasterShaderDescBuilder<'a, 'b> {
-        RasterShaderDescBuilder::default()
-            .stage(stage)
-            .spirv(spirv)
-            .entry_name(entry_name)
+impl RasterShaderDesc {
+    pub fn builder(stage: RasterStage) -> RasterShaderDescBuilder {
+        RasterShaderDescBuilder::default().stage(stage)
     }
 }
 
-//#[derive(Builder)]
-//#[builder(pattern = "owned")]
+#[derive(Builder, Clone)]
+#[builder(pattern = "owned", derive(Clone))]
 pub struct RasterPipelineDesc {
     pub render_pass: Arc<RenderPass>,
+}
+
+impl RasterPipelineDesc {
+    pub fn builder() -> RasterPipelineDescBuilder {
+        RasterPipelineDescBuilder::default()
+    }
 }
 
 /*pub struct RasterPipeline {
@@ -656,15 +656,43 @@ pub fn create_render_pass(
     }))
 }
 
+#[derive(Hash)]
+pub struct RasterPipelineShader<ShaderCode> {
+    pub code: ShaderCode,
+    pub desc: RasterShaderDesc,
+}
+
+impl<ShaderCode> Clone for RasterPipelineShader<ShaderCode>
+where
+    ShaderCode: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            code: self.code.clone(),
+            desc: self.desc.clone(),
+        }
+    }
+}
+//impl<ShaderCode> Hash for RasterPipelineShader<ShaderCode> {}
+
+impl<ShaderCode> RasterPipelineShader<ShaderCode> {
+    pub fn new(code: ShaderCode, desc: RasterShaderDescBuilder) -> Self {
+        Self {
+            code,
+            desc: desc.build().unwrap(),
+        }
+    }
+}
+
 pub fn create_raster_pipeline(
     device: &Device,
-    shaders: &[RasterShaderDesc],
+    shaders: &[RasterPipelineShader<&[u8]>],
     desc: &RasterPipelineDesc,
 ) -> anyhow::Result<ShaderPipeline> {
     let stage_layouts = shaders
         .iter()
         .map(|desc| {
-            rspirv_reflect::Reflection::new_from_spirv(desc.spirv)
+            rspirv_reflect::Reflection::new_from_spirv(desc.code)
                 .unwrap()
                 .get_descriptor_sets()
                 .unwrap()
@@ -673,7 +701,7 @@ pub fn create_raster_pipeline(
 
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
-        merge_shader_stage_layouts(stage_layouts),
+        &merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL_GRAPHICS,
         //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
         &Default::default(),
@@ -694,21 +722,21 @@ pub fn create_raster_pipeline(
             .iter()
             .map(|desc| {
                 let shader_info = vk::ShaderModuleCreateInfo::builder()
-                    .code(desc.spirv.as_slice_of::<u32>().unwrap());
+                    .code(desc.code.as_slice_of::<u32>().unwrap());
 
                 let shader_module = device
                     .raw
                     .create_shader_module(&shader_info, None)
                     .expect("Shader module error");
 
-                let stage = match desc.stage {
+                let stage = match desc.desc.stage {
                     RasterStage::Vertex => vk::ShaderStageFlags::VERTEX,
                     RasterStage::Pixel => vk::ShaderStageFlags::FRAGMENT,
                 };
 
                 vk::PipelineShaderStageCreateInfo::builder()
                     .module(shader_module)
-                    .name(entry_names.add(CString::new(desc.entry_name).unwrap()))
+                    .name(entry_names.add(CString::new(desc.desc.entry_name.as_str()).unwrap()))
                     .stage(stage)
                     .build()
             })

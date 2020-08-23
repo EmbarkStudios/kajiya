@@ -2,13 +2,8 @@ use crate::backend::{
     self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
 };
 use crate::{
-    chunky_list::TempList,
-    dynamic_constants::*,
-    pipeline_cache::*,
-    shader_compiler::{CompileShader, CompiledShader},
-    state_tracker::LocalImageStateTracker,
-    viewport::ViewConstants,
-    FrameState,
+    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
+    state_tracker::LocalImageStateTracker, viewport::ViewConstants, FrameState,
 };
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
@@ -37,7 +32,7 @@ struct FrameConstants {
 #[allow(dead_code)]
 pub struct Renderer {
     backend: RenderBackend,
-    cs_cache: ComputePipelineCache,
+    pipeline_cache: PipelineCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
@@ -48,7 +43,7 @@ pub struct Renderer {
 
     gradients_shader: ComputePipelineHandle,
     raster_simple_render_pass: Arc<RenderPass>,
-    raster_simple: ShaderPipeline,
+    raster_simple: RasterPipelineHandle,
 
     brick_meta_buffer: Buffer,
     brick_inst_buffer: Buffer,
@@ -131,7 +126,7 @@ impl Renderer {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
 
         let lazy_cache = LazyCache::create();
-        let mut cs_cache = ComputePipelineCache::new(&lazy_cache);
+        let mut pipeline_cache = PipelineCache::new(&lazy_cache);
 
         let dynamic_constants = DynamicConstants::new({
             let buffer_info = vk::BufferCreateInfo {
@@ -196,7 +191,7 @@ impl Renderer {
             )?
             .with_views(&backend.device);
 
-        let gradients_shader = cs_cache.register(
+        let gradients_shader = pipeline_cache.register_compute(
             "/assets/shaders/gradients.hlsl",
             &ComputePipelineDesc::builder().descriptor_set_opts(&[(
                 2,
@@ -204,7 +199,7 @@ impl Renderer {
             )]),
         );
 
-        let vertex_shader = smol::block_on(
+        /*let vertex_shader = smol::block_on(
             CompileShader {
                 path: "/assets/shaders/raster_simple_vs.hlsl".into(),
                 profile: "vs".to_owned(),
@@ -220,7 +215,7 @@ impl Renderer {
             }
             .into_lazy()
             .eval(&lazy_cache),
-        )?;
+        )?;*/
 
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
@@ -235,20 +230,40 @@ impl Renderer {
             },
         )?;
 
-        let raster_simple = create_raster_pipeline(
+        let raster_simple = pipeline_cache.register_raster(
+            &[
+                RasterPipelineShader {
+                    code: "/assets/shaders/raster_simple_vs.hlsl",
+                    desc: RasterShaderDesc::builder(RasterStage::Vertex)
+                        .build()
+                        .unwrap(),
+                },
+                RasterPipelineShader {
+                    code: "/assets/shaders/raster_simple_ps.hlsl",
+                    desc: RasterShaderDesc::builder(RasterStage::Pixel)
+                        .build()
+                        .unwrap(),
+                },
+            ],
+            &RasterPipelineDesc::builder().render_pass(raster_simple_render_pass.clone()),
+        );
+
+        /*let raster_simple = create_raster_pipeline(
             &*backend.device,
             &[
-                RasterShaderDesc::new(RasterStage::Vertex, &vertex_shader.spirv, "main")
-                    .build()
-                    .unwrap(),
-                RasterShaderDesc::new(RasterStage::Pixel, &pixel_shader.spirv, "main")
-                    .build()
-                    .unwrap(),
+                RasterPipelineShader::new(
+                    &vertex_shader.spirv,
+                    RasterShaderDesc::new(RasterStage::Vertex),
+                ),
+                RasterPipelineShader::new(
+                    &pixel_shader.spirv,
+                    RasterShaderDesc::new(RasterStage::Pixel),
+                ),
             ],
             &RasterPipelineDesc {
                 render_pass: raster_simple_render_pass.clone(),
             },
-        )?;
+        )?;*/
 
         let sdf_img = backend
             .device
@@ -283,17 +298,18 @@ impl Renderer {
             None,
         )?;
 
-        let gen_empty_sdf =
-            cs_cache.register("/assets/shaders/sdf/gen_empty_sdf.hlsl", &sdf_pipeline_desc);
-        let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", &sdf_pipeline_desc);
-        let clear_bricks_meta = cs_cache.register(
+        let gen_empty_sdf = pipeline_cache
+            .register_compute("/assets/shaders/sdf/gen_empty_sdf.hlsl", &sdf_pipeline_desc);
+        let edit_sdf = pipeline_cache
+            .register_compute("/assets/shaders/sdf/edit_sdf.hlsl", &sdf_pipeline_desc);
+        let clear_bricks_meta = pipeline_cache.register_compute(
             "/assets/shaders/sdf/clear_bricks_meta.hlsl",
             &sdf_pipeline_desc,
         );
-        let find_sdf_bricks =
-            cs_cache.register("/assets/shaders/sdf/find_bricks.hlsl", &sdf_pipeline_desc);
+        let find_sdf_bricks = pipeline_cache
+            .register_compute("/assets/shaders/sdf/find_bricks.hlsl", &sdf_pipeline_desc);
 
-        let sdf_raymarch_gbuffer = cs_cache.register(
+        let sdf_raymarch_gbuffer = pipeline_cache.register_compute(
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
             &sdf_pipeline_desc,
         );
@@ -312,7 +328,7 @@ impl Renderer {
             dynamic_constants,
             frame_descriptor_set,
             frame_idx: !0,
-            cs_cache,
+            pipeline_cache: pipeline_cache,
             present_shader,
 
             output_img,
@@ -403,7 +419,7 @@ impl Renderer {
 
             // Edit the SDF
             {
-                let shader = self.cs_cache.get(if self.frame_idx == 0 {
+                let shader = self.pipeline_cache.get_compute(if self.frame_idx == 0 {
                     // Clear if this is the first frame
                     self.gen_empty_sdf
                 } else {
@@ -426,7 +442,7 @@ impl Renderer {
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
             {
-                let shader = self.cs_cache.get(self.clear_bricks_meta);
+                let shader = self.pipeline_cache.get_compute(self.clear_bricks_meta);
                 self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
                     cb,
@@ -445,7 +461,7 @@ impl Renderer {
             }
 
             {
-                let shader = self.cs_cache.get(self.find_sdf_bricks);
+                let shader = self.pipeline_cache.get_compute(self.find_sdf_bricks);
                 self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
                     cb,
@@ -469,7 +485,7 @@ impl Renderer {
 
             // Raymarch the SDF
             {
-                let shader = self.cs_cache.get(self.sdf_raymarch_gbuffer);
+                let shader = self.pipeline_cache.get_compute(self.sdf_raymarch_gbuffer);
 
                 self.bind_pipeline(cb, &*shader);
                 self.bind_descriptor_set(
@@ -523,14 +539,17 @@ impl Renderer {
                 self.set_default_view_and_scissor(cb, [width, height]);
 
                 {
-                    self.bind_pipeline(cb, &self.raster_simple);
+                    let pipeline = self.pipeline_cache.get_raster(self.raster_simple);
+                    let pipeline = &*pipeline;
+
+                    self.bind_pipeline(cb, pipeline);
                     self.bind_descriptor_set(
                         cb,
-                        &self.raster_simple,
+                        pipeline,
                         0,
                         &[view::buffer(&self.brick_inst_buffer)],
                     );
-                    self.bind_frame_constants(cb, &self.raster_simple, frame_constants_offset);
+                    self.bind_frame_constants(cb, pipeline, frame_constants_offset);
 
                     raw_device.cmd_bind_index_buffer(
                         cb.raw,
@@ -891,7 +910,7 @@ impl Renderer {
     }
 
     pub fn prepare_frame(&mut self) -> anyhow::Result<()> {
-        self.cs_cache.prepare_frame(&self.backend.device)?;
+        self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
         Ok(())
     }
