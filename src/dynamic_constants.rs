@@ -6,7 +6,7 @@ use log::{debug, error, info, trace, warn};
 use std::mem::size_of;
 
 pub const DYNAMIC_CONSTANTS_SIZE_BYTES: usize = 1024 * 1024 * 16;
-pub const DYNAMIC_CONSTANTS_ALIGNMENT: usize = 16;
+pub const DYNAMIC_CONSTANTS_ALIGNMENT: usize = 64;
 
 pub struct DynamicConstants {
     pub buffer: Buffer,
@@ -52,5 +52,18 @@ impl DynamicConstants {
         self.frame_offset_bytes += t_size_aligned;
 
         buffer_offset as _
+    }
+
+    pub fn flush(&self, allocator: &vk_mem::Allocator) {
+        //self.buffer.allocation_info.get_mapped_data()
+        let buffer_start = self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES;
+
+        allocator
+            .flush_allocation(
+                &self.buffer.allocation,
+                buffer_start,
+                self.frame_offset_bytes,
+            )
+            .unwrap();
     }
 }

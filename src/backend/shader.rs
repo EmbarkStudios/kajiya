@@ -390,6 +390,8 @@ impl RasterShaderDesc {
 #[builder(pattern = "owned", derive(Clone))]
 pub struct RasterPipelineDesc {
     pub render_pass: Arc<RenderPass>,
+    #[builder(default)]
+    pub face_cull: bool,
 }
 
 impl RasterPipelineDesc {
@@ -762,12 +764,11 @@ pub fn create_raster_pipeline(
             front_face: vk::FrontFace::COUNTER_CLOCKWISE,
             line_width: 1.0,
             polygon_mode: vk::PolygonMode::FILL,
-            /*cull_mode: if opts.face_cull {
+            cull_mode: if desc.face_cull {
                 ash::vk::CullModeFlags::BACK
             } else {
                 ash::vk::CullModeFlags::NONE
-            },*/
-            cull_mode: ash::vk::CullModeFlags::NONE,
+            },
             ..Default::default()
         };
         let multisample_state_info = vk::PipelineMultisampleStateCreateInfo {

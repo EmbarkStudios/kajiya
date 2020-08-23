@@ -14,8 +14,9 @@ groupshared uint group_all_voxels_occupied;
 
 [numthreads(4, 4, 4)]
 void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex, in uint3 brick_idx: SV_GroupID) {
-    float mind = 1.0;
-    float maxd = -1.0;
+    float mind = 100.0;
+    float maxd = -100.0;
+
     for (uint z = 0; z < 2; ++z) {
         for (uint y = 0; y < 2; ++y) {
             for (uint x = 0; x < 2; ++x) {
@@ -33,8 +34,10 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
 
     GroupMemoryBarrierWithGroupSync();
 
-    bool octant_occupied = mind < 0.0;
-    bool octant_full = maxd < 0.0;
+    const float cutoff_dist = 0.0;
+
+    bool octant_occupied = mind < cutoff_dist;
+    bool octant_full = maxd < cutoff_dist;
     bool brick_part_occupied = WaveActiveAnyTrue(octant_occupied);
     bool brick_part_full = WaveActiveAllTrue(octant_full);
 
@@ -46,6 +49,7 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
 
     GroupMemoryBarrierWithGroupSync();
 
+    //if (0 == idx_within_group && group_any_voxel_occupied) {
     if (0 == idx_within_group && (group_any_voxel_occupied && !group_all_voxels_occupied)) {
     //if (0 == idx_within_group && group_all_voxels_occupied) {
         uint brick_addr = 0;

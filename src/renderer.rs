@@ -227,7 +227,9 @@ impl Renderer {
                         .unwrap(),
                 },
             ],
-            &RasterPipelineDesc::builder().render_pass(raster_simple_render_pass.clone()),
+            &RasterPipelineDesc::builder()
+                .render_pass(raster_simple_render_pass.clone())
+                .face_cull(true),
         );
 
         let sdf_img = backend
@@ -554,6 +556,9 @@ impl Renderer {
 
             raw_device.end_command_buffer(cb.raw).unwrap();
         }
+
+        self.dynamic_constants
+            .flush(&self.backend.device.global_allocator);
 
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
@@ -912,7 +917,7 @@ fn cube_indices() -> Vec<u32> {
     let mut res = Vec::with_capacity(6 * 2 * 3);
 
     for (ndim, dim0, dim1) in [(1, 2, 4), (2, 4, 1), (4, 1, 2)].iter().copied() {
-        for (nbit, dim0, dim1) in [(0, dim0, dim1), (ndim, dim1, dim0)].iter().copied() {
+        for (nbit, dim0, dim1) in [(0, dim1, dim0), (ndim, dim0, dim1)].iter().copied() {
             res.push(nbit);
             res.push(nbit + dim0);
             res.push(nbit + dim1);
