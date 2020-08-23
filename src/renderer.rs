@@ -199,24 +199,6 @@ impl Renderer {
             )]),
         );
 
-        /*let vertex_shader = smol::block_on(
-            CompileShader {
-                path: "/assets/shaders/raster_simple_vs.hlsl".into(),
-                profile: "vs".to_owned(),
-            }
-            .into_lazy()
-            .eval(&lazy_cache),
-        )?;
-
-        let pixel_shader = smol::block_on(
-            CompileShader {
-                path: "/assets/shaders/raster_simple_ps.hlsl".into(),
-                profile: "ps".to_owned(),
-            }
-            .into_lazy()
-            .eval(&lazy_cache),
-        )?;*/
-
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -247,23 +229,6 @@ impl Renderer {
             ],
             &RasterPipelineDesc::builder().render_pass(raster_simple_render_pass.clone()),
         );
-
-        /*let raster_simple = create_raster_pipeline(
-            &*backend.device,
-            &[
-                RasterPipelineShader::new(
-                    &vertex_shader.spirv,
-                    RasterShaderDesc::new(RasterStage::Vertex),
-                ),
-                RasterPipelineShader::new(
-                    &pixel_shader.spirv,
-                    RasterShaderDesc::new(RasterStage::Pixel),
-                ),
-            ],
-            &RasterPipelineDesc {
-                render_pass: raster_simple_render_pass.clone(),
-            },
-        )?;*/
 
         let sdf_img = backend
             .device
