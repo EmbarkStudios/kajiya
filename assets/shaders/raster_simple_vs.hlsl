@@ -1,5 +1,6 @@
 #if 1
 #include "inc/frame_constants.hlsl"
+#include "sdf/sdf_consts.hlsl"
 
 struct VsOut {
 	float4 position: SV_Position;
@@ -7,8 +8,8 @@ struct VsOut {
 };
 
 struct BrickInstance {
-    float3 position;
-    float half_extent;
+    uint3 brick_idx;
+    uint pad;
 };
 
 [[vk::binding(0)]] StructuredBuffer<BrickInstance> bricks_buffer;
@@ -20,8 +21,13 @@ VsOut main(
     VsOut vsout;
 
     BrickInstance binst = bricks_buffer[instance_id];
-    float3 pos = (float3(vid & 1, (vid >> 1) & 1, (vid >> 2) & 1) * 2.0 - 1.0) * binst.half_extent;
-    pos += binst.position;
+
+    float voxel_size = 2.0 * HSIZE / SDFRES;
+    float brick_size = voxel_size * BRICKRES;
+    float3 brick_center = (binst.brick_idx - BRICK_GRID_RES * 0.5) * brick_size + brick_size * 0.5;
+
+    float3 pos = (float3(vid & 1, (vid >> 1) & 1, (vid >> 2) & 1) - 0.5) * brick_size;
+    pos += brick_center;
 
     float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(pos, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);

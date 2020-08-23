@@ -1,8 +1,8 @@
 #include "sdf_consts.hlsl"
 
 struct BrickInstance {
-    float3 position;
-    float half_extent;
+    uint3 brick_idx;
+    uint pad;
 };
 
 [[vk::binding(0)]] Texture3D<float> sdf_tex;
@@ -53,14 +53,9 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
         // Add to the `instanceCount` field of `VkDrawIndirectCommand` stored in `bricks_meta`
         bricks_meta.InterlockedAdd(4, 1, brick_addr);
 
-        float voxel_size = 2.0 * HSIZE / SDFRES;
-        float brick_size = voxel_size * BRICKRES;
-        float3 brick_center = (brick_idx - BRICK_GRID_RES * 0.5) * brick_size + brick_size * 0.5;
-
-        // TODO: figure out the math
         BrickInstance binst;
-        binst.position = brick_center;
-        binst.half_extent = brick_size * 0.5;
+        binst.brick_idx = brick_idx;
+        binst.pad = 0;
 
         bricks_buffer[brick_addr] = binst;
     }
