@@ -36,10 +36,7 @@ pub struct RenderBackend {
 }
 
 impl RenderBackend {
-    pub fn new(
-        window: &winit::window::Window,
-        window_cfg: &crate::WindowConfig,
-    ) -> anyhow::Result<Self> {
+    pub fn new(window: &winit::Window, window_cfg: &crate::WindowConfig) -> anyhow::Result<Self> {
         let instance = instance::Instance::builder()
             .required_extensions(ash_window::enumerate_required_extensions(&*window).unwrap())
             .graphics_debugging(true)

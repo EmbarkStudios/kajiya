@@ -22,11 +22,7 @@ use math::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{panic, sync::Arc};
-use winit::{
-    event::{ElementState, Event, KeyboardInput, MouseButton, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    window::WindowBuilder,
-};
+use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
 #[derive(Copy, Clone)]
 pub struct WindowConfig {
@@ -49,7 +45,7 @@ pub struct FrameState {
 fn try_main() -> anyhow::Result<()> {
     logging::set_up_logging()?;
 
-    let event_loop = EventLoop::new();
+    let mut event_loop = winit::EventsLoop::new();
 
     let window_cfg = WindowConfig {
         width: 1280,
@@ -59,7 +55,7 @@ fn try_main() -> anyhow::Result<()> {
     let window = Arc::new(
         WindowBuilder::new()
             .with_title("vicki")
-            .with_inner_size(winit::dpi::LogicalSize::new(
+            .with_dimensions(winit::dpi::LogicalSize::new(
                 window_cfg.width as f64,
                 window_cfg.height as f64,
             ))
@@ -82,83 +78,80 @@ fn try_main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
     let mut last_frame_instant = std::time::Instant::now();
-    let mut dt = 1.0 / 60.0;
 
-    event_loop.run(move |event, _, control_flow| {
-        // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-        // dispatched any events. This is ideal for games and similar applications.
-        *control_flow = ControlFlow::Poll;
+    let mut running = true;
+    while running {
+        let mut events = Vec::new();
+        event_loop.poll_events(|event| {
+            events.push(event);
+        });
 
-        match event {
-            Event::WindowEvent { event, .. } => match event {
-                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                WindowEvent::KeyboardInput { input, .. } => {
-                    keyboard_events.push(input);
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
-                }
-                WindowEvent::MouseInput { state, button, .. } => {
-                    let button_id = match button {
-                        MouseButton::Left => 0,
-                        MouseButton::Middle => 1,
-                        MouseButton::Right => 2,
-                        _ => 0,
-                    };
-
-                    if let ElementState::Pressed = state {
-                        new_mouse_state.button_mask |= 1 << button_id;
-                    } else {
-                        new_mouse_state.button_mask &= !(1 << button_id);
+        for event in events.into_iter() {
+            match event {
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CloseRequested => running = false,
+                    WindowEvent::KeyboardInput { input, .. } => {
+                        keyboard_events.push(input);
                     }
-                }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
+                    }
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        let button_id = match button {
+                            MouseButton::Left => 0,
+                            MouseButton::Middle => 1,
+                            MouseButton::Right => 2,
+                            _ => 0,
+                        };
+
+                        if let ElementState::Pressed = state {
+                            new_mouse_state.button_mask |= 1 << button_id;
+                        } else {
+                            new_mouse_state.button_mask &= !(1 << button_id);
+                        }
+                    }
+                    _ => (),
+                },
                 _ => (),
-            },
-            Event::MainEventsCleared => {
-                // Application update code.
-
-                let now = std::time::Instant::now();
-                let dt_duration = now - last_frame_instant;
-                last_frame_instant = now;
-                dt = dt_duration.as_secs_f32();
-
-                keyboard.update(std::mem::take(&mut keyboard_events), dt);
-                mouse_state.update(&new_mouse_state);
-                new_mouse_state = mouse_state.clone();
-
-                let input_state = InputState {
-                    mouse: mouse_state,
-                    keys: keyboard.clone(),
-                    dt,
-                };
-                camera.update(&input_state);
-
-                window.request_redraw();
             }
-            Event::RedrawRequested(_) => match renderer.prepare_frame() {
-                Ok(()) => {
-                    renderer.draw_frame(FrameState {
-                        camera_matrices: camera.calc_matrices(),
-                        window_cfg: window_cfg,
-                        input: InputState {
-                            mouse: mouse_state,
-                            keys: keyboard.clone(),
-                            dt,
-                        },
-                    });
-                    last_error_text = None;
-                }
-                Err(e) => {
-                    let error_text = Some(format!("{:?}", e));
-                    if error_text != last_error_text {
-                        println!("{}", error_text.as_ref().unwrap());
-                        last_error_text = error_text;
-                    }
-                }
-            },
-            _ => (),
         }
-    })
+
+        let now = std::time::Instant::now();
+        let dt_duration = now - last_frame_instant;
+        last_frame_instant = now;
+        let dt = dt_duration.as_secs_f32();
+
+        keyboard.update(std::mem::take(&mut keyboard_events), dt);
+        mouse_state.update(&new_mouse_state);
+        new_mouse_state = mouse_state.clone();
+
+        let input_state = InputState {
+            mouse: mouse_state,
+            keys: keyboard.clone(),
+            dt,
+        };
+        camera.update(&input_state);
+
+        match renderer.prepare_frame() {
+            Ok(()) => {
+                renderer.draw_frame(FrameState {
+                    camera_matrices: camera.calc_matrices(),
+                    window_cfg: window_cfg,
+                    input: input_state,
+                });
+                last_error_text = None;
+            }
+            Err(e) => {
+                let error_text = Some(format!("{:?}", e));
+                if error_text != last_error_text {
+                    println!("{}", error_text.as_ref().unwrap());
+                    last_error_text = error_text;
+                }
+            }
+        }
+    }
+
+    Ok(())
 }
 
 fn main() {

@@ -22,7 +22,7 @@ use glam::Vec2;
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
-use winit::event::VirtualKeyCode;
+use winit::VirtualKeyCode;
 
 const SDF_DIM: u32 = 256;
 

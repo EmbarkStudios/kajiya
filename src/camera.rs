@@ -1,5 +1,5 @@
 use crate::{input::InputState, math::*};
-use winit::event::VirtualKeyCode;
+use winit::VirtualKeyCode;
 
 #[derive(PartialEq, Clone, Copy)]
 pub struct CameraMatrices {
