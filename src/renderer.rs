@@ -196,15 +196,13 @@ impl Renderer {
             )?
             .with_views(&backend.device);
 
-        let gradients_shader =
-            cs_cache.register("/assets/shaders/gradients.hlsl", |compiled_shader| {
-                ComputePipelineDesc::builder()
-                    .spirv(&compiled_shader.spirv)
-                    .descriptor_set_opts(&[(
-                        2,
-                        DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
-                    )])
-            });
+        let gradients_shader = cs_cache.register(
+            "/assets/shaders/gradients.hlsl",
+            &ComputePipelineDesc::builder().descriptor_set_opts(&[(
+                2,
+                DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
+            )]),
+        );
 
         let vertex_shader = smol::block_on(
             CompileShader {
@@ -239,15 +237,15 @@ impl Renderer {
 
         let raster_simple = create_raster_pipeline(
             &*backend.device,
-            RasterPipelineDesc {
-                shaders: &[
-                    RasterShaderDesc::new(RasterStage::Vertex, &vertex_shader.spirv, "main")
-                        .build()
-                        .unwrap(),
-                    RasterShaderDesc::new(RasterStage::Pixel, &pixel_shader.spirv, "main")
-                        .build()
-                        .unwrap(),
-                ],
+            &[
+                RasterShaderDesc::new(RasterStage::Vertex, &vertex_shader.spirv, "main")
+                    .build()
+                    .unwrap(),
+                RasterShaderDesc::new(RasterStage::Pixel, &pixel_shader.spirv, "main")
+                    .build()
+                    .unwrap(),
+            ],
+            &RasterPipelineDesc {
                 render_pass: raster_simple_render_pass.clone(),
             },
         )?;
@@ -264,14 +262,10 @@ impl Renderer {
             )?
             .with_views(&backend.device);
 
-        fn sdf_shader_ctor(compiled_shader: &CompiledShader) -> ComputePipelineDescBuilder {
-            ComputePipelineDesc::builder()
-                .spirv(&compiled_shader.spirv)
-                .descriptor_set_opts(&[(
-                    2,
-                    DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
-                )])
-        }
+        let sdf_pipeline_desc = ComputePipelineDesc::builder().descriptor_set_opts(&[(
+            2,
+            DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
+        )]);
 
         let brick_meta_buffer = backend.device.create_buffer(
             BufferDesc {
@@ -290,18 +284,18 @@ impl Renderer {
         )?;
 
         let gen_empty_sdf =
-            cs_cache.register("/assets/shaders/sdf/gen_empty_sdf.hlsl", sdf_shader_ctor);
-        let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", sdf_shader_ctor);
+            cs_cache.register("/assets/shaders/sdf/gen_empty_sdf.hlsl", &sdf_pipeline_desc);
+        let edit_sdf = cs_cache.register("/assets/shaders/sdf/edit_sdf.hlsl", &sdf_pipeline_desc);
         let clear_bricks_meta = cs_cache.register(
             "/assets/shaders/sdf/clear_bricks_meta.hlsl",
-            sdf_shader_ctor,
+            &sdf_pipeline_desc,
         );
         let find_sdf_bricks =
-            cs_cache.register("/assets/shaders/sdf/find_bricks.hlsl", sdf_shader_ctor);
+            cs_cache.register("/assets/shaders/sdf/find_bricks.hlsl", &sdf_pipeline_desc);
 
         let sdf_raymarch_gbuffer = cs_cache.register(
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
-            sdf_shader_ctor,
+            &sdf_pipeline_desc,
         );
 
         let cube_indices = cube_indices();

@@ -12,9 +12,9 @@ use ash::{version::DeviceV1_0, vk};
 pub fn create_present_compute_shader(device: &Device) -> ShaderPipeline {
     create_compute_pipeline(
         device,
-        ComputePipelineDesc::builder()
-            .spirv(&(&include_bytes!("../final_blit.spv")[..]).to_owned())
-            .entry_name("main")
+        &(&include_bytes!("../final_blit.spv")[..]).to_owned(),
+        "main",
+        &ComputePipelineDesc::builder()
             .descriptor_set_opts(&[(
                 0,
                 DescriptorSetLayoutOpts::builder()

@@ -25,12 +25,18 @@ pub fn create_descriptor_set_layouts(
     device: &Device,
     mut descriptor_sets: StageDescriptorSetLayouts,
     stage_flags: vk::ShaderStageFlags,
-    mut set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
+    set_opts: &[Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
 ) -> (
     Vec<vk::DescriptorSetLayout>,
     Vec<HashMap<u32, vk::DescriptorType>>,
 ) {
     // dbg!(&descriptor_sets);
+
+    // Make a vector of Option<ref> to the original entries
+    let mut set_opts = set_opts
+        .iter()
+        .map(|item| item.as_ref())
+        .collect::<Vec<_>>();
 
     let samplers = TempList::new();
 
@@ -67,14 +73,15 @@ pub fn create_descriptor_set_layouts(
                 | vk::ShaderStageFlags::RAYGEN_KHR
         };
 
+        let _set_opts_default = Default::default();
         // Find the descriptor set opts corresponding to the set index, and remove them from the opts list
         let set_opts = {
-            let mut resolved_set_opts: DescriptorSetLayoutOpts = Default::default();
+            let mut resolved_set_opts: &DescriptorSetLayoutOpts = &_set_opts_default;
 
             for maybe_opt in set_opts.iter_mut() {
                 if let Some(opt) = maybe_opt.as_mut() {
                     if opt.0 == set_index {
-                        resolved_set_opts = std::mem::take(maybe_opt).unwrap().1;
+                        resolved_set_opts = &std::mem::take(maybe_opt).unwrap().1;
                     }
                 }
             }
@@ -82,7 +89,10 @@ pub fn create_descriptor_set_layouts(
         };
 
         // Use the specified override, or the layout parsed from the shader if no override was provided
-        let set = set_opts.replace.or(descriptor_sets.remove(&set_index));
+        let set = set_opts
+            .replace
+            .as_ref()
+            .or(descriptor_sets.get(&set_index));
 
         if let Some(set) = set {
             let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
@@ -93,7 +103,7 @@ pub fn create_descriptor_set_layouts(
                     | rspirv_reflect::DescriptorType::STORAGE_IMAGE
                     | rspirv_reflect::DescriptorType::STORAGE_BUFFER => bindings.push(
                         vk::DescriptorSetLayoutBinding::builder()
-                            .binding(binding_index)
+                            .binding(*binding_index)
                             //.descriptor_count(binding.count)
                             .descriptor_count(1) // TODO
                             .descriptor_type(match binding.ty {
@@ -114,7 +124,7 @@ pub fn create_descriptor_set_layouts(
                     rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
                         bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
-                                .binding(binding_index)
+                                .binding(*binding_index)
                                 //.descriptor_count(binding.count)
                                 .descriptor_count(1) // TODO
                                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
@@ -153,7 +163,7 @@ pub fn create_descriptor_set_layouts(
                                     .descriptor_count(1) // TODO
                                     .descriptor_type(vk::DescriptorType::SAMPLER)
                                     .stage_flags(stage_flags)
-                                    .binding(binding_index)
+                                    .binding(*binding_index)
                                     .immutable_samplers(std::slice::from_ref(samplers.add(
                                         device.get_sampler(SamplerDesc {
                                             texel_filter,
@@ -211,7 +221,7 @@ pub fn create_descriptor_set_layouts(
     (set_layouts, set_layout_info)
 }
 
-#[derive(Builder, Default, Debug)]
+#[derive(Builder, Default, Debug, Clone)]
 #[builder(pattern = "owned", derive(Clone))]
 pub struct DescriptorSetLayoutOpts {
     #[builder(setter(strip_option), default)]
@@ -227,17 +237,15 @@ impl DescriptorSetLayoutOpts {
 }
 
 #[derive(Builder)]
-#[builder(pattern = "owned")]
-pub struct ComputePipelineDesc<'a, 'b> {
-    pub spirv: &'a [u8],
-    pub entry_name: &'b str,
+#[builder(pattern = "owned", derive(Clone))]
+pub struct ComputePipelineDesc {
     #[builder(setter(name = "descriptor_set_opts_impl"))]
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
 }
 
-impl<'a, 'b> ComputePipelineDescBuilder<'a, 'b> {
+impl ComputePipelineDescBuilder {
     pub fn descriptor_set_opts(mut self, opts: &[(u32, DescriptorSetLayoutOptsBuilder)]) -> Self {
         assert!(opts.len() <= MAX_DESCRIPTOR_SETS);
         let mut descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS] =
@@ -250,8 +258,8 @@ impl<'a, 'b> ComputePipelineDescBuilder<'a, 'b> {
     }
 }
 
-impl<'a, 'b> ComputePipelineDesc<'a, 'b> {
-    pub fn builder() -> ComputePipelineDescBuilder<'a, 'b> {
+impl ComputePipelineDesc {
+    pub fn builder() -> ComputePipelineDescBuilder {
         ComputePipelineDescBuilder::default()
     }
 }
@@ -265,15 +273,20 @@ pub struct ShaderPipeline {
     pub pipeline_bind_point: vk::PipelineBindPoint,
 }
 
-pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> ShaderPipeline {
+pub fn create_compute_pipeline(
+    device: &Device,
+    spirv: &[u8],
+    entry_name: &str,
+    desc: &ComputePipelineDesc,
+) -> ShaderPipeline {
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
-        rspirv_reflect::Reflection::new_from_spirv(desc.spirv)
+        rspirv_reflect::Reflection::new_from_spirv(spirv)
             .unwrap()
             .get_descriptor_sets()
             .unwrap(),
         vk::ShaderStageFlags::COMPUTE,
-        desc.descriptor_set_opts,
+        &desc.descriptor_set_opts,
     );
 
     // dbg!(&set_layout_info);
@@ -296,13 +309,12 @@ pub fn create_compute_pipeline(device: &Device, desc: ComputePipelineDesc) -> Sh
         let shader_module = device
             .raw
             .create_shader_module(
-                &vk::ShaderModuleCreateInfo::builder()
-                    .code(desc.spirv.as_slice_of::<u32>().unwrap()),
+                &vk::ShaderModuleCreateInfo::builder().code(spirv.as_slice_of::<u32>().unwrap()),
                 None,
             )
             .unwrap();
 
-        let entry_name = CString::new(desc.entry_name).unwrap();
+        let entry_name = CString::new(entry_name).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
@@ -382,8 +394,7 @@ impl<'a, 'b> RasterShaderDesc<'a, 'b> {
 
 //#[derive(Builder)]
 //#[builder(pattern = "owned")]
-pub struct RasterPipelineDesc<'a, 'b> {
-    pub shaders: &'a [RasterShaderDesc<'a, 'b>],
+pub struct RasterPipelineDesc {
     pub render_pass: Arc<RenderPass>,
 }
 
@@ -647,10 +658,10 @@ pub fn create_render_pass(
 
 pub fn create_raster_pipeline(
     device: &Device,
-    desc: RasterPipelineDesc,
+    shaders: &[RasterShaderDesc],
+    desc: &RasterPipelineDesc,
 ) -> anyhow::Result<ShaderPipeline> {
-    let stage_layouts = desc
-        .shaders
+    let stage_layouts = shaders
         .iter()
         .map(|desc| {
             rspirv_reflect::Reflection::new_from_spirv(desc.spirv)
@@ -665,7 +676,7 @@ pub fn create_raster_pipeline(
         merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL_GRAPHICS,
         //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
-        Default::default(),
+        &Default::default(),
     );
 
     unsafe {
@@ -679,8 +690,7 @@ pub fn create_raster_pipeline(
             .unwrap();
 
         let entry_names = TempList::new();
-        let shader_stage_create_infos: Vec<_> = desc
-            .shaders
+        let shader_stage_create_infos: Vec<_> = shaders
             .iter()
             .map(|desc| {
                 let shader_info = vk::ShaderModuleCreateInfo::builder()

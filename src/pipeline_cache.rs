@@ -10,7 +10,7 @@ pub struct ComputePipelineHandle(usize);
 
 struct ComputePipelineCacheEntry {
     lazy_handle: Lazy<CompiledShader>,
-    ctor: Box<dyn Fn(&CompiledShader) -> ComputePipelineDescBuilder<'_, '_>>,
+    desc: ComputePipelineDesc,
     pipeline: Option<Arc<ShaderPipeline>>,
 }
 
@@ -27,10 +27,11 @@ impl ComputePipelineCache {
         }
     }
 
-    pub fn register<Ctor>(&mut self, path: impl AsRef<Path>, ctor: Ctor) -> ComputePipelineHandle
-    where
-        Ctor: (Fn(&CompiledShader) -> ComputePipelineDescBuilder<'_, '_>) + 'static,
-    {
+    pub fn register(
+        &mut self,
+        path: impl AsRef<Path>,
+        desc: &ComputePipelineDescBuilder,
+    ) -> ComputePipelineHandle {
         let handle = ComputePipelineHandle(self.entries.len());
         self.entries.insert(
             handle,
@@ -40,7 +41,7 @@ impl ComputePipelineCache {
                     profile: "cs".to_owned(),
                 }
                 .into_lazy(),
-                ctor: Box::new(ctor),
+                desc: desc.clone().build().unwrap(),
                 pipeline: None,
             },
         );
@@ -63,13 +64,8 @@ impl ComputePipelineCache {
             if entry.pipeline.is_none() {
                 let compiled_shader = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
 
-                let pipeline = create_compute_pipeline(
-                    &*device,
-                    (entry.ctor)(&*compiled_shader)
-                        .entry_name("main")
-                        .build()
-                        .unwrap(),
-                );
+                let pipeline =
+                    create_compute_pipeline(&*device, &compiled_shader.spirv, "main", &entry.desc);
 
                 entry.pipeline = Some(Arc::new(pipeline));
             }
