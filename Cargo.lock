@@ -1831,7 +1831,8 @@ dependencies = [
 
 [[package]]
 name = "vk-mem"
-version = "0.2.0"
+version = "0.3.0"
+source = "git+https://github.com/cheako/vk-mem-rs.git?rev=4a5f613#4a5f6139e2b5bbed7b5b520f66adb28d45b95bca"
 dependencies = [
  "ash",
  "bitflags",

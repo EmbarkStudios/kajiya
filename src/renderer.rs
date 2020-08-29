@@ -9,7 +9,7 @@ use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use backend::{
     buffer::{Buffer, BufferDesc},
-    device::CommandBuffer,
+    device::{CommandBuffer, Device},
 };
 use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
@@ -41,7 +41,6 @@ pub struct Renderer {
     output_img: ImageWithViews,
     depth_img: ImageWithViews,
 
-    gradients_shader: ComputePipelineHandle,
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipelineHandle,
 
@@ -191,14 +190,6 @@ impl Renderer {
             )?
             .with_views(&backend.device);
 
-        let gradients_shader = pipeline_cache.register_compute(
-            "/assets/shaders/gradients.hlsl",
-            &ComputePipelineDesc::builder().descriptor_set_opts(&[(
-                2,
-                DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
-            )]),
-        );
-
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -300,7 +291,6 @@ impl Renderer {
 
             output_img,
             depth_img,
-            gradients_shader,
             raster_simple_render_pass,
             raster_simple,
 
@@ -393,8 +383,9 @@ impl Renderer {
                     self.edit_sdf
                 });
 
-                self.bind_pipeline(cb, &*shader);
-                self.bind_descriptor_set(
+                bind_pipeline(&*self.backend.device, cb, &*shader);
+                bind_descriptor_set(
+                    &*self.backend.device,
                     cb,
                     &*shader,
                     0,
@@ -410,8 +401,9 @@ impl Renderer {
 
             {
                 let shader = self.pipeline_cache.get_compute(self.clear_bricks_meta);
-                self.bind_pipeline(cb, &*shader);
-                self.bind_descriptor_set(
+                bind_pipeline(&*self.backend.device, cb, &*shader);
+                bind_descriptor_set(
+                    &*self.backend.device,
                     cb,
                     &*shader,
                     0,
@@ -420,7 +412,8 @@ impl Renderer {
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
                 raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
 
-                self.global_barrier(
+                global_barrier(
+                    &*self.backend.device,
                     cb,
                     &[vk_sync::AccessType::ComputeShaderWrite],
                     &[vk_sync::AccessType::ComputeShaderWrite],
@@ -429,8 +422,9 @@ impl Renderer {
 
             {
                 let shader = self.pipeline_cache.get_compute(self.find_sdf_bricks);
-                self.bind_pipeline(cb, &*shader);
-                self.bind_descriptor_set(
+                bind_pipeline(&*self.backend.device, cb, &*shader);
+                bind_descriptor_set(
+                    &*self.backend.device,
                     cb,
                     &*shader,
                     0,
@@ -443,7 +437,8 @@ impl Renderer {
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
                 raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2);
 
-                self.global_barrier(
+                global_barrier(
+                    &*self.backend.device,
                     cb,
                     &[vk_sync::AccessType::ComputeShaderWrite],
                     &[vk_sync::AccessType::IndirectBuffer],
@@ -454,8 +449,9 @@ impl Renderer {
             {
                 let shader = self.pipeline_cache.get_compute(self.sdf_raymarch_gbuffer);
 
-                self.bind_pipeline(cb, &*shader);
-                self.bind_descriptor_set(
+                bind_pipeline(&*self.backend.device, cb, &*shader);
+                bind_descriptor_set(
+                    &*self.backend.device,
                     cb,
                     &*shader,
                     0,
@@ -491,7 +487,8 @@ impl Renderer {
                 depth_img_tracker.transition(vk_sync::AccessType::DepthStencilAttachmentWrite);
                 output_img_tracker.transition(vk_sync::AccessType::ColorAttachmentWrite);
 
-                self.begin_render_pass(
+                begin_render_pass(
+                    &*self.backend.device,
                     cb,
                     &*self.raster_simple_render_pass,
                     [width, height],
@@ -503,14 +500,15 @@ impl Renderer {
                     )),
                 );
 
-                self.set_default_view_and_scissor(cb, [width, height]);
+                set_default_view_and_scissor(&*self.backend.device, cb, [width, height]);
 
                 {
                     let pipeline = self.pipeline_cache.get_raster(self.raster_simple);
                     let pipeline = &*pipeline;
 
-                    self.bind_pipeline(cb, pipeline);
-                    self.bind_descriptor_set(
+                    bind_pipeline(&*self.backend.device, cb, pipeline);
+                    bind_descriptor_set(
+                        &*self.backend.device,
                         cb,
                         pipeline,
                         0,
@@ -654,191 +652,6 @@ impl Renderer {
         set
     }
 
-    #[allow(dead_code)]
-    fn begin_render_pass(
-        &self,
-        cb: &CommandBuffer,
-        render_pass: &RenderPass,
-        dims: [u32; 2],
-        color_attachments: &[&ImageView],
-        depth_attachment: Option<&ImageView>,
-    ) {
-        let framebuffer = render_pass
-            .framebuffer_cache
-            .get_or_create(
-                &self.backend.device.raw,
-                FramebufferCacheKey::new(
-                    dims,
-                    color_attachments.iter().copied().map(|a| &a.image.desc),
-                    depth_attachment.map(|a| &a.image.desc),
-                ),
-            )
-            .unwrap();
-
-        // Bind images to the imageless framebuffer
-        let image_attachments: ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]> = color_attachments
-            .iter()
-            .chain(depth_attachment.as_ref().into_iter())
-            .copied()
-            .map(|a| a.raw)
-            .collect();
-
-        let mut pass_attachment_desc =
-            vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
-
-        let [width, height] = dims;
-
-        //.clear_values(&clear_values)
-        let pass_begin_desc = vk::RenderPassBeginInfo::builder()
-            .render_pass(render_pass.raw)
-            .framebuffer(framebuffer)
-            .render_area(vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: width as _,
-                    height: height as _,
-                },
-            })
-            .push_next(&mut pass_attachment_desc);
-
-        unsafe {
-            self.backend.device.raw.cmd_begin_render_pass(
-                cb.raw,
-                &pass_begin_desc,
-                vk::SubpassContents::INLINE,
-            );
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn set_default_view_and_scissor(&self, cb: &CommandBuffer, [width, height]: [u32; 2]) {
-        unsafe {
-            self.backend.device.raw.cmd_set_viewport(
-                cb.raw,
-                0,
-                &[vk::Viewport {
-                    x: 0.0,
-                    y: (height as f32),
-                    width: width as _,
-                    height: -(height as f32),
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }],
-            );
-
-            self.backend.device.raw.cmd_set_scissor(
-                cb.raw,
-                0,
-                &[vk::Rect2D {
-                    offset: vk::Offset2D { x: 0, y: 0 },
-                    extent: vk::Extent2D {
-                        width: width as _,
-                        height: height as _,
-                    },
-                }],
-            );
-        }
-    }
-
-    pub fn bind_pipeline(&self, cb: &CommandBuffer, shader: &ShaderPipeline) {
-        unsafe {
-            self.backend.device.raw.cmd_bind_pipeline(
-                cb.raw,
-                shader.pipeline_bind_point,
-                shader.pipeline,
-            );
-        }
-    }
-
-    pub fn bind_descriptor_set(
-        &self,
-        cb: &CommandBuffer,
-        shader: &ShaderPipeline,
-        set_index: u32,
-        bindings: &[DescriptorSetBinding],
-    ) {
-        let shader_set_info = if let Some(info) = shader.set_layout_info.get(set_index as usize) {
-            info
-        } else {
-            println!(
-                "bind_descriptor_set: set index {} does not exist",
-                set_index
-            );
-            return;
-        };
-
-        let image_info = TempList::new();
-        let buffer_info = TempList::new();
-
-        let raw_device = &self.backend.device.raw;
-
-        let descriptor_pool = {
-            let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
-                .max_sets(1)
-                .pool_sizes(&shader.descriptor_pool_sizes);
-
-            unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }
-                .unwrap()
-        };
-        self.backend.device.defer_release(descriptor_pool);
-
-        let descriptor_set = {
-            let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
-                .descriptor_pool(descriptor_pool)
-                .set_layouts(std::slice::from_ref(
-                    &shader.descriptor_set_layouts[set_index as usize],
-                ));
-
-            unsafe { raw_device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()
-                [0]
-        };
-
-        unsafe {
-            let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
-                .iter()
-                .enumerate()
-                .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
-                .map(|(binding_idx, binding)| {
-                    let write = vk::WriteDescriptorSet::builder()
-                        .dst_set(descriptor_set)
-                        .dst_binding(binding_idx as _)
-                        .dst_array_element(0);
-
-                    match binding {
-                        DescriptorSetBinding::Image(image) => write
-                            .descriptor_type(match image.image_layout {
-                                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
-                                    vk::DescriptorType::SAMPLED_IMAGE
-                                }
-                                vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
-                                _ => unimplemented!("{:?}", image.image_layout),
-                            })
-                            .image_info(std::slice::from_ref(image_info.add(*image)))
-                            .build(),
-                        DescriptorSetBinding::Buffer(buffer) => write
-                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                            .build(),
-                    }
-                })
-                .collect();
-
-            self.backend
-                .device
-                .raw
-                .update_descriptor_sets(&descriptor_writes, &[]);
-
-            self.backend.device.raw.cmd_bind_descriptor_sets(
-                cb.raw,
-                shader.pipeline_bind_point,
-                shader.pipeline_layout,
-                set_index,
-                &[descriptor_set],
-                &[],
-            );
-        }
-    }
-
     pub fn bind_frame_constants(
         &self,
         cb: &CommandBuffer,
@@ -862,24 +675,6 @@ impl Renderer {
                 );
             }
         }
-    }
-
-    fn global_barrier(
-        &self,
-        cb: &CommandBuffer,
-        previous_accesses: &[vk_sync::AccessType],
-        next_accesses: &[vk_sync::AccessType],
-    ) {
-        vk_sync::cmd::pipeline_barrier(
-            self.backend.device.raw.fp_v1_0(),
-            cb.raw,
-            Some(vk_sync::GlobalBarrier {
-                previous_accesses,
-                next_accesses,
-            }),
-            &[],
-            &[],
-        );
     }
 
     pub fn prepare_frame(&mut self) -> anyhow::Result<()> {
@@ -929,4 +724,202 @@ fn cube_indices() -> Vec<u32> {
     }
 
     res
+}
+
+pub fn bind_pipeline(device: &Device, cb: &CommandBuffer, shader: &ShaderPipeline) {
+    unsafe {
+        device
+            .raw
+            .cmd_bind_pipeline(cb.raw, shader.pipeline_bind_point, shader.pipeline);
+    }
+}
+
+pub fn bind_descriptor_set(
+    device: &Device,
+    cb: &CommandBuffer,
+    shader: &ShaderPipeline,
+    set_index: u32,
+    bindings: &[DescriptorSetBinding],
+) {
+    let shader_set_info = if let Some(info) = shader.set_layout_info.get(set_index as usize) {
+        info
+    } else {
+        println!(
+            "bind_descriptor_set: set index {} does not exist",
+            set_index
+        );
+        return;
+    };
+
+    let image_info = TempList::new();
+    let buffer_info = TempList::new();
+
+    let raw_device = &device.raw;
+
+    let descriptor_pool = {
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+            .max_sets(1)
+            .pool_sizes(&shader.descriptor_pool_sizes);
+
+        unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }.unwrap()
+    };
+    device.defer_release(descriptor_pool);
+
+    let descriptor_set = {
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(descriptor_pool)
+            .set_layouts(std::slice::from_ref(
+                &shader.descriptor_set_layouts[set_index as usize],
+            ));
+
+        unsafe { raw_device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()[0]
+    };
+
+    unsafe {
+        let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
+            .iter()
+            .enumerate()
+            .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
+            .map(|(binding_idx, binding)| {
+                let write = vk::WriteDescriptorSet::builder()
+                    .dst_set(descriptor_set)
+                    .dst_binding(binding_idx as _)
+                    .dst_array_element(0);
+
+                match binding {
+                    DescriptorSetBinding::Image(image) => write
+                        .descriptor_type(match image.image_layout {
+                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                                vk::DescriptorType::SAMPLED_IMAGE
+                            }
+                            vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
+                            _ => unimplemented!("{:?}", image.image_layout),
+                        })
+                        .image_info(std::slice::from_ref(image_info.add(*image)))
+                        .build(),
+                    DescriptorSetBinding::Buffer(buffer) => write
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
+                        .build(),
+                }
+            })
+            .collect();
+
+        device.raw.update_descriptor_sets(&descriptor_writes, &[]);
+
+        device.raw.cmd_bind_descriptor_sets(
+            cb.raw,
+            shader.pipeline_bind_point,
+            shader.pipeline_layout,
+            set_index,
+            &[descriptor_set],
+            &[],
+        );
+    }
+}
+
+fn global_barrier(
+    device: &Device,
+    cb: &CommandBuffer,
+    previous_accesses: &[vk_sync::AccessType],
+    next_accesses: &[vk_sync::AccessType],
+) {
+    vk_sync::cmd::pipeline_barrier(
+        device.raw.fp_v1_0(),
+        cb.raw,
+        Some(vk_sync::GlobalBarrier {
+            previous_accesses,
+            next_accesses,
+        }),
+        &[],
+        &[],
+    );
+}
+
+#[allow(dead_code)]
+fn begin_render_pass(
+    device: &Device,
+    cb: &CommandBuffer,
+    render_pass: &RenderPass,
+    dims: [u32; 2],
+    color_attachments: &[&ImageView],
+    depth_attachment: Option<&ImageView>,
+) {
+    let framebuffer = render_pass
+        .framebuffer_cache
+        .get_or_create(
+            &device.raw,
+            FramebufferCacheKey::new(
+                dims,
+                color_attachments.iter().copied().map(|a| &a.image.desc),
+                depth_attachment.map(|a| &a.image.desc),
+            ),
+        )
+        .unwrap();
+
+    // Bind images to the imageless framebuffer
+    let image_attachments: ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]> = color_attachments
+        .iter()
+        .chain(depth_attachment.as_ref().into_iter())
+        .copied()
+        .map(|a| a.raw)
+        .collect();
+
+    let mut pass_attachment_desc =
+        vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
+
+    let [width, height] = dims;
+
+    //.clear_values(&clear_values)
+    let pass_begin_desc = vk::RenderPassBeginInfo::builder()
+        .render_pass(render_pass.raw)
+        .framebuffer(framebuffer)
+        .render_area(vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D {
+                width: width as _,
+                height: height as _,
+            },
+        })
+        .push_next(&mut pass_attachment_desc);
+
+    unsafe {
+        device
+            .raw
+            .cmd_begin_render_pass(cb.raw, &pass_begin_desc, vk::SubpassContents::INLINE);
+    }
+}
+
+#[allow(dead_code)]
+pub fn set_default_view_and_scissor(
+    device: &Device,
+    cb: &CommandBuffer,
+    [width, height]: [u32; 2],
+) {
+    unsafe {
+        device.raw.cmd_set_viewport(
+            cb.raw,
+            0,
+            &[vk::Viewport {
+                x: 0.0,
+                y: (height as f32),
+                width: width as _,
+                height: -(height as f32),
+                min_depth: 0.0,
+                max_depth: 1.0,
+            }],
+        );
+
+        device.raw.cmd_set_scissor(
+            cb.raw,
+            0,
+            &[vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: width as _,
+                    height: height as _,
+                },
+            }],
+        );
+    }
 }

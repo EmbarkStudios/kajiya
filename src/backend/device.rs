@@ -142,7 +142,7 @@ impl Device {
             vk::ExtDescriptorIndexingFn::name().as_ptr(),
             vk::KhrImagelessFramebufferFn::name().as_ptr(),
             vk::KhrImageFormatListFn::name().as_ptr(),
-            vk::ExtFragmentShaderInterlockFn::name().as_ptr(),
+            //vk::ExtFragmentShaderInterlockFn::name().as_ptr(),
             vk::KhrPushDescriptorFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
             vk::KhrDrawIndirectCountFn::name().as_ptr(),
