@@ -10,6 +10,7 @@ mod math;
 mod mesh;
 mod pipeline_cache;
 mod renderer;
+mod rg;
 mod shader_compiler;
 mod state_tracker;
 mod viewport;

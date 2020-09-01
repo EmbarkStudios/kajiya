@@ -5,7 +5,7 @@ use derive_builder::Builder;
 use parking_lot::Mutex;
 use std::{collections::HashMap, sync::Arc};
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub enum ImageType {
     Tex1d = 0,
@@ -17,7 +17,7 @@ pub enum ImageType {
     CubeArray = 6,
 }
 
-#[derive(Builder, Clone, Copy)]
+#[derive(Builder, Clone, Copy, Debug)]
 #[builder(pattern = "owned")]
 pub struct ImageDesc {
     pub image_type: ImageType,
