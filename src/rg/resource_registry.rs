@@ -2,9 +2,14 @@ use super::{graph::RenderGraphExecutionParams, resource::*};
 use crate::dynamic_constants::DynamicConstants;
 use std::{path::Path, sync::Arc};
 
+pub enum RenderResource {
+    Image(Arc<crate::backend::image::Image>),
+    Buffer(crate::backend::buffer::Buffer),
+}
+
 pub struct ResourceRegistry<'exec_params, 'device, 'pipeline_cache, 'constants> {
     pub execution_params: &'exec_params RenderGraphExecutionParams<'device, 'pipeline_cache>,
-    pub(crate) resources: Vec<RenderResourceHandle>,
+    pub(crate) resources: Vec<RenderResource>,
     pub dynamic_constants: &'constants mut DynamicConstants,
 }
 

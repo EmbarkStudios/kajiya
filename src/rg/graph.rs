@@ -1,6 +1,10 @@
 #![allow(unused_imports)]
 
-use super::{pass_builder::PassBuilder, resource::*, resource_registry::ResourceRegistry};
+use super::{
+    pass_builder::PassBuilder,
+    resource::*,
+    resource_registry::{RenderResource, ResourceRegistry},
+};
 
 use crate::{
     backend::device::{CommandBuffer, Device},
@@ -109,33 +113,12 @@ impl RenderGraph {
 
         let device = params.device;
 
-        let gpu_resources: Vec<RenderResourceHandle> = self
+        let gpu_resources: Vec<RenderResource> = self
             .resources
             .iter()
             .map(|resource: &GraphResourceCreateInfo| match resource.desc {
                 GraphResourceDesc::Image(desc) => {
-                    let handle = handles.allocate_transient(RenderResourceType::Image);
-                    device
-                        .create_texture(
-                            handle,
-                            &RenderImageDesc {
-                                texture_type: RenderImageType::Tex2d,
-                                bind_flags: RenderBindFlags::UNORDERED_ACCESS
-                                    | RenderBindFlags::SHADER_RESOURCE
-                                    | RenderBindFlags::RENDER_TARGET,
-                                format: desc.format,
-                                width: desc.width,
-                                height: desc.height,
-                                depth: 1,
-                                levels: 1,
-                                elements: 1,
-                            },
-                            None,
-                            "rg texture".into(),
-                        )
-                        .unwrap();
-
-                    handle
+                    RenderResource::Image(device.create_image(desc, None).unwrap())
                 }
             })
             .collect();
@@ -146,17 +129,19 @@ impl RenderGraph {
             dynamic_constants: dynamic_constants,
         };
 
-        let mut transitions = Vec::new();
+        let mut transitions: Vec<(&RenderResource, PassResourceAccessType)> = Vec::new();
 
         for pass in self.passes.into_iter() {
             transitions.clear();
             for resource_ref in pass.read.iter().chain(pass.write.iter()) {
                 transitions.push((
-                    resource_registry.resources[resource_ref.handle.id as usize],
-                    resource_ref.access_mode,
+                    &resource_registry.resources[resource_ref.handle.id as usize],
+                    resource_ref.access,
                 ));
             }
-            cb.transitions(&transitions)?;
+
+            todo!("Execute the transitions");
+            //cb.transitions(&transitions)?;
 
             (pass.render_fn.unwrap())(cb, &mut resource_registry)?;
         }
@@ -169,17 +154,22 @@ impl RenderGraph {
     }
 }
 
-type DynRenderFn =
-    dyn FnOnce(&mut RenderCommandList<'_>, &mut ResourceRegistry) -> anyhow::Result<()>;
+type DynRenderFn = dyn FnOnce(&mut CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()>;
 
-enum ResourceUsageFlags {
-    Image(vk::ImageUsageFlags),
-    Buffer(vk::BufferUsageFlags),
+pub struct PassResourceAccessType {
+    // TODO: multiple
+    access_type: vk_sync::AccessType,
+}
+
+impl PassResourceAccessType {
+    pub fn new(access_type: vk_sync::AccessType) -> Self {
+        Self { access_type }
+    }
 }
 
 pub(crate) struct PassResourceRef {
     pub handle: GraphRawResourceHandle,
-    pub access_mode: ResourceUsageFlags,
+    pub access: PassResourceAccessType,
 }
 
 #[derive(Default)]

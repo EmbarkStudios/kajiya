@@ -2,9 +2,10 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     resource_registry::ResourceRegistry,
-    PassResourceRef,
+    PassResourceAccessType, PassResourceRef,
 };
 
+use crate::backend::device::CommandBuffer;
 use std::marker::PhantomData;
 
 pub struct PassBuilder<'rg> {
@@ -54,7 +55,7 @@ impl<'rg> PassBuilder<'rg> {
     pub fn write_impl<Res: Resource, AccessMode>(
         &mut self,
         handle: &mut Handle<Res>,
-        access_mode: RenderResourceStates,
+        access_mode: vk_sync::AccessType,
     ) -> Ref<Res, AccessMode> {
         let pass = self.pass.as_mut().unwrap();
 
@@ -70,7 +71,7 @@ impl<'rg> PassBuilder<'rg> {
 
         pass.write.push(PassResourceRef {
             handle: handle.raw,
-            access_mode,
+            access: PassResourceAccessType::new(access_mode),
         });
 
         Ref {
@@ -80,12 +81,13 @@ impl<'rg> PassBuilder<'rg> {
         }
     }
 
+    // TODO: get rid of, rename, or something in-between to have more precise access modes
     pub fn write<Res: Resource>(&mut self, handle: &mut Handle<Res>) -> Ref<Res, GpuUav> {
-        self.write_impl(handle, RenderResourceStates::UNORDERED_ACCESS)
+        self.write_impl(handle, vk_sync::AccessType::AnyShaderWrite)
     }
 
     pub fn raster<Res: Resource>(&mut self, handle: &mut Handle<Res>) -> Ref<Res, GpuRt> {
-        self.write_impl(handle, RenderResourceStates::RENDER_TARGET)
+        self.write_impl(handle, vk_sync::AccessType::ColorAttachmentWrite)
     }
 
     pub fn read<Res: Resource>(&mut self, handle: &Handle<Res>) -> Ref<Res, GpuSrv> {
@@ -98,8 +100,9 @@ impl<'rg> PassBuilder<'rg> {
 
         pass.write.push(PassResourceRef {
             handle: handle.raw,
-            access_mode: RenderResourceStates::PIXEL_SHADER_RESOURCE
-                | RenderResourceStates::NON_PIXEL_SHADER_RESOURCE,
+            access: PassResourceAccessType::new(
+                vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+            ),
         });
 
         Ref {
@@ -111,8 +114,7 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn render(
         mut self,
-        render: impl FnOnce(&mut RenderCommandList<'_>, &mut ResourceRegistry) -> anyhow::Result<()>
-            + 'static,
+        render: impl FnOnce(&mut CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()> + 'static,
     ) {
         let prev = self
             .pass
