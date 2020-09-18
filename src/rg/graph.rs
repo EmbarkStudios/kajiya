@@ -12,6 +12,7 @@ use crate::{
     backend::image::ImageViewDesc,
     backend::shader::ComputePipelineDesc,
     dynamic_constants::DynamicConstants,
+    pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
 };
 use ash::vk;
@@ -96,6 +97,12 @@ pub struct RenderGraphExecutionParams<'a> {
     pub view_cache: &'a ViewCache,
 }
 
+pub struct CompiledRenderGraph {
+    rg: RenderGraph,
+    resources: Vec<AnyRenderResource>,
+    compute_pipelines: Vec<ComputePipelineHandle>,
+}
+
 impl RenderGraph {
     pub fn add_pass<'s>(&'s mut self) -> PassBuilder<'s> {
         let pass_idx = self.passes.len();
@@ -127,12 +134,7 @@ impl RenderGraph {
         resource_lifetimes
     }
 
-    pub fn execute<'a, 'cb, 'commands>(
-        self,
-        params: RenderGraphExecutionParams<'a>,
-        dynamic_constants: &mut DynamicConstants,
-        cb: &'cb mut CommandBuffer,
-    ) -> anyhow::Result<()> {
+    pub fn compile(self, params: RenderGraphExecutionParams<'_>) -> CompiledRenderGraph {
         let _resource_lifetimes = self.calculate_resource_lifetimes();
         // TODO: alias resources
 
@@ -163,14 +165,33 @@ impl RenderGraph {
             .map(|(path, desc)| params.pipeline_cache.register_compute(path, desc))
             .collect::<Vec<_>>();
 
+        CompiledRenderGraph {
+            rg: self,
+            resources: gpu_resources,
+            compute_pipelines,
+        }
+    }
+
+    pub(crate) fn record_pass(&mut self, pass: RecordedPass) {
+        self.passes.push(pass);
+    }
+}
+
+impl CompiledRenderGraph {
+    pub fn execute(
+        self,
+        params: RenderGraphExecutionParams<'_>,
+        dynamic_constants: &mut DynamicConstants,
+        cb: &mut CommandBuffer,
+    ) -> anyhow::Result<()> {
         let mut resource_registry = ResourceRegistry {
             execution_params: &params,
-            resources: gpu_resources,
+            resources: self.resources,
             dynamic_constants: dynamic_constants,
-            compute_pipelines,
+            compute_pipelines: self.compute_pipelines,
         };
 
-        for pass in self.passes.into_iter() {
+        for pass in self.rg.passes.into_iter() {
             {
                 let mut transitions: Vec<(&AnyRenderResource, PassResourceAccessType)> = Vec::new();
                 for resource_ref in pass.read.iter().chain(pass.write.iter()) {
@@ -188,10 +209,6 @@ impl RenderGraph {
         }
 
         Ok(())
-    }
-
-    pub(crate) fn record_pass(&mut self, pass: RecordedPass) {
-        self.passes.push(pass);
     }
 }
 

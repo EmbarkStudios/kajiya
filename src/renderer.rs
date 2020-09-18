@@ -287,6 +287,23 @@ impl Renderer {
             Some((&cube_indices).as_byte_slice()),
         )?;
 
+        let mut rg = RenderGraph::new();
+        let mut _tex = synth_gradients(
+            &mut rg,
+            ImageDesc::new_2d([1280, 720])
+                .format(vk::Format::R16G16B16A16_SFLOAT)
+                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+                .build()
+                .unwrap(),
+        );
+
+        let view_cache = ViewCache::default();
+        let _rg = rg.compile(RenderGraphExecutionParams {
+            device: &*backend.device,
+            pipeline_cache: &mut pipeline_cache,
+            view_cache: &view_cache,
+        });
+
         Ok(Renderer {
             backend,
             dynamic_constants,
@@ -932,22 +949,10 @@ pub fn set_default_view_and_scissor(
 
 use crate::rg::*;
 
-/*macro_rules! rg_compute_pipeline {
-    ($pass:expr, $path:literal, $desc:expr) => {{
-        static PIPELINE: OnceCell<RgComputePipelineHandle> = OnceCell::new();
-        *PIPELINE.get_or_init(|| $pass.register_compute_pipeline($path, $desc))
-    }};
-}*/
-
 fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();
     let mut output = pass.create(&desc);
     let output_ref = pass.write(&mut output);
-    /*let pipeline = rg_compute_pipeline!(
-        pass,
-        "/assets/shaders/gradients.hlsl",
-        ComputePipelineDesc::builder()
-    );*/
 
     let pipeline = pass.register_compute_pipeline(
         "/assets/shaders/gradients.hlsl",

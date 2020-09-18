@@ -239,7 +239,7 @@ impl DescriptorSetLayoutOpts {
 #[derive(Builder, Clone)]
 #[builder(pattern = "owned", derive(Clone))]
 pub struct ComputePipelineDesc {
-    #[builder(setter(name = "descriptor_set_opts_impl"))]
+    #[builder(default, setter(name = "descriptor_set_opts_impl"))]
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
