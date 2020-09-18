@@ -3,20 +3,26 @@
 use super::{
     pass_builder::PassBuilder,
     resource::*,
-    resource_registry::{RenderResource, ResourceRegistry},
+    resource_registry::{AnyRenderResource, ResourceRegistry},
 };
 
 use crate::{
     backend::device::{CommandBuffer, Device},
+    backend::image::ImageView,
+    backend::image::ImageViewDesc,
+    backend::shader::ComputePipelineDesc,
     dynamic_constants::DynamicConstants,
     pipeline_cache::PipelineCache,
 };
 use ash::vk;
+use parking_lot::Mutex;
 use std::{
     collections::HashMap,
+    hash::Hash,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, RwLock},
+    sync::Arc,
+    sync::Weak,
 };
 
 pub(crate) struct GraphResourceCreateInfo {
@@ -24,9 +30,13 @@ pub(crate) struct GraphResourceCreateInfo {
     pub create_pass_idx: usize,
 }
 
+#[derive(Clone, Copy)]
+pub struct RgComputePipelineHandle(pub(crate) usize);
+
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceCreateInfo>,
+    pub(crate) compute_pipelines: Vec<(PathBuf, ComputePipelineDesc)>,
 }
 
 impl RenderGraph {
@@ -34,6 +44,7 @@ impl RenderGraph {
         Self {
             passes: Vec::new(),
             resources: Vec::new(),
+            compute_pipelines: Vec::new(),
         }
     }
 
@@ -57,9 +68,32 @@ struct ResourceLifetime {
     last_access: usize,
 }
 
-pub struct RenderGraphExecutionParams<'device, 'pipeline_cache> {
-    pub device: &'device Device,
-    pub pipeline_cache: &'pipeline_cache PipelineCache,
+pub(crate) struct ImageViewCacheKey {
+    pub(crate) image: Weak<Image>,
+    pub(crate) view_desc: ImageViewDesc,
+}
+impl PartialEq for ImageViewCacheKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.image.as_ptr() == other.image.as_ptr()
+    }
+}
+impl Eq for ImageViewCacheKey {}
+impl Hash for ImageViewCacheKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.image.as_ptr() as usize).hash(state);
+        self.view_desc.hash(state);
+    }
+}
+
+#[derive(Default)]
+pub struct ViewCache {
+    pub(crate) image_views: Mutex<HashMap<ImageViewCacheKey, Arc<ImageView>>>,
+}
+
+pub struct RenderGraphExecutionParams<'a> {
+    pub device: &'a Device,
+    pub pipeline_cache: &'a mut PipelineCache,
+    pub view_cache: &'a ViewCache,
 }
 
 impl RenderGraph {
@@ -93,9 +127,9 @@ impl RenderGraph {
         resource_lifetimes
     }
 
-    pub fn execute<'device, 'pipeline_cache, 'cb, 'commands>(
+    pub fn execute<'a, 'cb, 'commands>(
         self,
-        params: RenderGraphExecutionParams<'device, 'pipeline_cache>,
+        params: RenderGraphExecutionParams<'a>,
         dynamic_constants: &mut DynamicConstants,
         cb: &'cb mut CommandBuffer,
     ) -> anyhow::Result<()> {
@@ -113,35 +147,42 @@ impl RenderGraph {
 
         let device = params.device;
 
-        let gpu_resources: Vec<RenderResource> = self
+        let gpu_resources: Vec<AnyRenderResource> = self
             .resources
             .iter()
             .map(|resource: &GraphResourceCreateInfo| match resource.desc {
                 GraphResourceDesc::Image(desc) => {
-                    RenderResource::Image(device.create_image(desc, None).unwrap())
+                    AnyRenderResource::Image(device.create_image(desc, None).unwrap())
                 }
             })
             .collect();
+
+        let compute_pipelines = self
+            .compute_pipelines
+            .iter()
+            .map(|(path, desc)| params.pipeline_cache.register_compute(path, desc))
+            .collect::<Vec<_>>();
 
         let mut resource_registry = ResourceRegistry {
             execution_params: &params,
             resources: gpu_resources,
             dynamic_constants: dynamic_constants,
+            compute_pipelines,
         };
 
-        let mut transitions: Vec<(&RenderResource, PassResourceAccessType)> = Vec::new();
-
         for pass in self.passes.into_iter() {
-            transitions.clear();
-            for resource_ref in pass.read.iter().chain(pass.write.iter()) {
-                transitions.push((
-                    &resource_registry.resources[resource_ref.handle.id as usize],
-                    resource_ref.access,
-                ));
-            }
+            {
+                let mut transitions: Vec<(&AnyRenderResource, PassResourceAccessType)> = Vec::new();
+                for resource_ref in pass.read.iter().chain(pass.write.iter()) {
+                    transitions.push((
+                        &resource_registry.resources[resource_ref.handle.id as usize],
+                        resource_ref.access,
+                    ));
+                }
 
-            todo!("Execute the transitions");
-            //cb.transitions(&transitions)?;
+                // TODO: Execute the transitions
+                //cb.transitions(&transitions)?;
+            }
 
             (pass.render_fn.unwrap())(cb, &mut resource_registry)?;
         }
@@ -156,6 +197,7 @@ impl RenderGraph {
 
 type DynRenderFn = dyn FnOnce(&mut CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()>;
 
+#[derive(Copy, Clone)]
 pub struct PassResourceAccessType {
     // TODO: multiple
     access_type: vk_sync::AccessType,

@@ -256,20 +256,26 @@ impl Renderer {
             None,
         )?;
 
-        let gen_empty_sdf = pipeline_cache
-            .register_compute("/assets/shaders/sdf/gen_empty_sdf.hlsl", &sdf_pipeline_desc);
-        let edit_sdf = pipeline_cache
-            .register_compute("/assets/shaders/sdf/edit_sdf.hlsl", &sdf_pipeline_desc);
+        let gen_empty_sdf = pipeline_cache.register_compute(
+            "/assets/shaders/sdf/gen_empty_sdf.hlsl",
+            &sdf_pipeline_desc.clone().build().unwrap(),
+        );
+        let edit_sdf = pipeline_cache.register_compute(
+            "/assets/shaders/sdf/edit_sdf.hlsl",
+            &sdf_pipeline_desc.clone().build().unwrap(),
+        );
         let clear_bricks_meta = pipeline_cache.register_compute(
             "/assets/shaders/sdf/clear_bricks_meta.hlsl",
-            &sdf_pipeline_desc,
+            &sdf_pipeline_desc.clone().build().unwrap(),
         );
-        let find_sdf_bricks = pipeline_cache
-            .register_compute("/assets/shaders/sdf/find_bricks.hlsl", &sdf_pipeline_desc);
+        let find_sdf_bricks = pipeline_cache.register_compute(
+            "/assets/shaders/sdf/find_bricks.hlsl",
+            &sdf_pipeline_desc.clone().build().unwrap(),
+        );
 
         let sdf_raymarch_gbuffer = pipeline_cache.register_compute(
             "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
-            &sdf_pipeline_desc,
+            &sdf_pipeline_desc.clone().build().unwrap(),
         );
 
         let cube_indices = cube_indices();
@@ -922,4 +928,60 @@ pub fn set_default_view_and_scissor(
             }],
         );
     }
+}
+
+use crate::rg::*;
+
+/*macro_rules! rg_compute_pipeline {
+    ($pass:expr, $path:literal, $desc:expr) => {{
+        static PIPELINE: OnceCell<RgComputePipelineHandle> = OnceCell::new();
+        *PIPELINE.get_or_init(|| $pass.register_compute_pipeline($path, $desc))
+    }};
+}*/
+
+fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
+    let mut pass = rg.add_pass();
+    let mut output = pass.create(&desc);
+    let output_ref = pass.write(&mut output);
+    /*let pipeline = rg_compute_pipeline!(
+        pass,
+        "/assets/shaders/gradients.hlsl",
+        ComputePipelineDesc::builder()
+    );*/
+
+    let pipeline = pass.register_compute_pipeline(
+        "/assets/shaders/gradients.hlsl",
+        ComputePipelineDesc::builder(),
+    );
+
+    pass.render(move |cb, resources| {
+        let pipeline = resources.compute_pipeline(pipeline);
+
+        bind_pipeline(&*resources.execution_params.device, cb, &*pipeline);
+        bind_descriptor_set(
+            &*resources.execution_params.device,
+            cb,
+            &*pipeline,
+            0,
+            &[view::image_rw(
+                &*resources.image_view(output_ref, Default::default()),
+            )],
+        );
+
+        //self.bind_frame_constants(cb, &*shader, frame_constants_offset);
+
+        let [width, height, _] = desc.extent;
+        unsafe {
+            resources.execution_params.device.raw.cmd_dispatch(
+                cb.raw,
+                (width + 7) / 8,
+                (height + 7) / 8,
+                1,
+            );
+        }
+
+        Ok(())
+    });
+
+    output
 }

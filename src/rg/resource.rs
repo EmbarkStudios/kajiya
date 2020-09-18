@@ -1,15 +1,28 @@
-use crate::backend::image::ImageDesc;
+pub use crate::backend::image::{Image, ImageDesc};
 use std::marker::PhantomData;
 
-#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-pub struct Image;
+use super::resource_registry::AnyRenderResource;
+
+//#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+//pub struct Image;
 
 pub trait Resource {
     type Desc: ResourceDesc;
+    type Impl;
+
+    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl;
 }
 
 impl Resource for Image {
     type Desc = ImageDesc;
+    type Impl = crate::backend::image::Image; // TODO: nuke
+
+    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
+        match res {
+            AnyRenderResource::Image(img) => &**img,
+            AnyRenderResource::Buffer(_) => unimplemented!(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -68,22 +81,22 @@ impl<ResType: Resource> Handle<ResType> {
 impl<ResType: Resource> Eq for Handle<ResType> {}
 
 #[derive(Debug)]
-pub struct Ref<ResType: Resource, AccessMode> {
+pub struct Ref<ResType: Resource, ViewType: GpuViewType> {
     pub(crate) handle: GraphRawResourceHandle,
     pub(crate) desc: <ResType as Resource>::Desc,
-    pub(crate) marker: PhantomData<(ResType, AccessMode)>,
+    pub(crate) marker: PhantomData<(ResType, ViewType)>,
 }
 
-impl<ResType: Resource, AccessMode> Ref<ResType, AccessMode> {
+impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType> {
     pub fn desc(&self) -> &<ResType as Resource>::Desc {
         &self.desc
     }
 }
 
-impl<ResType: Resource, AccessMode> Clone for Ref<ResType, AccessMode>
+impl<ResType: Resource, ViewType: GpuViewType> Clone for Ref<ResType, ViewType>
 where
     <ResType as Resource>::Desc: Clone,
-    AccessMode: Clone,
+    ViewType: Clone,
 {
     fn clone(&self) -> Self {
         Self {
@@ -94,18 +107,18 @@ where
     }
 }
 
-impl<ResType: Resource, AccessMode> Copy for Ref<ResType, AccessMode>
+impl<ResType: Resource, ViewType: GpuViewType> Copy for Ref<ResType, ViewType>
 where
     <ResType as Resource>::Desc: Copy,
-    AccessMode: Copy,
+    ViewType: Copy,
 {
 }
 
-impl<ResType: Resource, AccessMode> Ref<ResType, AccessMode>
+impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType>
 where
     <ResType as Resource>::Desc: Copy,
 {
-    pub(crate) fn internal_clone(&self) -> Ref<ResType, AccessMode> {
+    pub(crate) fn internal_clone(&self) -> Ref<ResType, ViewType> {
         Ref {
             handle: self.handle,
             desc: self.desc,
@@ -119,43 +132,19 @@ pub struct GpuSrv;
 pub struct GpuUav;
 pub struct GpuRt;
 
-pub struct GpuResourceView<ViewType, ResType> {
-    res: ResType,
+pub trait GpuViewType {}
+impl GpuViewType for GpuSrv {}
+impl GpuViewType for GpuUav {}
+impl GpuViewType for GpuRt {}
+
+pub struct GpuResourceView<'a, ResType: Resource, ViewType: GpuViewType> {
+    // TODO: not pub?
+    pub res: &'a <ResType as Resource>::Impl,
     marker: PhantomData<ViewType>,
 }
 
-pub trait ToGpuResourceView {
-    type ResType;
-
-    fn to_gpu_resource_view(res: Self::ResType) -> Self;
-}
-
-impl<ResType> ToGpuResourceView for GpuResourceView<GpuSrv, ResType> {
-    type ResType = ResType;
-
-    fn to_gpu_resource_view(res: Self::ResType) -> Self {
-        Self {
-            res,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<ResType> ToGpuResourceView for GpuResourceView<GpuUav, ResType> {
-    type ResType = ResType;
-
-    fn to_gpu_resource_view(res: Self::ResType) -> Self {
-        Self {
-            res,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<ResType> ToGpuResourceView for GpuResourceView<GpuRt, ResType> {
-    type ResType = ResType;
-
-    fn to_gpu_resource_view(res: Self::ResType) -> Self {
+impl<'a, ResType: Resource, ViewType: GpuViewType> GpuResourceView<'a, ResType, ViewType> {
+    pub fn new(res: &'a <ResType as Resource>::Impl) -> Self {
         Self {
             res,
             marker: PhantomData,

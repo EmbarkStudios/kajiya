@@ -71,6 +71,7 @@ pub struct PipelineCache {
     lazy_cache: Arc<LazyCache>,
     compute_entries: HashMap<ComputePipelineHandle, ComputePipelineCacheEntry>,
     raster_entries: HashMap<RasterPipelineHandle, RasterPipelineCacheEntry>,
+    path_to_handle: HashMap<PathBuf, ComputePipelineHandle>,
 }
 
 impl PipelineCache {
@@ -79,31 +80,39 @@ impl PipelineCache {
             compute_entries: Default::default(),
             raster_entries: Default::default(),
             lazy_cache: lazy_cache.clone(),
+            path_to_handle: Default::default(),
         }
     }
 
+    // TODO: should probably use the `desc` as key as well
     pub fn register_compute(
         &mut self,
         path: impl AsRef<Path>,
-        desc: &ComputePipelineDescBuilder,
+        desc: &ComputePipelineDesc,
     ) -> ComputePipelineHandle {
-        let handle = ComputePipelineHandle(self.compute_entries.len());
-        self.compute_entries.insert(
-            handle,
-            ComputePipelineCacheEntry {
-                lazy_handle: CompileShader {
-                    path: path.as_ref().to_owned(),
-                    profile: "cs".to_owned(),
-                }
-                .into_lazy(),
-                desc: desc.clone().build().unwrap(),
-                pipeline: None,
-            },
-        );
-        handle
+        match self.path_to_handle.entry(path.as_ref().to_owned()) {
+            std::collections::hash_map::Entry::Occupied(occupied) => *occupied.get(),
+            std::collections::hash_map::Entry::Vacant(vacant) => {
+                let handle = ComputePipelineHandle(self.compute_entries.len());
+                self.compute_entries.insert(
+                    handle,
+                    ComputePipelineCacheEntry {
+                        lazy_handle: CompileShader {
+                            path: path.as_ref().to_owned(),
+                            profile: "cs".to_owned(),
+                        }
+                        .into_lazy(),
+                        desc: desc.clone(),
+                        pipeline: None,
+                    },
+                );
+                vacant.insert(handle);
+                handle
+            }
+        }
     }
 
-    pub fn get_compute(&mut self, handle: ComputePipelineHandle) -> Arc<ShaderPipeline> {
+    pub fn get_compute(&self, handle: ComputePipelineHandle) -> Arc<ShaderPipeline> {
         self.compute_entries
             .get(&handle)
             .unwrap()

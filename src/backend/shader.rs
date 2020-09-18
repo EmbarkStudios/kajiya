@@ -236,7 +236,7 @@ impl DescriptorSetLayoutOpts {
     }
 }
 
-#[derive(Builder)]
+#[derive(Builder, Clone)]
 #[builder(pattern = "owned", derive(Clone))]
 pub struct ComputePipelineDesc {
     #[builder(setter(name = "descriptor_set_opts_impl"))]

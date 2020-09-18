@@ -1,41 +1,76 @@
-use super::{graph::RenderGraphExecutionParams, resource::*};
-use crate::dynamic_constants::DynamicConstants;
+use super::{
+    graph::RenderGraphExecutionParams, resource::*, ImageViewCacheKey, RgComputePipelineHandle,
+};
+use crate::{
+    backend::image::ImageView, backend::image::ImageViewDescBuilder,
+    backend::shader::ShaderPipeline, dynamic_constants::DynamicConstants,
+    pipeline_cache::ComputePipelineHandle,
+};
 use std::{path::Path, sync::Arc};
 
-pub enum RenderResource {
+pub enum AnyRenderResource {
     Image(Arc<crate::backend::image::Image>),
     Buffer(crate::backend::buffer::Buffer),
 }
 
-pub struct ResourceRegistry<'exec_params, 'device, 'pipeline_cache, 'constants> {
-    pub execution_params: &'exec_params RenderGraphExecutionParams<'device, 'pipeline_cache>,
-    pub(crate) resources: Vec<RenderResource>,
+pub struct ResourceRegistry<'exec_params, 'constants> {
+    pub execution_params: &'exec_params RenderGraphExecutionParams<'exec_params>,
+    pub(crate) resources: Vec<AnyRenderResource>,
     pub dynamic_constants: &'constants mut DynamicConstants,
+    pub compute_pipelines: Vec<ComputePipelineHandle>,
 }
 
-impl<'exec_params, 'device, 'pipeline_cache, 'constants>
-    ResourceRegistry<'exec_params, 'device, 'pipeline_cache, 'constants>
-{
-    pub fn resource<T: Resource, GpuResType>(&self, resource: Ref<T, GpuResType>) -> GpuResType
+impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
+    pub fn resource<'a, 's, ResType: Resource, ViewType>(
+        &'s self,
+        resource: Ref<ResType, ViewType>,
+    ) -> GpuResourceView<'a, ResType, ViewType>
     where
-        GpuResType: ToGpuResourceView,
+        ViewType: GpuViewType,
+        's: 'a,
     {
         // println!("ResourceRegistry::get: {:?}", resource.handle);
-        <GpuResType as ToGpuResourceView>::to_gpu_resource_view(
-            self.resources[resource.handle.id as usize],
-        )
-    }
-    /*
-    pub fn compute_pipeline(
-        &self,
-        shader_path: impl AsRef<Path>,
-    ) -> anyhow::Result<Arc<ComputePipeline>> {
-        self.execution_params
-            .pipeline_cache
-            .get_or_load_compute(self.execution_params, shader_path.as_ref())
+        GpuResourceView::<'a, ResType, ViewType>::new(<ResType as Resource>::borrow_resource(
+            &self.resources[resource.handle.id as usize],
+        ))
     }
 
-    pub fn render_pass(
+    pub fn image_view<'a, 's, ViewType>(
+        &'s self,
+        resource: Ref<Image, ViewType>,
+        view_desc: ImageViewDescBuilder,
+    ) -> Arc<ImageView>
+    where
+        ViewType: GpuViewType,
+        's: 'a,
+    {
+        let view_desc = view_desc.build().unwrap();
+        let mut views = self.execution_params.view_cache.image_views.lock();
+        let views = &mut *views;
+
+        let image = match &self.resources[resource.handle.id as usize] {
+            AnyRenderResource::Image(img) => img.clone(),
+            AnyRenderResource::Buffer(_) => panic!(),
+        };
+
+        let key = ImageViewCacheKey {
+            image: Arc::downgrade(&image),
+            view_desc,
+        };
+        let device = self.execution_params.device;
+
+        views
+            .entry(key)
+            .or_insert_with(|| Arc::new(device.create_image_view(view_desc, &image).unwrap()))
+            .clone()
+    }
+
+    pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ShaderPipeline> {
+        let handle = self.compute_pipelines[pipeline.0];
+        self.execution_params.pipeline_cache.get_compute(handle)
+    }
+
+    /*pub fn render_pass(
         &self,
         render_target: &RenderTarget,
     ) -> anyhow::Result<RenderResourceHandle> {

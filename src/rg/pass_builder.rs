@@ -2,11 +2,14 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     resource_registry::ResourceRegistry,
-    PassResourceAccessType, PassResourceRef,
+    PassResourceAccessType, PassResourceRef, RgComputePipelineHandle,
 };
 
-use crate::backend::device::CommandBuffer;
-use std::marker::PhantomData;
+use crate::{
+    backend::{device::CommandBuffer, shader::ComputePipelineDescBuilder},
+    pipeline_cache::PipelineCache,
+};
+use std::{marker::PhantomData, path::Path};
 
 pub struct PassBuilder<'rg> {
     pub(crate) rg: &'rg mut RenderGraph,
@@ -52,11 +55,11 @@ impl<'rg> PassBuilder<'rg> {
         handle
     }
 
-    pub fn write_impl<Res: Resource, AccessMode>(
+    pub fn write_impl<Res: Resource, ViewType: GpuViewType>(
         &mut self,
         handle: &mut Handle<Res>,
         access_mode: vk_sync::AccessType,
-    ) -> Ref<Res, AccessMode> {
+    ) -> Ref<Res, ViewType> {
         let pass = self.pass.as_mut().unwrap();
 
         // Don't know of a good way to use the borrow checker to verify that writes and reads
@@ -110,6 +113,18 @@ impl<'rg> PassBuilder<'rg> {
             handle: handle.raw,
             marker: PhantomData,
         }
+    }
+
+    pub fn register_compute_pipeline(
+        &mut self,
+        path: impl AsRef<Path>,
+        desc: ComputePipelineDescBuilder,
+    ) -> RgComputePipelineHandle {
+        let res = self.rg.compute_pipelines.len();
+        self.rg
+            .compute_pipelines
+            .push((path.as_ref().to_owned(), desc.build().unwrap()));
+        RgComputePipelineHandle(res)
     }
 
     pub fn render(
