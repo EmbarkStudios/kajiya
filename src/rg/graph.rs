@@ -8,6 +8,7 @@ use super::{
 };
 
 use crate::{
+    backend::barrier::get_access_info,
     backend::barrier::record_image_barrier,
     backend::barrier::ImageBarrier,
     backend::device::{CommandBuffer, Device},
@@ -84,6 +85,11 @@ struct ResourceLifetime {
     last_access: usize,
 }
 
+struct ResourceInfo {
+    lifetimes: Vec<ResourceLifetime>,
+    image_usage_flags: Vec<vk::ImageUsageFlags>,
+}
+
 pub struct RenderGraphExecutionParams<'a> {
     pub device: &'a Device,
     pub pipeline_cache: &'a mut PipelineCache,
@@ -109,8 +115,8 @@ impl RenderGraph {
         }
     }
 
-    fn calculate_resource_lifetimes(&self) -> Vec<ResourceLifetime> {
-        let mut resource_lifetimes: Vec<ResourceLifetime> = self
+    fn calculate_resource_info(&self) -> ResourceInfo {
+        let mut lifetimes: Vec<ResourceLifetime> = self
             .resources
             .iter()
             .map(|res| ResourceLifetime {
@@ -119,14 +125,41 @@ impl RenderGraph {
             })
             .collect();
 
+        let mut image_usage_flags: Vec<vk::ImageUsageFlags> =
+            vec![Default::default(); self.resources.len()];
+
         for (pass_idx, pass) in self.passes.iter().enumerate() {
             for res_access in pass.read.iter().chain(pass.write.iter()) {
-                let res = &mut resource_lifetimes[res_access.handle.id as usize];
+                let res = &mut lifetimes[res_access.handle.id as usize];
                 res.last_access = res.last_access.max(pass_idx);
+
+                let access_mask = get_access_info(res_access.access.access_type).access_mask;
+                let image_usage: vk::ImageUsageFlags = match access_mask {
+                    vk::AccessFlags::SHADER_READ => vk::ImageUsageFlags::SAMPLED,
+                    vk::AccessFlags::SHADER_WRITE => vk::ImageUsageFlags::STORAGE,
+                    vk::AccessFlags::COLOR_ATTACHMENT_READ => vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                    vk::AccessFlags::COLOR_ATTACHMENT_WRITE => {
+                        vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    }
+                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ => {
+                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    }
+                    vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE => {
+                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                    }
+                    vk::AccessFlags::TRANSFER_READ => vk::ImageUsageFlags::TRANSFER_SRC,
+                    vk::AccessFlags::TRANSFER_WRITE => vk::ImageUsageFlags::TRANSFER_DST,
+                    _ => panic!("Invalid image access mask: {:?}", access_mask),
+                };
+
+                image_usage_flags[res_access.handle.id as usize] |= image_usage;
             }
         }
 
-        resource_lifetimes
+        ResourceInfo {
+            lifetimes,
+            image_usage_flags,
+        }
     }
 
     pub fn compile(
@@ -134,7 +167,7 @@ impl RenderGraph {
         device: &Device,
         pipeline_cache: &mut PipelineCache,
     ) -> CompiledRenderGraph {
-        let _resource_lifetimes = self.calculate_resource_lifetimes();
+        let resource_info = self.calculate_resource_info();
         // TODO: alias resources
 
         /* println!(
@@ -149,11 +182,20 @@ impl RenderGraph {
         let gpu_resources: Vec<AnyRenderResource> = self
             .resources
             .iter()
-            .map(|resource: &GraphResourceCreateInfo| match resource.desc {
-                GraphResourceDesc::Image(desc) => {
-                    AnyRenderResource::Image(device.create_image(desc, None).unwrap())
-                }
-            })
+            .zip(resource_info.image_usage_flags.iter())
+            .map(
+                |(resource, image_usage_flags): (
+                    &GraphResourceCreateInfo,
+                    &vk::ImageUsageFlags,
+                )| {
+                    match resource.desc {
+                        GraphResourceDesc::Image(mut desc) => {
+                            desc.usage = *image_usage_flags;
+                            AnyRenderResource::Image(device.create_image(desc, None).unwrap())
+                        }
+                    }
+                },
+            )
             .collect();
 
         let compute_pipelines = self

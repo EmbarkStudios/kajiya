@@ -21,6 +21,7 @@ pub enum ImageType {
 #[builder(pattern = "owned")]
 pub struct ImageDesc {
     pub image_type: ImageType,
+    #[builder(default)]
     pub usage: vk::ImageUsageFlags,
     #[builder(default = "vk::ImageCreateFlags::MUTABLE_FORMAT")]
     pub flags: vk::ImageCreateFlags, // TODO: CUBE_COMPATIBLE

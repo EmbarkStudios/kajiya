@@ -714,7 +714,6 @@ impl Renderer {
             &mut rg,
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
                 .build()
                 .unwrap(),
         );
