@@ -8,6 +8,8 @@ use super::{
 use crate::{backend::shader::ComputePipelineDesc, backend::shader::DescriptorSetLayoutOpts};
 use std::{marker::PhantomData, path::Path};
 
+pub use vk_sync::AccessType;
+
 pub struct PassBuilder<'rg> {
     pub(crate) rg: &'rg mut RenderGraph,
     pub(crate) pass_idx: usize,
@@ -32,6 +34,7 @@ impl<T: Sized> TypeEquals for T {
     }
 }
 
+#[allow(dead_code)]
 impl<'rg> PassBuilder<'rg> {
     pub fn create<Desc: ResourceDesc>(
         &mut self,
@@ -55,7 +58,7 @@ impl<'rg> PassBuilder<'rg> {
     pub fn write_impl<Res: Resource, ViewType: GpuViewType>(
         &mut self,
         handle: &mut Handle<Res>,
-        access_mode: vk_sync::AccessType,
+        access_type: vk_sync::AccessType,
     ) -> Ref<Res, ViewType> {
         let pass = self.pass.as_mut().unwrap();
 
@@ -71,7 +74,7 @@ impl<'rg> PassBuilder<'rg> {
 
         pass.write.push(PassResourceRef {
             handle: handle.raw,
-            access: PassResourceAccessType::new(access_mode),
+            access: PassResourceAccessType::new(access_type),
         });
 
         Ref {
@@ -81,16 +84,94 @@ impl<'rg> PassBuilder<'rg> {
         }
     }
 
-    // TODO: get rid of, rename, or something in-between to have more precise access modes
-    pub fn write<Res: Resource>(&mut self, handle: &mut Handle<Res>) -> Ref<Res, GpuUav> {
-        self.write_impl(handle, vk_sync::AccessType::AnyShaderWrite)
+    pub fn write<Res: Resource>(
+        &mut self,
+        handle: &mut Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> Ref<Res, GpuUav> {
+        match access_type {
+            AccessType::CommandBufferWriteNVX
+            | AccessType::VertexShaderWrite
+            | AccessType::TessellationControlShaderWrite
+            | AccessType::TessellationEvaluationShaderWrite
+            | AccessType::GeometryShaderWrite
+            | AccessType::FragmentShaderWrite
+            | AccessType::ComputeShaderWrite
+            | AccessType::AnyShaderWrite
+            | AccessType::TransferWrite
+            | AccessType::HostWrite
+            | AccessType::ColorAttachmentReadWrite
+            | AccessType::General => {}
+            _ => {
+                panic!("Invalid access type: {:?}", access_type);
+            }
+        }
+
+        self.write_impl(handle, access_type)
     }
 
-    pub fn raster<Res: Resource>(&mut self, handle: &mut Handle<Res>) -> Ref<Res, GpuRt> {
-        self.write_impl(handle, vk_sync::AccessType::ColorAttachmentWrite)
+    pub fn raster<Res: Resource>(
+        &mut self,
+        handle: &mut Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> Ref<Res, GpuRt> {
+        match access_type {
+            AccessType::ColorAttachmentWrite
+            | AccessType::DepthStencilAttachmentWrite
+            | AccessType::DepthAttachmentWriteStencilReadOnly
+            | AccessType::StencilAttachmentWriteDepthReadOnly => {}
+            _ => {
+                panic!("Invalid access type: {:?}", access_type);
+            }
+        }
+
+        self.write_impl(handle, access_type)
     }
 
-    pub fn read<Res: Resource>(&mut self, handle: &Handle<Res>) -> Ref<Res, GpuSrv> {
+    pub fn read<Res: Resource>(
+        &mut self,
+        handle: &Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> Ref<Res, GpuSrv> {
+        match access_type {
+            AccessType::CommandBufferReadNVX
+            | AccessType::IndirectBuffer
+            | AccessType::IndexBuffer
+            | AccessType::VertexBuffer
+            | AccessType::VertexShaderReadUniformBuffer
+            | AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::VertexShaderReadOther
+            | AccessType::TessellationControlShaderReadUniformBuffer
+            | AccessType::TessellationControlShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::TessellationControlShaderReadOther
+            | AccessType::TessellationEvaluationShaderReadUniformBuffer
+            | AccessType::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::TessellationEvaluationShaderReadOther
+            | AccessType::GeometryShaderReadUniformBuffer
+            | AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::GeometryShaderReadOther
+            | AccessType::FragmentShaderReadUniformBuffer
+            | AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::FragmentShaderReadColorInputAttachment
+            | AccessType::FragmentShaderReadDepthStencilInputAttachment
+            | AccessType::FragmentShaderReadOther
+            | AccessType::ColorAttachmentRead
+            | AccessType::DepthStencilAttachmentRead
+            | AccessType::ComputeShaderReadUniformBuffer
+            | AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::ComputeShaderReadOther
+            | AccessType::AnyShaderReadUniformBuffer
+            | AccessType::AnyShaderReadUniformBufferOrVertexBuffer
+            | AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
+            | AccessType::AnyShaderReadOther
+            | AccessType::TransferRead
+            | AccessType::HostRead
+            | AccessType::Present => {}
+            _ => {
+                panic!("Invalid access type: {:?}", access_type);
+            }
+        }
+
         let pass = self.pass.as_mut().unwrap();
 
         // Runtime "borrow" check; see info in `write` above.
@@ -100,9 +181,7 @@ impl<'rg> PassBuilder<'rg> {
 
         pass.write.push(PassResourceRef {
             handle: handle.raw,
-            access: PassResourceAccessType::new(
-                vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-            ),
+            access: PassResourceAccessType::new(access_type),
         });
 
         Ref {

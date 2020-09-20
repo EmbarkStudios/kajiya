@@ -73,6 +73,7 @@ impl<ResType: Resource> PartialEq for Handle<ResType> {
 }
 
 impl<ResType: Resource> Handle<ResType> {
+    #[allow(dead_code)]
     pub fn desc(&self) -> &<ResType as Resource>::Desc {
         &self.desc
     }
@@ -88,6 +89,7 @@ pub struct Ref<ResType: Resource, ViewType: GpuViewType> {
 }
 
 impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType> {
+    #[allow(dead_code)]
     pub fn desc(&self) -> &<ResType as Resource>::Desc {
         &self.desc
     }
