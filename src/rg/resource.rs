@@ -1,4 +1,4 @@
-pub use crate::backend::image::{Image, ImageDesc};
+pub use crate::backend::image::{Image, ImageDesc, ImageViewDescBuilder};
 use std::marker::PhantomData;
 
 use super::resource_registry::AnyRenderResource;

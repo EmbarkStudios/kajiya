@@ -1,5 +1,9 @@
-use crate::backend::{
-    self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend,
+use crate::{
+    backend::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
+    rg::CompiledRenderGraph,
+    rg::RenderGraph,
+    rg::RenderGraphExecutionParams,
+    view_cache::ViewCache,
 };
 use crate::{
     chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
@@ -706,7 +710,7 @@ impl Renderer {
 
     pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
-        let mut _tex = synth_gradients(
+        let mut _tex = crate::render_passes::synth_gradients(
             &mut rg,
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
@@ -964,26 +968,4 @@ pub fn set_default_view_and_scissor(
             }],
         );
     }
-}
-
-use crate::rg::*;
-
-fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
-    let mut pass = rg.add_pass();
-
-    let pipeline = pass.register_compute_pipeline("/assets/shaders/gradients.hlsl");
-    let mut output = pass.create(&desc);
-    let output_ref = pass.write(&mut output, AccessType::ComputeShaderWrite);
-
-    pass.render(move |api| {
-        let pipeline = api.bind_compute_pipeline(
-            pipeline
-                .into_binding()
-                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())]),
-        );
-
-        pipeline.dispatch(desc.extent);
-    });
-
-    output
 }

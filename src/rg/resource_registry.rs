@@ -1,9 +1,8 @@
-use super::{
-    graph::RenderGraphExecutionParams, resource::*, ImageViewCacheKey, RgComputePipelineHandle,
-};
+use super::{graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle};
 use crate::{
     backend::image::ImageView, backend::image::ImageViewDesc, backend::shader::ComputePipeline,
     dynamic_constants::DynamicConstants, pipeline_cache::ComputePipelineHandle,
+    view_cache::ImageViewCacheKey,
 };
 use std::sync::Arc;
 

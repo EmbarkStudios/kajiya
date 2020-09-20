@@ -9,10 +9,12 @@ mod logging;
 mod math;
 mod mesh;
 mod pipeline_cache;
+mod render_passes;
 mod renderer;
 mod rg;
 mod shader_compiler;
 mod state_tracker;
+mod view_cache;
 mod viewport;
 
 use backend::RenderBackend;
