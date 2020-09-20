@@ -4,7 +4,7 @@ use super::{
     graph::RenderGraphExecutionParams, resource::*, ImageViewCacheKey, RgComputePipelineHandle,
 };
 use crate::{
-    backend::device::CommandBuffer, backend::image::ImageView,
+    backend::device::CommandBuffer, backend::image::ImageView, backend::image::ImageViewDesc,
     backend::image::ImageViewDescBuilder, backend::shader::ShaderPipeline,
     dynamic_constants::DynamicConstants, pipeline_cache::ComputePipelineHandle,
 };
@@ -37,33 +37,34 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         ))
     }
 
-    pub fn image_view<'a, 's, ViewType>(
+    pub(crate) fn image_view<'a, 's>(
         &'s self,
-        resource: Ref<Image, ViewType>,
-        view_desc: ImageViewDescBuilder,
+        resource: GraphRawResourceHandle,
+        view_desc: &ImageViewDesc,
     ) -> Arc<ImageView>
     where
-        ViewType: GpuViewType,
         's: 'a,
     {
-        let view_desc = view_desc.build().unwrap();
+        let view_desc = view_desc;
         let mut views = self.execution_params.view_cache.image_views.lock();
         let views = &mut *views;
 
-        let image = match &self.resources[resource.handle.id as usize] {
+        let image = match &self.resources[resource.id as usize] {
             AnyRenderResource::Image(img) => img.clone(),
             AnyRenderResource::Buffer(_) => panic!(),
         };
 
         let key = ImageViewCacheKey {
             image: Arc::downgrade(&image),
-            view_desc,
+            view_desc: view_desc.clone(),
         };
         let device = self.execution_params.device;
 
         views
             .entry(key)
-            .or_insert_with(|| Arc::new(device.create_image_view(view_desc, &image).unwrap()))
+            .or_insert_with(|| {
+                Arc::new(device.create_image_view(view_desc.clone(), &image).unwrap())
+            })
             .clone()
     }
 

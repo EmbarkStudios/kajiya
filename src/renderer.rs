@@ -978,27 +978,14 @@ fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     );
 
     pass.render(move |api| {
-        api.bind_pipeline(
-            RenderPassComputePipelineBinding::new(pipeline)
+        let mut pipeline = api.bind_compute_pipeline(
+            pipeline
+                .into_binding()
                 .use_frame_constants(true)
-                .descriptor_set(
-                    0,
-                    &[view::image_rw(
-                        &*api.resources.image_view(output_ref, Default::default()),
-                    )],
-                ),
+                .descriptor_set(0, &[output_ref.as_binding(ImageViewDescBuilder::default())]),
         );
 
-        let [width, height, _] = desc.extent;
-        unsafe {
-            api.resources.execution_params.device.raw.cmd_dispatch(
-                api.cb.raw,
-                (width + 7) / 8,
-                (height + 7) / 8,
-                1,
-            );
-        }
-
+        pipeline.dispatch(desc.extent);
         Ok(())
     });
 

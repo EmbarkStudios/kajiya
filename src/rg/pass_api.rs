@@ -2,10 +2,16 @@ use std::sync::Arc;
 
 use ash::version::DeviceV1_0;
 
-use super::{ResourceRegistry, RgComputePipelineHandle};
+use super::{
+    GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry, RgComputePipelineHandle,
+};
 use crate::{
+    backend::device::Device,
+    backend::image::ImageViewDesc,
+    backend::image::ImageViewDescBuilder,
     backend::{device::CommandBuffer, shader::ShaderPipeline},
     renderer::bind_descriptor_set,
+    renderer::view,
     renderer::DescriptorSetBinding,
 };
 
@@ -19,7 +25,7 @@ pub struct RenderPassComputePipelineBinding<'a> {
     use_frame_constants: bool,
 
     // TODO: fixed size
-    descriptor_set_bindings: Vec<(u32, &'a [DescriptorSetBinding])>,
+    bindings: Vec<(u32, &'a [RenderPassBinding])>,
 }
 
 impl<'a> RenderPassComputePipelineBinding<'a> {
@@ -27,68 +33,39 @@ impl<'a> RenderPassComputePipelineBinding<'a> {
         Self {
             pipeline,
             use_frame_constants: false,
-            descriptor_set_bindings: Vec::new(),
+            bindings: Vec::new(),
         }
     }
 
     pub fn use_frame_constants(mut self, use_frame_constants: bool) -> Self {
-        self.use_frame_constants = true;
+        self.use_frame_constants = use_frame_constants;
         self
     }
 
-    pub fn descriptor_set(
-        mut self,
-        set_idx: u32,
-        descriptor_set_bindings: &'a [DescriptorSetBinding],
-    ) -> Self {
-        self.descriptor_set_bindings
-            .push((set_idx, descriptor_set_bindings));
+    pub fn descriptor_set(mut self, set_idx: u32, bindings: &'a [RenderPassBinding]) -> Self {
+        self.bindings.push((set_idx, bindings));
         self
     }
 }
 
+impl RgComputePipelineHandle {
+    pub fn into_binding<'a>(self) -> RenderPassComputePipelineBinding<'a> {
+        RenderPassComputePipelineBinding::new(self)
+    }
+}
+
 impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
-    /*#[inline(always)]
-    pub fn get_compute_pipeline(&self, handle: RgComputePipelineHandle) -> Arc<ShaderPipeline> {
-        self.resources.compute_pipeline(handle)
+    pub fn device(&self) -> &Device {
+        self.resources.execution_params.device
     }
 
-    #[inline(always)]
-    pub fn bind_pipeline(&mut self, pipeline: &ShaderPipeline) {
-        unsafe {
-            self.resources
-                .execution_params
-                .device
-                .raw
-                .cmd_bind_pipeline(self.cb.raw, pipeline.pipeline_bind_point, pipeline.pipeline);
-        }
-    }
-
-    #[inline(always)]
-    pub fn bind_frame_constants(&self, pipeline: &ShaderPipeline) {
-        self.resources.bind_frame_constants(self.cb, pipeline)
-    }
-
-    #[inline(always)]
-    pub fn bind_descriptor_set(
-        &mut self,
-        pipeline: &ShaderPipeline,
-        set_index: u32,
-        bindings: &[DescriptorSetBinding],
-    ) {
-        bind_descriptor_set(
-            &*self.resources.execution_params.device,
-            self.cb,
-            pipeline,
-            set_index,
-            bindings,
-        );
-    }*/
-
-    pub fn bind_pipeline(&mut self, binding: RenderPassComputePipelineBinding<'_>) {
+    pub fn bind_compute_pipeline<'s>(
+        &'s mut self,
+        binding: RenderPassComputePipelineBinding<'_>,
+    ) -> BoundComputePipeline<'s, 'a, 'exec_params, 'constants> {
         let device = self.resources.execution_params.device;
-        let pipeline = self.resources.compute_pipeline(binding.pipeline);
-        let pipeline = &*pipeline;
+        let pipeline_arc = self.resources.compute_pipeline(binding.pipeline);
+        let pipeline = &*pipeline_arc;
 
         unsafe {
             device.raw.cmd_bind_pipeline(
@@ -102,14 +79,67 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             self.resources.bind_frame_constants(self.cb, pipeline);
         }
 
-        for (set_index, bindings) in binding.descriptor_set_bindings {
+        for (set_index, bindings) in binding.bindings {
+            let bindings = bindings
+                .iter()
+                .map(|binding| match binding {
+                    RenderPassBinding::Image(image) => {
+                        view::image_rw(&*self.resources.image_view(image.handle, &image.view_desc))
+                    }
+                })
+                .collect::<Vec<_>>();
+
             bind_descriptor_set(
                 &*self.resources.execution_params.device,
                 self.cb,
                 pipeline,
                 set_index,
-                bindings,
+                &bindings,
             );
         }
+
+        BoundComputePipeline {
+            api: self,
+            pipeline: pipeline_arc,
+        }
+    }
+}
+
+pub struct BoundComputePipeline<'api, 'a, 'exec_params, 'constants> {
+    api: &'api mut RenderPassApi<'a, 'exec_params, 'constants>,
+    pipeline: Arc<ShaderPipeline>,
+}
+
+impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_params, 'constants> {
+    pub fn dispatch(&mut self, threads: [u32; 3]) {
+        // TODO
+        let group_size = [8, 8, 1];
+
+        unsafe {
+            self.api.device().raw.cmd_dispatch(
+                self.api.cb.raw,
+                (threads[0] + group_size[0] - 1) / group_size[0],
+                (threads[1] + group_size[1] - 1) / group_size[1],
+                (threads[2] + group_size[2] - 1) / group_size[2],
+            );
+        }
+    }
+}
+
+pub struct RenderPassImageBinding {
+    handle: GraphRawResourceHandle,
+    view_desc: ImageViewDesc,
+}
+
+pub enum RenderPassBinding {
+    Image(RenderPassImageBinding),
+}
+
+impl Ref<Image, GpuUav> {
+    pub fn as_binding(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
+        RenderPassBinding::Image(RenderPassImageBinding {
+            handle: self.handle,
+            view_desc: view_desc.build().unwrap(),
+        })
     }
 }
