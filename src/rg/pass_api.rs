@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash::version::DeviceV1_0;
+use ash::{version::DeviceV1_0, vk};
 
 use super::{
     GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry, RgComputePipelineHandle,
@@ -22,7 +22,6 @@ pub struct RenderPassApi<'a, 'exec_params, 'constants> {
 
 pub struct RenderPassComputePipelineBinding<'a> {
     pipeline: RgComputePipelineHandle,
-    use_frame_constants: bool,
 
     // TODO: fixed size
     bindings: Vec<(u32, &'a [RenderPassBinding])>,
@@ -32,14 +31,8 @@ impl<'a> RenderPassComputePipelineBinding<'a> {
     pub fn new(pipeline: RgComputePipelineHandle) -> Self {
         Self {
             pipeline,
-            use_frame_constants: false,
             bindings: Vec::new(),
         }
-    }
-
-    pub fn use_frame_constants(mut self, use_frame_constants: bool) -> Self {
-        self.use_frame_constants = use_frame_constants;
-        self
     }
 
     pub fn descriptor_set(mut self, set_idx: u32, bindings: &'a [RenderPassBinding]) -> Self {
@@ -75,7 +68,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             );
         }
 
-        if binding.use_frame_constants {
+        if binding.pipeline.use_frame_constants {
             self.resources.bind_frame_constants(self.cb, pipeline);
         }
 
@@ -83,9 +76,16 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             let bindings = bindings
                 .iter()
                 .map(|binding| match binding {
-                    RenderPassBinding::Image(image) => {
-                        view::image_rw(&*self.resources.image_view(image.handle, &image.view_desc))
-                    }
+                    RenderPassBinding::Image(image) => DescriptorSetBinding::Image(
+                        vk::DescriptorImageInfo::builder()
+                            .image_layout(image.image_layout)
+                            .image_view(
+                                self.resources
+                                    .image_view(image.handle, &image.view_desc)
+                                    .raw,
+                            )
+                            .build(),
+                    ),
                 })
                 .collect::<Vec<_>>();
 
@@ -111,7 +111,7 @@ pub struct BoundComputePipeline<'api, 'a, 'exec_params, 'constants> {
 }
 
 impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_params, 'constants> {
-    pub fn dispatch(&mut self, threads: [u32; 3]) {
+    pub fn dispatch(&self, threads: [u32; 3]) {
         // TODO
         let group_size = [8, 8, 1];
 
@@ -129,6 +129,7 @@ impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_pa
 pub struct RenderPassImageBinding {
     handle: GraphRawResourceHandle,
     view_desc: ImageViewDesc,
+    image_layout: vk::ImageLayout,
 }
 
 pub enum RenderPassBinding {
@@ -136,10 +137,11 @@ pub enum RenderPassBinding {
 }
 
 impl Ref<Image, GpuUav> {
-    pub fn as_binding(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
+    pub fn bind(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
         RenderPassBinding::Image(RenderPassImageBinding {
             handle: self.handle,
             view_desc: view_desc.build().unwrap(),
+            image_layout: vk::ImageLayout::GENERAL,
         })
     }
 }

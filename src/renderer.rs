@@ -966,23 +966,19 @@ use crate::rg::*;
 
 fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();
+    let pipeline = pass.register_compute_pipeline(
+        "/assets/shaders/gradients.hlsl",
+        Some(&FRAME_CONSTANTS_LAYOUT),
+    );
+
     let mut output = pass.create(&desc);
     let output_ref = pass.write(&mut output);
 
-    let pipeline = pass.register_compute_pipeline(
-        "/assets/shaders/gradients.hlsl",
-        ComputePipelineDesc::builder().descriptor_set_opts(&[(
-            2,
-            DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
-        )]),
-    );
-
     pass.render(move |api| {
-        let mut pipeline = api.bind_compute_pipeline(
+        let pipeline = api.bind_compute_pipeline(
             pipeline
                 .into_binding()
-                .use_frame_constants(true)
-                .descriptor_set(0, &[output_ref.as_binding(ImageViewDescBuilder::default())]),
+                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())]),
         );
 
         pipeline.dispatch(desc.extent);

@@ -2,14 +2,17 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     resource_registry::ResourceRegistry,
-    PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipelineHandle,
+    PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
+    RgComputePipelineHandle,
 };
 
 use crate::{
+    backend::shader::ComputePipelineDesc,
+    backend::shader::DescriptorSetLayoutOpts,
     backend::{device::CommandBuffer, shader::ComputePipelineDescBuilder},
     pipeline_cache::PipelineCache,
 };
-use std::{marker::PhantomData, path::Path};
+use std::{collections::HashMap, marker::PhantomData, path::Path};
 
 pub struct PassBuilder<'rg> {
     pub(crate) rg: &'rg mut RenderGraph,
@@ -118,13 +121,32 @@ impl<'rg> PassBuilder<'rg> {
     pub fn register_compute_pipeline(
         &mut self,
         path: impl AsRef<Path>,
-        desc: ComputePipelineDescBuilder,
+        //desc: ComputePipelineDescBuilder,
+        frame_constants: Option<&HashMap<u32, rspirv_reflect::DescriptorInfo>>,
     ) -> RgComputePipelineHandle {
         let res = self.rg.compute_pipelines.len();
-        self.rg
-            .compute_pipelines
-            .push((path.as_ref().to_owned(), desc.build().unwrap()));
-        RgComputePipelineHandle(res)
+
+        let mut desc = ComputePipelineDesc::builder().build().unwrap();
+
+        if let Some(frame_constants) = frame_constants {
+            desc.descriptor_set_opts[0] = Some((
+                2,
+                DescriptorSetLayoutOpts::builder()
+                    .replace(frame_constants.clone())
+                    .build()
+                    .unwrap(),
+            ));
+        }
+
+        self.rg.compute_pipelines.push(RgComputePipeline {
+            shader_path: path.as_ref().to_owned(),
+            desc,
+        });
+
+        RgComputePipelineHandle {
+            id: res,
+            use_frame_constants: frame_constants.is_some(),
+        }
     }
 
     pub fn render(

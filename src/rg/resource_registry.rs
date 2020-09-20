@@ -69,7 +69,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     }
 
     pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ShaderPipeline> {
-        let handle = self.compute_pipelines[pipeline.0];
+        let handle = self.compute_pipelines[pipeline.id];
         self.execution_params.pipeline_cache.get_compute(handle)
     }
 

@@ -35,12 +35,20 @@ pub(crate) struct GraphResourceCreateInfo {
 }
 
 #[derive(Clone, Copy)]
-pub struct RgComputePipelineHandle(pub(crate) usize);
+pub struct RgComputePipelineHandle {
+    pub(crate) id: usize,
+    pub(crate) use_frame_constants: bool,
+}
+
+pub(crate) struct RgComputePipeline {
+    pub(crate) shader_path: PathBuf,
+    pub(crate) desc: ComputePipelineDesc,
+}
 
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceCreateInfo>,
-    pub(crate) compute_pipelines: Vec<(PathBuf, ComputePipelineDesc)>,
+    pub(crate) compute_pipelines: Vec<RgComputePipeline>,
 }
 
 impl RenderGraph {
@@ -169,7 +177,7 @@ impl RenderGraph {
         let compute_pipelines = self
             .compute_pipelines
             .iter()
-            .map(|(path, desc)| pipeline_cache.register_compute(path, desc))
+            .map(|pipeline| pipeline_cache.register_compute(&pipeline.shader_path, &pipeline.desc))
             .collect::<Vec<_>>();
 
         CompiledRenderGraph {
