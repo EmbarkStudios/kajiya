@@ -33,6 +33,7 @@ struct FrameConstants {
 pub struct Renderer {
     backend: RenderBackend,
     pipeline_cache: PipelineCache,
+    view_cache: ViewCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
@@ -53,6 +54,8 @@ pub struct Renderer {
     clear_bricks_meta: ComputePipelineHandle,
     find_sdf_bricks: ComputePipelineHandle,
     cube_index_buffer: Buffer,
+
+    compiled_rg: Option<CompiledRenderGraph>,
 }
 
 lazy_static::lazy_static! {
@@ -287,29 +290,13 @@ impl Renderer {
             Some((&cube_indices).as_byte_slice()),
         )?;
 
-        let mut rg = RenderGraph::new();
-        let mut _tex = synth_gradients(
-            &mut rg,
-            ImageDesc::new_2d([1280, 720])
-                .format(vk::Format::R16G16B16A16_SFLOAT)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
-                .build()
-                .unwrap(),
-        );
-
-        let view_cache = ViewCache::default();
-        let _rg = rg.compile(RenderGraphExecutionParams {
-            device: &*backend.device,
-            pipeline_cache: &mut pipeline_cache,
-            view_cache: &view_cache,
-        });
-
         Ok(Renderer {
             backend,
             dynamic_constants,
             frame_descriptor_set,
             frame_idx: !0,
             pipeline_cache: pipeline_cache,
+            view_cache: Default::default(),
             present_shader,
 
             output_img,
@@ -326,10 +313,12 @@ impl Renderer {
             clear_bricks_meta,
             find_sdf_bricks,
             cube_index_buffer,
+
+            compiled_rg: None,
         })
     }
 
-    pub fn draw_frame(&mut self, frame_state: FrameState) {
+    pub fn draw_frame(&mut self, frame_state: &FrameState) {
         self.dynamic_constants.advance_frame();
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
 
@@ -393,6 +382,21 @@ impl Renderer {
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .unwrap();
+
+            if let Some(rg) = self.compiled_rg.take() {
+                rg.execute(
+                    RenderGraphExecutionParams {
+                        device: &self.backend.device,
+                        pipeline_cache: &mut self.pipeline_cache,
+                        view_cache: &self.view_cache,
+                        frame_descriptor_set: self.frame_descriptor_set,
+                        frame_constants_offset,
+                    },
+                    &mut self.dynamic_constants,
+                    cb,
+                )
+                .unwrap();
+            }
 
             output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
@@ -700,7 +704,18 @@ impl Renderer {
         }
     }
 
-    pub fn prepare_frame(&mut self) -> anyhow::Result<()> {
+    pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
+        let mut rg = RenderGraph::new();
+        let mut _tex = synth_gradients(
+            &mut rg,
+            ImageDesc::new_2d([1280, 720])
+                .format(vk::Format::R16G16B16A16_SFLOAT)
+                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+                .build()
+                .unwrap(),
+        );
+
+        self.compiled_rg = Some(rg.compile(&*self.backend.device, &mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
         Ok(())
@@ -956,7 +971,10 @@ fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
 
     let pipeline = pass.register_compute_pipeline(
         "/assets/shaders/gradients.hlsl",
-        ComputePipelineDesc::builder(),
+        ComputePipelineDesc::builder().descriptor_set_opts(&[(
+            2,
+            DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
+        )]),
     );
 
     pass.render(move |cb, resources| {
@@ -973,7 +991,7 @@ fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
             )],
         );
 
-        //self.bind_frame_constants(cb, &*shader, frame_constants_offset);
+        resources.bind_frame_constants(cb, &*pipeline);
 
         let [width, height, _] = desc.extent;
         unsafe {

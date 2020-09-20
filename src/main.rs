@@ -133,13 +133,15 @@ fn try_main() -> anyhow::Result<()> {
         };
         camera.update(&input_state);
 
-        match renderer.prepare_frame() {
+        let frame_state = FrameState {
+            camera_matrices: camera.calc_matrices(),
+            window_cfg: window_cfg,
+            input: input_state,
+        };
+
+        match renderer.prepare_frame(&frame_state) {
             Ok(()) => {
-                renderer.draw_frame(FrameState {
-                    camera_matrices: camera.calc_matrices(),
-                    window_cfg: window_cfg,
-                    input: input_state,
-                });
+                renderer.draw_frame(&frame_state);
                 last_error_text = None;
             }
             Err(e) => {

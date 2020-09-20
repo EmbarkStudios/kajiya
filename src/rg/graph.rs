@@ -95,6 +95,8 @@ pub struct RenderGraphExecutionParams<'a> {
     pub device: &'a Device,
     pub pipeline_cache: &'a mut PipelineCache,
     pub view_cache: &'a ViewCache,
+    pub frame_descriptor_set: vk::DescriptorSet,
+    pub frame_constants_offset: u32,
 }
 
 pub struct CompiledRenderGraph {
@@ -134,7 +136,11 @@ impl RenderGraph {
         resource_lifetimes
     }
 
-    pub fn compile(self, params: RenderGraphExecutionParams<'_>) -> CompiledRenderGraph {
+    pub fn compile(
+        self,
+        device: &Device,
+        pipeline_cache: &mut PipelineCache,
+    ) -> CompiledRenderGraph {
         let _resource_lifetimes = self.calculate_resource_lifetimes();
         // TODO: alias resources
 
@@ -146,8 +152,6 @@ impl RenderGraph {
                 .zip(resource_lifetimes.iter())
                 .collect::<Vec<_>>()
         ); */
-
-        let device = params.device;
 
         let gpu_resources: Vec<AnyRenderResource> = self
             .resources
@@ -162,7 +166,7 @@ impl RenderGraph {
         let compute_pipelines = self
             .compute_pipelines
             .iter()
-            .map(|(path, desc)| params.pipeline_cache.register_compute(path, desc))
+            .map(|(path, desc)| pipeline_cache.register_compute(path, desc))
             .collect::<Vec<_>>();
 
         CompiledRenderGraph {
@@ -182,7 +186,7 @@ impl CompiledRenderGraph {
         self,
         params: RenderGraphExecutionParams<'_>,
         dynamic_constants: &mut DynamicConstants,
-        cb: &mut CommandBuffer,
+        cb: &CommandBuffer,
     ) -> anyhow::Result<()> {
         let mut resource_registry = ResourceRegistry {
             execution_params: &params,
@@ -212,7 +216,7 @@ impl CompiledRenderGraph {
     }
 }
 
-type DynRenderFn = dyn FnOnce(&mut CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()>;
+type DynRenderFn = dyn FnOnce(&CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()>;
 
 #[derive(Copy, Clone)]
 pub struct PassResourceAccessType {

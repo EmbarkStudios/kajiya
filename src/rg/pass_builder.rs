@@ -129,7 +129,7 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn render(
         mut self,
-        render: impl FnOnce(&mut CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()> + 'static,
+        render: impl FnOnce(&CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()> + 'static,
     ) {
         let prev = self
             .pass
