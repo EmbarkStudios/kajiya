@@ -15,7 +15,7 @@ pub struct ComputePipelineHandle(usize);
 struct ComputePipelineCacheEntry {
     lazy_handle: Lazy<CompiledShader>,
     desc: ComputePipelineDesc,
-    pipeline: Option<Arc<ShaderPipeline>>,
+    pipeline: Option<Arc<ComputePipeline>>,
 }
 
 #[derive(Clone, Copy, Hash, Eq, PartialEq)]
@@ -64,7 +64,7 @@ impl LazyWorker for CompileRasterShaders {
 struct RasterPipelineCacheEntry {
     lazy_handle: Lazy<CompiledRasterShaders>,
     desc: RasterPipelineDesc,
-    pipeline: Option<Arc<ShaderPipeline>>,
+    pipeline: Option<Arc<RasterPipeline>>,
 }
 
 pub struct PipelineCache {
@@ -112,7 +112,7 @@ impl PipelineCache {
         }
     }
 
-    pub fn get_compute(&self, handle: ComputePipelineHandle) -> Arc<ShaderPipeline> {
+    pub fn get_compute(&self, handle: ComputePipelineHandle) -> Arc<ComputePipeline> {
         self.compute_entries
             .get(&handle)
             .unwrap()
@@ -147,7 +147,7 @@ impl PipelineCache {
         handle
     }
 
-    pub fn get_raster(&mut self, handle: RasterPipelineHandle) -> Arc<ShaderPipeline> {
+    pub fn get_raster(&mut self, handle: RasterPipelineHandle) -> Arc<RasterPipeline> {
         self.raster_entries
             .get(&handle)
             .unwrap()

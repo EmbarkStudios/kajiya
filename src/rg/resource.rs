@@ -114,7 +114,7 @@ where
 {
 }
 
-impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType>
+/*impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType>
 where
     <ResType as Resource>::Desc: Copy,
 {
@@ -125,7 +125,7 @@ where
             marker: PhantomData,
         }
     }
-}
+}*/
 
 #[derive(Clone, Copy)]
 pub struct GpuSrv;
@@ -137,7 +137,7 @@ impl GpuViewType for GpuSrv {}
 impl GpuViewType for GpuUav {}
 impl GpuViewType for GpuRt {}
 
-pub struct GpuResourceView<'a, ResType: Resource, ViewType: GpuViewType> {
+/*pub struct GpuResourceView<'a, ResType: Resource, ViewType: GpuViewType> {
     // TODO: not pub?
     pub res: &'a <ResType as Resource>::Impl,
     marker: PhantomData<ViewType>,
@@ -151,3 +151,4 @@ impl<'a, ResType: Resource, ViewType: GpuViewType> GpuResourceView<'a, ResType, 
         }
     }
 }
+*/

@@ -6,13 +6,9 @@ use super::{
     GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry, RgComputePipelineHandle,
 };
 use crate::{
-    backend::device::Device,
-    backend::image::ImageViewDesc,
-    backend::image::ImageViewDescBuilder,
-    backend::{device::CommandBuffer, shader::ShaderPipeline},
-    renderer::bind_descriptor_set,
-    renderer::view,
-    renderer::DescriptorSetBinding,
+    backend::device::CommandBuffer, backend::device::Device, backend::image::ImageViewDesc,
+    backend::image::ImageViewDescBuilder, backend::shader::ComputePipeline,
+    renderer::bind_descriptor_set, renderer::DescriptorSetBinding,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
@@ -121,13 +117,12 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
 
 pub struct BoundComputePipeline<'api, 'a, 'exec_params, 'constants> {
     api: &'api mut RenderPassApi<'a, 'exec_params, 'constants>,
-    pipeline: Arc<ShaderPipeline>,
+    pipeline: Arc<ComputePipeline>,
 }
 
 impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_params, 'constants> {
     pub fn dispatch(&self, threads: [u32; 3]) {
-        // TODO
-        let group_size = [8, 8, 1];
+        let group_size = self.pipeline.group_size;
 
         unsafe {
             self.api.device().raw.cmd_dispatch(

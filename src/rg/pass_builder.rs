@@ -1,18 +1,12 @@
 use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
-    resource_registry::ResourceRegistry,
     PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
     RgComputePipelineHandle,
 };
 
-use crate::{
-    backend::shader::ComputePipelineDesc,
-    backend::shader::DescriptorSetLayoutOpts,
-    backend::{device::CommandBuffer, shader::ComputePipelineDescBuilder},
-    pipeline_cache::PipelineCache,
-};
-use std::{collections::HashMap, marker::PhantomData, path::Path};
+use crate::{backend::shader::ComputePipelineDesc, backend::shader::DescriptorSetLayoutOpts};
+use std::{marker::PhantomData, path::Path};
 
 pub struct PassBuilder<'rg> {
     pub(crate) rg: &'rg mut RenderGraph,
@@ -141,10 +135,7 @@ impl<'rg> PassBuilder<'rg> {
         RgComputePipelineHandle { id }
     }
 
-    pub fn render(
-        mut self,
-        render: impl FnOnce(&mut RenderPassApi) -> anyhow::Result<()> + 'static,
-    ) {
+    pub fn render(mut self, render: impl FnOnce(&mut RenderPassApi) + 'static) {
         let prev = self
             .pass
             .as_mut()

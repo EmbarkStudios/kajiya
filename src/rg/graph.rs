@@ -247,14 +247,14 @@ impl CompiledRenderGraph {
                 resources: &mut resource_registry,
             };
 
-            (pass.render_fn.unwrap())(&mut api)?;
+            (pass.render_fn.unwrap())(&mut api);
         }
 
         Ok(())
     }
 }
 
-type DynRenderFn = dyn FnOnce(&mut RenderPassApi) -> anyhow::Result<()>;
+type DynRenderFn = dyn FnOnce(&mut RenderPassApi);
 
 #[derive(Copy, Clone)]
 pub struct PassResourceAccessType {

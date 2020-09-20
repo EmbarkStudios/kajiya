@@ -3,13 +3,13 @@ use super::{
     device::{CommandBuffer, Device},
     image::ImageView,
     shader::{
-        create_compute_pipeline, ComputePipelineDesc, DescriptorSetLayoutOpts, ShaderPipeline,
+        create_compute_pipeline, ComputePipeline, ComputePipelineDesc, DescriptorSetLayoutOpts,
     },
     swapchain::SwapchainImage,
 };
 use ash::{version::DeviceV1_0, vk};
 
-pub fn create_present_compute_shader(device: &Device) -> ShaderPipeline {
+pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
     create_compute_pipeline(
         device,
         &(&include_bytes!("../final_blit.spv")[..]).to_owned(),
@@ -30,7 +30,7 @@ pub fn blit_image_to_swapchain(
     cb: &CommandBuffer,
     swapchain_image: &SwapchainImage,
     present_source_image_view: &ImageView,
-    present_shader: &ShaderPipeline,
+    present_shader: &ComputePipeline,
 ) {
     record_image_barrier(
         &device.raw,

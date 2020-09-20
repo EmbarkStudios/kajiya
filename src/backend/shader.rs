@@ -4,7 +4,7 @@ use super::{
     device::{Device, SamplerDesc},
     image::ImageDesc,
 };
-use crate::chunky_list::TempList;
+use crate::{chunky_list::TempList, shader_compiler::get_cs_local_size_from_spirv};
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use byte_slice_cast::AsSliceOf as _;
@@ -20,6 +20,39 @@ const MAX_DESCRIPTOR_SETS: usize = 4;
 
 type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
 type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
+
+pub struct ShaderPipelineCommon {
+    pub pipeline_layout: vk::PipelineLayout,
+    pub pipeline: vk::Pipeline,
+    pub set_layout_info: Vec<HashMap<u32, vk::DescriptorType>>,
+    pub descriptor_pool_sizes: Vec<vk::DescriptorPoolSize>,
+    pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
+    pub pipeline_bind_point: vk::PipelineBindPoint,
+}
+pub struct ComputePipeline {
+    pub common: ShaderPipelineCommon,
+    pub group_size: [u32; 3],
+}
+
+impl std::ops::Deref for ComputePipeline {
+    type Target = ShaderPipelineCommon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.common
+    }
+}
+
+pub struct RasterPipeline {
+    pub common: ShaderPipelineCommon,
+}
+
+impl std::ops::Deref for RasterPipeline {
+    type Target = ShaderPipelineCommon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.common
+    }
+}
 
 pub fn create_descriptor_set_layouts(
     device: &Device,
@@ -266,20 +299,11 @@ impl ComputePipelineDesc {
     }
 }
 
-pub struct ShaderPipeline {
-    pub pipeline_layout: vk::PipelineLayout,
-    pub pipeline: vk::Pipeline,
-    pub set_layout_info: Vec<HashMap<u32, vk::DescriptorType>>,
-    pub descriptor_pool_sizes: Vec<vk::DescriptorPoolSize>,
-    pub descriptor_set_layouts: Vec<vk::DescriptorSetLayout>,
-    pub pipeline_bind_point: vk::PipelineBindPoint,
-}
-
 pub fn create_compute_pipeline(
     device: &Device,
     spirv: &[u8],
     desc: &ComputePipelineDesc,
-) -> ShaderPipeline {
+) -> ComputePipeline {
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
         &rspirv_reflect::Reflection::new_from_spirv(spirv)
@@ -351,13 +375,16 @@ pub fn create_compute_pipeline(
             }
         }
 
-        ShaderPipeline {
-            pipeline_layout,
-            pipeline,
-            set_layout_info,
-            descriptor_pool_sizes,
-            descriptor_set_layouts,
-            pipeline_bind_point: vk::PipelineBindPoint::COMPUTE,
+        ComputePipeline {
+            common: ShaderPipelineCommon {
+                pipeline_layout,
+                pipeline,
+                set_layout_info,
+                descriptor_pool_sizes,
+                descriptor_set_layouts,
+                pipeline_bind_point: vk::PipelineBindPoint::COMPUTE,
+            },
+            group_size: get_cs_local_size_from_spirv(spirv.as_slice_of::<u32>().unwrap()).unwrap(),
         }
     }
 }
@@ -690,7 +717,7 @@ pub fn create_raster_pipeline(
     device: &Device,
     shaders: &[RasterPipelineShader<&[u8]>],
     desc: &RasterPipelineDesc,
-) -> anyhow::Result<ShaderPipeline> {
+) -> anyhow::Result<RasterPipeline> {
     let stage_layouts = shaders
         .iter()
         .map(|desc| {
@@ -845,14 +872,16 @@ pub fn create_raster_pipeline(
             }
         }
 
-        Ok(ShaderPipeline {
-            pipeline_layout,
-            pipeline,
-            //render_pass: desc.render_pass.clone(),
-            set_layout_info,
-            descriptor_pool_sizes,
-            descriptor_set_layouts,
-            pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+        Ok(RasterPipeline {
+            common: ShaderPipelineCommon {
+                pipeline_layout,
+                pipeline,
+                //render_pass: desc.render_pass.clone(),
+                set_layout_info,
+                descriptor_pool_sizes,
+                descriptor_set_layouts,
+                pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+            },
         })
     }
 }

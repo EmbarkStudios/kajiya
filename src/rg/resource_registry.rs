@@ -1,14 +1,11 @@
-use ash::version::DeviceV1_0;
-
 use super::{
     graph::RenderGraphExecutionParams, resource::*, ImageViewCacheKey, RgComputePipelineHandle,
 };
 use crate::{
-    backend::device::CommandBuffer, backend::image::ImageView, backend::image::ImageViewDesc,
-    backend::image::ImageViewDescBuilder, backend::shader::ShaderPipeline,
+    backend::image::ImageView, backend::image::ImageViewDesc, backend::shader::ComputePipeline,
     dynamic_constants::DynamicConstants, pipeline_cache::ComputePipelineHandle,
 };
-use std::{path::Path, sync::Arc};
+use std::sync::Arc;
 
 pub enum AnyRenderResource {
     Image(Arc<crate::backend::image::Image>),
@@ -23,7 +20,7 @@ pub struct ResourceRegistry<'exec_params, 'constants> {
 }
 
 impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
-    pub fn resource<'a, 's, ResType: Resource, ViewType>(
+    /*pub fn resource<'a, 's, ResType: Resource, ViewType>(
         &'s self,
         resource: Ref<ResType, ViewType>,
     ) -> GpuResourceView<'a, ResType, ViewType>
@@ -35,7 +32,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         GpuResourceView::<'a, ResType, ViewType>::new(<ResType as Resource>::borrow_resource(
             &self.resources[resource.handle.id as usize],
         ))
-    }
+    }*/
 
     pub(crate) fn image_view<'a, 's>(
         &'s self,
@@ -68,7 +65,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
             .clone()
     }
 
-    pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ShaderPipeline> {
+    pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ComputePipeline> {
         let handle = self.compute_pipelines[pipeline.id];
         self.execution_params.pipeline_cache.get_compute(handle)
     }

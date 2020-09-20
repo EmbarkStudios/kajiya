@@ -1,5 +1,3 @@
-pub mod resource_view;
-
 mod graph;
 mod pass_api;
 mod pass_builder;

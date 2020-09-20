@@ -38,7 +38,7 @@ pub struct Renderer {
     frame_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
 
-    present_shader: ShaderPipeline,
+    present_shader: ComputePipeline,
     output_img: ImageWithViews,
     depth_img: ImageWithViews,
 
@@ -682,10 +682,10 @@ impl Renderer {
     pub fn bind_frame_constants(
         &self,
         cb: &CommandBuffer,
-        shader: &ShaderPipeline,
+        pipeline: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
         frame_constants_offset: u32,
     ) {
-        if shader
+        if pipeline
             .set_layout_info
             .get(2)
             .map(|set| !set.is_empty())
@@ -694,8 +694,8 @@ impl Renderer {
             unsafe {
                 self.backend.device.raw.cmd_bind_descriptor_sets(
                     cb.raw,
-                    shader.pipeline_bind_point,
-                    shader.pipeline_layout,
+                    pipeline.pipeline_bind_point,
+                    pipeline.pipeline_layout,
                     2,
                     &[self.frame_descriptor_set],
                     &[frame_constants_offset],
@@ -764,7 +764,11 @@ fn cube_indices() -> Vec<u32> {
     res
 }
 
-pub fn bind_pipeline(device: &Device, cb: &CommandBuffer, shader: &ShaderPipeline) {
+pub fn bind_pipeline(
+    device: &Device,
+    cb: &CommandBuffer,
+    shader: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
+) {
     unsafe {
         device
             .raw
@@ -775,7 +779,7 @@ pub fn bind_pipeline(device: &Device, cb: &CommandBuffer, shader: &ShaderPipelin
 pub fn bind_descriptor_set(
     device: &Device,
     cb: &CommandBuffer,
-    pipeline: &ShaderPipeline,
+    pipeline: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
     set_index: u32,
     bindings: &[DescriptorSetBinding],
 ) {
@@ -979,7 +983,6 @@ fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
         );
 
         pipeline.dispatch(desc.extent);
-        Ok(())
     });
 
     output
