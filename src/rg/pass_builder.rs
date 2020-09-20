@@ -2,7 +2,7 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     resource_registry::ResourceRegistry,
-    PassResourceAccessType, PassResourceRef, RgComputePipelineHandle,
+    PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipelineHandle,
 };
 
 use crate::{
@@ -129,7 +129,7 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn render(
         mut self,
-        render: impl FnOnce(&CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()> + 'static,
+        render: impl FnOnce(&mut RenderPassApi) -> anyhow::Result<()> + 'static,
     ) {
         let prev = self
             .pass

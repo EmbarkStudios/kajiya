@@ -775,11 +775,11 @@ pub fn bind_pipeline(device: &Device, cb: &CommandBuffer, shader: &ShaderPipelin
 pub fn bind_descriptor_set(
     device: &Device,
     cb: &CommandBuffer,
-    shader: &ShaderPipeline,
+    pipeline: &ShaderPipeline,
     set_index: u32,
     bindings: &[DescriptorSetBinding],
 ) {
-    let shader_set_info = if let Some(info) = shader.set_layout_info.get(set_index as usize) {
+    let shader_set_info = if let Some(info) = pipeline.set_layout_info.get(set_index as usize) {
         info
     } else {
         println!(
@@ -797,7 +797,7 @@ pub fn bind_descriptor_set(
     let descriptor_pool = {
         let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
             .max_sets(1)
-            .pool_sizes(&shader.descriptor_pool_sizes);
+            .pool_sizes(&pipeline.descriptor_pool_sizes);
 
         unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }.unwrap()
     };
@@ -807,7 +807,7 @@ pub fn bind_descriptor_set(
         let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
             .descriptor_pool(descriptor_pool)
             .set_layouts(std::slice::from_ref(
-                &shader.descriptor_set_layouts[set_index as usize],
+                &pipeline.descriptor_set_layouts[set_index as usize],
             ));
 
         unsafe { raw_device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()[0]
@@ -847,8 +847,8 @@ pub fn bind_descriptor_set(
 
         device.raw.cmd_bind_descriptor_sets(
             cb.raw,
-            shader.pipeline_bind_point,
-            shader.pipeline_layout,
+            pipeline.pipeline_bind_point,
+            pipeline.pipeline_layout,
             set_index,
             &[descriptor_set],
             &[],
@@ -977,26 +977,22 @@ fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
         )]),
     );
 
-    pass.render(move |cb, resources| {
-        let pipeline = resources.compute_pipeline(pipeline);
-
-        bind_pipeline(&*resources.execution_params.device, cb, &*pipeline);
-        bind_descriptor_set(
-            &*resources.execution_params.device,
-            cb,
-            &*pipeline,
-            0,
-            &[view::image_rw(
-                &*resources.image_view(output_ref, Default::default()),
-            )],
+    pass.render(move |api| {
+        api.bind_pipeline(
+            RenderPassComputePipelineBinding::new(pipeline)
+                .use_frame_constants(true)
+                .descriptor_set(
+                    0,
+                    &[view::image_rw(
+                        &*api.resources.image_view(output_ref, Default::default()),
+                    )],
+                ),
         );
-
-        resources.bind_frame_constants(cb, &*pipeline);
 
         let [width, height, _] = desc.extent;
         unsafe {
-            resources.execution_params.device.raw.cmd_dispatch(
-                cb.raw,
+            api.resources.execution_params.device.raw.cmd_dispatch(
+                api.cb.raw,
                 (width + 7) / 8,
                 (height + 7) / 8,
                 1,

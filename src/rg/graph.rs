@@ -4,9 +4,12 @@ use super::{
     pass_builder::PassBuilder,
     resource::*,
     resource_registry::{AnyRenderResource, ResourceRegistry},
+    RenderPassApi,
 };
 
 use crate::{
+    backend::barrier::record_image_barrier,
+    backend::barrier::ImageBarrier,
     backend::device::{CommandBuffer, Device},
     backend::image::ImageView,
     backend::image::ImageViewDesc,
@@ -205,18 +208,42 @@ impl CompiledRenderGraph {
                     ));
                 }
 
-                // TODO: Execute the transitions
-                //cb.transitions(&transitions)?;
+                // TODO: optimize the barriers
+
+                for (resource, access) in transitions {
+                    match resource {
+                        AnyRenderResource::Image(image) => {
+                            record_image_barrier(
+                                &params.device.raw,
+                                cb.raw,
+                                ImageBarrier::new(
+                                    image.raw,
+                                    vk_sync::AccessType::Nothing, // TODO
+                                    access.access_type,
+                                    vk::ImageAspectFlags::COLOR, // TODO
+                                ),
+                            );
+                        }
+                        AnyRenderResource::Buffer(_) => {
+                            todo!();
+                        }
+                    }
+                }
             }
 
-            (pass.render_fn.unwrap())(cb, &mut resource_registry)?;
+            let mut api = RenderPassApi {
+                cb,
+                resources: &mut resource_registry,
+            };
+
+            (pass.render_fn.unwrap())(&mut api)?;
         }
 
         Ok(())
     }
 }
 
-type DynRenderFn = dyn FnOnce(&CommandBuffer, &mut ResourceRegistry) -> anyhow::Result<()>;
+type DynRenderFn = dyn FnOnce(&mut RenderPassApi) -> anyhow::Result<()>;
 
 #[derive(Copy, Clone)]
 pub struct PassResourceAccessType {
