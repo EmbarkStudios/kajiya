@@ -37,7 +37,6 @@ pub(crate) struct GraphResourceCreateInfo {
 #[derive(Clone, Copy)]
 pub struct RgComputePipelineHandle {
     pub(crate) id: usize,
-    pub(crate) use_frame_constants: bool,
 }
 
 pub(crate) struct RgComputePipeline {
@@ -49,14 +48,18 @@ pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceCreateInfo>,
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
+    pub(crate) frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
 }
 
 impl RenderGraph {
-    pub fn new() -> Self {
+    pub fn new(
+        frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
+    ) -> Self {
         Self {
             passes: Vec::new(),
             resources: Vec::new(),
             compute_pipelines: Vec::new(),
+            frame_descriptor_set_layout,
         }
     }
 

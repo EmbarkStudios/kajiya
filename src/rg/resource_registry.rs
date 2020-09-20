@@ -73,26 +73,6 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         self.execution_params.pipeline_cache.get_compute(handle)
     }
 
-    pub fn bind_frame_constants(&self, cb: &CommandBuffer, shader: &ShaderPipeline) {
-        if shader
-            .set_layout_info
-            .get(2)
-            .map(|set| !set.is_empty())
-            .unwrap_or_default()
-        {
-            unsafe {
-                self.execution_params.device.raw.cmd_bind_descriptor_sets(
-                    cb.raw,
-                    shader.pipeline_bind_point,
-                    shader.pipeline_layout,
-                    2,
-                    &[self.execution_params.frame_descriptor_set],
-                    &[self.execution_params.frame_constants_offset],
-                );
-            }
-        }
-    }
-
     /*pub fn render_pass(
         &self,
         render_target: &RenderTarget,

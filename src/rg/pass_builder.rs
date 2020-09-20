@@ -118,21 +118,16 @@ impl<'rg> PassBuilder<'rg> {
         }
     }
 
-    pub fn register_compute_pipeline(
-        &mut self,
-        path: impl AsRef<Path>,
-        //desc: ComputePipelineDescBuilder,
-        frame_constants: Option<&HashMap<u32, rspirv_reflect::DescriptorInfo>>,
-    ) -> RgComputePipelineHandle {
-        let res = self.rg.compute_pipelines.len();
+    pub fn register_compute_pipeline(&mut self, path: impl AsRef<Path>) -> RgComputePipelineHandle {
+        let id = self.rg.compute_pipelines.len();
 
         let mut desc = ComputePipelineDesc::builder().build().unwrap();
 
-        if let Some(frame_constants) = frame_constants {
+        if let Some(frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout {
             desc.descriptor_set_opts[0] = Some((
                 2,
                 DescriptorSetLayoutOpts::builder()
-                    .replace(frame_constants.clone())
+                    .replace(frame_descriptor_set_layout.clone())
                     .build()
                     .unwrap(),
             ));
@@ -143,10 +138,7 @@ impl<'rg> PassBuilder<'rg> {
             desc,
         });
 
-        RgComputePipelineHandle {
-            id: res,
-            use_frame_constants: frame_constants.is_some(),
-        }
+        RgComputePipelineHandle { id }
     }
 
     pub fn render(

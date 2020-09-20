@@ -705,7 +705,7 @@ impl Renderer {
     }
 
     pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
-        let mut rg = RenderGraph::new();
+        let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
         let mut _tex = synth_gradients(
             &mut rg,
             ImageDesc::new_2d([1280, 720])
@@ -966,11 +966,8 @@ use crate::rg::*;
 
 fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();
-    let pipeline = pass.register_compute_pipeline(
-        "/assets/shaders/gradients.hlsl",
-        Some(&FRAME_CONSTANTS_LAYOUT),
-    );
 
+    let pipeline = pass.register_compute_pipeline("/assets/shaders/gradients.hlsl");
     let mut output = pass.create(&desc);
     let output_ref = pass.write(&mut output);
 

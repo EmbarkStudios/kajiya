@@ -68,8 +68,22 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             );
         }
 
-        if binding.pipeline.use_frame_constants {
-            self.resources.bind_frame_constants(self.cb, pipeline);
+        if pipeline
+            .set_layout_info
+            .get(2)
+            .map(|set| !set.is_empty())
+            .unwrap_or_default()
+        {
+            unsafe {
+                device.raw.cmd_bind_descriptor_sets(
+                    self.cb.raw,
+                    pipeline.pipeline_bind_point,
+                    pipeline.pipeline_layout,
+                    2,
+                    &[self.resources.execution_params.frame_descriptor_set],
+                    &[self.resources.execution_params.frame_constants_offset],
+                );
+            }
         }
 
         for (set_index, bindings) in binding.bindings {
