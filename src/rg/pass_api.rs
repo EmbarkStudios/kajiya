@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ash::{version::DeviceV1_0, vk};
 
 use super::{
-    GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry, RgComputePipelineHandle,
+    GpuSrv, GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry, RgComputePipelineHandle,
 };
 use crate::{
     backend::device::CommandBuffer, backend::device::Device, backend::image::ImageViewDesc,
@@ -139,6 +139,16 @@ pub struct RenderPassImageBinding {
 
 pub enum RenderPassBinding {
     Image(RenderPassImageBinding),
+}
+
+impl Ref<Image, GpuSrv> {
+    pub fn bind(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
+        RenderPassBinding::Image(RenderPassImageBinding {
+            handle: self.handle,
+            view_desc: view_desc.build().unwrap(),
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        })
+    }
 }
 
 impl Ref<Image, GpuUav> {

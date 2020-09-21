@@ -707,13 +707,14 @@ impl Renderer {
 
     pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
-        let mut _tex = crate::render_passes::synth_gradients(
+        let tex = crate::render_passes::synth_gradients(
             &mut rg,
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
                 .build()
                 .unwrap(),
         );
+        let _tex = crate::render_passes::blur(&mut rg, &tex);
 
         self.compiled_rg = Some(rg.compile(&*self.backend.device, &mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
