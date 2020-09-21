@@ -22,7 +22,7 @@ float sample_volume(float3 p) {
 
 [numthreads(8, 8, 1)]
 void main(in uint2 pix : SV_DispatchThreadID) {
-    #if 0
+    #if 1
     // TODO
     float4 output_tex_size = float4(1280, 720, 1.0 / 1280, 1.0 / 720);
     ViewConstants view_constants = frame_constants.view_constants;

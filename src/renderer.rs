@@ -54,7 +54,7 @@ pub struct Renderer {
 
     brick_meta_buffer: Buffer,
     brick_inst_buffer: Buffer,
-    sdf_img: Image,
+    sdf_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
@@ -305,7 +305,7 @@ impl Renderer {
 
             brick_meta_buffer,
             brick_inst_buffer,
-            sdf_img,
+            sdf_img: Arc::new(sdf_img),
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
             edit_sdf,
@@ -460,7 +460,7 @@ impl Renderer {
                 );
             }
 
-            // Raymarch the SDF
+            /*// Raymarch the SDF
             {
                 let shader = self.pipeline_cache.get_compute(self.sdf_raymarch_gbuffer);
 
@@ -478,9 +478,9 @@ impl Renderer {
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
 
                 raw_device.cmd_dispatch(cb.raw, (width + 7) / 8, (height + 7) / 8, 1);
-            }
+            }*/
 
-            {
+            /*{
                 depth_img_tracker.transition(vk_sync::AccessType::TransferWrite);
 
                 raw_device.cmd_clear_depth_stencil_image(
@@ -558,7 +558,7 @@ impl Renderer {
                 }
 
                 raw_device.cmd_end_render_pass(cb.raw);
-            }
+            }*/
 
             if let Some((rg, rg_output_img)) =
                 self.compiled_rg.take().zip(self.rg_output_tex.take())
@@ -603,17 +603,6 @@ impl Renderer {
 
                 retired_rg.release_resources(&mut self.transient_resource_cache);
             }
-
-            /*output_img_tracker
-                .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
-
-            blit_image_to_swapchain(
-                &*self.backend.device,
-                cb,
-                &swapchain_image,
-                self.output_img.view(device, &ImageViewDesc::default()),
-                &self.present_shader,
-            );*/
 
             raw_device.end_command_buffer(cb.raw).unwrap();
         }
@@ -742,19 +731,20 @@ impl Renderer {
 
     pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
-        /*let tex = crate::render_passes::synth_gradients(
+
+        let sdf_img = rg.import_image(self.sdf_img.clone());
+
+        let tex = crate::render_passes::raymarch_sdf(
             &mut rg,
+            &sdf_img,
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
                 .build()
                 .unwrap(),
-        );*/
-
-        let tex = rg.import_image(self.output_img.clone());
+        );
         let tex = crate::render_passes::blur(&mut rg, &tex);
-        let tex = rg.export_image(tex, vk::ImageUsageFlags::SAMPLED);
+        self.rg_output_tex = Some(rg.export_image(tex, vk::ImageUsageFlags::SAMPLED));
 
-        self.rg_output_tex = Some(tex);
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
