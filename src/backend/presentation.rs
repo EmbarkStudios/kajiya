@@ -1,7 +1,6 @@
 use super::{
     barrier::*,
     device::{CommandBuffer, Device},
-    image::ImageView,
     shader::{
         create_compute_pipeline, ComputePipeline, ComputePipelineDesc, DescriptorSetLayoutOpts,
     },
@@ -29,7 +28,7 @@ pub fn blit_image_to_swapchain(
     device: &Device,
     cb: &CommandBuffer,
     swapchain_image: &SwapchainImage,
-    present_source_image_view: &ImageView,
+    present_source_image_view: vk::ImageView,
     present_shader: &ComputePipeline,
 ) {
     record_image_barrier(
@@ -46,7 +45,7 @@ pub fn blit_image_to_swapchain(
 
     let source_image_info = vk::DescriptorImageInfo::builder()
         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        .image_view(present_source_image_view.raw)
+        .image_view(present_source_image_view)
         .build();
 
     let present_image_info = vk::DescriptorImageInfo::builder()

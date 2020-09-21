@@ -12,13 +12,11 @@ use crate::{
     backend::barrier::record_image_barrier,
     backend::barrier::ImageBarrier,
     backend::device::{CommandBuffer, Device},
-    backend::image::ImageView,
     backend::image::ImageViewDesc,
     backend::shader::ComputePipelineDesc,
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
-    view_cache::ViewCache,
 };
 use ash::vk;
 use parking_lot::Mutex;
@@ -93,7 +91,6 @@ struct ResourceInfo {
 pub struct RenderGraphExecutionParams<'a> {
     pub device: &'a Device,
     pub pipeline_cache: &'a mut PipelineCache,
-    pub view_cache: &'a ViewCache,
     pub frame_descriptor_set: vk::DescriptorSet,
     pub frame_constants_offset: u32,
 }

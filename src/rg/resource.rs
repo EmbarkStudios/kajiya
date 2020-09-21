@@ -19,7 +19,7 @@ impl Resource for Image {
 
     fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
         match res {
-            AnyRenderResource::Image(img) => &**img,
+            AnyRenderResource::Image(img) => &img,
             AnyRenderResource::Buffer(_) => unimplemented!(),
         }
     }

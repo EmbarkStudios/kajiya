@@ -3,7 +3,7 @@ use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
 use derive_builder::Builder;
 use parking_lot::Mutex;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -65,11 +65,28 @@ pub struct ImageSubResourceData<'a> {
 pub struct Image {
     pub raw: vk::Image,
     pub desc: ImageDesc,
+    pub views: Mutex<HashMap<ImageViewDesc, vk::ImageView>>,
     allocation: vk_mem::Allocation,
 }
 
+impl Image {
+    pub(crate) fn view(&self, device: &Device, desc: &ImageViewDesc) -> vk::ImageView {
+        let mut views = self.views.lock();
+
+        if let Some(entry) = views.get(desc) {
+            *entry
+        } else {
+            *views.entry(desc.clone()).or_insert_with(|| {
+                device
+                    .create_image_view(desc.clone(), &self.desc, self.raw)
+                    .unwrap()
+            })
+        }
+    }
+}
+
 #[derive(Clone, Copy, Builder, Eq, PartialEq, Hash)]
-#[builder(pattern = "owned")]
+#[builder(pattern = "owned", derive(Clone))]
 pub struct ImageViewDesc {
     #[builder(setter(strip_option), default)]
     pub view_type: Option<vk::ImageViewType>,
@@ -87,10 +104,10 @@ impl ImageViewDesc {
     }
 }
 
-pub struct ImageView {
-    pub raw: vk::ImageView,
-    pub desc: ImageViewDesc,
-    pub image: Arc<Image>,
+impl Default for ImageViewDesc {
+    fn default() -> Self {
+        Self::builder().build().unwrap()
+    }
 }
 
 impl Device {
@@ -98,7 +115,7 @@ impl Device {
         &self,
         desc: ImageDesc,
         initial_data: Option<ImageSubResourceData>,
-    ) -> Result<Arc<Image>> {
+    ) -> Result<Image> {
         let desc = desc.into();
         let create_info = get_image_create_info(&desc, initial_data.is_some());
 
@@ -121,18 +138,23 @@ impl Device {
         });
 
         ImageHandle(handle)*/
-        Ok(Arc::new(Image {
+        Ok(Image {
             raw: image,
             allocation,
             desc,
-        }))
+            views: Default::default(),
+        })
     }
 
-    pub fn create_image_view(&self, desc: ImageViewDesc, image: &Arc<Image>) -> Result<ImageView> {
-        let image = &*image;
+    fn create_image_view(
+        &self,
+        desc: ImageViewDesc,
+        image_desc: &ImageDesc,
+        image_raw: vk::Image,
+    ) -> Result<vk::ImageView> {
         let create_info = vk::ImageViewCreateInfo::builder()
-            .format(desc.format.unwrap_or(image.desc.format))
-            .image(image.raw)
+            .format(desc.format.unwrap_or(image_desc.format))
+            .image(image_raw)
             .components(vk::ComponentMapping {
                 r: vk::ComponentSwizzle::R,
                 g: vk::ComponentSwizzle::G,
@@ -141,7 +163,7 @@ impl Device {
             })
             .view_type(
                 desc.view_type
-                    .unwrap_or_else(|| convert_image_type_to_view_type(image.desc.image_type)),
+                    .unwrap_or_else(|| convert_image_type_to_view_type(image_desc.image_type)),
             )
             // TODO
             .subresource_range(vk::ImageSubresourceRange {
@@ -149,19 +171,14 @@ impl Device {
                 base_mip_level: 0,
                 level_count: 1,
                 base_array_layer: 0,
-                layer_count: match image.desc.image_type {
+                layer_count: match image_desc.image_type {
                     ImageType::Cube | ImageType::CubeArray => 6,
                     _ => 1,
                 },
             })
             .build();
 
-        let raw = unsafe { self.raw.create_image_view(&create_info, None)? };
-        Ok(ImageView {
-            raw,
-            desc,
-            image: image.clone(),
-        })
+        Ok(unsafe { self.raw.create_image_view(&create_info, None)? })
     }
 
     /*pub fn get(&self, handle: ImageHandle) -> &Image {
@@ -274,40 +291,5 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> vk::ImageC
             false => vk::ImageLayout::UNDEFINED,
         },
         ..Default::default()
-    }
-}
-
-pub struct ImageWithViews {
-    pub image: Arc<Image>,
-    pub views: Mutex<HashMap<ImageViewDesc, Arc<ImageView>>>,
-    pub device: Arc<Device>,
-}
-
-impl ImageWithViews {
-    pub fn view(&self, desc: ImageViewDescBuilder) -> Arc<ImageView> {
-        let desc = desc.build().unwrap();
-        let mut views = self.views.lock();
-        views
-            .entry(desc)
-            .or_insert_with(|| Arc::new(self.device.create_image_view(desc, &self.image).unwrap()))
-            .clone()
-    }
-
-    pub fn raw(&self) -> vk::Image {
-        self.image.raw
-    }
-}
-
-pub trait IntoImageWithViews {
-    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews;
-}
-
-impl IntoImageWithViews for Image {
-    fn with_views(self: Arc<Self>, device: &Arc<Device>) -> ImageWithViews {
-        ImageWithViews {
-            image: self,
-            views: Default::default(),
-            device: device.clone(),
-        }
     }
 }

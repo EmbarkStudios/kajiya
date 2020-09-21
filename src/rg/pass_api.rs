@@ -89,11 +89,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                     RenderPassBinding::Image(image) => DescriptorSetBinding::Image(
                         vk::DescriptorImageInfo::builder()
                             .image_layout(image.image_layout)
-                            .image_view(
-                                self.resources
-                                    .image_view(image.handle, &image.view_desc)
-                                    .raw,
-                            )
+                            .image_view(self.resources.image_view(image.handle, &image.view_desc))
                             .build(),
                     ),
                 })

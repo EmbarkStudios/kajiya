@@ -1,13 +1,14 @@
+use ash::vk;
+
 use super::{graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle};
 use crate::{
-    backend::image::ImageView, backend::image::ImageViewDesc, backend::shader::ComputePipeline,
+    backend::image::ImageViewDesc, backend::shader::ComputePipeline,
     dynamic_constants::DynamicConstants, pipeline_cache::ComputePipelineHandle,
-    view_cache::ImageViewCacheKey,
 };
 use std::sync::Arc;
 
 pub enum AnyRenderResource {
-    Image(Arc<crate::backend::image::Image>),
+    Image(crate::backend::image::Image),
     Buffer(crate::backend::buffer::Buffer),
 }
 
@@ -37,31 +38,19 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         &'s self,
         resource: GraphRawResourceHandle,
         view_desc: &ImageViewDesc,
-    ) -> Arc<ImageView>
+    ) -> vk::ImageView
     where
         's: 'a,
     {
         let view_desc = view_desc;
-        let mut views = self.execution_params.view_cache.image_views.lock();
-        let views = &mut *views;
 
         let image = match &self.resources[resource.id as usize] {
             AnyRenderResource::Image(img) => img.clone(),
             AnyRenderResource::Buffer(_) => panic!(),
         };
 
-        let key = ImageViewCacheKey {
-            image: Arc::downgrade(&image),
-            view_desc: view_desc.clone(),
-        };
         let device = self.execution_params.device;
-
-        views
-            .entry(key)
-            .or_insert_with(|| {
-                Arc::new(device.create_image_view(view_desc.clone(), &image).unwrap())
-            })
-            .clone()
+        image.view(device, view_desc)
     }
 
     pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ComputePipeline> {

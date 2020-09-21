@@ -3,7 +3,6 @@ use crate::{
     rg::CompiledRenderGraph,
     rg::RenderGraph,
     rg::RenderGraphExecutionParams,
-    view_cache::ViewCache,
 };
 use crate::{
     chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
@@ -37,21 +36,20 @@ struct FrameConstants {
 pub struct Renderer {
     backend: RenderBackend,
     pipeline_cache: PipelineCache,
-    view_cache: ViewCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
 
     present_shader: ComputePipeline,
-    output_img: ImageWithViews,
-    depth_img: ImageWithViews,
+    output_img: Image,
+    depth_img: Image,
 
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipelineHandle,
 
     brick_meta_buffer: Buffer,
     brick_inst_buffer: Buffer,
-    sdf_img: ImageWithViews,
+    sdf_img: Image,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
@@ -90,20 +88,20 @@ pub enum DescriptorSetBinding {
 pub mod view {
     use super::*;
 
-    pub fn image_rw(view: &ImageView) -> DescriptorSetBinding {
+    pub fn image_rw(view: vk::ImageView) -> DescriptorSetBinding {
         DescriptorSetBinding::Image(
             vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::GENERAL)
-                .image_view(view.raw)
+                .image_view(view)
                 .build(),
         )
     }
 
-    pub fn image(view: &ImageView) -> DescriptorSetBinding {
+    pub fn image(view: vk::ImageView) -> DescriptorSetBinding {
         DescriptorSetBinding::Image(
             vk::DescriptorImageInfo::builder()
                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image_view(view.raw)
+                .image_view(view)
                 .build(),
         )
     }
@@ -165,37 +163,31 @@ impl Renderer {
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
-        let output_img = backend
-            .device
-            .create_image(
-                ImageDesc::new_2d(output_dims)
-                    .format(vk::Format::R16G16B16A16_SFLOAT)
-                    //.format(vk::Format::R8G8B8A8_UNORM)
-                    .usage(
-                        vk::ImageUsageFlags::STORAGE
-                            | vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                    )
-                    .build()
-                    .unwrap(),
-                None,
-            )?
-            .with_views(&backend.device);
+        let output_img = backend.device.create_image(
+            ImageDesc::new_2d(output_dims)
+                .format(vk::Format::R16G16B16A16_SFLOAT)
+                //.format(vk::Format::R8G8B8A8_UNORM)
+                .usage(
+                    vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::COLOR_ATTACHMENT,
+                )
+                .build()
+                .unwrap(),
+            None,
+        )?;
 
-        let depth_img = backend
-            .device
-            .create_image(
-                ImageDesc::new_2d(output_dims)
-                    .format(vk::Format::D24_UNORM_S8_UINT)
-                    .usage(
-                        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                            | vk::ImageUsageFlags::TRANSFER_DST,
-                    )
-                    .build()
-                    .unwrap(),
-                None,
-            )?
-            .with_views(&backend.device);
+        let depth_img = backend.device.create_image(
+            ImageDesc::new_2d(output_dims)
+                .format(vk::Format::D24_UNORM_S8_UINT)
+                .usage(
+                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                )
+                .build()
+                .unwrap(),
+            None,
+        )?;
 
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
@@ -230,17 +222,14 @@ impl Renderer {
                 .face_cull(true),
         );
 
-        let sdf_img = backend
-            .device
-            .create_image(
-                ImageDesc::new_3d([SDF_DIM, SDF_DIM, SDF_DIM])
-                    .format(vk::Format::R16_SFLOAT)
-                    .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
-                    .build()
-                    .unwrap(),
-                None,
-            )?
-            .with_views(&backend.device);
+        let sdf_img = backend.device.create_image(
+            ImageDesc::new_3d([SDF_DIM, SDF_DIM, SDF_DIM])
+                .format(vk::Format::R16_SFLOAT)
+                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
+                .build()
+                .unwrap(),
+            None,
+        )?;
 
         let sdf_pipeline_desc = ComputePipelineDesc::builder().descriptor_set_opts(&[(
             2,
@@ -300,7 +289,6 @@ impl Renderer {
             frame_descriptor_set,
             frame_idx: !0,
             pipeline_cache: pipeline_cache,
-            view_cache: Default::default(),
             present_shader,
 
             output_img,
@@ -348,10 +336,11 @@ impl Renderer {
 
         let current_frame = self.backend.device.current_frame();
         let cb = &current_frame.command_buffer;
-        let raw_device = &self.backend.device.raw;
+        let device = &*self.backend.device;
+        let raw_device = &device.raw;
 
         let mut output_img_tracker = LocalImageStateTracker::new(
-            self.output_img.raw(),
+            self.output_img.raw,
             vk::ImageAspectFlags::COLOR,
             vk_sync::AccessType::Nothing,
             cb.raw,
@@ -359,7 +348,7 @@ impl Renderer {
         );
 
         let mut depth_img_tracker = LocalImageStateTracker::new(
-            self.depth_img.raw(),
+            self.depth_img.raw,
             vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
             vk_sync::AccessType::Nothing,
             cb.raw,
@@ -367,7 +356,7 @@ impl Renderer {
         );
 
         let mut sdf_img_tracker = LocalImageStateTracker::new(
-            self.sdf_img.raw(),
+            self.sdf_img.raw,
             vk::ImageAspectFlags::COLOR,
             if self.frame_idx == 0 {
                 vk_sync::AccessType::Nothing
@@ -392,7 +381,6 @@ impl Renderer {
                     RenderGraphExecutionParams {
                         device: &self.backend.device,
                         pipeline_cache: &mut self.pipeline_cache,
-                        view_cache: &self.view_cache,
                         frame_descriptor_set: self.frame_descriptor_set,
                         frame_constants_offset,
                     },
@@ -420,7 +408,9 @@ impl Renderer {
                     cb,
                     &*shader,
                     0,
-                    &[view::image_rw(&self.sdf_img.view(Default::default()))],
+                    &[view::image_rw(
+                        self.sdf_img.view(device, &ImageViewDesc::default()),
+                    )],
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
 
@@ -460,7 +450,7 @@ impl Renderer {
                     &*shader,
                     0,
                     &[
-                        view::image(&self.sdf_img.view(Default::default())),
+                        view::image(self.sdf_img.view(device, &ImageViewDesc::default())),
                         view::buffer_rw(&self.brick_meta_buffer),
                         view::buffer_rw(&self.brick_inst_buffer),
                     ],
@@ -487,8 +477,8 @@ impl Renderer {
                     &*shader,
                     0,
                     &[
-                        view::image_rw(&self.output_img.view(Default::default())),
-                        view::image(&self.sdf_img.view(Default::default())),
+                        view::image_rw(self.output_img.view(device, &ImageViewDesc::default())),
+                        view::image(self.sdf_img.view(device, &ImageViewDesc::default())),
                     ],
                 );
                 self.bind_frame_constants(cb, &*shader, frame_constants_offset);
@@ -501,7 +491,7 @@ impl Renderer {
 
                 raw_device.cmd_clear_depth_stencil_image(
                     cb.raw,
-                    self.depth_img.raw(),
+                    self.depth_img.raw,
                     ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &ash::vk::ClearDepthStencilValue {
                         depth: 0f32,
@@ -523,11 +513,15 @@ impl Renderer {
                     cb,
                     &*self.raster_simple_render_pass,
                     [width, height],
-                    &[&self.output_img.view(Default::default())],
-                    Some(&self.depth_img.view(
-                        ImageViewDesc::builder().aspect_mask(
-                            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                        ),
+                    &[(&self.output_img, &ImageViewDesc::default())],
+                    Some((
+                        &self.depth_img,
+                        &ImageViewDesc::builder()
+                            .aspect_mask(
+                                vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                            )
+                            .build()
+                            .unwrap(),
                     )),
                 );
 
@@ -545,7 +539,7 @@ impl Renderer {
                         0,
                         &[
                             view::buffer(&self.brick_inst_buffer),
-                            view::image(&self.sdf_img.view(Default::default())),
+                            view::image(self.sdf_img.view(device, &ImageViewDesc::default())),
                         ],
                     );
                     self.bind_frame_constants(cb, pipeline, frame_constants_offset);
@@ -579,7 +573,7 @@ impl Renderer {
                 &*self.backend.device,
                 cb,
                 &swapchain_image,
-                &self.output_img.view(Default::default()),
+                self.output_img.view(device, &ImageViewDesc::default()),
                 &self.present_shader,
             );
 
@@ -887,8 +881,8 @@ fn begin_render_pass(
     cb: &CommandBuffer,
     render_pass: &RenderPass,
     dims: [u32; 2],
-    color_attachments: &[&ImageView],
-    depth_attachment: Option<&ImageView>,
+    color_attachments: &[(&Image, &ImageViewDesc)],
+    depth_attachment: Option<(&Image, &ImageViewDesc)>,
 ) {
     let framebuffer = render_pass
         .framebuffer_cache
@@ -896,18 +890,17 @@ fn begin_render_pass(
             &device.raw,
             FramebufferCacheKey::new(
                 dims,
-                color_attachments.iter().copied().map(|a| &a.image.desc),
-                depth_attachment.map(|a| &a.image.desc),
+                color_attachments.iter().map(|(a, _)| &a.desc),
+                depth_attachment.map(|(a, _)| &a.desc),
             ),
         )
         .unwrap();
 
     // Bind images to the imageless framebuffer
-    let image_attachments: ArrayVec<[_; MAX_COLOR_ATTACHMENTS + 1]> = color_attachments
+    let image_attachments: ArrayVec<[vk::ImageView; MAX_COLOR_ATTACHMENTS + 1]> = color_attachments
         .iter()
         .chain(depth_attachment.as_ref().into_iter())
-        .copied()
-        .map(|a| a.raw)
+        .map(|(img, view)| img.view(device, view.clone()))
         .collect();
 
     let mut pass_attachment_desc =
