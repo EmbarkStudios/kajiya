@@ -17,41 +17,80 @@ pub enum ImageType {
     CubeArray = 6,
 }
 
-#[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[builder(pattern = "owned")]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct ImageDesc {
     pub image_type: ImageType,
-    #[builder(default)]
     pub usage: vk::ImageUsageFlags,
-    #[builder(default = "vk::ImageCreateFlags::MUTABLE_FORMAT")]
     pub flags: vk::ImageCreateFlags, // TODO: CUBE_COMPATIBLE
     pub format: vk::Format,
     pub extent: [u32; 3],
-    #[builder(default = "vk::ImageTiling::OPTIMAL")]
     pub tiling: vk::ImageTiling,
-    #[builder(default = "1")]
     pub mip_levels: u16,
-    #[builder(default = "1")]
     pub array_elements: u32,
 }
 
 #[allow(dead_code)]
 impl ImageDesc {
-    pub fn new() -> ImageDescBuilder {
-        ImageDescBuilder::default()
+    pub fn new(format: vk::Format, image_type: ImageType, extent: [u32; 3]) -> Self {
+        Self {
+            image_type,
+            usage: vk::ImageUsageFlags::default(),
+            flags: vk::ImageCreateFlags::MUTABLE_FORMAT, //TODO: CUBE_COMPATIBLE
+            format,
+            extent,
+            tiling: vk::ImageTiling::OPTIMAL,
+            mip_levels: 1,
+            array_elements: 1,
+        }
     }
 
-    pub fn new_2d(extent: [u32; 2]) -> ImageDescBuilder {
+    pub fn new_2d(format: vk::Format, extent: [u32; 2]) -> Self {
         let [width, height] = extent;
-        ImageDescBuilder::default()
-            .extent([width, height, 1])
-            .image_type(ImageType::Tex2d)
+        Self::new(format, ImageType::Tex2d, [width, height, 1])
     }
 
-    pub fn new_3d(extent: [u32; 3]) -> ImageDescBuilder {
-        ImageDescBuilder::default()
-            .extent(extent)
-            .image_type(ImageType::Tex3d)
+    pub fn new_3d(format: vk::Format, extent: [u32; 3]) -> Self {
+        Self::new(format, ImageType::Tex3d, extent)
+    }
+
+    pub fn image_type(mut self, image_type: ImageType) -> Self {
+        self.image_type = image_type;
+        self
+    }
+
+    pub fn usage(mut self, usage: vk::ImageUsageFlags) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    pub fn flags(mut self, flags: vk::ImageCreateFlags) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    pub fn format(mut self, format: vk::Format) -> Self {
+        self.format = format;
+        self
+    }
+
+    pub fn extent(mut self, extent: [u32; 3]) -> Self {
+        self.extent = extent;
+        self
+    }
+
+    pub fn tiling(mut self, tiling: vk::ImageTiling) -> Self {
+        self.tiling = tiling;
+        self
+    }
+
+    pub fn mip_levels(mut self, mip_levels: u16) -> Self {
+        self.mip_levels = mip_levels;
+        self
+    }
+
+    pub fn array_elements(mut self, array_elements: u32) -> Self {
+        self.array_elements = array_elements;
+        self
     }
 }
 

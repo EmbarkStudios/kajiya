@@ -170,28 +170,20 @@ impl Renderer {
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
         let output_img = backend.device.create_image(
-            ImageDesc::new_2d(output_dims)
-                .format(vk::Format::R16G16B16A16_SFLOAT)
+            ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_dims)
                 //.format(vk::Format::R8G8B8A8_UNORM)
                 .usage(
                     vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                )
-                .build()
-                .unwrap(),
+                ),
             None,
         )?;
 
         let depth_img = backend.device.create_image(
-            ImageDesc::new_2d(output_dims)
-                .format(vk::Format::D24_UNORM_S8_UINT)
-                .usage(
-                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                )
-                .build()
-                .unwrap(),
+            ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, output_dims).usage(
+                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
+            ),
             None,
         )?;
 
@@ -229,11 +221,8 @@ impl Renderer {
         );
 
         let sdf_img = backend.device.create_image(
-            ImageDesc::new_3d([SDF_DIM, SDF_DIM, SDF_DIM])
-                .format(vk::Format::R16_SFLOAT)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
-                .build()
-                .unwrap(),
+            ImageDesc::new_3d(vk::Format::R16_SFLOAT, [SDF_DIM, SDF_DIM, SDF_DIM])
+                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED),
             None,
         )?;
 
@@ -736,24 +725,17 @@ impl Renderer {
 
         let mut depth_img = crate::render_passes::create_image(
             &mut rg,
-            ImageDesc::new_2d(frame_state.window_cfg.dims())
-                .format(vk::Format::D24_UNORM_S8_UINT)
-                .usage(
-                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                )
-                .build()
-                .unwrap(),
+            ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
         );
         crate::render_passes::clear_depth(&mut rg, &mut depth_img);
 
         let tex = crate::render_passes::raymarch_sdf(
             &mut rg,
             &sdf_img,
-            ImageDesc::new_2d(frame_state.window_cfg.dims())
-                .format(vk::Format::R16G16B16A16_SFLOAT)
-                .build()
-                .unwrap(),
+            ImageDesc::new_2d(
+                vk::Format::R16G16B16A16_SFLOAT,
+                frame_state.window_cfg.dims(),
+            ),
         );
         let tex = crate::render_passes::blur(&mut rg, &tex);
         self.rg_output_tex = Some(rg.export_image(tex, vk::ImageUsageFlags::SAMPLED));
