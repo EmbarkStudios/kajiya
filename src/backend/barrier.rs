@@ -62,272 +62,326 @@ impl ImageBarrier {
 // From vk_sync
 #[allow(dead_code)]
 pub(crate) struct AccessInfo {
-    pub(crate) stage_mask: ash::vk::PipelineStageFlags,
-    pub(crate) access_mask: ash::vk::AccessFlags,
-    pub(crate) image_layout: ash::vk::ImageLayout,
+    pub(crate) stage_mask: vk::PipelineStageFlags,
+    pub(crate) access_mask: vk::AccessFlags,
+    pub(crate) image_layout: vk::ImageLayout,
 }
 
 pub(crate) fn get_access_info(access_type: AccessType) -> AccessInfo {
     match access_type {
         AccessType::Nothing => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::empty(),
-            access_mask: ash::vk::AccessFlags::empty(),
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::empty(),
+            access_mask: vk::AccessFlags::empty(),
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::CommandBufferReadNVX => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
-            access_mask: ash::vk::AccessFlags::COMMAND_PREPROCESS_READ_NV,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
+            access_mask: vk::AccessFlags::COMMAND_PREPROCESS_READ_NV,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::IndirectBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::DRAW_INDIRECT,
-            access_mask: ash::vk::AccessFlags::INDIRECT_COMMAND_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::DRAW_INDIRECT,
+            access_mask: vk::AccessFlags::INDIRECT_COMMAND_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::IndexBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::VERTEX_INPUT,
-            access_mask: ash::vk::AccessFlags::INDEX_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::VERTEX_INPUT,
+            access_mask: vk::AccessFlags::INDEX_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::VertexBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::VERTEX_INPUT,
-            access_mask: ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::VERTEX_INPUT,
+            access_mask: vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::VertexShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::VERTEX_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::VERTEX_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::VERTEX_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::VERTEX_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::VertexShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::VERTEX_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::VERTEX_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::TessellationControlShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
+            access_mask: vk::AccessFlags::UNIFORM_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::TessellationControlShaderReadSampledImageOrUniformTexelBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::TessellationControlShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::TessellationEvaluationShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
+            access_mask: vk::AccessFlags::UNIFORM_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::TessellationEvaluationShaderReadSampledImageOrUniformTexelBuffer => {
             AccessInfo {
-                stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
-                access_mask: ash::vk::AccessFlags::SHADER_READ,
-                image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                stage_mask: vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
+                access_mask: vk::AccessFlags::SHADER_READ,
+                image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
             }
         }
         AccessType::TessellationEvaluationShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::GeometryShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::GEOMETRY_SHADER,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::GEOMETRY_SHADER,
+            access_mask: vk::AccessFlags::UNIFORM_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::GeometryShaderReadSampledImageOrUniformTexelBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::GEOMETRY_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::GEOMETRY_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::GeometryShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::GEOMETRY_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::GEOMETRY_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::FragmentShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            access_mask: vk::AccessFlags::UNIFORM_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::FragmentShaderReadColorInputAttachment => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
-            access_mask: ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            access_mask: vk::AccessFlags::INPUT_ATTACHMENT_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::FragmentShaderReadDepthStencilInputAttachment => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
-            access_mask: ash::vk::AccessFlags::INPUT_ATTACHMENT_READ,
-            image_layout: ash::vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            access_mask: vk::AccessFlags::INPUT_ATTACHMENT_READ,
+            image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         },
         AccessType::FragmentShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::ColorAttachmentRead => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_READ,
-            image_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ,
+            image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         },
         AccessType::DepthStencilAttachmentRead => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-            access_mask: ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-            image_layout: ash::vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+            access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+            image_layout: vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL,
         },
         AccessType::ComputeShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COMPUTE_SHADER,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::COMPUTE_SHADER,
+            access_mask: vk::AccessFlags::UNIFORM_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COMPUTE_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::COMPUTE_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::ComputeShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COMPUTE_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::COMPUTE_SHADER,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::AnyShaderReadUniformBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::ALL_COMMANDS,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
+            access_mask: vk::AccessFlags::UNIFORM_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::AnyShaderReadUniformBufferOrVertexBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::ALL_COMMANDS,
-            access_mask: ash::vk::AccessFlags::UNIFORM_READ
-                | ash::vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
+            access_mask: vk::AccessFlags::UNIFORM_READ | vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::ALL_COMMANDS,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         },
         AccessType::AnyShaderReadOther => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::ALL_COMMANDS,
-            access_mask: ash::vk::AccessFlags::SHADER_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
+            access_mask: vk::AccessFlags::SHADER_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::TransferRead => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TRANSFER,
-            access_mask: ash::vk::AccessFlags::TRANSFER_READ,
-            image_layout: ash::vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::TRANSFER,
+            access_mask: vk::AccessFlags::TRANSFER_READ,
+            image_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
         },
         AccessType::HostRead => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::HOST,
-            access_mask: ash::vk::AccessFlags::HOST_READ,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::HOST,
+            access_mask: vk::AccessFlags::HOST_READ,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::Present => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::empty(),
-            access_mask: ash::vk::AccessFlags::empty(),
-            image_layout: ash::vk::ImageLayout::PRESENT_SRC_KHR,
+            stage_mask: vk::PipelineStageFlags::empty(),
+            access_mask: vk::AccessFlags::empty(),
+            image_layout: vk::ImageLayout::PRESENT_SRC_KHR,
         },
         AccessType::CommandBufferWriteNVX => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
-            access_mask: ash::vk::AccessFlags::COMMAND_PREPROCESS_WRITE_NV,
-            image_layout: ash::vk::ImageLayout::UNDEFINED,
+            stage_mask: vk::PipelineStageFlags::COMMAND_PREPROCESS_NV,
+            access_mask: vk::AccessFlags::COMMAND_PREPROCESS_WRITE_NV,
+            image_layout: vk::ImageLayout::UNDEFINED,
         },
         AccessType::VertexShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::VERTEX_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::VERTEX_SHADER,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::TessellationControlShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_CONTROL_SHADER,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::TessellationEvaluationShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::TESSELLATION_EVALUATION_SHADER,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::GeometryShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::GEOMETRY_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::GEOMETRY_SHADER,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::FragmentShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::FRAGMENT_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::ColorAttachmentWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            image_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            access_mask: vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         },
         AccessType::DepthStencilAttachmentWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-            access_mask: ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
-            image_layout: ash::vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+            access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE,
+            image_layout: vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         },
         AccessType::DepthAttachmentWriteStencilReadOnly => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-            access_mask: ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
-                | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-            image_layout: ash::vk::ImageLayout::DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+            access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+            image_layout: vk::ImageLayout::DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
         },
         AccessType::StencilAttachmentWriteDepthReadOnly => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
-                | ash::vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
-            access_mask: ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
-                | ash::vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
-            image_layout: ash::vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
+                | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+            access_mask: vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE
+                | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ,
+            image_layout: vk::ImageLayout::DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
         },
         AccessType::ComputeShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COMPUTE_SHADER,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::COMPUTE_SHADER,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::AnyShaderWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::ALL_COMMANDS,
-            access_mask: ash::vk::AccessFlags::SHADER_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
+            access_mask: vk::AccessFlags::SHADER_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::TransferWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::TRANSFER,
-            access_mask: ash::vk::AccessFlags::TRANSFER_WRITE,
-            image_layout: ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::TRANSFER,
+            access_mask: vk::AccessFlags::TRANSFER_WRITE,
+            image_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         },
         AccessType::HostWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::HOST,
-            access_mask: ash::vk::AccessFlags::HOST_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::HOST,
+            access_mask: vk::AccessFlags::HOST_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
         AccessType::ColorAttachmentReadWrite => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-            access_mask: ash::vk::AccessFlags::COLOR_ATTACHMENT_READ
-                | ash::vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-            image_layout: ash::vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+            access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ
+                | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
+            image_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
         },
         AccessType::General => AccessInfo {
-            stage_mask: ash::vk::PipelineStageFlags::ALL_COMMANDS,
-            access_mask: ash::vk::AccessFlags::MEMORY_READ | ash::vk::AccessFlags::MEMORY_WRITE,
-            image_layout: ash::vk::ImageLayout::GENERAL,
+            stage_mask: vk::PipelineStageFlags::ALL_COMMANDS,
+            access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
+            image_layout: vk::ImageLayout::GENERAL,
         },
     }
+}
+
+fn image_aspect_mask_from_format(format: vk::Format) -> vk::ImageAspectFlags {
+    match format {
+        vk::Format::D16_UNORM => vk::ImageAspectFlags::DEPTH,
+        vk::Format::X8_D24_UNORM_PACK32 => vk::ImageAspectFlags::DEPTH,
+        vk::Format::D32_SFLOAT => vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+        vk::Format::S8_UINT => vk::ImageAspectFlags::STENCIL,
+        vk::Format::D16_UNORM_S8_UINT => {
+            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+        }
+        vk::Format::D24_UNORM_S8_UINT => {
+            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+        }
+        vk::Format::D32_SFLOAT_S8_UINT => {
+            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
+        }
+        _ => vk::ImageAspectFlags::COLOR,
+    }
+}
+
+// TODO: is access type relevant here at all?
+pub fn image_aspect_mask_from_access_type_and_format(
+    access_type: AccessType,
+    format: vk::Format,
+) -> Option<vk::ImageAspectFlags> {
+    match get_access_info(access_type).image_layout {
+        vk::ImageLayout::GENERAL
+        | vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
+        | vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
+        | vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+        | vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        | vk::ImageLayout::TRANSFER_SRC_OPTIMAL
+        | vk::ImageLayout::TRANSFER_DST_OPTIMAL => Some(image_aspect_mask_from_format(format)),
+        _ => None,
+    }
+
+    /*let info = get_access_info(access_type);
+
+    match info.image_layout {
+        vk::ImageLayout::GENERAL => Some(image_aspect_mask_from_format(format)),
+        vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL => Some(image_aspect_mask_from_format(format)),
+        vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL => Some(
+            image_aspect_mask_from_format(format)
+                & (vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL),
+        ),
+        vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL => Some(
+            image_aspect_mask_from_format(format)
+                & (vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL),
+        ),
+        vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => Some(image_aspect_mask_from_format(format)),
+        vk::ImageLayout::TRANSFER_SRC_OPTIMAL => Some(image_aspect_mask_from_format(format)),
+        vk::ImageLayout::TRANSFER_DST_OPTIMAL => Some(image_aspect_mask_from_format(format)),
+        _ => None,
+    }*/
 }

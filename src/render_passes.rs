@@ -1,24 +1,40 @@
+use ash::{version::DeviceV1_0, vk};
+
 use crate::rg::*;
 
-pub fn synth_gradients(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
+pub fn create_image(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();
+    pass.create(&desc)
+}
 
-    let pipeline = pass.register_compute_pipeline("/assets/shaders/gradients.hlsl");
-
-    let mut output = pass.create(&desc);
-    let output_ref = pass.write(&mut output, AccessType::ComputeShaderWrite);
+pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
+    let mut pass = rg.add_pass();
+    let output_ref = pass.write(img, AccessType::TransferWrite);
 
     pass.render(move |api| {
-        let pipeline = api.bind_compute_pipeline(
-            pipeline
-                .into_binding()
-                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())]),
-        );
+        let raw_device = &api.device().raw;
+        let cb = api.cb;
 
-        pipeline.dispatch(desc.extent);
+        let image = api.resources.image(output_ref);
+
+        unsafe {
+            raw_device.cmd_clear_depth_stencil_image(
+                cb.raw,
+                image.raw,
+                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &ash::vk::ClearDepthStencilValue {
+                    depth: 0f32,
+                    stencil: 0,
+                },
+                std::slice::from_ref(&vk::ImageSubresourceRange {
+                    aspect_mask: vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                    level_count: 1 as u32,
+                    layer_count: 1,
+                    ..Default::default()
+                }),
+            );
+        }
     });
-
-    output
 }
 
 pub fn raymarch_sdf(

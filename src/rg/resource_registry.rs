@@ -50,6 +50,13 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         ))
     }*/
 
+    pub(crate) fn image<ViewType: GpuViewType>(&self, resource: Ref<Image, ViewType>) -> &Image {
+        match &self.resources[resource.handle.id as usize].borrow() {
+            AnyRenderResourceRef::Image(img) => *img,
+            AnyRenderResourceRef::Buffer(_) => panic!(),
+        }
+    }
+
     pub(crate) fn image_view<'a, 's>(
         &'s self,
         resource: GraphRawResourceHandle,

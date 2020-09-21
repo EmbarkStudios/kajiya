@@ -729,15 +729,28 @@ impl Renderer {
         }
     }
 
-    pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
+    pub fn prepare_frame(&mut self, frame_state: &FrameState) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
 
         let sdf_img = rg.import_image(self.sdf_img.clone());
 
+        let mut depth_img = crate::render_passes::create_image(
+            &mut rg,
+            ImageDesc::new_2d(frame_state.window_cfg.dims())
+                .format(vk::Format::D24_UNORM_S8_UINT)
+                .usage(
+                    vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                )
+                .build()
+                .unwrap(),
+        );
+        crate::render_passes::clear_depth(&mut rg, &mut depth_img);
+
         let tex = crate::render_passes::raymarch_sdf(
             &mut rg,
             &sdf_img,
-            ImageDesc::new_2d([1280, 720])
+            ImageDesc::new_2d(frame_state.window_cfg.dims())
                 .format(vk::Format::R16G16B16A16_SFLOAT)
                 .build()
                 .unwrap(),

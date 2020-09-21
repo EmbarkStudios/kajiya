@@ -10,6 +10,7 @@ use super::{
 
 use crate::{
     backend::barrier::get_access_info,
+    backend::barrier::image_aspect_mask_from_access_type_and_format,
     backend::barrier::record_image_barrier,
     backend::barrier::ImageBarrier,
     backend::device::{CommandBuffer, Device},
@@ -312,7 +313,16 @@ impl CompiledRenderGraph {
                                     image.raw,
                                     vk_sync::AccessType::Nothing, // TODO
                                     access.access_type,
-                                    vk::ImageAspectFlags::COLOR, // TODO
+                                    image_aspect_mask_from_access_type_and_format(
+                                        access.access_type,
+                                        image.desc.format,
+                                    )
+                                    .unwrap_or_else(|| {
+                                        panic!(
+                                            "Invalid image access {:?} :: {:?}",
+                                            access.access_type, image.desc
+                                        )
+                                    }),
                                 ),
                             );
                         }
@@ -328,7 +338,9 @@ impl CompiledRenderGraph {
                 resources: &mut resource_registry,
             };
 
-            (pass.render_fn.unwrap())(&mut api);
+            if let Some(render_fn) = pass.render_fn {
+                render_fn(&mut api);
+            }
         }
 
         RetiredRenderGraph {
