@@ -1,7 +1,7 @@
 pub use crate::backend::image::{Image, ImageDesc, ImageViewDescBuilder};
 use std::marker::PhantomData;
 
-use super::resource_registry::AnyRenderResource;
+use super::resource_registry::{AnyRenderResource, AnyRenderResourceRef};
 
 //#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 //pub struct Image;
@@ -18,9 +18,9 @@ impl Resource for Image {
     type Impl = crate::backend::image::Image; // TODO: nuke
 
     fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
-        match res {
-            AnyRenderResource::Image(img) => &img,
-            AnyRenderResource::Buffer(_) => unimplemented!(),
+        match res.borrow() {
+            AnyRenderResourceRef::Image(img) => &img,
+            AnyRenderResourceRef::Buffer(_) => unimplemented!(),
         }
     }
 }
@@ -65,6 +65,9 @@ pub struct Handle<ResType: Resource> {
     pub(crate) desc: <ResType as Resource>::Desc,
     pub(crate) marker: PhantomData<ResType>,
 }
+
+#[derive(Clone, Debug)]
+pub struct ExportedHandle<ResType: Resource>(pub(crate) Handle<ResType>);
 
 impl<ResType: Resource> PartialEq for Handle<ResType> {
     fn eq(&self, other: &Self) -> bool {

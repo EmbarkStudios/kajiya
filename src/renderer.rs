@@ -1,5 +1,6 @@
 use crate::{
     backend::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
+    rg,
     rg::CompiledRenderGraph,
     rg::RenderGraph,
     rg::RenderGraphExecutionParams,
@@ -12,6 +13,8 @@ use crate::{
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use backend::{
+    barrier::record_image_barrier,
+    barrier::ImageBarrier,
     buffer::{Buffer, BufferDesc},
     device::{CommandBuffer, Device},
 };
@@ -43,7 +46,7 @@ pub struct Renderer {
     frame_idx: u32,
 
     present_shader: ComputePipeline,
-    output_img: Image,
+    output_img: Arc<Image>,
     depth_img: Image,
 
     raster_simple_render_pass: Arc<RenderPass>,
@@ -60,6 +63,7 @@ pub struct Renderer {
     cube_index_buffer: Buffer,
 
     compiled_rg: Option<CompiledRenderGraph>,
+    rg_output_tex: Option<rg::ExportedHandle<Image>>,
 }
 
 lazy_static::lazy_static! {
@@ -294,7 +298,7 @@ impl Renderer {
             transient_resource_cache: Default::default(),
             present_shader,
 
-            output_img,
+            output_img: Arc::new(output_img),
             depth_img,
             raster_simple_render_pass,
             raster_simple,
@@ -310,6 +314,7 @@ impl Renderer {
             cube_index_buffer,
 
             compiled_rg: None,
+            rg_output_tex: None,
         })
     }
 
@@ -378,20 +383,6 @@ impl Renderer {
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .unwrap();
-
-            if let Some(rg) = self.compiled_rg.take() {
-                rg.execute(
-                    RenderGraphExecutionParams {
-                        device: &self.backend.device,
-                        pipeline_cache: &mut self.pipeline_cache,
-                        frame_descriptor_set: self.frame_descriptor_set,
-                        frame_constants_offset,
-                    },
-                    &mut self.transient_resource_cache,
-                    &mut self.dynamic_constants,
-                    cb,
-                );
-            }
 
             output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
@@ -569,7 +560,51 @@ impl Renderer {
                 raw_device.cmd_end_render_pass(cb.raw);
             }
 
-            output_img_tracker
+            if let Some((rg, rg_output_img)) =
+                self.compiled_rg.take().zip(self.rg_output_tex.take())
+            {
+                let retired_rg = rg.execute(
+                    RenderGraphExecutionParams {
+                        device: &self.backend.device,
+                        pipeline_cache: &mut self.pipeline_cache,
+                        frame_descriptor_set: self.frame_descriptor_set,
+                        frame_constants_offset,
+                    },
+                    &mut self.transient_resource_cache,
+                    &mut self.dynamic_constants,
+                    cb,
+                );
+
+                /*output_img_tracker.transition(
+                    vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+                );*/
+
+                let rg_output_img = retired_rg.get_image(rg_output_img);
+
+                // TODO: get the last access type from RG
+                record_image_barrier(
+                    &device.raw,
+                    cb.raw,
+                    ImageBarrier::new(
+                        rg_output_img.raw,
+                        vk_sync::AccessType::ComputeShaderWrite,
+                        vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+                        vk::ImageAspectFlags::COLOR,
+                    ),
+                );
+
+                blit_image_to_swapchain(
+                    &*self.backend.device,
+                    cb,
+                    &swapchain_image,
+                    rg_output_img.view(device, &ImageViewDesc::default()),
+                    &self.present_shader,
+                );
+
+                retired_rg.release_resources(&mut self.transient_resource_cache);
+            }
+
+            /*output_img_tracker
                 .transition(vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer);
 
             blit_image_to_swapchain(
@@ -578,7 +613,7 @@ impl Renderer {
                 &swapchain_image,
                 self.output_img.view(device, &ImageViewDesc::default()),
                 &self.present_shader,
-            );
+            );*/
 
             raw_device.end_command_buffer(cb.raw).unwrap();
         }
@@ -707,16 +742,20 @@ impl Renderer {
 
     pub fn prepare_frame(&mut self, _frame_state: &FrameState) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
-        let tex = crate::render_passes::synth_gradients(
+        /*let tex = crate::render_passes::synth_gradients(
             &mut rg,
             ImageDesc::new_2d([1280, 720])
                 .format(vk::Format::R16G16B16A16_SFLOAT)
                 .build()
                 .unwrap(),
-        );
-        let _tex = crate::render_passes::blur(&mut rg, &tex);
+        );*/
 
-        self.compiled_rg = Some(rg.compile(&*self.backend.device, &mut self.pipeline_cache));
+        let tex = rg.import_image(self.output_img.clone());
+        let tex = crate::render_passes::blur(&mut rg, &tex);
+        let tex = rg.export_image(tex, vk::ImageUsageFlags::SAMPLED);
+
+        self.rg_output_tex = Some(tex);
+        self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
         Ok(())

@@ -136,7 +136,7 @@ unsafe extern "system" fn vulkan_debug_callback(
         // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushDescriptorSetKHR.html
         // This documentation claims that it's necessary to push immutable samplers.
     } else {
-        error!("{}\n", message);
+        panic!("{}\n", message);
     }
 
     ash::vk::FALSE

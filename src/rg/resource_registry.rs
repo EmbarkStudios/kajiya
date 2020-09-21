@@ -8,8 +8,24 @@ use crate::{
 use std::sync::Arc;
 
 pub enum AnyRenderResource {
-    Image(crate::backend::image::Image),
-    Buffer(crate::backend::buffer::Buffer),
+    OwnedImage(crate::backend::image::Image),
+    ImportedImage(Arc<crate::backend::image::Image>),
+    OwnedBuffer(crate::backend::buffer::Buffer),
+}
+
+impl AnyRenderResource {
+    pub fn borrow(&self) -> AnyRenderResourceRef {
+        match self {
+            AnyRenderResource::OwnedImage(inner) => AnyRenderResourceRef::Image(inner),
+            AnyRenderResource::ImportedImage(inner) => AnyRenderResourceRef::Image(&*inner),
+            AnyRenderResource::OwnedBuffer(inner) => AnyRenderResourceRef::Buffer(inner),
+        }
+    }
+}
+
+pub enum AnyRenderResourceRef<'a> {
+    Image(&'a crate::backend::image::Image),
+    Buffer(&'a crate::backend::buffer::Buffer),
 }
 
 pub struct ResourceRegistry<'exec_params, 'constants> {
@@ -44,9 +60,9 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     {
         let view_desc = view_desc;
 
-        let image = match &self.resources[resource.id as usize] {
-            AnyRenderResource::Image(img) => img.clone(),
-            AnyRenderResource::Buffer(_) => panic!(),
+        let image = match &self.resources[resource.id as usize].borrow() {
+            AnyRenderResourceRef::Image(img) => *img,
+            AnyRenderResourceRef::Buffer(_) => panic!(),
         };
 
         let device = self.execution_params.device;

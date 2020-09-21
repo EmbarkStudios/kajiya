@@ -3,6 +3,7 @@
 use super::{
     pass_builder::PassBuilder,
     resource::*,
+    resource_registry::AnyRenderResourceRef,
     resource_registry::{AnyRenderResource, ResourceRegistry},
     RenderPassApi,
 };
@@ -35,6 +36,15 @@ pub(crate) struct GraphResourceCreateInfo {
     pub create_pass_idx: usize,
 }
 
+pub(crate) enum GraphResourceImportInfo {
+    Image(Arc<Image>),
+}
+
+pub(crate) enum GraphResourceInfo {
+    Created(GraphResourceCreateInfo),
+    Imported(GraphResourceImportInfo),
+}
+
 #[derive(Clone, Copy)]
 pub struct RgComputePipelineHandle {
     pub(crate) id: usize,
@@ -47,7 +57,8 @@ pub(crate) struct RgComputePipeline {
 
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
-    resources: Vec<GraphResourceCreateInfo>,
+    resources: Vec<GraphResourceInfo>,
+    exported_images: Vec<(GraphRawResourceHandle, vk::ImageUsageFlags)>,
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
     pub(crate) frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
 }
@@ -59,6 +70,7 @@ impl RenderGraph {
         Self {
             passes: Vec::new(),
             resources: Vec::new(),
+            exported_images: Vec::new(),
             compute_pipelines: Vec::new(),
             frame_descriptor_set_layout,
         }
@@ -73,8 +85,37 @@ impl RenderGraph {
             version: 0,
         };
 
-        self.resources.push(info);
+        self.resources.push(GraphResourceInfo::Created(info));
         res
+    }
+
+    pub fn import_image(&mut self, img: Arc<Image>) -> Handle<Image> {
+        let res = GraphRawResourceHandle {
+            id: self.resources.len() as u32,
+            version: 0,
+        };
+
+        let desc = img.desc;
+
+        self.resources
+            .push(GraphResourceInfo::Imported(GraphResourceImportInfo::Image(
+                img,
+            )));
+
+        Handle {
+            raw: res,
+            desc,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn export_image(
+        &mut self,
+        img: Handle<Image>,
+        usage_flags: vk::ImageUsageFlags,
+    ) -> ExportedHandle<Image> {
+        self.exported_images.push((img.raw, usage_flags));
+        ExportedHandle(img)
     }
 }
 
@@ -117,9 +158,15 @@ impl RenderGraph {
         let mut lifetimes: Vec<ResourceLifetime> = self
             .resources
             .iter()
-            .map(|res| ResourceLifetime {
-                first_access: res.create_pass_idx,
-                last_access: res.create_pass_idx,
+            .map(|res| match res {
+                GraphResourceInfo::Created(res) => ResourceLifetime {
+                    first_access: res.create_pass_idx,
+                    last_access: res.create_pass_idx,
+                },
+                GraphResourceInfo::Imported(_) => ResourceLifetime {
+                    first_access: 0,
+                    last_access: 0,
+                },
             })
             .collect();
 
@@ -154,17 +201,19 @@ impl RenderGraph {
             }
         }
 
+        for (res, usage) in self.exported_images.iter().copied() {
+            let res = res.id as usize;
+            lifetimes[res].last_access = self.passes.len().saturating_sub(1);
+            image_usage_flags[res] |= usage;
+        }
+
         ResourceInfo {
             lifetimes,
             image_usage_flags,
         }
     }
 
-    pub fn compile(
-        self,
-        device: &Device,
-        pipeline_cache: &mut PipelineCache,
-    ) -> CompiledRenderGraph {
+    pub fn compile(self, pipeline_cache: &mut PipelineCache) -> CompiledRenderGraph {
         let resource_info = self.calculate_resource_info();
         // TODO: alias resources
 
@@ -196,13 +245,14 @@ impl RenderGraph {
 }
 
 impl CompiledRenderGraph {
+    #[must_use = "Call release_resources on the result"]
     pub fn execute(
         self,
         params: RenderGraphExecutionParams<'_>,
         transient_resource_cache: &mut TransientResourceCache,
         dynamic_constants: &mut DynamicConstants,
         cb: &CommandBuffer,
-    ) {
+    ) -> RetiredRenderGraph {
         let device = params.device;
         let resources: Vec<AnyRenderResource> = self
             .rg
@@ -210,20 +260,24 @@ impl CompiledRenderGraph {
             .iter()
             .zip(self.resource_info.image_usage_flags.iter())
             .map(
-                |(resource, image_usage_flags): (
-                    &GraphResourceCreateInfo,
-                    &vk::ImageUsageFlags,
-                )| {
-                    match resource.desc {
-                        GraphResourceDesc::Image(mut desc) => {
-                            desc.usage = *image_usage_flags;
+                |(resource, image_usage_flags): (&GraphResourceInfo, &vk::ImageUsageFlags)| {
+                    match resource {
+                        GraphResourceInfo::Created(resource) => match resource.desc {
+                            GraphResourceDesc::Image(mut desc) => {
+                                desc.usage = *image_usage_flags;
 
-                            let image = transient_resource_cache
-                                .get_image(&desc)
-                                .unwrap_or_else(|| device.create_image(desc, None).unwrap());
+                                let image = transient_resource_cache
+                                    .get_image(&desc)
+                                    .unwrap_or_else(|| device.create_image(desc, None).unwrap());
 
-                            AnyRenderResource::Image(image)
-                        }
+                                AnyRenderResource::OwnedImage(image)
+                            }
+                        },
+                        GraphResourceInfo::Imported(resource) => match resource {
+                            GraphResourceImportInfo::Image(image) => {
+                                AnyRenderResource::ImportedImage(image.clone())
+                            }
+                        },
                     }
                 },
             )
@@ -249,8 +303,8 @@ impl CompiledRenderGraph {
                 // TODO: optimize the barriers
 
                 for (resource, access) in transitions {
-                    match resource {
-                        AnyRenderResource::Image(image) => {
+                    match resource.borrow() {
+                        AnyRenderResourceRef::Image(image) => {
                             record_image_barrier(
                                 &params.device.raw,
                                 cb.raw,
@@ -262,7 +316,7 @@ impl CompiledRenderGraph {
                                 ),
                             );
                         }
-                        AnyRenderResource::Buffer(_) => {
+                        AnyRenderResourceRef::Buffer(_) => {
                             todo!();
                         }
                     }
@@ -277,10 +331,29 @@ impl CompiledRenderGraph {
             (pass.render_fn.unwrap())(&mut api);
         }
 
-        for resource in resource_registry.resources {
+        RetiredRenderGraph {
+            resources: resource_registry.resources,
+        }
+    }
+}
+
+pub struct RetiredRenderGraph {
+    resources: Vec<AnyRenderResource>,
+}
+
+impl RetiredRenderGraph {
+    pub fn get_image(&self, handle: ExportedHandle<Image>) -> &Image {
+        Image::borrow_resource(&self.resources[handle.0.raw.id as usize])
+    }
+
+    pub fn release_resources(self, transient_resource_cache: &mut TransientResourceCache) {
+        for resource in self.resources {
             match resource {
-                AnyRenderResource::Image(image) => transient_resource_cache.insert_image(image),
-                AnyRenderResource::Buffer(_) => todo!(),
+                AnyRenderResource::OwnedImage(image) => {
+                    transient_resource_cache.insert_image(image)
+                }
+                AnyRenderResource::ImportedImage(_) => {}
+                AnyRenderResource::OwnedBuffer(_) => todo!(),
             }
         }
     }
