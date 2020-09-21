@@ -17,6 +17,7 @@ use crate::{
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
+    transient_resource_cache::TransientResourceCache,
 };
 use ash::vk;
 use parking_lot::Mutex;
@@ -97,7 +98,7 @@ pub struct RenderGraphExecutionParams<'a> {
 
 pub struct CompiledRenderGraph {
     rg: RenderGraph,
-    resources: Vec<AnyRenderResource>,
+    resource_info: ResourceInfo,
     compute_pipelines: Vec<ComputePipelineHandle>,
 }
 
@@ -176,25 +177,6 @@ impl RenderGraph {
                 .collect::<Vec<_>>()
         ); */
 
-        let gpu_resources: Vec<AnyRenderResource> = self
-            .resources
-            .iter()
-            .zip(resource_info.image_usage_flags.iter())
-            .map(
-                |(resource, image_usage_flags): (
-                    &GraphResourceCreateInfo,
-                    &vk::ImageUsageFlags,
-                )| {
-                    match resource.desc {
-                        GraphResourceDesc::Image(mut desc) => {
-                            desc.usage = *image_usage_flags;
-                            AnyRenderResource::Image(device.create_image(desc, None).unwrap())
-                        }
-                    }
-                },
-            )
-            .collect();
-
         let compute_pipelines = self
             .compute_pipelines
             .iter()
@@ -203,7 +185,7 @@ impl RenderGraph {
 
         CompiledRenderGraph {
             rg: self,
-            resources: gpu_resources,
+            resource_info,
             compute_pipelines,
         }
     }
@@ -217,12 +199,39 @@ impl CompiledRenderGraph {
     pub fn execute(
         self,
         params: RenderGraphExecutionParams<'_>,
+        transient_resource_cache: &mut TransientResourceCache,
         dynamic_constants: &mut DynamicConstants,
         cb: &CommandBuffer,
-    ) -> anyhow::Result<()> {
+    ) {
+        let device = params.device;
+        let resources: Vec<AnyRenderResource> = self
+            .rg
+            .resources
+            .iter()
+            .zip(self.resource_info.image_usage_flags.iter())
+            .map(
+                |(resource, image_usage_flags): (
+                    &GraphResourceCreateInfo,
+                    &vk::ImageUsageFlags,
+                )| {
+                    match resource.desc {
+                        GraphResourceDesc::Image(mut desc) => {
+                            desc.usage = *image_usage_flags;
+
+                            let image = transient_resource_cache
+                                .get_image(&desc)
+                                .unwrap_or_else(|| device.create_image(desc, None).unwrap());
+
+                            AnyRenderResource::Image(image)
+                        }
+                    }
+                },
+            )
+            .collect();
+
         let mut resource_registry = ResourceRegistry {
             execution_params: &params,
-            resources: self.resources,
+            resources,
             dynamic_constants: dynamic_constants,
             compute_pipelines: self.compute_pipelines,
         };
@@ -268,7 +277,12 @@ impl CompiledRenderGraph {
             (pass.render_fn.unwrap())(&mut api);
         }
 
-        Ok(())
+        for resource in resource_registry.resources {
+            match resource {
+                AnyRenderResource::Image(image) => transient_resource_cache.insert_image(image),
+                AnyRenderResource::Buffer(_) => todo!(),
+            }
+        }
     }
 }
 

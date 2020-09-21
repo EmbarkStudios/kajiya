@@ -14,6 +14,7 @@ mod renderer;
 mod rg;
 mod shader_compiler;
 mod state_tracker;
+mod transient_resource_cache;
 mod viewport;
 
 use backend::RenderBackend;

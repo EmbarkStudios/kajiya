@@ -3,6 +3,7 @@ use crate::{
     rg::CompiledRenderGraph,
     rg::RenderGraph,
     rg::RenderGraphExecutionParams,
+    transient_resource_cache::TransientResourceCache,
 };
 use crate::{
     chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
@@ -36,6 +37,7 @@ struct FrameConstants {
 pub struct Renderer {
     backend: RenderBackend,
     pipeline_cache: PipelineCache,
+    transient_resource_cache: TransientResourceCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
@@ -289,6 +291,7 @@ impl Renderer {
             frame_descriptor_set,
             frame_idx: !0,
             pipeline_cache: pipeline_cache,
+            transient_resource_cache: Default::default(),
             present_shader,
 
             output_img,
@@ -384,10 +387,10 @@ impl Renderer {
                         frame_descriptor_set: self.frame_descriptor_set,
                         frame_constants_offset,
                     },
+                    &mut self.transient_resource_cache,
                     &mut self.dynamic_constants,
                     cb,
-                )
-                .unwrap();
+                );
             }
 
             output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);

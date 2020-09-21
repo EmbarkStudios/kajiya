@@ -5,7 +5,7 @@ use derive_builder::Builder;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[allow(dead_code)]
 pub enum ImageType {
     Tex1d = 0,
@@ -17,7 +17,7 @@ pub enum ImageType {
     CubeArray = 6,
 }
 
-#[derive(Builder, Clone, Copy, Debug)]
+#[derive(Builder, Clone, Copy, Debug, Hash, PartialEq, Eq)]
 #[builder(pattern = "owned")]
 pub struct ImageDesc {
     pub image_type: ImageType,
@@ -116,6 +116,8 @@ impl Device {
         desc: ImageDesc,
         initial_data: Option<ImageSubResourceData>,
     ) -> Result<Image> {
+        log::info!("Creating an image: {:?}", desc);
+
         let desc = desc.into();
         let create_info = get_image_create_info(&desc, initial_data.is_some());
 
