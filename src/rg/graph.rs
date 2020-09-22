@@ -16,9 +16,12 @@ use crate::{
     backend::device::{CommandBuffer, Device},
     backend::image::ImageViewDesc,
     backend::shader::ComputePipelineDesc,
+    backend::shader::RasterPipelineDesc,
+    backend::shader::RasterPipelineShader,
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
+    pipeline_cache::RasterPipelineHandle,
     transient_resource_cache::TransientResourceCache,
 };
 use ash::vk;
@@ -56,11 +59,22 @@ pub(crate) struct RgComputePipeline {
     pub(crate) desc: ComputePipelineDesc,
 }
 
+#[derive(Clone, Copy)]
+pub struct RgRasterPipelineHandle {
+    pub(crate) id: usize,
+}
+
+pub(crate) struct RgRasterPipeline {
+    pub(crate) shaders: Vec<RasterPipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) desc: RasterPipelineDesc,
+}
+
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceInfo>,
     exported_images: Vec<(GraphRawResourceHandle, vk::ImageUsageFlags)>,
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
+    pub(crate) raster_pipelines: Vec<RgRasterPipeline>,
     pub(crate) frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
 }
 
@@ -73,6 +87,7 @@ impl RenderGraph {
             resources: Vec::new(),
             exported_images: Vec::new(),
             compute_pipelines: Vec::new(),
+            raster_pipelines: Vec::new(),
             frame_descriptor_set_layout,
         }
     }
@@ -129,6 +144,7 @@ struct ResourceLifetime {
 struct ResourceInfo {
     lifetimes: Vec<ResourceLifetime>,
     image_usage_flags: Vec<vk::ImageUsageFlags>,
+    buffer_usage_flags: Vec<vk::BufferUsageFlags>,
 }
 
 pub struct RenderGraphExecutionParams<'a> {
@@ -142,6 +158,7 @@ pub struct CompiledRenderGraph {
     rg: RenderGraph,
     resource_info: ResourceInfo,
     compute_pipelines: Vec<ComputePipelineHandle>,
+    raster_pipelines: Vec<RasterPipelineHandle>,
 }
 
 impl RenderGraph {
@@ -172,6 +189,9 @@ impl RenderGraph {
             .collect();
 
         let mut image_usage_flags: Vec<vk::ImageUsageFlags> =
+            vec![Default::default(); self.resources.len()];
+
+        let mut buffer_usage_flags: Vec<vk::BufferUsageFlags> =
             vec![Default::default(); self.resources.len()];
 
         for (pass_idx, pass) in self.passes.iter().enumerate() {
@@ -211,6 +231,7 @@ impl RenderGraph {
         ResourceInfo {
             lifetimes,
             image_usage_flags,
+            buffer_usage_flags,
         }
     }
 
@@ -233,10 +254,17 @@ impl RenderGraph {
             .map(|pipeline| pipeline_cache.register_compute(&pipeline.shader_path, &pipeline.desc))
             .collect::<Vec<_>>();
 
+        let raster_pipelines = self
+            .raster_pipelines
+            .iter()
+            .map(|pipeline| pipeline_cache.register_raster(&pipeline.shaders, &pipeline.desc))
+            .collect::<Vec<_>>();
+
         CompiledRenderGraph {
             rg: self,
             resource_info,
             compute_pipelines,
+            raster_pipelines,
         }
     }
 
@@ -259,29 +287,34 @@ impl CompiledRenderGraph {
             .rg
             .resources
             .iter()
-            .zip(self.resource_info.image_usage_flags.iter())
-            .map(
-                |(resource, image_usage_flags): (&GraphResourceInfo, &vk::ImageUsageFlags)| {
-                    match resource {
-                        GraphResourceInfo::Created(resource) => match resource.desc {
-                            GraphResourceDesc::Image(mut desc) => {
-                                desc.usage = *image_usage_flags;
+            .enumerate()
+            .map(|(resource_idx, resource)| match resource {
+                GraphResourceInfo::Created(resource) => match resource.desc {
+                    GraphResourceDesc::Image(mut desc) => {
+                        desc.usage = self.resource_info.image_usage_flags[resource_idx];
 
-                                let image = transient_resource_cache
-                                    .get_image(&desc)
-                                    .unwrap_or_else(|| device.create_image(desc, None).unwrap());
+                        let image = transient_resource_cache
+                            .get_image(&desc)
+                            .unwrap_or_else(|| device.create_image(desc, None).unwrap());
 
-                                AnyRenderResource::OwnedImage(image)
-                            }
-                        },
-                        GraphResourceInfo::Imported(resource) => match resource {
-                            GraphResourceImportInfo::Image(image) => {
-                                AnyRenderResource::ImportedImage(image.clone())
-                            }
-                        },
+                        AnyRenderResource::OwnedImage(image)
+                    }
+                    GraphResourceDesc::Buffer(mut desc) => {
+                        desc.usage = self.resource_info.buffer_usage_flags[resource_idx];
+
+                        let buffer = transient_resource_cache
+                            .get_buffer(&desc)
+                            .unwrap_or_else(|| device.create_buffer(desc, None).unwrap());
+
+                        AnyRenderResource::OwnedBuffer(buffer)
                     }
                 },
-            )
+                GraphResourceInfo::Imported(resource) => match resource {
+                    GraphResourceImportInfo::Image(image) => {
+                        AnyRenderResource::ImportedImage(image.clone())
+                    }
+                },
+            })
             .collect();
 
         let mut resource_registry = ResourceRegistry {
@@ -289,6 +322,7 @@ impl CompiledRenderGraph {
             resources,
             dynamic_constants: dynamic_constants,
             compute_pipelines: self.compute_pipelines,
+            raster_pipelines: self.raster_pipelines,
         };
 
         for pass in self.rg.passes.into_iter() {

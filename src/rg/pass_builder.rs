@@ -2,10 +2,12 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
-    RgComputePipelineHandle,
+    RgComputePipelineHandle, RgRasterPipelineHandle,
 };
 
-use crate::{backend::shader::ComputePipelineDesc, backend::shader::DescriptorSetLayoutOpts};
+use crate::backend::shader::{
+    ComputePipelineDesc, DescriptorSetLayoutOpts, RasterPipelineDescBuilder, RasterPipelineShader,
+};
 use std::{marker::PhantomData, path::Path};
 
 pub use vk_sync::AccessType;
@@ -212,6 +214,14 @@ impl<'rg> PassBuilder<'rg> {
         });
 
         RgComputePipelineHandle { id }
+    }
+
+    pub fn register_raster_pipeline(
+        &mut self,
+        shaders: &[RasterPipelineShader<&str>],
+        desc: &RasterPipelineDescBuilder,
+    ) -> RgRasterPipelineHandle {
+        todo!();
     }
 
     pub fn render(mut self, render: impl FnOnce(&mut RenderPassApi) + 'static) {

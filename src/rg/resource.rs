@@ -1,4 +1,7 @@
-pub use crate::backend::image::{Image, ImageDesc, ImageViewDescBuilder};
+pub use crate::backend::{
+    buffer::{Buffer, BufferDesc},
+    image::{Image, ImageDesc, ImageViewDescBuilder},
+};
 use std::marker::PhantomData;
 
 use super::resource_registry::{AnyRenderResource, AnyRenderResourceRef};
@@ -19,8 +22,20 @@ impl Resource for Image {
 
     fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
         match res.borrow() {
-            AnyRenderResourceRef::Image(img) => &img,
+            AnyRenderResourceRef::Image(img) => img,
             AnyRenderResourceRef::Buffer(_) => unimplemented!(),
+        }
+    }
+}
+
+impl Resource for Buffer {
+    type Desc = BufferDesc;
+    type Impl = crate::backend::buffer::Buffer; // TODO: nuke
+
+    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
+        match res.borrow() {
+            AnyRenderResourceRef::Image(_) => unimplemented!(),
+            AnyRenderResourceRef::Buffer(buffer) => buffer,
         }
     }
 }
@@ -28,11 +43,18 @@ impl Resource for Image {
 #[derive(Clone, Copy, Debug)]
 pub enum GraphResourceDesc {
     Image(ImageDesc),
+    Buffer(BufferDesc),
 }
 
 impl From<ImageDesc> for GraphResourceDesc {
     fn from(desc: ImageDesc) -> Self {
         Self::Image(desc)
+    }
+}
+
+impl From<BufferDesc> for GraphResourceDesc {
+    fn from(desc: BufferDesc) -> Self {
+        Self::Buffer(desc)
     }
 }
 
@@ -42,6 +64,10 @@ pub trait ResourceDesc: Clone + std::fmt::Debug + Into<GraphResourceDesc> {
 
 impl ResourceDesc for ImageDesc {
     type Resource = Image;
+}
+
+impl ResourceDesc for BufferDesc {
+    type Resource = Buffer;
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]

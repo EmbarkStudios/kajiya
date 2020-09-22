@@ -1,9 +1,13 @@
-use crate::backend::image::{Image, ImageDesc};
+use crate::backend::{
+    buffer::{Buffer, BufferDesc},
+    image::{Image, ImageDesc},
+};
 use std::collections::HashMap;
 
 #[derive(Default)]
 pub struct TransientResourceCache {
     images: HashMap<ImageDesc, Vec<Image>>,
+    buffers: HashMap<BufferDesc, Vec<Buffer>>,
 }
 
 impl TransientResourceCache {
@@ -20,6 +24,22 @@ impl TransientResourceCache {
             entry.push(image)
         } else {
             self.images.insert(image.desc.clone(), vec![image]);
+        }
+    }
+
+    pub fn get_buffer(&mut self, desc: &BufferDesc) -> Option<Buffer> {
+        if let Some(entry) = self.buffers.get_mut(desc) {
+            entry.pop()
+        } else {
+            None
+        }
+    }
+
+    pub fn insert_buffer(&mut self, buffer: Buffer) {
+        if let Some(entry) = self.buffers.get_mut(&buffer.desc) {
+            entry.push(buffer)
+        } else {
+            self.buffers.insert(buffer.desc.clone(), vec![buffer]);
         }
     }
 }

@@ -124,7 +124,7 @@ impl PipelineCache {
     pub fn register_raster(
         &mut self,
         shaders: &[RasterPipelineShader<&str>],
-        desc: &RasterPipelineDescBuilder,
+        desc: &RasterPipelineDesc,
     ) -> RasterPipelineHandle {
         let handle = RasterPipelineHandle(self.compute_entries.len());
         self.raster_entries.insert(
@@ -140,14 +140,14 @@ impl PipelineCache {
                         .collect(),
                 }
                 .into_lazy(),
-                desc: desc.clone().build().unwrap(),
+                desc: desc.clone(),
                 pipeline: None,
             },
         );
         handle
     }
 
-    pub fn get_raster(&mut self, handle: RasterPipelineHandle) -> Arc<RasterPipeline> {
+    pub fn get_raster(&self, handle: RasterPipelineHandle) -> Arc<RasterPipeline> {
         self.raster_entries
             .get(&handle)
             .unwrap()

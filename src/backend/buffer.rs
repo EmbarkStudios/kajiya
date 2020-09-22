@@ -4,11 +4,12 @@ use ash::{version::DeviceV1_0, vk};
 
 pub struct Buffer {
     pub raw: vk::Buffer,
+    pub desc: BufferDesc,
     pub allocation: vk_mem::Allocation,
     pub allocation_info: vk_mem::AllocationInfo,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub struct BufferDesc {
     pub size: usize,
     pub usage: vk::BufferUsageFlags,
@@ -36,6 +37,7 @@ impl Device {
 
         Ok(Buffer {
             raw: buffer,
+            desc,
             allocation,
             allocation_info,
         })

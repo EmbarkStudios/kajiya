@@ -1,9 +1,12 @@
 use ash::vk;
 
-use super::{graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle};
+use super::{
+    graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle, RgRasterPipelineHandle,
+};
 use crate::{
     backend::image::ImageViewDesc, backend::shader::ComputePipeline,
-    dynamic_constants::DynamicConstants, pipeline_cache::ComputePipelineHandle,
+    backend::shader::RasterPipeline, dynamic_constants::DynamicConstants,
+    pipeline_cache::ComputePipelineHandle, pipeline_cache::RasterPipelineHandle,
 };
 use std::sync::Arc;
 
@@ -33,6 +36,7 @@ pub struct ResourceRegistry<'exec_params, 'constants> {
     pub(crate) resources: Vec<AnyRenderResource>,
     pub dynamic_constants: &'constants mut DynamicConstants,
     pub compute_pipelines: Vec<ComputePipelineHandle>,
+    pub raster_pipelines: Vec<RasterPipelineHandle>,
 }
 
 impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
@@ -53,7 +57,21 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     pub(crate) fn image<ViewType: GpuViewType>(&self, resource: Ref<Image, ViewType>) -> &Image {
         match &self.resources[resource.handle.id as usize].borrow() {
             AnyRenderResourceRef::Image(img) => *img,
-            AnyRenderResourceRef::Buffer(_) => panic!(),
+            _ => panic!(),
+        }
+    }
+
+    pub(crate) fn buffer<ViewType: GpuViewType>(&self, resource: Ref<Buffer, ViewType>) -> &Buffer {
+        self.buffer_from_raw_handle::<ViewType>(resource.handle)
+    }
+
+    pub(crate) fn buffer_from_raw_handle<ViewType: GpuViewType>(
+        &self,
+        handle: GraphRawResourceHandle,
+    ) -> &Buffer {
+        match &self.resources[handle.id as usize].borrow() {
+            AnyRenderResourceRef::Buffer(buffer) => *buffer,
+            _ => panic!(),
         }
     }
 
@@ -79,6 +97,11 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ComputePipeline> {
         let handle = self.compute_pipelines[pipeline.id];
         self.execution_params.pipeline_cache.get_compute(handle)
+    }
+
+    pub fn raster_pipeline(&self, pipeline: RgRasterPipelineHandle) -> Arc<RasterPipeline> {
+        let handle = self.raster_pipelines[pipeline.id];
+        self.execution_params.pipeline_cache.get_raster(handle)
     }
 
     /*pub fn render_pass(

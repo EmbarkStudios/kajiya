@@ -161,6 +161,10 @@ impl Renderer {
 
             Buffer {
                 raw: buffer,
+                desc: BufferDesc {
+                    size: buffer_info.size as _,
+                    usage: buffer_info.usage,
+                },
                 allocation,
                 allocation_info,
             }
@@ -217,7 +221,9 @@ impl Renderer {
             ],
             &RasterPipelineDesc::builder()
                 .render_pass(raster_simple_render_pass.clone())
-                .face_cull(true),
+                .face_cull(true)
+                .build()
+                .unwrap(),
         );
 
         let sdf_img = backend.device.create_image(
@@ -718,27 +724,31 @@ impl Renderer {
         }
     }
 
-    pub fn prepare_frame(&mut self, frame_state: &FrameState) -> anyhow::Result<()> {
-        let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
-
+    fn prepare_render_graph(&mut self, rg: &mut RenderGraph, frame_state: &FrameState) {
         let sdf_img = rg.import_image(self.sdf_img.clone());
 
         let mut depth_img = crate::render_passes::create_image(
-            &mut rg,
+            rg,
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
         );
-        crate::render_passes::clear_depth(&mut rg, &mut depth_img);
+        crate::render_passes::clear_depth(rg, &mut depth_img);
 
         let tex = crate::render_passes::raymarch_sdf(
-            &mut rg,
+            rg,
             &sdf_img,
             ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ),
         );
-        let tex = crate::render_passes::blur(&mut rg, &tex);
+        let tex = crate::render_passes::blur(rg, &tex);
         self.rg_output_tex = Some(rg.export_image(tex, vk::ImageUsageFlags::SAMPLED));
+    }
+
+    pub fn prepare_frame(&mut self, frame_state: &FrameState) -> anyhow::Result<()> {
+        let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
+
+        self.prepare_render_graph(&mut rg, frame_state);
 
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
