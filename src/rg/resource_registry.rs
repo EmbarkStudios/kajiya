@@ -42,20 +42,6 @@ pub struct ResourceRegistry<'exec_params, 'constants> {
 }
 
 impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
-    /*pub fn resource<'a, 's, ResType: Resource, ViewType>(
-        &'s self,
-        resource: Ref<ResType, ViewType>,
-    ) -> GpuResourceView<'a, ResType, ViewType>
-    where
-        ViewType: GpuViewType,
-        's: 'a,
-    {
-        // println!("ResourceRegistry::get: {:?}", resource.handle);
-        GpuResourceView::<'a, ResType, ViewType>::new(<ResType as Resource>::borrow_resource(
-            &self.resources[resource.handle.id as usize],
-        ))
-    }*/
-
     pub(crate) fn image<ViewType: GpuViewType>(&self, resource: Ref<Image, ViewType>) -> &Image {
         self.image_from_raw_handle::<ViewType>(resource.handle)
     }
@@ -112,82 +98,4 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         let handle = self.raster_pipelines[pipeline.id];
         self.execution_params.pipeline_cache.get_raster(handle)
     }
-
-    /*pub fn render_pass(
-        &self,
-        render_target: &RenderTarget,
-    ) -> anyhow::Result<RenderResourceHandle> {
-        let device = self.execution_params.device;
-
-        let frame_binding_set_handle = self
-            .execution_params
-            .handles
-            .allocate_transient(RenderResourceType::FrameBindingSet);
-
-        let mut render_target_views = [None; MAX_RENDER_TARGET_COUNT];
-        for (i, rt) in render_target.color.iter().enumerate() {
-            if let Some(rt) = rt {
-                render_target_views[i] = Some(RenderBindingRenderTargetView {
-                    base: RenderBindingView {
-                        resource: self.resources[rt.texture.handle.id as usize],
-                        format: rt.texture.desc().format,
-                        dimension: RenderViewDimension::Tex2d,
-                    },
-                    mip_slice: 0,
-                    first_array_slice: 0,
-                    plane_slice_first_w_slice: 0,
-                    array_size: 0,
-                    w_size: 0,
-                });
-            }
-        }
-
-        device.create_frame_binding_set(
-            frame_binding_set_handle,
-            &RenderFrameBindingSetDesc {
-                render_target_views,
-                depth_stencil_view: None,
-            },
-            "draw binding set".into(),
-        )?;
-
-        let render_pass_handle = self
-            .execution_params
-            .handles
-            .allocate_transient(RenderResourceType::RenderPass);
-
-        device.create_render_pass(
-            render_pass_handle,
-            &RenderPassDesc {
-                frame_binding: frame_binding_set_handle,
-                // TODO
-                render_target_info: [RenderTargetInfo {
-                    load_op: RenderLoadOp::Discard,
-                    store_op: RenderStoreOp::Store,
-                    clear_color: [0.0f32; 4],
-                }; MAX_RENDER_TARGET_COUNT],
-                depth_stencil_target_info: DepthStencilTargetInfo {
-                    load_op: RenderLoadOp::Discard,
-                    store_op: RenderStoreOp::Discard,
-                    clear_depth: 1.0,
-                    clear_stencil: 0,
-                },
-            },
-            "render pass".into(),
-        )?;
-
-        Ok(render_pass_handle)
-    }
-
-    pub fn raster_pipeline(
-        &self,
-        desc: RasterPipelineDesc,
-        render_target: &RenderTarget,
-    ) -> anyhow::Result<Arc<RasterPipeline>> {
-        self.execution_params.pipeline_cache.get_or_load_raster(
-            self.execution_params,
-            desc,
-            render_target,
-        )
-    }*/
 }

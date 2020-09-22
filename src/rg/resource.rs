@@ -6,9 +6,6 @@ use std::marker::PhantomData;
 
 use super::resource_registry::{AnyRenderResource, AnyRenderResourceRef};
 
-//#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
-//pub struct Image;
-
 pub trait Resource {
     type Desc: ResourceDesc;
     type Impl;
@@ -145,19 +142,6 @@ where
 {
 }
 
-/*impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType>
-where
-    <ResType as Resource>::Desc: Copy,
-{
-    pub(crate) fn internal_clone(&self) -> Ref<ResType, ViewType> {
-        Ref {
-            handle: self.handle,
-            desc: self.desc,
-            marker: PhantomData,
-        }
-    }
-}*/
-
 #[derive(Clone, Copy)]
 pub struct GpuSrv;
 pub struct GpuUav;
@@ -167,19 +151,3 @@ pub trait GpuViewType {}
 impl GpuViewType for GpuSrv {}
 impl GpuViewType for GpuUav {}
 impl GpuViewType for GpuRt {}
-
-/*pub struct GpuResourceView<'a, ResType: Resource, ViewType: GpuViewType> {
-    // TODO: not pub?
-    pub res: &'a <ResType as Resource>::Impl,
-    marker: PhantomData<ViewType>,
-}
-
-impl<'a, ResType: Resource, ViewType: GpuViewType> GpuResourceView<'a, ResType, ViewType> {
-    pub fn new(res: &'a <ResType as Resource>::Impl) -> Self {
-        Self {
-            res,
-            marker: PhantomData,
-        }
-    }
-}
-*/

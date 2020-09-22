@@ -6,8 +6,7 @@ use super::{
 };
 
 use crate::backend::shader::{
-    ComputePipelineDesc, DescriptorSetLayoutOpts, RasterPipelineDesc, RasterPipelineDescBuilder,
-    RasterPipelineShader,
+    ComputePipelineDesc, DescriptorSetLayoutOpts, RasterPipelineDescBuilder, RasterPipelineShader,
 };
 use std::{marker::PhantomData, path::Path};
 
@@ -223,15 +222,15 @@ impl<'rg> PassBuilder<'rg> {
         desc: RasterPipelineDescBuilder,
     ) -> RgRasterPipelineHandle {
         let id = self.rg.raster_pipelines.len();
-        let mut desc = desc.build().unwrap();
+        let desc = desc.build().unwrap();
 
         self.rg.raster_pipelines.push(RgRasterPipeline {
             shaders: shaders
                 .iter()
                 .map(|shader| {
-                    let mut desc = shader.desc.clone();
+                    let desc = shader.desc.clone();
 
-                    if let Some(frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout
+                    if let Some(_frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout
                     {
                         // TODO
                         /*desc.descriptor_set_opts[0] = Some((
