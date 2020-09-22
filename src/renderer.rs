@@ -382,6 +382,8 @@ impl Renderer {
             output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
 
+            // TODO: move to render graph
+
             // Edit the SDF
             {
                 let shader = self.pipeline_cache.get_compute(if self.frame_idx == 0 {

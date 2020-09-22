@@ -167,9 +167,6 @@ pub fn raster_sdf(
                 1,
                 0,
             );
-
-            // TODO: dispatch indirect. just one draw, but with many instances.
-            //raw_device.cmd_draw_indexed_indirect();
         }
 
         api.end_render_pass();
