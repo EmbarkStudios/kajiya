@@ -161,7 +161,7 @@ fn try_main() -> anyhow::Result<()> {
 
 fn main() {
     panic::set_hook(Box::new(|panic_info| {
-        println!("rust panic: {:#?}", panic_info);
+        println!("rust panic: {}", panic_info);
         loop {}
     }));
 

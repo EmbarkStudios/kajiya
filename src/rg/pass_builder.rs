@@ -2,11 +2,12 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
-    RgComputePipelineHandle, RgRasterPipelineHandle,
+    RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle,
 };
 
 use crate::backend::shader::{
-    ComputePipelineDesc, DescriptorSetLayoutOpts, RasterPipelineDescBuilder, RasterPipelineShader,
+    ComputePipelineDesc, DescriptorSetLayoutOpts, RasterPipelineDesc, RasterPipelineDescBuilder,
+    RasterPipelineShader,
 };
 use std::{marker::PhantomData, path::Path};
 
@@ -218,10 +219,40 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn register_raster_pipeline(
         &mut self,
-        shaders: &[RasterPipelineShader<&str>],
-        desc: &RasterPipelineDescBuilder,
+        shaders: &[RasterPipelineShader<&'static str>],
+        desc: RasterPipelineDescBuilder,
     ) -> RgRasterPipelineHandle {
-        todo!();
+        let id = self.rg.raster_pipelines.len();
+        let mut desc = desc.build().unwrap();
+
+        self.rg.raster_pipelines.push(RgRasterPipeline {
+            shaders: shaders
+                .iter()
+                .map(|shader| {
+                    let mut desc = shader.desc.clone();
+
+                    if let Some(frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout
+                    {
+                        // TODO
+                        /*desc.descriptor_set_opts[0] = Some((
+                            2,
+                            DescriptorSetLayoutOpts::builder()
+                                .replace(frame_descriptor_set_layout.clone())
+                                .build()
+                                .unwrap(),
+                        ));*/
+                    }
+
+                    RasterPipelineShader {
+                        code: shader.code,
+                        desc,
+                    }
+                })
+                .collect(),
+            desc,
+        });
+
+        RgRasterPipelineHandle { id }
     }
 
     pub fn render(mut self, render: impl FnOnce(&mut RenderPassApi) + 'static) {

@@ -70,15 +70,19 @@ pub fn raymarch_sdf(
     output
 }
 
+pub struct RasterSdfData<'a> {
+    pub sdf_img: &'a Handle<Image>,
+    pub brick_inst_buffer: &'a Handle<Buffer>,
+    pub brick_meta_buffer: &'a Handle<Buffer>,
+    pub cube_index_buffer: &'a Handle<Buffer>,
+}
+
 pub fn raster_sdf(
     rg: &mut RenderGraph,
     render_pass: Arc<RenderPass>,
     depth_img: &mut Handle<Image>,
     color_img: &mut Handle<Image>,
-    sdf_img: &Handle<Image>,
-    brick_inst_buffer: &Handle<Buffer>,
-    brick_meta_buffer: &Handle<Buffer>,
-    cube_index_buffer: &Handle<Buffer>,
+    raster_sdf_data: RasterSdfData<'_>,
 ) {
     let mut pass = rg.add_pass();
 
@@ -97,21 +101,24 @@ pub fn raster_sdf(
                     .unwrap(),
             },
         ],
-        &RasterPipelineDesc::builder()
+        RasterPipelineDesc::builder()
             .render_pass(render_pass.clone())
             .face_cull(true),
     );
 
     let sdf_ref = pass.read(
-        sdf_img,
+        raster_sdf_data.sdf_img,
         AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer,
     );
     let brick_inst_buffer = pass.read(
-        brick_inst_buffer,
+        raster_sdf_data.brick_inst_buffer,
         AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer,
     );
-    let brick_meta_buffer = pass.read(brick_meta_buffer, AccessType::IndirectBuffer);
-    let cube_index_buffer = pass.read(cube_index_buffer, AccessType::IndexBuffer);
+    let brick_meta_buffer = pass.read(
+        raster_sdf_data.brick_meta_buffer,
+        AccessType::IndirectBuffer,
+    );
+    let cube_index_buffer = pass.read(raster_sdf_data.cube_index_buffer, AccessType::IndexBuffer);
 
     let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);

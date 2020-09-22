@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 
 use super::{
@@ -7,6 +8,8 @@ use super::{
     RgComputePipelineHandle, RgRasterPipelineHandle,
 };
 use crate::{
+    backend::shader::FramebufferCacheKey,
+    backend::shader::MAX_COLOR_ATTACHMENTS,
     backend::{
         device::{CommandBuffer, Device},
         image::{ImageViewDesc, ImageViewDescBuilder},
@@ -230,29 +233,72 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
         color_attachments: &[(Ref<Image, GpuRt>, &ImageViewDesc)],
         depth_attachment: Option<(Ref<Image, GpuRt>, &ImageViewDesc)>,
     ) {
-        /*begin_render_pass(
-            &*self.backend.device,
-            cb,
-            &*self.render_pass,
-            [width, height],
-            &[(&self.output_img, &ImageViewDesc::default())],
-            Some((
-                &self.depth_img,
-                &ImageViewDesc::builder()
-                    .aspect_mask(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
-                    .build()
-                    .unwrap(),
-            )),
-        );*/
-        todo!();
+        let device = self.resources.execution_params.device;
+
+        let framebuffer = render_pass
+            .framebuffer_cache
+            .get_or_create(
+                &device.raw,
+                FramebufferCacheKey::new(
+                    dims,
+                    color_attachments.iter().map(|(a, _)| {
+                        &self.resources.image_from_raw_handle::<GpuRt>(a.handle).desc
+                    }),
+                    depth_attachment.as_ref().map(|(a, _)| {
+                        &self.resources.image_from_raw_handle::<GpuRt>(a.handle).desc
+                    }),
+                ),
+            )
+            .unwrap();
+
+        // Bind images to the imageless framebuffer
+        let image_attachments: ArrayVec<[vk::ImageView; MAX_COLOR_ATTACHMENTS + 1]> =
+            color_attachments
+                .iter()
+                .chain(depth_attachment.as_ref().into_iter())
+                .map(|(img, view)| self.resources.image_view(img.handle, view.clone()))
+                .collect();
+
+        let mut pass_attachment_desc =
+            vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
+
+        let [width, height] = dims;
+
+        //.clear_values(&clear_values)
+        let pass_begin_desc = vk::RenderPassBeginInfo::builder()
+            .render_pass(render_pass.raw)
+            .framebuffer(framebuffer)
+            .render_area(vk::Rect2D {
+                offset: vk::Offset2D { x: 0, y: 0 },
+                extent: vk::Extent2D {
+                    width: width as _,
+                    height: height as _,
+                },
+            })
+            .push_next(&mut pass_attachment_desc);
+
+        unsafe {
+            device.raw.cmd_begin_render_pass(
+                self.cb.raw,
+                &pass_begin_desc,
+                vk::SubpassContents::INLINE,
+            );
+        }
     }
 
     pub fn end_render_pass(&mut self) {
-        todo!();
+        let device = self.resources.execution_params.device;
+        unsafe {
+            device.raw.cmd_end_render_pass(self.cb.raw);
+        }
     }
 
     pub fn set_default_view_and_scissor(&mut self, [width, height]: [u32; 2]) {
-        todo!();
+        crate::renderer::set_default_view_and_scissor(
+            self.resources.execution_params.device,
+            self.cb,
+            [width, height],
+        )
     }
 }
 

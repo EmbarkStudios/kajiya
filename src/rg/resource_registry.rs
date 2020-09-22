@@ -14,6 +14,7 @@ pub enum AnyRenderResource {
     OwnedImage(crate::backend::image::Image),
     ImportedImage(Arc<crate::backend::image::Image>),
     OwnedBuffer(crate::backend::buffer::Buffer),
+    ImportedBuffer(Arc<crate::backend::buffer::Buffer>),
 }
 
 impl AnyRenderResource {
@@ -22,6 +23,7 @@ impl AnyRenderResource {
             AnyRenderResource::OwnedImage(inner) => AnyRenderResourceRef::Image(inner),
             AnyRenderResource::ImportedImage(inner) => AnyRenderResourceRef::Image(&*inner),
             AnyRenderResource::OwnedBuffer(inner) => AnyRenderResourceRef::Buffer(inner),
+            AnyRenderResource::ImportedBuffer(inner) => AnyRenderResourceRef::Buffer(&*inner),
         }
     }
 }
@@ -55,7 +57,14 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     }*/
 
     pub(crate) fn image<ViewType: GpuViewType>(&self, resource: Ref<Image, ViewType>) -> &Image {
-        match &self.resources[resource.handle.id as usize].borrow() {
+        self.image_from_raw_handle::<ViewType>(resource.handle)
+    }
+
+    pub(crate) fn image_from_raw_handle<ViewType: GpuViewType>(
+        &self,
+        handle: GraphRawResourceHandle,
+    ) -> &Image {
+        match &self.resources[handle.id as usize].borrow() {
             AnyRenderResourceRef::Image(img) => *img,
             _ => panic!(),
         }

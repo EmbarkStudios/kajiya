@@ -52,15 +52,15 @@ pub struct Renderer {
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipelineHandle,
 
-    brick_meta_buffer: Buffer,
-    brick_inst_buffer: Buffer,
+    brick_meta_buffer: Arc<Buffer>,
+    brick_inst_buffer: Arc<Buffer>,
     sdf_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
     clear_bricks_meta: ComputePipelineHandle,
     find_sdf_bricks: ComputePipelineHandle,
-    cube_index_buffer: Buffer,
+    cube_index_buffer: Arc<Buffer>,
 
     compiled_rg: Option<CompiledRenderGraph>,
     rg_output_tex: Option<rg::ExportedHandle<Image>>,
@@ -298,15 +298,15 @@ impl Renderer {
             raster_simple_render_pass,
             raster_simple,
 
-            brick_meta_buffer,
-            brick_inst_buffer,
+            brick_meta_buffer: Arc::new(brick_meta_buffer),
+            brick_inst_buffer: Arc::new(brick_inst_buffer),
             sdf_img: Arc::new(sdf_img),
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
             edit_sdf,
             clear_bricks_meta,
             find_sdf_bricks,
-            cube_index_buffer,
+            cube_index_buffer: Arc::new(cube_index_buffer),
 
             compiled_rg: None,
             rg_output_tex: None,
@@ -726,6 +726,9 @@ impl Renderer {
 
     fn prepare_render_graph(&mut self, rg: &mut RenderGraph, frame_state: &FrameState) {
         let sdf_img = rg.import_image(self.sdf_img.clone());
+        let brick_inst_buffer = rg.import_buffer(self.brick_inst_buffer.clone());
+        let brick_meta_buffer = rg.import_buffer(self.brick_meta_buffer.clone());
+        let cube_index_buffer = rg.import_buffer(self.cube_index_buffer.clone());
 
         let mut depth_img = crate::render_passes::create_image(
             rg,
@@ -733,14 +736,35 @@ impl Renderer {
         );
         crate::render_passes::clear_depth(rg, &mut depth_img);
 
-        let tex = crate::render_passes::raymarch_sdf(
+        /*let mut tex = crate::render_passes::raymarch_sdf(
             rg,
             &sdf_img,
             ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ),
+        );*/
+        let mut tex = crate::render_passes::create_image(
+            rg,
+            ImageDesc::new_2d(
+                vk::Format::R16G16B16A16_SFLOAT,
+                frame_state.window_cfg.dims(),
+            ),
         );
+
+        crate::render_passes::raster_sdf(
+            rg,
+            self.raster_simple_render_pass.clone(),
+            &mut depth_img,
+            &mut tex,
+            crate::render_passes::RasterSdfData {
+                sdf_img: &sdf_img,
+                brick_inst_buffer: &brick_inst_buffer,
+                brick_meta_buffer: &brick_meta_buffer,
+                cube_index_buffer: &cube_index_buffer,
+            },
+        );
+
         let tex = crate::render_passes::blur(rg, &tex);
         self.rg_output_tex = Some(rg.export_image(tex, vk::ImageUsageFlags::SAMPLED));
     }
@@ -914,7 +938,7 @@ fn global_barrier(
 }
 
 #[allow(dead_code)]
-fn begin_render_pass(
+pub fn begin_render_pass(
     device: &Device,
     cb: &CommandBuffer,
     render_pass: &RenderPass,
