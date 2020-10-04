@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::{version::DeviceV1_0, vk};
 
-use crate::{backend::image::ImageViewDesc, backend::shader::*, rg::*};
+use crate::{backend::image::ImageViewDesc, backend::shader::*, renderer::SDF_DIM, rg::*};
 
 pub fn create_image(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();
@@ -68,6 +68,73 @@ pub fn raymarch_sdf(
     });
 
     output
+}
+
+fn clear_sdf_bricks_meta(rg: &mut RenderGraph) -> Handle<Buffer> {
+    let mut pass = rg.add_pass();
+
+    let mut brick_meta_buf = pass.create(&BufferDesc {
+        size: 20, // size of VkDrawIndexedIndirectCommand
+        usage: vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::INDIRECT_BUFFER,
+    });
+    let brick_meta_buf_ref = pass.write(&mut brick_meta_buf, AccessType::ComputeShaderWrite);
+
+    let clear_meta_pipeline =
+        pass.register_compute_pipeline("/assets/shaders/sdf/clear_bricks_meta.hlsl");
+
+    pass.render(move |api| {
+        let pipeline = api.bind_compute_pipeline(
+            clear_meta_pipeline
+                .into_binding()
+                .descriptor_set(0, &[brick_meta_buf_ref.bind()]),
+        );
+        pipeline.dispatch([1, 1, 1]);
+    });
+
+    brick_meta_buf
+}
+
+pub struct SdfRasterBricks {
+    pub brick_meta_buffer: Handle<Buffer>,
+    pub brick_inst_buffer: Handle<Buffer>,
+}
+
+pub fn calculate_sdf_bricks_meta(rg: &mut RenderGraph, sdf_img: &Handle<Image>) -> SdfRasterBricks {
+    let mut brick_meta_buf = clear_sdf_bricks_meta(rg);
+
+    let mut pass = rg.add_pass();
+
+    let sdf_ref = pass.read(
+        sdf_img,
+        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+    );
+
+    let brick_meta_buf_ref = pass.write(&mut brick_meta_buf, AccessType::ComputeShaderWrite);
+
+    let mut brick_inst_buf = pass.create(&BufferDesc {
+        size: (SDF_DIM as usize).pow(3) * 4 * 4,
+        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+    });
+    let brick_inst_buf_ref = pass.write(&mut brick_inst_buf, AccessType::ComputeShaderWrite);
+
+    let calc_meta_pipeline = pass.register_compute_pipeline("/assets/shaders/sdf/find_bricks.hlsl");
+
+    pass.render(move |api| {
+        let pipeline = api.bind_compute_pipeline(calc_meta_pipeline.into_binding().descriptor_set(
+            0,
+            &[
+                sdf_ref.bind(ImageViewDescBuilder::default()),
+                brick_meta_buf_ref.bind(),
+                brick_inst_buf_ref.bind(),
+            ],
+        ));
+        pipeline.dispatch([SDF_DIM / 2, SDF_DIM / 2, SDF_DIM / 2]);
+    });
+
+    SdfRasterBricks {
+        brick_meta_buffer: brick_meta_buf,
+        brick_inst_buffer: brick_inst_buf,
+    }
 }
 
 pub struct RasterSdfData<'a> {

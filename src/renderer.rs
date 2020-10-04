@@ -1,5 +1,6 @@
 use crate::{
     backend::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
+    render_passes::SdfRasterBricks,
     rg,
     rg::CompiledRenderGraph,
     rg::RenderGraph,
@@ -26,7 +27,7 @@ use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 use winit::VirtualKeyCode;
 
-const SDF_DIM: u32 = 256;
+pub const SDF_DIM: u32 = 256;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -52,14 +53,10 @@ pub struct Renderer {
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipelineHandle,
 
-    brick_meta_buffer: Arc<Buffer>,
-    brick_inst_buffer: Arc<Buffer>,
     sdf_img: Arc<Image>,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
-    clear_bricks_meta: ComputePipelineHandle,
-    find_sdf_bricks: ComputePipelineHandle,
     cube_index_buffer: Arc<Buffer>,
 
     compiled_rg: Option<CompiledRenderGraph>,
@@ -245,14 +242,6 @@ impl Renderer {
             None,
         )?;
 
-        let brick_inst_buffer = backend.device.create_buffer(
-            BufferDesc {
-                size: (SDF_DIM as usize).pow(3) * 4 * 4,
-                usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-            },
-            None,
-        )?;
-
         let gen_empty_sdf = pipeline_cache.register_compute(
             "/assets/shaders/sdf/gen_empty_sdf.hlsl",
             &sdf_pipeline_desc.clone().build().unwrap(),
@@ -298,14 +287,10 @@ impl Renderer {
             raster_simple_render_pass,
             raster_simple,
 
-            brick_meta_buffer: Arc::new(brick_meta_buffer),
-            brick_inst_buffer: Arc::new(brick_inst_buffer),
             sdf_img: Arc::new(sdf_img),
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
             edit_sdf,
-            clear_bricks_meta,
-            find_sdf_bricks,
             cube_index_buffer: Arc::new(cube_index_buffer),
 
             compiled_rg: None,
@@ -408,54 +393,8 @@ impl Renderer {
                 raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4, SDF_DIM / 4, SDF_DIM / 4);
             }
 
-            sdf_img_tracker
-                .transition(vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer);
-
-            {
-                let shader = self.pipeline_cache.get_compute(self.clear_bricks_meta);
-                bind_pipeline(&*self.backend.device, cb, &*shader);
-                bind_descriptor_set(
-                    &*self.backend.device,
-                    cb,
-                    &*shader,
-                    0,
-                    &[view::buffer_rw(&self.brick_meta_buffer)],
-                );
-                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
-                raw_device.cmd_dispatch(cb.raw, 1, 1, 1);
-
-                global_barrier(
-                    &*self.backend.device,
-                    cb,
-                    &[vk_sync::AccessType::ComputeShaderWrite],
-                    &[vk_sync::AccessType::ComputeShaderWrite],
-                );
-            }
-
-            {
-                let shader = self.pipeline_cache.get_compute(self.find_sdf_bricks);
-                bind_pipeline(&*self.backend.device, cb, &*shader);
-                bind_descriptor_set(
-                    &*self.backend.device,
-                    cb,
-                    &*shader,
-                    0,
-                    &[
-                        view::image(self.sdf_img.view(device, &ImageViewDesc::default())),
-                        view::buffer_rw(&self.brick_meta_buffer),
-                        view::buffer_rw(&self.brick_inst_buffer),
-                    ],
-                );
-                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
-                raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2, SDF_DIM / 4 / 2);
-
-                global_barrier(
-                    &*self.backend.device,
-                    cb,
-                    &[vk_sync::AccessType::ComputeShaderWrite],
-                    &[vk_sync::AccessType::IndirectBuffer],
-                );
-            }
+            /*sdf_img_tracker
+            .transition(vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer);*/
 
             if let Some((rg, rg_output_img)) =
                 self.compiled_rg.take().zip(self.rg_output_tex.take())
@@ -627,16 +566,23 @@ impl Renderer {
     }
 
     fn prepare_render_graph(&mut self, rg: &mut RenderGraph, frame_state: &FrameState) {
-        let sdf_img = rg.import_image(self.sdf_img.clone());
-        let brick_inst_buffer = rg.import_buffer(self.brick_inst_buffer.clone());
-        let brick_meta_buffer = rg.import_buffer(self.brick_meta_buffer.clone());
-        let cube_index_buffer = rg.import_buffer(self.cube_index_buffer.clone());
+        let sdf_img = rg.import_image(
+            self.sdf_img.clone(),
+            vk_sync::AccessType::ComputeShaderWrite,
+        );
+        let cube_index_buffer = rg.import_buffer(
+            self.cube_index_buffer.clone(),
+            vk_sync::AccessType::TransferWrite,
+        );
 
         let mut depth_img = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
         );
         crate::render_passes::clear_depth(rg, &mut depth_img);
+
+        let sdf_raster_bricks: SdfRasterBricks =
+            crate::render_passes::calculate_sdf_bricks_meta(rg, &sdf_img);
 
         /*let mut tex = crate::render_passes::raymarch_sdf(
             rg,
@@ -661,8 +607,8 @@ impl Renderer {
             &mut tex,
             crate::render_passes::RasterSdfData {
                 sdf_img: &sdf_img,
-                brick_inst_buffer: &brick_inst_buffer,
-                brick_meta_buffer: &brick_meta_buffer,
+                brick_inst_buffer: &sdf_raster_bricks.brick_inst_buffer,
+                brick_meta_buffer: &sdf_raster_bricks.brick_meta_buffer,
                 cube_index_buffer: &cube_index_buffer,
             },
         );

@@ -369,3 +369,11 @@ impl Ref<Buffer, GpuSrv> {
         })
     }
 }
+
+impl Ref<Buffer, GpuUav> {
+    pub fn bind(&self) -> RenderPassBinding {
+        RenderPassBinding::Buffer(RenderPassBufferBinding {
+            handle: self.handle,
+        })
+    }
+}

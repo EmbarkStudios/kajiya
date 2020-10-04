@@ -4,6 +4,7 @@ use super::{
     pass_builder::PassBuilder,
     resource::*,
     resource_registry::AnyRenderResourceRef,
+    resource_registry::RegistryResource,
     resource_registry::{AnyRenderResource, ResourceRegistry},
     RenderPassApi,
 };
@@ -41,8 +42,14 @@ pub(crate) struct GraphResourceCreateInfo {
 }
 
 pub(crate) enum GraphResourceImportInfo {
-    Image(Arc<Image>),
-    Buffer(Arc<Buffer>),
+    Image {
+        resource: Arc<Image>,
+        access_type: vk_sync::AccessType,
+    },
+    Buffer {
+        resource: Arc<Buffer>,
+        access_type: vk_sync::AccessType,
+    },
 }
 
 pub(crate) enum GraphResourceInfo {
@@ -106,7 +113,11 @@ impl RenderGraph {
         res
     }
 
-    pub fn import_image(&mut self, img: Arc<Image>) -> Handle<Image> {
+    pub fn import_image(
+        &mut self,
+        img: Arc<Image>,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<Image> {
         let res = GraphRawResourceHandle {
             id: self.resources.len() as u32,
             version: 0,
@@ -114,10 +125,12 @@ impl RenderGraph {
 
         let desc = img.desc;
 
-        self.resources
-            .push(GraphResourceInfo::Imported(GraphResourceImportInfo::Image(
-                img,
-            )));
+        self.resources.push(GraphResourceInfo::Imported(
+            GraphResourceImportInfo::Image {
+                resource: img,
+                access_type: access_type_at_import_time,
+            },
+        ));
 
         Handle {
             raw: res,
@@ -126,7 +139,11 @@ impl RenderGraph {
         }
     }
 
-    pub fn import_buffer(&mut self, buf: Arc<Buffer>) -> Handle<Buffer> {
+    pub fn import_buffer(
+        &mut self,
+        buf: Arc<Buffer>,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<Buffer> {
         let res = GraphRawResourceHandle {
             id: self.resources.len() as u32,
             version: 0,
@@ -135,7 +152,10 @@ impl RenderGraph {
         let desc = buf.desc;
 
         self.resources.push(GraphResourceInfo::Imported(
-            GraphResourceImportInfo::Buffer(buf),
+            GraphResourceImportInfo::Buffer {
+                resource: buf,
+                access_type: access_type_at_import_time,
+            },
         ));
 
         Handle {
@@ -227,8 +247,8 @@ impl RenderGraph {
                         GraphResourceDesc::Buffer(_) => false,
                     },
                     GraphResourceInfo::Imported(info) => match info {
-                        GraphResourceImportInfo::Image(_) => true,
-                        GraphResourceImportInfo::Buffer(_) => false,
+                        GraphResourceImportInfo::Image { .. } => true,
+                        GraphResourceImportInfo::Buffer { .. } => false,
                     },
                 };
 
@@ -337,7 +357,7 @@ impl CompiledRenderGraph {
         cb: &CommandBuffer,
     ) -> RetiredRenderGraph {
         let device = params.device;
-        let resources: Vec<AnyRenderResource> = self
+        let resources: Vec<RegistryResource> = self
             .rg
             .resources
             .iter()
@@ -351,7 +371,10 @@ impl CompiledRenderGraph {
                             .get_image(&desc)
                             .unwrap_or_else(|| device.create_image(desc, None).unwrap());
 
-                        AnyRenderResource::OwnedImage(image)
+                        RegistryResource {
+                            access_type: vk_sync::AccessType::Nothing,
+                            resource: AnyRenderResource::OwnedImage(image),
+                        }
                     }
                     GraphResourceDesc::Buffer(mut desc) => {
                         desc.usage = self.resource_info.buffer_usage_flags[resource_idx];
@@ -360,16 +383,27 @@ impl CompiledRenderGraph {
                             .get_buffer(&desc)
                             .unwrap_or_else(|| device.create_buffer(desc, None).unwrap());
 
-                        AnyRenderResource::OwnedBuffer(buffer)
+                        RegistryResource {
+                            resource: AnyRenderResource::OwnedBuffer(buffer),
+                            access_type: vk_sync::AccessType::Nothing,
+                        }
                     }
                 },
                 GraphResourceInfo::Imported(resource) => match resource {
-                    GraphResourceImportInfo::Image(image) => {
-                        AnyRenderResource::ImportedImage(image.clone())
-                    }
-                    GraphResourceImportInfo::Buffer(buffer) => {
-                        AnyRenderResource::ImportedBuffer(buffer.clone())
-                    }
+                    GraphResourceImportInfo::Image {
+                        resource,
+                        access_type,
+                    } => RegistryResource {
+                        resource: AnyRenderResource::ImportedImage(resource.clone()),
+                        access_type: *access_type,
+                    },
+                    GraphResourceImportInfo::Buffer {
+                        resource,
+                        access_type,
+                    } => RegistryResource {
+                        resource: AnyRenderResource::ImportedBuffer(resource.clone()),
+                        access_type: *access_type,
+                    },
                 },
             })
             .collect();
@@ -384,25 +418,24 @@ impl CompiledRenderGraph {
 
         for pass in self.rg.passes.into_iter() {
             {
-                let mut transitions: Vec<(&AnyRenderResource, PassResourceAccessType)> = Vec::new();
+                let mut transitions: Vec<(usize, PassResourceAccessType)> = Vec::new();
                 for resource_ref in pass.read.iter().chain(pass.write.iter()) {
-                    transitions.push((
-                        &resource_registry.resources[resource_ref.handle.id as usize],
-                        resource_ref.access,
-                    ));
+                    transitions.push((resource_ref.handle.id as usize, resource_ref.access));
                 }
 
                 // TODO: optimize the barriers
 
-                for (resource, access) in transitions {
-                    match resource.borrow() {
+                for (resource_idx, access) in transitions {
+                    let resource = &mut resource_registry.resources[resource_idx];
+
+                    match resource.resource.borrow() {
                         AnyRenderResourceRef::Image(image) => {
                             record_image_barrier(
                                 &params.device.raw,
                                 cb.raw,
                                 ImageBarrier::new(
                                     image.raw,
-                                    vk_sync::AccessType::Nothing, // TODO
+                                    resource.access_type,
                                     access.access_type,
                                     image_aspect_mask_from_access_type_and_format(
                                         access.access_type,
@@ -416,14 +449,19 @@ impl CompiledRenderGraph {
                                     }),
                                 ),
                             );
+
+                            resource.access_type = access.access_type;
                         }
                         AnyRenderResourceRef::Buffer(_buffer) => {
                             global_barrier(
                                 &params.device,
                                 cb,
+                                &[resource.access_type],
                                 &[vk_sync::AccessType::ComputeShaderWrite], // TODO
-                                &[vk_sync::AccessType::ComputeShaderWrite],
                             );
+
+                            // TODO
+                            resource.access_type = vk_sync::AccessType::ComputeShaderWrite;
                         }
                     }
                 }
@@ -464,17 +502,17 @@ fn global_barrier(
 }
 
 pub struct RetiredRenderGraph {
-    resources: Vec<AnyRenderResource>,
+    resources: Vec<RegistryResource>,
 }
 
 impl RetiredRenderGraph {
     pub fn get_image(&self, handle: ExportedHandle<Image>) -> &Image {
-        Image::borrow_resource(&self.resources[handle.0.raw.id as usize])
+        Image::borrow_resource(&self.resources[handle.0.raw.id as usize].resource)
     }
 
     pub fn release_resources(self, transient_resource_cache: &mut TransientResourceCache) {
         for resource in self.resources {
-            match resource {
+            match resource.resource {
                 AnyRenderResource::OwnedImage(image) => {
                     transient_resource_cache.insert_image(image)
                 }

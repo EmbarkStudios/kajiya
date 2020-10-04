@@ -1,4 +1,4 @@
-#include "sdf_consts.hlsl"
+// #include "sdf_consts.hlsl"
 
 struct BrickInstance {
     uint3 brick_idx;

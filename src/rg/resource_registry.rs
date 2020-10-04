@@ -33,9 +33,14 @@ pub enum AnyRenderResourceRef<'a> {
     Buffer(&'a crate::backend::buffer::Buffer),
 }
 
+pub(crate) struct RegistryResource {
+    pub resource: AnyRenderResource,
+    pub access_type: vk_sync::AccessType,
+}
+
 pub struct ResourceRegistry<'exec_params, 'constants> {
     pub execution_params: &'exec_params RenderGraphExecutionParams<'exec_params>,
-    pub(crate) resources: Vec<AnyRenderResource>,
+    pub(crate) resources: Vec<RegistryResource>,
     pub dynamic_constants: &'constants mut DynamicConstants,
     pub compute_pipelines: Vec<ComputePipelineHandle>,
     pub raster_pipelines: Vec<RasterPipelineHandle>,
@@ -50,7 +55,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         &self,
         handle: GraphRawResourceHandle,
     ) -> &Image {
-        match &self.resources[handle.id as usize].borrow() {
+        match &self.resources[handle.id as usize].resource.borrow() {
             AnyRenderResourceRef::Image(img) => *img,
             _ => panic!(),
         }
@@ -64,7 +69,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         &self,
         handle: GraphRawResourceHandle,
     ) -> &Buffer {
-        match &self.resources[handle.id as usize].borrow() {
+        match &self.resources[handle.id as usize].resource.borrow() {
             AnyRenderResourceRef::Buffer(buffer) => *buffer,
             _ => panic!(),
         }
@@ -80,7 +85,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     {
         let view_desc = view_desc;
 
-        let image = match &self.resources[resource.id as usize].borrow() {
+        let image = match &self.resources[resource.id as usize].resource.borrow() {
             AnyRenderResourceRef::Image(img) => *img,
             AnyRenderResourceRef::Buffer(_) => panic!(),
         };
