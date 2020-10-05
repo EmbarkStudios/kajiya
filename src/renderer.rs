@@ -599,6 +599,7 @@ impl Renderer {
                 frame_state.window_cfg.dims(),
             ),
         );
+        crate::render_passes::clear_color(rg, &mut tex, [0.1, 0.2, 0.5, 1.0]);
 
         crate::render_passes::raster_sdf(
             rg,
