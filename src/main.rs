@@ -65,10 +65,7 @@ fn try_main() -> anyhow::Result<()> {
             .expect("window"),
     );
 
-    let mut renderer = renderer::Renderer::new(
-        RenderBackend::new(&*window, &window_cfg)?,
-        window_cfg.dims(),
-    )?;
+    let mut renderer = renderer::Renderer::new(RenderBackend::new(&*window, &window_cfg)?)?;
     let mut last_error_text = None;
 
     #[allow(unused_mut)]

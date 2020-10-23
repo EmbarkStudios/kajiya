@@ -62,15 +62,9 @@ pub struct Renderer {
     frame_idx: u32,
 
     present_shader: ComputePipeline,
-    depth_img: Image,
-
     raster_simple_render_pass: Arc<RenderPass>,
-    raster_simple: RasterPipelineHandle,
 
     sdf_img: TemporalImage,
-    gen_empty_sdf: ComputePipelineHandle,
-    sdf_raymarch_gbuffer: ComputePipelineHandle,
-    edit_sdf: ComputePipelineHandle,
     cube_index_buffer: Arc<Buffer>,
 
     compiled_rg: Option<CompiledRenderGraph>,
@@ -103,11 +97,8 @@ pub enum DescriptorSetBinding {
 }
 
 impl Renderer {
-    pub fn new(backend: RenderBackend, output_dims: [u32; 2]) -> anyhow::Result<Self> {
+    pub fn new(backend: RenderBackend) -> anyhow::Result<Self> {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
-
-        let lazy_cache = LazyCache::create();
-        let mut pipeline_cache = PipelineCache::new(&lazy_cache);
 
         let dynamic_constants = DynamicConstants::new({
             let buffer_info = vk::BufferCreateInfo {
@@ -144,13 +135,6 @@ impl Renderer {
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
-        let depth_img = backend.device.create_image(
-            ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, output_dims).usage(
-                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
-            ),
-            None,
-        )?;
-
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -164,52 +148,11 @@ impl Renderer {
             },
         )?;
 
-        let raster_simple = pipeline_cache.register_raster(
-            &[
-                RasterPipelineShader {
-                    code: "/assets/shaders/raster_simple_vs.hlsl",
-                    desc: RasterShaderDesc::builder(RasterStage::Vertex)
-                        .build()
-                        .unwrap(),
-                },
-                RasterPipelineShader {
-                    code: "/assets/shaders/raster_simple_ps.hlsl",
-                    desc: RasterShaderDesc::builder(RasterStage::Pixel)
-                        .build()
-                        .unwrap(),
-                },
-            ],
-            &RasterPipelineDesc::builder()
-                .render_pass(raster_simple_render_pass.clone())
-                .face_cull(true)
-                .build()
-                .unwrap(),
-        );
-
         let sdf_img = backend.device.create_image(
             ImageDesc::new_3d(vk::Format::R16_SFLOAT, [SDF_DIM, SDF_DIM, SDF_DIM])
                 .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED),
             None,
         )?;
-
-        let sdf_pipeline_desc = ComputePipelineDesc::builder().descriptor_set_opts(&[(
-            2,
-            DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
-        )]);
-
-        let gen_empty_sdf = pipeline_cache.register_compute(
-            "/assets/shaders/sdf/gen_empty_sdf.hlsl",
-            &sdf_pipeline_desc.clone().build().unwrap(),
-        );
-        let edit_sdf = pipeline_cache.register_compute(
-            "/assets/shaders/sdf/edit_sdf.hlsl",
-            &sdf_pipeline_desc.clone().build().unwrap(),
-        );
-
-        let sdf_raymarch_gbuffer = pipeline_cache.register_compute(
-            "/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl",
-            &sdf_pipeline_desc.clone().build().unwrap(),
-        );
 
         let cube_indices = cube_indices();
         let cube_index_buffer = backend.device.create_buffer(
@@ -225,18 +168,13 @@ impl Renderer {
             dynamic_constants,
             frame_descriptor_set,
             frame_idx: !0,
-            pipeline_cache: pipeline_cache,
+            pipeline_cache: PipelineCache::new(&LazyCache::create()),
             transient_resource_cache: Default::default(),
             present_shader,
 
-            depth_img,
             raster_simple_render_pass,
-            raster_simple,
 
             sdf_img: TemporalImage::new(Arc::new(sdf_img)),
-            gen_empty_sdf,
-            sdf_raymarch_gbuffer,
-            edit_sdf,
             cube_index_buffer: Arc::new(cube_index_buffer),
 
             compiled_rg: None,
