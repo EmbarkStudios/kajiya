@@ -46,7 +46,6 @@ pub struct Renderer {
     frame_idx: u32,
 
     present_shader: ComputePipeline,
-    output_img: Arc<Image>,
     depth_img: Image,
 
     raster_simple_render_pass: Arc<RenderPass>,
@@ -169,17 +168,6 @@ impl Renderer {
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
-        let output_img = backend.device.create_image(
-            ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_dims)
-                //.format(vk::Format::R8G8B8A8_UNORM)
-                .usage(
-                    vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::COLOR_ATTACHMENT,
-                ),
-            None,
-        )?;
-
         let depth_img = backend.device.create_image(
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, output_dims).usage(
                 vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_DST,
@@ -265,7 +253,6 @@ impl Renderer {
             transient_resource_cache: Default::default(),
             present_shader,
 
-            output_img: Arc::new(output_img),
             depth_img,
             raster_simple_render_pass,
             raster_simple,
@@ -310,14 +297,6 @@ impl Renderer {
         let device = &*self.backend.device;
         let raw_device = &device.raw;
 
-        let mut output_img_tracker = LocalImageStateTracker::new(
-            self.output_img.raw,
-            vk::ImageAspectFlags::COLOR,
-            vk_sync::AccessType::Nothing,
-            cb.raw,
-            device,
-        );
-
         let mut sdf_img_tracker = LocalImageStateTracker::new(
             self.sdf_img.raw,
             vk::ImageAspectFlags::COLOR,
@@ -339,7 +318,6 @@ impl Renderer {
                 )
                 .unwrap();
 
-            output_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
             sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
 
             // TODO: move to render graph
