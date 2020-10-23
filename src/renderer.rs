@@ -11,7 +11,6 @@ use crate::{
     chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
     state_tracker::LocalImageStateTracker, viewport::ViewConstants, FrameState,
 };
-use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use backend::{
     barrier::record_image_barrier,
@@ -234,28 +233,12 @@ impl Renderer {
             DescriptorSetLayoutOpts::builder().replace(FRAME_CONSTANTS_LAYOUT.clone()),
         )]);
 
-        let brick_meta_buffer = backend.device.create_buffer(
-            BufferDesc {
-                size: 20, // size of VkDrawIndexedIndirectCommand
-                usage: vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::INDIRECT_BUFFER,
-            },
-            None,
-        )?;
-
         let gen_empty_sdf = pipeline_cache.register_compute(
             "/assets/shaders/sdf/gen_empty_sdf.hlsl",
             &sdf_pipeline_desc.clone().build().unwrap(),
         );
         let edit_sdf = pipeline_cache.register_compute(
             "/assets/shaders/sdf/edit_sdf.hlsl",
-            &sdf_pipeline_desc.clone().build().unwrap(),
-        );
-        let clear_bricks_meta = pipeline_cache.register_compute(
-            "/assets/shaders/sdf/clear_bricks_meta.hlsl",
-            &sdf_pipeline_desc.clone().build().unwrap(),
-        );
-        let find_sdf_bricks = pipeline_cache.register_compute(
-            "/assets/shaders/sdf/find_bricks.hlsl",
             &sdf_pipeline_desc.clone().build().unwrap(),
         );
 
@@ -335,14 +318,6 @@ impl Renderer {
             device,
         );
 
-        let mut depth_img_tracker = LocalImageStateTracker::new(
-            self.depth_img.raw,
-            vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-            vk_sync::AccessType::Nothing,
-            cb.raw,
-            device,
-        );
-
         let mut sdf_img_tracker = LocalImageStateTracker::new(
             self.sdf_img.raw,
             vk::ImageAspectFlags::COLOR,
@@ -415,15 +390,14 @@ impl Renderer {
                     vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
                 );*/
 
-                let rg_output_img = retired_rg.get_image(rg_output_img);
+                let (rg_output_img, rg_output_access_type) = retired_rg.get_image(rg_output_img);
 
-                // TODO: get the last access type from RG
                 record_image_barrier(
                     device,
                     cb.raw,
                     ImageBarrier::new(
                         rg_output_img.raw,
-                        vk_sync::AccessType::ComputeShaderWrite,
+                        rg_output_access_type,
                         vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
                         vk::ImageAspectFlags::COLOR,
                     ),
@@ -764,111 +738,6 @@ pub fn bind_descriptor_set(
             set_index,
             &[descriptor_set],
             &[],
-        );
-    }
-}
-
-fn global_barrier(
-    device: &Device,
-    cb: &CommandBuffer,
-    previous_accesses: &[vk_sync::AccessType],
-    next_accesses: &[vk_sync::AccessType],
-) {
-    vk_sync::cmd::pipeline_barrier(
-        device.raw.fp_v1_0(),
-        cb.raw,
-        Some(vk_sync::GlobalBarrier {
-            previous_accesses,
-            next_accesses,
-        }),
-        &[],
-        &[],
-    );
-}
-
-#[allow(dead_code)]
-pub fn begin_render_pass(
-    device: &Device,
-    cb: &CommandBuffer,
-    render_pass: &RenderPass,
-    dims: [u32; 2],
-    color_attachments: &[(&Image, &ImageViewDesc)],
-    depth_attachment: Option<(&Image, &ImageViewDesc)>,
-) {
-    let framebuffer = render_pass
-        .framebuffer_cache
-        .get_or_create(
-            &device.raw,
-            FramebufferCacheKey::new(
-                dims,
-                color_attachments.iter().map(|(a, _)| &a.desc),
-                depth_attachment.map(|(a, _)| &a.desc),
-            ),
-        )
-        .unwrap();
-
-    // Bind images to the imageless framebuffer
-    let image_attachments: ArrayVec<[vk::ImageView; MAX_COLOR_ATTACHMENTS + 1]> = color_attachments
-        .iter()
-        .chain(depth_attachment.as_ref().into_iter())
-        .map(|(img, view)| img.view(device, view.clone()))
-        .collect();
-
-    let mut pass_attachment_desc =
-        vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
-
-    let [width, height] = dims;
-
-    //.clear_values(&clear_values)
-    let pass_begin_desc = vk::RenderPassBeginInfo::builder()
-        .render_pass(render_pass.raw)
-        .framebuffer(framebuffer)
-        .render_area(vk::Rect2D {
-            offset: vk::Offset2D { x: 0, y: 0 },
-            extent: vk::Extent2D {
-                width: width as _,
-                height: height as _,
-            },
-        })
-        .push_next(&mut pass_attachment_desc);
-
-    unsafe {
-        device
-            .raw
-            .cmd_begin_render_pass(cb.raw, &pass_begin_desc, vk::SubpassContents::INLINE);
-    }
-}
-
-#[allow(dead_code)]
-pub fn set_default_view_and_scissor(
-    device: &Device,
-    cb: &CommandBuffer,
-    [width, height]: [u32; 2],
-) {
-    unsafe {
-        device.raw.cmd_set_viewport(
-            cb.raw,
-            0,
-            &[vk::Viewport {
-                x: 0.0,
-                y: (height as f32),
-                width: width as _,
-                height: -(height as f32),
-                min_depth: 0.0,
-                max_depth: 1.0,
-            }],
-        );
-
-        device.raw.cmd_set_scissor(
-            cb.raw,
-            0,
-            &[vk::Rect2D {
-                offset: vk::Offset2D { x: 0, y: 0 },
-                extent: vk::Extent2D {
-                    width: width as _,
-                    height: height as _,
-                },
-            }],
         );
     }
 }

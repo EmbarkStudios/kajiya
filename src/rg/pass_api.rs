@@ -294,11 +294,35 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
     }
 
     pub fn set_default_view_and_scissor(&mut self, [width, height]: [u32; 2]) {
-        crate::renderer::set_default_view_and_scissor(
-            self.resources.execution_params.device,
-            self.cb,
-            [width, height],
-        )
+        let raw_device = &self.resources.execution_params.device.raw;
+        let cb_raw = self.cb.raw;
+
+        unsafe {
+            raw_device.cmd_set_viewport(
+                cb_raw,
+                0,
+                &[vk::Viewport {
+                    x: 0.0,
+                    y: (height as f32),
+                    width: width as _,
+                    height: -(height as f32),
+                    min_depth: 0.0,
+                    max_depth: 1.0,
+                }],
+            );
+
+            raw_device.cmd_set_scissor(
+                cb_raw,
+                0,
+                &[vk::Rect2D {
+                    offset: vk::Offset2D { x: 0, y: 0 },
+                    extent: vk::Extent2D {
+                        width: width as _,
+                        height: height as _,
+                    },
+                }],
+            );
+        }
     }
 }
 

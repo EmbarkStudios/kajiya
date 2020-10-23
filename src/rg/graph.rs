@@ -505,8 +505,12 @@ pub struct RetiredRenderGraph {
 }
 
 impl RetiredRenderGraph {
-    pub fn get_image(&self, handle: ExportedHandle<Image>) -> &Image {
-        Image::borrow_resource(&self.resources[handle.0.raw.id as usize].resource)
+    pub fn get_image(&self, handle: ExportedHandle<Image>) -> (&Image, vk_sync::AccessType) {
+        let reg_resource = &self.resources[handle.0.raw.id as usize];
+        (
+            Image::borrow_resource(&reg_resource.resource),
+            reg_resource.access_type,
+        )
     }
 
     pub fn release_resources(self, transient_resource_cache: &mut TransientResourceCache) {
