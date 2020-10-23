@@ -98,6 +98,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             );
         }
 
+        // Bind frame constants
         if pipeline
             .set_layout_info
             .get(2)
@@ -170,6 +171,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             );
         }
 
+        // Bind frame constants
         if pipeline
             .set_layout_info
             .get(2)

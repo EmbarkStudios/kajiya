@@ -102,46 +102,6 @@ pub enum DescriptorSetBinding {
     Buffer(vk::DescriptorBufferInfo),
 }
 
-pub mod view {
-    use super::*;
-
-    pub fn image_rw(view: vk::ImageView) -> DescriptorSetBinding {
-        DescriptorSetBinding::Image(
-            vk::DescriptorImageInfo::builder()
-                .image_layout(vk::ImageLayout::GENERAL)
-                .image_view(view)
-                .build(),
-        )
-    }
-
-    pub fn image(view: vk::ImageView) -> DescriptorSetBinding {
-        DescriptorSetBinding::Image(
-            vk::DescriptorImageInfo::builder()
-                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image_view(view)
-                .build(),
-        )
-    }
-
-    pub fn buffer_rw(buffer: &Buffer) -> DescriptorSetBinding {
-        DescriptorSetBinding::Buffer(
-            vk::DescriptorBufferInfo::builder()
-                .buffer(buffer.raw)
-                .range(vk::WHOLE_SIZE)
-                .build(),
-        )
-    }
-
-    pub fn buffer(buffer: &Buffer) -> DescriptorSetBinding {
-        DescriptorSetBinding::Buffer(
-            vk::DescriptorBufferInfo::builder()
-                .buffer(buffer.raw)
-                .range(vk::WHOLE_SIZE)
-                .build(),
-        )
-    }
-}
-
 impl Renderer {
     pub fn new(backend: RenderBackend, output_dims: [u32; 2]) -> anyhow::Result<Self> {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
@@ -465,31 +425,6 @@ impl Renderer {
         set
     }
 
-    pub fn bind_frame_constants(
-        &self,
-        cb: &CommandBuffer,
-        pipeline: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
-        frame_constants_offset: u32,
-    ) {
-        if pipeline
-            .set_layout_info
-            .get(2)
-            .map(|set| !set.is_empty())
-            .unwrap_or_default()
-        {
-            unsafe {
-                self.backend.device.raw.cmd_bind_descriptor_sets(
-                    cb.raw,
-                    pipeline.pipeline_bind_point,
-                    pipeline.pipeline_layout,
-                    2,
-                    &[self.frame_descriptor_set],
-                    &[frame_constants_offset],
-                );
-            }
-        }
-    }
-
     fn prepare_render_graph(&mut self, rg: &mut RenderGraph, frame_state: &FrameState) {
         let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
         let cube_index_buffer = rg.import_buffer(
@@ -594,18 +529,6 @@ fn cube_indices() -> Vec<u32> {
     }
 
     res
-}
-
-pub fn bind_pipeline(
-    device: &Device,
-    cb: &CommandBuffer,
-    shader: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
-) {
-    unsafe {
-        device
-            .raw
-            .cmd_bind_pipeline(cb.raw, shader.pipeline_bind_point, shader.pipeline);
-    }
 }
 
 pub fn bind_descriptor_set(
