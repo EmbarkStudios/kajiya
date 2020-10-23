@@ -99,6 +99,29 @@ pub fn raymarch_sdf(
     output
 }
 
+pub fn edit_sdf(rg: &mut RenderGraph, sdf_img: &mut Handle<Image>, clear: bool) {
+    let mut pass = rg.add_pass();
+
+    let sdf_img_ref = pass.write(sdf_img, AccessType::ComputeShaderWrite);
+
+    let pipeline_path = if clear {
+        "/assets/shaders/sdf/gen_empty_sdf.hlsl"
+    } else {
+        "/assets/shaders/sdf/edit_sdf.hlsl"
+    };
+
+    let pipeline = pass.register_compute_pipeline(pipeline_path);
+
+    pass.render(move |api| {
+        let pipeline = api.bind_compute_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(0, &[sdf_img_ref.bind(ImageViewDescBuilder::default())]),
+        );
+        pipeline.dispatch([SDF_DIM, SDF_DIM, SDF_DIM]);
+    });
+}
+
 fn clear_sdf_bricks_meta(rg: &mut RenderGraph) -> Handle<Buffer> {
     let mut pass = rg.add_pass();
 

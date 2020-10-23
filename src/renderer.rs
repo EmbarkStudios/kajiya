@@ -8,8 +8,8 @@ use crate::{
     transient_resource_cache::TransientResourceCache,
 };
 use crate::{
-    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*,
-    state_tracker::LocalImageStateTracker, viewport::ViewConstants, FrameState,
+    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*, viewport::ViewConstants,
+    FrameState,
 };
 use ash::{version::DeviceV1_0, vk};
 use backend::{
@@ -36,6 +36,22 @@ struct FrameConstants {
     frame_idx: u32,
 }
 
+struct TemporalImage {
+    resource: Arc<Image>,
+    access_type: vk_sync::AccessType,
+    last_rg_handle: Option<rg::ExportedHandle<Image>>,
+}
+
+impl TemporalImage {
+    pub fn new(resource: Arc<Image>) -> Self {
+        Self {
+            resource,
+            access_type: vk_sync::AccessType::Nothing,
+            last_rg_handle: None,
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub struct Renderer {
     backend: RenderBackend,
@@ -51,7 +67,7 @@ pub struct Renderer {
     raster_simple_render_pass: Arc<RenderPass>,
     raster_simple: RasterPipelineHandle,
 
-    sdf_img: Arc<Image>,
+    sdf_img: TemporalImage,
     gen_empty_sdf: ComputePipelineHandle,
     sdf_raymarch_gbuffer: ComputePipelineHandle,
     edit_sdf: ComputePipelineHandle,
@@ -257,7 +273,7 @@ impl Renderer {
             raster_simple_render_pass,
             raster_simple,
 
-            sdf_img: Arc::new(sdf_img),
+            sdf_img: TemporalImage::new(Arc::new(sdf_img)),
             gen_empty_sdf,
             sdf_raymarch_gbuffer,
             edit_sdf,
@@ -297,18 +313,6 @@ impl Renderer {
         let device = &*self.backend.device;
         let raw_device = &device.raw;
 
-        let mut sdf_img_tracker = LocalImageStateTracker::new(
-            self.sdf_img.raw,
-            vk::ImageAspectFlags::COLOR,
-            if self.frame_idx == 0 {
-                vk_sync::AccessType::Nothing
-            } else {
-                vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
-            },
-            cb.raw,
-            device,
-        );
-
         unsafe {
             raw_device
                 .begin_command_buffer(
@@ -317,37 +321,6 @@ impl Renderer {
                         .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
                 )
                 .unwrap();
-
-            sdf_img_tracker.transition(vk_sync::AccessType::ComputeShaderWrite);
-
-            // TODO: move to render graph
-
-            // Edit the SDF
-            {
-                let shader = self.pipeline_cache.get_compute(if self.frame_idx == 0 {
-                    // Clear if this is the first frame
-                    self.gen_empty_sdf
-                } else {
-                    self.edit_sdf
-                });
-
-                bind_pipeline(&*self.backend.device, cb, &*shader);
-                bind_descriptor_set(
-                    &*self.backend.device,
-                    cb,
-                    &*shader,
-                    0,
-                    &[view::image_rw(
-                        self.sdf_img.view(device, &ImageViewDesc::default()),
-                    )],
-                );
-                self.bind_frame_constants(cb, &*shader, frame_constants_offset);
-
-                raw_device.cmd_dispatch(cb.raw, SDF_DIM / 4, SDF_DIM / 4, SDF_DIM / 4);
-            }
-
-            /*sdf_img_tracker
-            .transition(vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer);*/
 
             if let Some((rg, rg_output_img)) =
                 self.compiled_rg.take().zip(self.rg_output_tex.take())
@@ -364,11 +337,11 @@ impl Renderer {
                     cb,
                 );
 
-                /*output_img_tracker.transition(
-                    vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-                );*/
-
                 let (rg_output_img, rg_output_access_type) = retired_rg.get_image(rg_output_img);
+
+                if let Some(handle) = self.sdf_img.last_rg_handle.take() {
+                    self.sdf_img.access_type = retired_rg.get_image(handle).1;
+                }
 
                 record_image_barrier(
                     device,
@@ -518,10 +491,7 @@ impl Renderer {
     }
 
     fn prepare_render_graph(&mut self, rg: &mut RenderGraph, frame_state: &FrameState) {
-        let sdf_img = rg.import_image(
-            self.sdf_img.clone(),
-            vk_sync::AccessType::ComputeShaderWrite,
-        );
+        let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
         let cube_index_buffer = rg.import_buffer(
             self.cube_index_buffer.clone(),
             vk_sync::AccessType::TransferWrite,
@@ -532,6 +502,7 @@ impl Renderer {
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
         );
         crate::render_passes::clear_depth(rg, &mut depth_img);
+        crate::render_passes::edit_sdf(rg, &mut sdf_img, self.frame_idx == 0);
 
         let sdf_raster_bricks: SdfRasterBricks =
             crate::render_passes::calculate_sdf_bricks_meta(rg, &sdf_img);
@@ -568,6 +539,7 @@ impl Renderer {
 
         let tex = crate::render_passes::blur(rg, &tex);
         self.rg_output_tex = Some(rg.export_image(tex, vk::ImageUsageFlags::SAMPLED));
+        self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
     }
 
     pub fn prepare_frame(&mut self, frame_state: &FrameState) -> anyhow::Result<()> {
