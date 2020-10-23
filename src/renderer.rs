@@ -332,7 +332,7 @@ impl Renderer {
             vk::ImageAspectFlags::COLOR,
             vk_sync::AccessType::Nothing,
             cb.raw,
-            raw_device,
+            device,
         );
 
         let mut depth_img_tracker = LocalImageStateTracker::new(
@@ -340,7 +340,7 @@ impl Renderer {
             vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
             vk_sync::AccessType::Nothing,
             cb.raw,
-            raw_device,
+            device,
         );
 
         let mut sdf_img_tracker = LocalImageStateTracker::new(
@@ -352,7 +352,7 @@ impl Renderer {
                 vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
             },
             cb.raw,
-            raw_device,
+            device,
         );
 
         unsafe {
@@ -419,7 +419,7 @@ impl Renderer {
 
                 // TODO: get the last access type from RG
                 record_image_barrier(
-                    &device.raw,
+                    device,
                     cb.raw,
                     ImageBarrier::new(
                         rg_output_img.raw,

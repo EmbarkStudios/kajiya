@@ -32,7 +32,7 @@ pub fn blit_image_to_swapchain(
     present_shader: &ComputePipeline,
 ) {
     record_image_barrier(
-        &device.raw,
+        device,
         cb.raw,
         ImageBarrier::new(
             swapchain_image.image,
@@ -115,7 +115,7 @@ pub fn blit_image_to_swapchain(
     }
 
     record_image_barrier(
-        &device.raw,
+        device,
         cb.raw,
         ImageBarrier::new(
             swapchain_image.image,

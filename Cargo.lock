@@ -1450,23 +1450,23 @@ checksum = "65aff7c83039e88c1c0b4bedf8dfa93d6ec84d5fc2945b37c1fa4186f46c5f94"
 [[package]]
 name = "rspirv"
 version = "0.6.0"
-source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
-dependencies = [
- "derive_more",
- "fxhash",
- "num-traits",
- "spirv_headers 1.4.2 (git+https://github.com/Traverse-Research/rspirv.git)",
-]
-
-[[package]]
-name = "rspirv"
-version = "0.6.0"
 source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
 dependencies = [
  "derive_more",
  "fxhash",
  "num-traits",
  "spirv_headers 1.4.2 (git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83)",
+]
+
+[[package]]
+name = "rspirv"
+version = "0.6.0"
+source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
+dependencies = [
+ "derive_more",
+ "fxhash",
+ "num-traits",
+ "spirv_headers 1.4.2 (git+https://github.com/Traverse-Research/rspirv.git)",
 ]
 
 [[package]]
@@ -1664,7 +1664,7 @@ dependencies = [
 [[package]]
 name = "spirv_headers"
 version = "1.4.2"
-source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
+source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
 dependencies = [
  "bitflags",
  "num-traits",
@@ -1673,7 +1673,7 @@ dependencies = [
 [[package]]
 name = "spirv_headers"
 version = "1.4.2"
-source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
+source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
 dependencies = [
  "bitflags",
  "num-traits",

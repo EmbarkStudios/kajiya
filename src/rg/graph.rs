@@ -431,7 +431,7 @@ impl CompiledRenderGraph {
                     match resource.resource.borrow() {
                         AnyRenderResourceRef::Image(image) => {
                             record_image_barrier(
-                                &params.device.raw,
+                                &params.device,
                                 cb.raw,
                                 ImageBarrier::new(
                                     image.raw,
@@ -457,11 +457,10 @@ impl CompiledRenderGraph {
                                 &params.device,
                                 cb,
                                 &[resource.access_type],
-                                &[vk_sync::AccessType::ComputeShaderWrite], // TODO
+                                &[access.access_type],
                             );
 
-                            // TODO
-                            resource.access_type = vk_sync::AccessType::ComputeShaderWrite;
+                            resource.access_type = access.access_type;
                         }
                     }
                 }

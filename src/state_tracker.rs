@@ -1,4 +1,7 @@
-use crate::backend::barrier::{record_image_barrier, ImageBarrier};
+use crate::backend::{
+    barrier::{record_image_barrier, ImageBarrier},
+    device::Device,
+};
 use ash::vk;
 
 pub struct LocalImageStateTracker<'device> {
@@ -6,7 +9,7 @@ pub struct LocalImageStateTracker<'device> {
     aspect_mask: vk::ImageAspectFlags,
     current_state: vk_sync::AccessType,
     cb: vk::CommandBuffer,
-    device: &'device ash::Device,
+    device: &'device Device,
 }
 
 impl<'device> LocalImageStateTracker<'device> {
@@ -15,7 +18,7 @@ impl<'device> LocalImageStateTracker<'device> {
         aspect_mask: vk::ImageAspectFlags,
         current_state: vk_sync::AccessType,
         cb: vk::CommandBuffer,
-        device: &'device ash::Device,
+        device: &'device Device,
     ) -> Self {
         Self {
             resource,

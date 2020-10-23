@@ -208,7 +208,7 @@ pub fn raster_sdf(
     );
     let brick_inst_buffer = pass.read(
         raster_sdf_data.brick_inst_buffer,
-        AccessType::FragmentShaderReadSampledImageOrUniformTexelBuffer,
+        AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer,
     );
     let brick_meta_buffer = pass.read(
         raster_sdf_data.brick_meta_buffer,

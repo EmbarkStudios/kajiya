@@ -1,6 +1,8 @@
 use ash::{version::DeviceV1_0, vk};
 use vk_sync::AccessType;
 
+use super::device::Device;
+
 pub struct ImageBarrier {
     image: vk::Image,
     prev_access: vk_sync::AccessType,
@@ -9,7 +11,7 @@ pub struct ImageBarrier {
     discard: bool,
 }
 
-pub fn record_image_barrier(device: &ash::Device, cb: vk::CommandBuffer, barrier: ImageBarrier) {
+pub fn record_image_barrier(device: &Device, cb: vk::CommandBuffer, barrier: ImageBarrier) {
     let range = vk::ImageSubresourceRange {
         aspect_mask: barrier.aspect_mask,
         base_mip_level: 0,
@@ -19,7 +21,7 @@ pub fn record_image_barrier(device: &ash::Device, cb: vk::CommandBuffer, barrier
     };
 
     vk_sync::cmd::pipeline_barrier(
-        device.fp_v1_0(),
+        device.raw.fp_v1_0(),
         cb,
         None,
         &[],
@@ -29,8 +31,8 @@ pub fn record_image_barrier(device: &ash::Device, cb: vk::CommandBuffer, barrier
             previous_layout: vk_sync::ImageLayout::Optimal,
             next_layout: vk_sync::ImageLayout::Optimal,
             discard_contents: barrier.discard,
-            src_queue_family_index: 0,
-            dst_queue_family_index: 0,
+            src_queue_family_index: device.universal_queue.family.index,
+            dst_queue_family_index: device.universal_queue.family.index,
             image: barrier.image,
             range,
         }],
