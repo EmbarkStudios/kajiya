@@ -9,6 +9,7 @@ mod logging;
 mod math;
 mod mesh;
 mod pipeline_cache;
+mod render_client;
 mod render_passes;
 mod renderer;
 mod rg;
@@ -65,7 +66,10 @@ fn try_main() -> anyhow::Result<()> {
             .expect("window"),
     );
 
-    let mut renderer = renderer::Renderer::new(RenderBackend::new(&*window, &window_cfg)?)?;
+    let render_backend = RenderBackend::new(&*window, &window_cfg)?;
+    let mut render_client = render_client::SdfRenderClient::new(&render_backend)?;
+    let mut renderer = renderer::Renderer::new(render_backend)?;
+
     let mut last_error_text = None;
 
     #[allow(unused_mut)]
@@ -137,9 +141,9 @@ fn try_main() -> anyhow::Result<()> {
             input: input_state,
         };
 
-        match renderer.prepare_frame(&frame_state) {
+        match renderer.prepare_frame(&mut render_client, &frame_state) {
             Ok(()) => {
-                renderer.draw_frame(&frame_state);
+                renderer.draw_frame(&mut render_client, &frame_state);
                 last_error_text = None;
             }
             Err(e) => {

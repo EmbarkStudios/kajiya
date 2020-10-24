@@ -1,10 +1,9 @@
 use crate::{
     backend::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
-    render_passes::SdfRasterBricks,
     rg,
     rg::CompiledRenderGraph,
     rg::RenderGraph,
-    rg::RenderGraphExecutionParams,
+    rg::{RenderGraphExecutionParams, RetiredRenderGraph},
     transient_resource_cache::TransientResourceCache,
 };
 use crate::{
@@ -18,11 +17,10 @@ use backend::{
     buffer::{Buffer, BufferDesc},
     device::{CommandBuffer, Device},
 };
-use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use turbosloth::*;
 use winit::VirtualKeyCode;
 
@@ -36,22 +34,6 @@ struct FrameConstants {
     frame_idx: u32,
 }
 
-struct TemporalImage {
-    resource: Arc<Image>,
-    access_type: vk_sync::AccessType,
-    last_rg_handle: Option<rg::ExportedHandle<Image>>,
-}
-
-impl TemporalImage {
-    pub fn new(resource: Arc<Image>) -> Self {
-        Self {
-            resource,
-            access_type: vk_sync::AccessType::Nothing,
-            last_rg_handle: None,
-        }
-    }
-}
-
 #[allow(dead_code)]
 pub struct Renderer {
     backend: RenderBackend,
@@ -62,10 +44,6 @@ pub struct Renderer {
     frame_idx: u32,
 
     present_shader: ComputePipeline,
-    raster_simple_render_pass: Arc<RenderPass>,
-
-    sdf_img: TemporalImage,
-    cube_index_buffer: Arc<Buffer>,
 
     compiled_rg: Option<CompiledRenderGraph>,
     rg_output_tex: Option<rg::ExportedHandle<Image>>,
@@ -94,6 +72,15 @@ lazy_static::lazy_static! {
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
     Buffer(vk::DescriptorBufferInfo),
+}
+
+pub trait RenderClient {
+    fn prepare_render_graph(
+        &mut self,
+        rg: &mut RenderGraph,
+        frame_state: &FrameState,
+    ) -> rg::ExportedHandle<Image>;
+    fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph);
 }
 
 impl Renderer {
@@ -135,34 +122,6 @@ impl Renderer {
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
-        let raster_simple_render_pass = create_render_pass(
-            &*backend.device,
-            RenderPassDesc {
-                color_attachments: &[RenderPassAttachmentDesc::new(
-                    vk::Format::R16G16B16A16_SFLOAT,
-                )
-                .garbage_input()],
-                depth_attachment: Some(RenderPassAttachmentDesc::new(
-                    vk::Format::D24_UNORM_S8_UINT,
-                )),
-            },
-        )?;
-
-        let sdf_img = backend.device.create_image(
-            ImageDesc::new_3d(vk::Format::R16_SFLOAT, [SDF_DIM, SDF_DIM, SDF_DIM])
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED),
-            None,
-        )?;
-
-        let cube_indices = cube_indices();
-        let cube_index_buffer = backend.device.create_buffer(
-            BufferDesc {
-                size: cube_indices.len() * 4,
-                usage: vk::BufferUsageFlags::INDEX_BUFFER,
-            },
-            Some((&cube_indices).as_byte_slice()),
-        )?;
-
         Ok(Renderer {
             backend,
             dynamic_constants,
@@ -172,17 +131,12 @@ impl Renderer {
             transient_resource_cache: Default::default(),
             present_shader,
 
-            raster_simple_render_pass,
-
-            sdf_img: TemporalImage::new(Arc::new(sdf_img)),
-            cube_index_buffer: Arc::new(cube_index_buffer),
-
             compiled_rg: None,
             rg_output_tex: None,
         })
     }
 
-    pub fn draw_frame(&mut self, frame_state: &FrameState) {
+    pub fn draw_frame(&mut self, render_client: &mut dyn RenderClient, frame_state: &FrameState) {
         self.dynamic_constants.advance_frame();
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
 
@@ -237,9 +191,7 @@ impl Renderer {
 
                 let (rg_output_img, rg_output_access_type) = retired_rg.get_image(rg_output_img);
 
-                if let Some(handle) = self.sdf_img.last_rg_handle.take() {
-                    self.sdf_img.access_type = retired_rg.get_image(handle).1;
-                }
+                render_client.retire_render_graph(&retired_rg);
 
                 record_image_barrier(
                     device,
@@ -363,62 +315,14 @@ impl Renderer {
         set
     }
 
-    fn prepare_render_graph(&mut self, rg: &mut RenderGraph, frame_state: &FrameState) {
-        let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
-        let cube_index_buffer = rg.import_buffer(
-            self.cube_index_buffer.clone(),
-            vk_sync::AccessType::TransferWrite,
-        );
-
-        let mut depth_img = crate::render_passes::create_image(
-            rg,
-            ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
-        );
-        crate::render_passes::clear_depth(rg, &mut depth_img);
-        crate::render_passes::edit_sdf(rg, &mut sdf_img, self.frame_idx == 0);
-
-        let sdf_raster_bricks: SdfRasterBricks =
-            crate::render_passes::calculate_sdf_bricks_meta(rg, &sdf_img);
-
-        /*let mut tex = crate::render_passes::raymarch_sdf(
-            rg,
-            &sdf_img,
-            ImageDesc::new_2d(
-                vk::Format::R16G16B16A16_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ),
-        );*/
-        let mut tex = crate::render_passes::create_image(
-            rg,
-            ImageDesc::new_2d(
-                vk::Format::R16G16B16A16_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ),
-        );
-        crate::render_passes::clear_color(rg, &mut tex, [0.1, 0.2, 0.5, 1.0]);
-
-        crate::render_passes::raster_sdf(
-            rg,
-            self.raster_simple_render_pass.clone(),
-            &mut depth_img,
-            &mut tex,
-            crate::render_passes::RasterSdfData {
-                sdf_img: &sdf_img,
-                brick_inst_buffer: &sdf_raster_bricks.brick_inst_buffer,
-                brick_meta_buffer: &sdf_raster_bricks.brick_meta_buffer,
-                cube_index_buffer: &cube_index_buffer,
-            },
-        );
-
-        let tex = crate::render_passes::blur(rg, &tex);
-        self.rg_output_tex = Some(rg.export_image(tex, vk::ImageUsageFlags::SAMPLED));
-        self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
-    }
-
-    pub fn prepare_frame(&mut self, frame_state: &FrameState) -> anyhow::Result<()> {
+    pub fn prepare_frame(
+        &mut self,
+        render_client: &mut dyn RenderClient,
+        frame_state: &FrameState,
+    ) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
 
-        self.prepare_render_graph(&mut rg, frame_state);
+        self.rg_output_tex = Some(render_client.prepare_render_graph(&mut rg, frame_state));
 
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
@@ -448,25 +352,6 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
             1.0
         },
     ]
-}
-
-// Vertices: bits 0, 1, 2, map to +/- X, Y, Z
-fn cube_indices() -> Vec<u32> {
-    let mut res = Vec::with_capacity(6 * 2 * 3);
-
-    for (ndim, dim0, dim1) in [(1, 2, 4), (2, 4, 1), (4, 1, 2)].iter().copied() {
-        for (nbit, dim0, dim1) in [(0, dim1, dim0), (ndim, dim0, dim1)].iter().copied() {
-            res.push(nbit);
-            res.push(nbit + dim0);
-            res.push(nbit + dim1);
-
-            res.push(nbit + dim1);
-            res.push(nbit + dim0);
-            res.push(nbit + dim0 + dim1);
-        }
-    }
-
-    res
 }
 
 pub fn bind_descriptor_set(
