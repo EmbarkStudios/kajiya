@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use ash::{version::DeviceV1_0, vk};
 
-use crate::{backend::image::ImageViewDesc, backend::shader::*, renderer::SDF_DIM, rg::*};
+use crate::{backend::image::ImageViewDesc, backend::shader::*, render_client::SDF_DIM, rg::*};
 
 pub fn create_image(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();

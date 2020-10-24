@@ -6,42 +6,24 @@ use crate::{
     rg::{RenderGraphExecutionParams, RetiredRenderGraph},
     transient_resource_cache::TransientResourceCache,
 };
-use crate::{
-    chunky_list::TempList, dynamic_constants::*, pipeline_cache::*, viewport::ViewConstants,
-    FrameState,
-};
+use crate::{dynamic_constants::*, pipeline_cache::*, FrameState};
 use ash::{version::DeviceV1_0, vk};
 use backend::{
     barrier::record_image_barrier,
     barrier::ImageBarrier,
     buffer::{Buffer, BufferDesc},
-    device::{CommandBuffer, Device},
 };
-use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::collections::HashMap;
 use turbosloth::*;
-use winit::VirtualKeyCode;
 
-pub const SDF_DIM: u32 = 256;
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct FrameConstants {
-    view_constants: ViewConstants,
-    mouse: [f32; 4],
-    frame_idx: u32,
-}
-
-#[allow(dead_code)]
 pub struct Renderer {
     backend: RenderBackend,
     pipeline_cache: PipelineCache,
     transient_resource_cache: TransientResourceCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
-    frame_idx: u32,
 
     present_shader: ComputePipeline,
 
@@ -80,6 +62,13 @@ pub trait RenderClient {
         rg: &mut RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image>;
+
+    fn prepare_frame_constants(
+        &mut self,
+        dynamic_constants: &mut DynamicConstants,
+        frame_state: &FrameState,
+    );
+
     fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph);
 }
 
@@ -126,7 +115,6 @@ impl Renderer {
             backend,
             dynamic_constants,
             frame_descriptor_set,
-            frame_idx: !0,
             pipeline_cache: PipelineCache::new(&LazyCache::create()),
             transient_resource_cache: Default::default(),
             present_shader,
@@ -138,17 +126,9 @@ impl Renderer {
 
     pub fn draw_frame(&mut self, render_client: &mut dyn RenderClient, frame_state: &FrameState) {
         self.dynamic_constants.advance_frame();
-        self.frame_idx = self.frame_idx.overflowing_add(1).0;
+        let frame_constants_offset = self.dynamic_constants.current_offset();
 
-        let width = frame_state.window_cfg.width;
-        let height = frame_state.window_cfg.height;
-
-        let frame_constants_offset = self.dynamic_constants.push(FrameConstants {
-            view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
-                .build(),
-            mouse: gen_shader_mouse_state(&frame_state),
-            frame_idx: self.frame_idx,
-        });
+        render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
 
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
@@ -328,112 +308,5 @@ impl Renderer {
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
         Ok(())
-    }
-}
-
-fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
-    let pos = frame_state.input.mouse.pos
-        / Vec2::new(
-            frame_state.window_cfg.width as f32,
-            frame_state.window_cfg.height as f32,
-        );
-
-    [
-        pos.x(),
-        pos.y(),
-        if (frame_state.input.mouse.button_mask & 1) != 0 {
-            1.0
-        } else {
-            0.0
-        },
-        if frame_state.input.keys.is_down(VirtualKeyCode::LShift) {
-            -1.0
-        } else {
-            1.0
-        },
-    ]
-}
-
-pub fn bind_descriptor_set(
-    device: &Device,
-    cb: &CommandBuffer,
-    pipeline: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
-    set_index: u32,
-    bindings: &[DescriptorSetBinding],
-) {
-    let shader_set_info = if let Some(info) = pipeline.set_layout_info.get(set_index as usize) {
-        info
-    } else {
-        println!(
-            "bind_descriptor_set: set index {} does not exist",
-            set_index
-        );
-        return;
-    };
-
-    let image_info = TempList::new();
-    let buffer_info = TempList::new();
-
-    let raw_device = &device.raw;
-
-    let descriptor_pool = {
-        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
-            .max_sets(1)
-            .pool_sizes(&pipeline.descriptor_pool_sizes);
-
-        unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }.unwrap()
-    };
-    device.defer_release(descriptor_pool);
-
-    let descriptor_set = {
-        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
-            .descriptor_pool(descriptor_pool)
-            .set_layouts(std::slice::from_ref(
-                &pipeline.descriptor_set_layouts[set_index as usize],
-            ));
-
-        unsafe { raw_device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()[0]
-    };
-
-    unsafe {
-        let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
-            .iter()
-            .enumerate()
-            .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
-            .map(|(binding_idx, binding)| {
-                let write = vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
-                    .dst_binding(binding_idx as _)
-                    .dst_array_element(0);
-
-                match binding {
-                    DescriptorSetBinding::Image(image) => write
-                        .descriptor_type(match image.image_layout {
-                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
-                                vk::DescriptorType::SAMPLED_IMAGE
-                            }
-                            vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
-                            _ => unimplemented!("{:?}", image.image_layout),
-                        })
-                        .image_info(std::slice::from_ref(image_info.add(*image)))
-                        .build(),
-                    DescriptorSetBinding::Buffer(buffer) => write
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                        .build(),
-                }
-            })
-            .collect();
-
-        device.raw.update_descriptor_sets(&descriptor_writes, &[]);
-
-        device.raw.cmd_bind_descriptor_sets(
-            cb.raw,
-            pipeline.pipeline_bind_point,
-            pipeline.pipeline_layout,
-            set_index,
-            &[descriptor_set],
-            &[],
-        );
     }
 }

@@ -28,6 +28,10 @@ impl DynamicConstants {
         self.frame_offset_bytes = 0;
     }
 
+    pub fn current_offset(&self) -> u32 {
+        (self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES + self.frame_offset_bytes) as u32
+    }
+
     pub fn push<T: Copy>(&mut self, t: T) -> u32 {
         let t_size = size_of::<T>();
         assert!(self.frame_offset_bytes + t_size < DYNAMIC_CONSTANTS_SIZE_BYTES);

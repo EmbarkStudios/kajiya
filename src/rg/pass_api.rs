@@ -9,13 +9,15 @@ use super::{
 };
 use crate::{
     backend::shader::FramebufferCacheKey,
+    backend::shader::ShaderPipelineCommon,
     backend::shader::MAX_COLOR_ATTACHMENTS,
     backend::{
         device::{CommandBuffer, Device},
         image::{ImageViewDesc, ImageViewDescBuilder},
         shader::{ComputePipeline, RasterPipeline},
     },
-    renderer::{bind_descriptor_set, DescriptorSetBinding},
+    chunky_list::TempList,
+    renderer::DescriptorSetBinding,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
@@ -401,5 +403,89 @@ impl Ref<Buffer, GpuUav> {
         RenderPassBinding::Buffer(RenderPassBufferBinding {
             handle: self.handle,
         })
+    }
+}
+
+fn bind_descriptor_set(
+    device: &Device,
+    cb: &CommandBuffer,
+    pipeline: &impl std::ops::Deref<Target = ShaderPipelineCommon>,
+    set_index: u32,
+    bindings: &[DescriptorSetBinding],
+) {
+    let shader_set_info = if let Some(info) = pipeline.set_layout_info.get(set_index as usize) {
+        info
+    } else {
+        println!(
+            "bind_descriptor_set: set index {} does not exist",
+            set_index
+        );
+        return;
+    };
+
+    let image_info = TempList::new();
+    let buffer_info = TempList::new();
+
+    let raw_device = &device.raw;
+
+    let descriptor_pool = {
+        let descriptor_pool_create_info = vk::DescriptorPoolCreateInfo::builder()
+            .max_sets(1)
+            .pool_sizes(&pipeline.descriptor_pool_sizes);
+
+        unsafe { raw_device.create_descriptor_pool(&descriptor_pool_create_info, None) }.unwrap()
+    };
+    device.defer_release(descriptor_pool);
+
+    let descriptor_set = {
+        let descriptor_set_allocate_info = vk::DescriptorSetAllocateInfo::builder()
+            .descriptor_pool(descriptor_pool)
+            .set_layouts(std::slice::from_ref(
+                &pipeline.descriptor_set_layouts[set_index as usize],
+            ));
+
+        unsafe { raw_device.allocate_descriptor_sets(&descriptor_set_allocate_info) }.unwrap()[0]
+    };
+
+    unsafe {
+        let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
+            .iter()
+            .enumerate()
+            .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
+            .map(|(binding_idx, binding)| {
+                let write = vk::WriteDescriptorSet::builder()
+                    .dst_set(descriptor_set)
+                    .dst_binding(binding_idx as _)
+                    .dst_array_element(0);
+
+                match binding {
+                    DescriptorSetBinding::Image(image) => write
+                        .descriptor_type(match image.image_layout {
+                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                                vk::DescriptorType::SAMPLED_IMAGE
+                            }
+                            vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
+                            _ => unimplemented!("{:?}", image.image_layout),
+                        })
+                        .image_info(std::slice::from_ref(image_info.add(*image)))
+                        .build(),
+                    DescriptorSetBinding::Buffer(buffer) => write
+                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                        .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
+                        .build(),
+                }
+            })
+            .collect();
+
+        device.raw.update_descriptor_sets(&descriptor_writes, &[]);
+
+        device.raw.cmd_bind_descriptor_sets(
+            cb.raw,
+            pipeline.pipeline_bind_point,
+            pipeline.pipeline_layout,
+            set_index,
+            &[descriptor_set],
+            &[],
+        );
     }
 }

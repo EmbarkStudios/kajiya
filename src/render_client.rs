@@ -1,16 +1,31 @@
 use crate::{
     backend::{self, image::*, shader::*, RenderBackend},
+    dynamic_constants::DynamicConstants,
     render_passes::SdfRasterBricks,
     renderer::*,
     rg,
     rg::RetiredRenderGraph,
+    viewport::ViewConstants,
+    FrameState,
 };
 use ash::vk;
 use backend::buffer::{Buffer, BufferDesc};
 use byte_slice_cast::AsByteSlice;
+use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
+use winit::VirtualKeyCode;
+
+pub const SDF_DIM: u32 = 256;
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct FrameConstants {
+    view_constants: ViewConstants,
+    mouse: [f32; 4],
+    frame_idx: u32,
+}
 
 pub struct SdfRenderClient {
     raster_simple_render_pass: Arc<RenderPass>,
@@ -63,7 +78,7 @@ impl RenderClient for SdfRenderClient {
     fn prepare_render_graph(
         &mut self,
         rg: &mut crate::rg::RenderGraph,
-        frame_state: &crate::FrameState,
+        frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
         let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
         let cube_index_buffer = rg.import_buffer(
@@ -117,6 +132,22 @@ impl RenderClient for SdfRenderClient {
         rg.export_image(tex, vk::ImageUsageFlags::SAMPLED)
     }
 
+    fn prepare_frame_constants(
+        &mut self,
+        dynamic_constants: &mut DynamicConstants,
+        frame_state: &FrameState,
+    ) {
+        let width = frame_state.window_cfg.width;
+        let height = frame_state.window_cfg.height;
+
+        dynamic_constants.push(FrameConstants {
+            view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
+                .build(),
+            mouse: gen_shader_mouse_state(&frame_state),
+            frame_idx: self.frame_idx,
+        });
+    }
+
     fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph) {
         if let Some(handle) = self.sdf_img.last_rg_handle.take() {
             self.sdf_img.access_type = retired_rg.get_image(handle).1;
@@ -143,6 +174,29 @@ fn cube_indices() -> Vec<u32> {
     }
 
     res
+}
+
+fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
+    let pos = frame_state.input.mouse.pos
+        / Vec2::new(
+            frame_state.window_cfg.width as f32,
+            frame_state.window_cfg.height as f32,
+        );
+
+    [
+        pos.x(),
+        pos.y(),
+        if (frame_state.input.mouse.button_mask & 1) != 0 {
+            1.0
+        } else {
+            0.0
+        },
+        if frame_state.input.keys.is_down(VirtualKeyCode::LShift) {
+            -1.0
+        } else {
+            1.0
+        },
+    ]
 }
 
 struct TemporalImage {
