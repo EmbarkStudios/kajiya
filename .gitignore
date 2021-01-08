@@ -1,3 +1,5 @@
 /target
 /.vscode
+/assets/images
+/assets/meshes
 *.log

@@ -72,6 +72,8 @@ pub struct PipelineCache {
     compute_entries: HashMap<ComputePipelineHandle, ComputePipelineCacheEntry>,
     raster_entries: HashMap<RasterPipelineHandle, RasterPipelineCacheEntry>,
     path_to_handle: HashMap<PathBuf, ComputePipelineHandle>,
+    raster_shaders_to_handle:
+        HashMap<Vec<RasterPipelineShader<&'static str>>, RasterPipelineHandle>,
 }
 
 impl PipelineCache {
@@ -81,6 +83,7 @@ impl PipelineCache {
             raster_entries: Default::default(),
             lazy_cache: lazy_cache.clone(),
             path_to_handle: Default::default(),
+            raster_shaders_to_handle: Default::default(),
         }
     }
 
@@ -123,10 +126,16 @@ impl PipelineCache {
 
     pub fn register_raster(
         &mut self,
-        shaders: &[RasterPipelineShader<&str>],
+        shaders: &[RasterPipelineShader<&'static str>],
         desc: &RasterPipelineDesc,
     ) -> RasterPipelineHandle {
+        if let Some(handle) = self.raster_shaders_to_handle.get(shaders) {
+            return *handle;
+        }
+
         let handle = RasterPipelineHandle(self.compute_entries.len());
+        self.raster_shaders_to_handle
+            .insert(shaders.to_owned(), handle);
         self.raster_entries.insert(
             handle,
             RasterPipelineCacheEntry {
@@ -161,7 +170,7 @@ impl PipelineCache {
         device: &Arc<crate::backend::device::Device>,
     ) -> anyhow::Result<()> {
         for entry in self.compute_entries.values_mut() {
-            if entry.lazy_handle.is_stale() {
+            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
                 // TODO: release
                 entry.pipeline = None;
             }
@@ -177,13 +186,14 @@ impl PipelineCache {
         }
 
         for entry in self.raster_entries.values_mut() {
-            if entry.lazy_handle.is_stale() {
+            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
                 // TODO: release
                 entry.pipeline = None;
             }
 
             if entry.pipeline.is_none() {
                 let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
+                assert!(!entry.lazy_handle.is_stale());
 
                 let compiled_shaders = compiled_shaders
                     .shaders

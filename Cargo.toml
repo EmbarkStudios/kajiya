@@ -36,7 +36,7 @@ slingshot = { path = "crates/slingshot" }
 winit = "=0.19.5"
 
 [patch.crates-io]
-turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git" }
+turbosloth = { path = "../turbosloth" }
 
 [profile.release]
 debug = true

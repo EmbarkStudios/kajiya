@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use slingshot::ash::{version::DeviceV1_0, vk};
 
-use crate::{backend::image::ImageViewDesc, backend::shader::*, render_client::SDF_DIM, rg::*};
+use crate::{backend::image::ImageViewDesc, backend::shader::*, rg::*};
 
 pub fn create_image(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
     let mut pass = rg.add_pass();
@@ -68,7 +68,7 @@ pub fn clear_color(rg: &mut RenderGraph, img: &mut Handle<Image>, clear_color: [
     });
 }
 
-pub fn raymarch_sdf(
+/*pub fn raymarch_sdf(
     rg: &mut RenderGraph,
     sdf_img: &Handle<Image>,
     desc: ImageDesc,
@@ -286,6 +286,97 @@ pub fn raster_sdf(
                 1,
                 0,
             );
+        }
+
+        api.end_render_pass();
+    });
+}*/
+
+#[derive(Clone)]
+pub struct UploadedTriMesh {
+    pub index_buffer: Arc<Buffer>,
+    pub vertex_buffer: Arc<Buffer>,
+    pub index_count: u32,
+}
+
+pub struct RasterMeshesData<'a> {
+    pub meshes: &'a [UploadedTriMesh],
+    pub vertex_buffer: &'a Handle<Buffer>,
+}
+
+pub fn raster_meshes(
+    rg: &mut RenderGraph,
+    render_pass: Arc<RenderPass>,
+    depth_img: &mut Handle<Image>,
+    color_img: &mut Handle<Image>,
+    mesh_data: RasterMeshesData<'_>,
+) {
+    let mut pass = rg.add_pass();
+
+    let pipeline = pass.register_raster_pipeline(
+        &[
+            RasterPipelineShader {
+                code: "/assets/shaders/raster_simple_vs.hlsl",
+                desc: RasterShaderDesc::builder(RasterStage::Vertex)
+                    .build()
+                    .unwrap(),
+            },
+            RasterPipelineShader {
+                code: "/assets/shaders/raster_simple_ps.hlsl",
+                desc: RasterShaderDesc::builder(RasterStage::Pixel)
+                    .build()
+                    .unwrap(),
+            },
+        ],
+        RasterPipelineDesc::builder()
+            .render_pass(render_pass.clone())
+            .face_cull(true),
+    );
+
+    let chunks: Vec<UploadedTriMesh> = mesh_data.meshes.to_owned();
+
+    let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
+    let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
+    let vb_ref = pass.read(
+        mesh_data.vertex_buffer,
+        AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer,
+    );
+
+    pass.render(move |api| {
+        let [width, height, _] = color_ref.desc().extent;
+
+        api.begin_render_pass(
+            &*render_pass,
+            [width, height],
+            &[(color_ref, &ImageViewDesc::default())],
+            Some((
+                depth_ref,
+                &ImageViewDesc::builder()
+                    .aspect_mask(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                    .build()
+                    .unwrap(),
+            )),
+        );
+
+        api.set_default_view_and_scissor([width, height]);
+
+        let _pipeline =
+            api.bind_raster_pipeline(pipeline.into_binding().descriptor_set(0, &[vb_ref.bind()]));
+
+        unsafe {
+            let raw_device = &api.device().raw;
+            let cb = api.cb;
+
+            for chunk in chunks {
+                raw_device.cmd_bind_index_buffer(
+                    cb.raw,
+                    chunk.index_buffer.raw,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+
+                raw_device.cmd_draw_indexed(cb.raw, chunk.index_count, 1, 0, 0, 0);
+            }
         }
 
         api.end_render_pass();

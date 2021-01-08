@@ -1,7 +1,8 @@
 use crate::{
+    asset::mesh::{PackedTriangleMesh, PackedVertex},
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
-    render_passes::SdfRasterBricks,
+    render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
     rg,
     rg::RetiredRenderGraph,
@@ -13,11 +14,9 @@ use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use slingshot::{ash::vk, vk_sync};
-use std::sync::Arc;
+use slingshot::{ash::vk, backend::device, vk_sync};
+use std::{mem::size_of, sync::Arc};
 use winit::VirtualKeyCode;
-
-pub const SDF_DIM: u32 = 256;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -27,29 +26,29 @@ struct FrameConstants {
     frame_idx: u32,
 }
 
-pub struct SdfRenderClient {
+pub struct VickiRenderClient {
+    device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
-    sdf_img: TemporalImage,
-    cube_index_buffer: Arc<Buffer>,
+    //sdf_img: TemporalImage,
+    //cube_index_buffer: Arc<Buffer>,
+    meshes: Vec<UploadedTriMesh>,
     frame_idx: u32,
 }
 
-impl SdfRenderClient {
-    pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
-        let sdf_img = backend.device.create_image(
-            ImageDesc::new_3d(vk::Format::R16_SFLOAT, [SDF_DIM, SDF_DIM, SDF_DIM])
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED),
-            None,
-        )?;
+fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
+    unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * size_of::<T>()) }
+}
 
-        let cube_indices = cube_indices();
+impl VickiRenderClient {
+    pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
+        /*let cube_indices = cube_indices();
         let cube_index_buffer = backend.device.create_buffer(
             BufferDesc {
                 size: cube_indices.len() * 4,
                 usage: vk::BufferUsageFlags::INDEX_BUFFER,
             },
             Some((&cube_indices).as_byte_slice()),
-        )?;
+        )?;*/
 
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
@@ -67,35 +66,68 @@ impl SdfRenderClient {
         Ok(Self {
             raster_simple_render_pass,
 
-            sdf_img: TemporalImage::new(Arc::new(sdf_img)),
-            cube_index_buffer: Arc::new(cube_index_buffer),
+            //sdf_img: TemporalImage::new(Arc::new(sdf_img)),
+            //cube_index_buffer: Arc::new(cube_index_buffer),
+            device: backend.device.clone(),
+            meshes: Default::default(),
             frame_idx: 0u32,
         })
     }
+
+    pub fn add_mesh(&mut self, mesh: PackedTriangleMesh) {
+        let index_buffer = Arc::new(
+            self.device
+                .create_buffer(
+                    BufferDesc {
+                        size: mesh.indices.len() * 4,
+                        usage: vk::BufferUsageFlags::INDEX_BUFFER,
+                    },
+                    Some((&mesh.indices).as_byte_slice()),
+                )
+                .unwrap(),
+        );
+
+        let vertex_buffer = Arc::new(
+            self.device
+                .create_buffer(
+                    BufferDesc {
+                        size: mesh.verts.len() * size_of::<PackedVertex>(),
+                        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+                    },
+                    Some(as_byte_slice_unchecked(&mesh.verts)),
+                )
+                .unwrap(),
+        );
+
+        self.meshes.push(UploadedTriMesh {
+            index_buffer,
+            vertex_buffer,
+            index_count: mesh.indices.len() as _,
+        });
+    }
 }
 
-impl RenderClient<FrameState> for SdfRenderClient {
+impl RenderClient<FrameState> for VickiRenderClient {
     fn prepare_render_graph(
         &mut self,
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
+        /*let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
         let cube_index_buffer = rg.import_buffer(
             self.cube_index_buffer.clone(),
             vk_sync::AccessType::TransferWrite,
-        );
+        );*/
 
         let mut depth_img = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
         );
         crate::render_passes::clear_depth(rg, &mut depth_img);
-        crate::render_passes::edit_sdf(rg, &mut sdf_img, self.frame_idx == 0);
+        /*crate::render_passes::edit_sdf(rg, &mut sdf_img, self.frame_idx == 0);
 
         let sdf_raster_bricks: SdfRasterBricks =
-            crate::render_passes::calculate_sdf_bricks_meta(rg, &sdf_img);
-
+            crate::render_passes::calculate_sdf_bricks_meta(rg, &sdf_img);*/
         /*let mut tex = crate::render_passes::raymarch_sdf(
             rg,
             &sdf_img,
@@ -104,6 +136,7 @@ impl RenderClient<FrameState> for SdfRenderClient {
                 frame_state.window_cfg.dims(),
             ),
         );*/
+
         let mut tex = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(
@@ -113,7 +146,23 @@ impl RenderClient<FrameState> for SdfRenderClient {
         );
         crate::render_passes::clear_color(rg, &mut tex, [0.1, 0.2, 0.5, 1.0]);
 
-        crate::render_passes::raster_sdf(
+        let vertex_buffer = rg.import_buffer(
+            self.meshes.first().unwrap().vertex_buffer.clone(),
+            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
+        crate::render_passes::raster_meshes(
+            rg,
+            self.raster_simple_render_pass.clone(),
+            &mut depth_img,
+            &mut tex,
+            RasterMeshesData {
+                meshes: self.meshes.as_slice(),
+                vertex_buffer: &vertex_buffer,
+            },
+        );
+
+        /*crate::render_passes::raster_sdf(
             rg,
             self.raster_simple_render_pass.clone(),
             &mut depth_img,
@@ -124,10 +173,10 @@ impl RenderClient<FrameState> for SdfRenderClient {
                 brick_meta_buffer: &sdf_raster_bricks.brick_meta_buffer,
                 cube_index_buffer: &cube_index_buffer,
             },
-        );
+        );*/
 
         //let tex = crate::render_passes::blur(rg, &tex);
-        self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
+        //self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
 
         rg.export_image(tex, vk::ImageUsageFlags::SAMPLED)
     }
@@ -149,9 +198,9 @@ impl RenderClient<FrameState> for SdfRenderClient {
     }
 
     fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph) {
-        if let Some(handle) = self.sdf_img.last_rg_handle.take() {
+        /*if let Some(handle) = self.sdf_img.last_rg_handle.take() {
             self.sdf_img.access_type = retired_rg.get_image(handle).1;
-        }
+        }*/
 
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }

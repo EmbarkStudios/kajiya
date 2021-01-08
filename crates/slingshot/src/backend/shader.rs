@@ -133,6 +133,7 @@ pub fn create_descriptor_set_layouts(
             for (binding_index, binding) in set.into_iter() {
                 match binding.ty {
                     rspirv_reflect::DescriptorType::UNIFORM_BUFFER
+                    | rspirv_reflect::DescriptorType::UNIFORM_TEXEL_BUFFER
                     | rspirv_reflect::DescriptorType::STORAGE_IMAGE
                     | rspirv_reflect::DescriptorType::STORAGE_BUFFER => bindings.push(
                         vk::DescriptorSetLayoutBinding::builder()
@@ -142,6 +143,9 @@ pub fn create_descriptor_set_layouts(
                             .descriptor_type(match binding.ty {
                                 rspirv_reflect::DescriptorType::UNIFORM_BUFFER => {
                                     vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC
+                                }
+                                rspirv_reflect::DescriptorType::UNIFORM_TEXEL_BUFFER => {
+                                    vk::DescriptorType::UNIFORM_TEXEL_BUFFER
                                 }
                                 rspirv_reflect::DescriptorType::STORAGE_IMAGE => {
                                     vk::DescriptorType::STORAGE_IMAGE
@@ -395,7 +399,7 @@ pub enum RasterStage {
     Pixel,
 }
 
-#[derive(Builder, Hash, Clone)]
+#[derive(Builder, Hash, PartialEq, Eq, Clone)]
 #[builder(pattern = "owned")]
 pub struct RasterShaderDesc {
     pub stage: RasterStage,
@@ -685,7 +689,7 @@ pub fn create_render_pass(
     }))
 }
 
-#[derive(Hash)]
+#[derive(Hash, PartialEq, Eq)]
 pub struct RasterPipelineShader<ShaderCode> {
     pub code: ShaderCode,
     pub desc: RasterShaderDesc,

@@ -1,5 +1,6 @@
-#if 1
 #include "inc/frame_constants.hlsl"
+
+#if 0
 #include "sdf/sdf_consts.hlsl"
 
 struct VsOut {
@@ -70,19 +71,7 @@ Vertex unpack_vertex(VertexPacked p) {
     return res;
 }
 
-struct CameraMatrices {
-    float4x4 view_to_clip;
-    float4x4 clip_to_view;
-    float4x4 world_to_view;
-    float4x4 view_to_world;
-};
-
-struct Constants {
-    CameraMatrices camera;
-};
-
-ConstantBuffer<Constants> constants: register(b0);
-StructuredBuffer<VertexPacked> vertices;
+[[vk::binding(0)]] StructuredBuffer<VertexPacked> vertices;
 
 struct VsOut {
 	float4 position: SV_Position;
@@ -93,7 +82,11 @@ VsOut main(uint vid: SV_VertexID) {
     VsOut vsout;
 
     Vertex v = unpack_vertex(vertices[vid]);
-    vsout.position = mul(constants.camera.view_to_clip, mul(constants.camera.world_to_view, float4(v.position, 1)));
+
+    float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(v.position, 1.0));
+    float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
+
+    vsout.position = cs_pos;
     vsout.color = float4(v.normal * 0.5 + 0.5, 1);
 
     return vsout;

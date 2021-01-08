@@ -49,7 +49,7 @@ fn try_main() -> anyhow::Result<()> {
     let lazy_cache = LazyCache::create();
 
     let render_backend = RenderBackend::new(&*window, &window_cfg)?;
-    let mut render_client = render_client::SdfRenderClient::new(&render_backend)?;
+    let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     let mut renderer = renderer::Renderer::new(render_backend)?;
 
     let mut last_error_text = None;
@@ -65,11 +65,12 @@ fn try_main() -> anyhow::Result<()> {
 
     let mesh = LoadGltfScene {
         path: "assets/meshes/the_lighthouse/scene.gltf".into(),
-        scale: 1.0,
+        scale: 0.01,
     }
     .into_lazy();
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
     let mesh = pack_triangle_mesh(&mesh);
+    render_client.add_mesh(mesh);
 
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
@@ -150,10 +151,10 @@ fn try_main() -> anyhow::Result<()> {
 }
 
 fn main() {
-    panic::set_hook(Box::new(|panic_info| {
+    /*panic::set_hook(Box::new(|panic_info| {
         println!("rust panic: {}", panic_info);
         loop {}
-    }));
+    }));*/
 
     if let Err(err) = try_main() {
         eprintln!("ERROR: {:?}", err);

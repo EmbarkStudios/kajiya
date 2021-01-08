@@ -1806,7 +1806,6 @@ dependencies = [
 [[package]]
 name = "turbosloth"
 version = "0.2.0"
-source = "git+https://github.com/h3r2tic/turbosloth.git#540964cdd4720d0b8302aad02f30eea21e74c3b9"
 dependencies = [
  "async-trait",
  "wyhash",
