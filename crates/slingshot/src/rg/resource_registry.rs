@@ -47,7 +47,7 @@ pub struct ResourceRegistry<'exec_params, 'constants> {
 }
 
 impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
-    pub(crate) fn image<ViewType: GpuViewType>(&self, resource: Ref<Image, ViewType>) -> &Image {
+    pub fn image<ViewType: GpuViewType>(&self, resource: Ref<Image, ViewType>) -> &Image {
         self.image_from_raw_handle::<ViewType>(resource.handle)
     }
 
@@ -61,7 +61,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         }
     }
 
-    pub(crate) fn buffer<ViewType: GpuViewType>(&self, resource: Ref<Buffer, ViewType>) -> &Buffer {
+    pub fn buffer<ViewType: GpuViewType>(&self, resource: Ref<Buffer, ViewType>) -> &Buffer {
         self.buffer_from_raw_handle::<ViewType>(resource.handle)
     }
 

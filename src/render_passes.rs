@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash::{version::DeviceV1_0, vk};
+use slingshot::ash::{version::DeviceV1_0, vk};
 
 use crate::{backend::image::ImageViewDesc, backend::shader::*, render_client::SDF_DIM, rg::*};
 
@@ -23,8 +23,8 @@ pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
             raw_device.cmd_clear_depth_stencil_image(
                 cb.raw,
                 image.raw,
-                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &ash::vk::ClearDepthStencilValue {
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &vk::ClearDepthStencilValue {
                     depth: 0f32,
                     stencil: 0,
                 },
@@ -53,8 +53,8 @@ pub fn clear_color(rg: &mut RenderGraph, img: &mut Handle<Image>, clear_color: [
             raw_device.cmd_clear_color_image(
                 cb.raw,
                 image.raw,
-                ash::vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &ash::vk::ClearColorValue {
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &vk::ClearColorValue {
                     float32: clear_color,
                 },
                 std::slice::from_ref(&vk::ImageSubresourceRange {
@@ -243,7 +243,7 @@ pub fn raster_sdf(
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
 
     pass.render(move |api| {
-        let [width, height, _] = color_ref.desc.extent;
+        let [width, height, _] = color_ref.desc().extent;
 
         api.begin_render_pass(
             &*render_pass,
@@ -313,7 +313,7 @@ pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
             ],
         ));
 
-        pipeline.dispatch(input_ref.desc.extent);
+        pipeline.dispatch(input_ref.desc().extent);
     });
 
     output

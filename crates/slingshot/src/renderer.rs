@@ -6,7 +6,7 @@ use crate::{
     rg::{RenderGraphExecutionParams, RetiredRenderGraph},
     transient_resource_cache::TransientResourceCache,
 };
-use crate::{dynamic_constants::*, pipeline_cache::*, FrameState};
+use crate::{dynamic_constants::*, pipeline_cache::*};
 use ash::{version::DeviceV1_0, vk};
 use backend::{
     barrier::record_image_barrier,
@@ -51,7 +51,7 @@ lazy_static::lazy_static! {
     .collect();
 }
 
-pub trait RenderClient {
+pub trait RenderClient<FrameState: 'static> {
     fn prepare_render_graph(
         &mut self,
         rg: &mut RenderGraph,
@@ -119,7 +119,11 @@ impl Renderer {
         })
     }
 
-    pub fn draw_frame(&mut self, render_client: &mut dyn RenderClient, frame_state: &FrameState) {
+    pub fn draw_frame<FrameState: 'static>(
+        &mut self,
+        render_client: &mut dyn RenderClient<FrameState>,
+        frame_state: &FrameState,
+    ) {
         self.dynamic_constants.advance_frame();
         let frame_constants_offset = self.dynamic_constants.current_offset();
 
@@ -290,9 +294,9 @@ impl Renderer {
         set
     }
 
-    pub fn prepare_frame(
+    pub fn prepare_frame<FrameState: 'static>(
         &mut self,
-        render_client: &mut dyn RenderClient,
+        render_client: &mut dyn RenderClient<FrameState>,
         frame_state: &FrameState,
     ) -> anyhow::Result<()> {
         let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));

@@ -13,6 +13,7 @@ use glam::{Mat4, Vec3};
         RenderShaderViewsDesc,
     },
 };*/
+use anyhow::Context as _;
 use std::{
     hash::Hash,
     mem::size_of,
@@ -159,7 +160,8 @@ impl LazyWorker for LoadGltfScene {
     type Output = anyhow::Result<TriangleMesh>;
 
     async fn run(self, _ctx: RunContext) -> Self::Output {
-        let (gltf, buffers, _imgs) = gltf::import(&self.path)?;
+        let (gltf, buffers, _imgs) = gltf::import(&self.path)
+            .with_context(|| format!("Loading GLTF scene from {:?}", self.path))?;
 
         if let Some(scene) = gltf.default_scene() {
             let mut res: TriangleMesh = TriangleMesh::default();
@@ -236,6 +238,8 @@ impl LazyWorker for LoadGltfScene {
                                 indices =
                                     (base_index..(base_index + positions.len() as u32)).collect();
                             }
+
+                            log::info!("Loading a mesh with {} indices", indices.len());
 
                             res.indices.append(&mut indices);
                             res.tangents.append(&mut tangents);

@@ -8,12 +8,12 @@ use crate::{
     viewport::ViewConstants,
     FrameState,
 };
-use ash::vk;
 use backend::buffer::{Buffer, BufferDesc};
 use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use slingshot::{ash::vk, vk_sync};
 use std::sync::Arc;
 use winit::VirtualKeyCode;
 
@@ -74,7 +74,7 @@ impl SdfRenderClient {
     }
 }
 
-impl RenderClient for SdfRenderClient {
+impl RenderClient<FrameState> for SdfRenderClient {
     fn prepare_render_graph(
         &mut self,
         rg: &mut crate::rg::RenderGraph,

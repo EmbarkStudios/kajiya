@@ -1,43 +1,23 @@
-mod backend;
-mod bytes;
+mod asset;
 mod camera;
-mod chunky_list;
-mod dynamic_constants;
-mod file;
 mod input;
 mod logging;
 mod math;
-mod mesh;
-mod pipeline_cache;
 mod render_client;
 mod render_passes;
-mod renderer;
-mod rg;
-mod shader_compiler;
-mod transient_resource_cache;
 mod viewport;
 
-use backend::RenderBackend;
+use asset::mesh::*;
 use camera::*;
 use input::*;
 use math::*;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use slingshot::*;
 use std::{panic, sync::Arc};
+use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
-
-#[derive(Copy, Clone)]
-pub struct WindowConfig {
-    pub width: u32,
-    pub height: u32,
-}
-
-impl WindowConfig {
-    pub fn dims(self) -> [u32; 2] {
-        [self.width, self.height]
-    }
-}
 
 pub struct FrameState {
     pub camera_matrices: CameraMatrices,
@@ -66,6 +46,8 @@ fn try_main() -> anyhow::Result<()> {
             .expect("window"),
     );
 
+    let lazy_cache = LazyCache::create();
+
     let render_backend = RenderBackend::new(&*window, &window_cfg)?;
     let mut render_client = render_client::SdfRenderClient::new(&render_backend)?;
     let mut renderer = renderer::Renderer::new(render_backend)?;
@@ -80,8 +62,16 @@ fn try_main() -> anyhow::Result<()> {
 
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
-    let mut last_frame_instant = std::time::Instant::now();
 
+    let mesh = LoadGltfScene {
+        path: "assets/meshes/the_lighthouse/scene.gltf".into(),
+        scale: 1.0,
+    }
+    .into_lazy();
+    let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
+    let mesh = pack_triangle_mesh(&mesh);
+
+    let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
     while running {
         let mut events = Vec::new();

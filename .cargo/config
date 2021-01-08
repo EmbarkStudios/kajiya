@@ -1,7 +1,13 @@
 [target.x86_64-unknown-linux-gnu]
 rustflags = [
     "-C", "link-arg=-fuse-ld=lld",
+    "-C", "opt-level=z",
+    "-C", "inline-threshold=275",
 ]
 
 [target.x86_64-pc-windows-msvc]
 linker = "lld-link.exe"
+rustflags = [
+    "-C", "opt-level=z",
+    "-C", "inline-threshold=275",
+]

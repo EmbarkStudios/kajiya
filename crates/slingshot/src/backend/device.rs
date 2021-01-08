@@ -50,7 +50,7 @@ pub struct DeviceFrame {
 }
 
 pub struct CommandBuffer {
-    pub(crate) raw: vk::CommandBuffer,
+    pub raw: vk::CommandBuffer,
     pub(crate) submit_done_fence: vk::Fence,
     //pool: vk::CommandPool,
 }
@@ -118,9 +118,9 @@ pub(crate) struct CmdExt {
 }
 
 pub struct Device {
+    pub raw: ash::Device,
     pub(crate) pdevice: Arc<PhysicalDevice>,
     pub(crate) instance: Arc<super::instance::Instance>,
-    pub(crate) raw: ash::Device,
     pub(crate) universal_queue: Queue,
     pub(crate) global_allocator: vk_mem::Allocator,
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
