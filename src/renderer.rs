@@ -51,11 +51,6 @@ lazy_static::lazy_static! {
     .collect();
 }
 
-pub enum DescriptorSetBinding {
-    Image(vk::DescriptorImageInfo),
-    Buffer(vk::DescriptorBufferInfo),
-}
-
 pub trait RenderClient {
     fn prepare_render_graph(
         &mut self,

@@ -17,12 +17,16 @@ use crate::{
         shader::{ComputePipeline, RasterPipeline},
     },
     chunky_list::TempList,
-    renderer::DescriptorSetBinding,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
     pub cb: &'a CommandBuffer,
     pub resources: &'a ResourceRegistry<'exec_params, 'constants>,
+}
+
+pub enum DescriptorSetBinding {
+    Image(vk::DescriptorImageInfo),
+    Buffer(vk::DescriptorBufferInfo),
 }
 
 pub struct RenderPassComputePipelineBinding<'a> {

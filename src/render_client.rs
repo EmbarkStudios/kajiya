@@ -126,7 +126,7 @@ impl RenderClient for SdfRenderClient {
             },
         );
 
-        let tex = crate::render_passes::blur(rg, &tex);
+        //let tex = crate::render_passes::blur(rg, &tex);
         self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
 
         rg.export_image(tex, vk::ImageUsageFlags::SAMPLED)

@@ -1,4 +1,4 @@
-// #include "sdf_consts.hlsl"
+#include "sdf_consts.hlsl"
 
 struct BrickInstance {
     uint3 brick_idx;
@@ -36,8 +36,8 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
 
     const float cutoff_dist = 0.0;
 
-    bool octant_occupied = mind < cutoff_dist;
-    bool octant_full = maxd < cutoff_dist;
+    bool octant_occupied = mind - cutoff_dist < 0.0;
+    bool octant_full = maxd + cutoff_dist < 0.0;
     bool brick_part_occupied = WaveActiveAnyTrue(octant_occupied);
     bool brick_part_full = WaveActiveAllTrue(octant_full);
 
@@ -49,9 +49,9 @@ void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
 
     GroupMemoryBarrierWithGroupSync();
 
+    //if (true) {
     //if (0 == idx_within_group && group_any_voxel_occupied) {
     if (0 == idx_within_group && (group_any_voxel_occupied && !group_all_voxels_occupied)) {
-    //if (0 == idx_within_group && group_all_voxels_occupied) {
         uint brick_addr = 0;
 
         // Add to the `instanceCount` field of `VkDrawIndirectCommand` stored in `bricks_meta`
