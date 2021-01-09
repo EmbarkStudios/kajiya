@@ -14,7 +14,11 @@ use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use slingshot::{ash::vk, backend::device, vk_sync};
+use slingshot::{
+    ash::{version::DeviceV1_0, vk},
+    backend::device,
+    vk_sync,
+};
 use std::{mem::size_of, sync::Arc};
 use winit::VirtualKeyCode;
 
@@ -34,6 +38,7 @@ struct GpuMesh {
 }
 
 const MAX_GPU_MESHES: usize = 1024;
+const MAX_TEXTURES: usize = 1024;
 const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
 
 pub struct VickiRenderClient {
@@ -45,11 +50,115 @@ pub struct VickiRenderClient {
     mesh_buffer: Arc<Buffer>,
     vertex_buffer: Arc<Buffer>,
     vertex_buffer_size: usize,
+    bindless_descriptor_set: vk::DescriptorSet,
     frame_idx: u32,
 }
 
-fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
+/*fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
     unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * size_of::<T>()) }
+}*/
+
+fn append_buffer_data<T: Copy>(
+    buf_ptr: *mut u8,
+    buf_size: &mut usize,
+    buf_capacity: usize,
+    data: &[T],
+) -> usize {
+    let alignment = std::mem::align_of::<T>();
+    assert!(alignment.count_ones() == 1);
+
+    let data_start = (*buf_size + alignment - 1) & !(alignment - 1);
+    let data_bytes = data.len() * size_of::<T>();
+    assert!(data_start + data_bytes <= buf_capacity);
+
+    let dst =
+        unsafe { std::slice::from_raw_parts_mut(buf_ptr.add(data_start) as *mut T, data.len()) };
+    dst.copy_from_slice(data);
+
+    *buf_size = data_start + data_bytes;
+    data_start
+}
+
+fn create_bindless_descriptor_set(
+    device: &device::Device,
+    descriptor_count: usize,
+) -> vk::DescriptorSet {
+    let raw_device = &device.raw;
+
+    let set_binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
+        | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
+        | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND];
+    let mut binding_flags_create_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+        .binding_flags(&set_binding_flags)
+        .build();
+
+    let descriptor_set_layout = unsafe {
+        raw_device
+            .create_descriptor_set_layout(
+                &vk::DescriptorSetLayoutCreateInfo::builder()
+                    .bindings(&[vk::DescriptorSetLayoutBinding::builder()
+                        .binding(0)
+                        .descriptor_count(descriptor_count as _)
+                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                        .stage_flags(
+                            vk::ShaderStageFlags::COMPUTE
+                                | vk::ShaderStageFlags::ALL_GRAPHICS
+                                | vk::ShaderStageFlags::RAYGEN_KHR,
+                        )
+                        .build()])
+                    .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
+                    .push_next(&mut binding_flags_create_info)
+                    .build(),
+                None,
+            )
+            .unwrap()
+    };
+
+    let descriptor_sizes = [vk::DescriptorPoolSize {
+        ty: vk::DescriptorType::SAMPLED_IMAGE,
+        descriptor_count: descriptor_count as _,
+    }];
+
+    let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
+        .pool_sizes(&descriptor_sizes)
+        .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
+        .max_sets(1);
+
+    let descriptor_pool = unsafe {
+        raw_device
+            .create_descriptor_pool(&descriptor_pool_info, None)
+            .unwrap()
+    };
+
+    let set = unsafe {
+        raw_device
+            .allocate_descriptor_sets(
+                &vk::DescriptorSetAllocateInfo::builder()
+                    .descriptor_pool(descriptor_pool)
+                    .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+                    .build(),
+            )
+            .unwrap()[0]
+    };
+
+    /*{
+        let buffer_info = vk::DescriptorBufferInfo::builder()
+            .buffer(dynamic_constants.raw)
+            .range(16384)
+            .build();
+
+        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            .dst_set(set)
+            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+            .buffer_info(std::slice::from_ref(&buffer_info))
+            .build();
+
+        unsafe {
+            raw_device.update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[])
+        };
+    }*/
+
+    set
 }
 
 impl VickiRenderClient {
@@ -104,6 +213,9 @@ impl VickiRenderClient {
                 .unwrap(),
         );
 
+        let bindless_descriptor_set =
+            create_bindless_descriptor_set(backend.device.as_ref(), MAX_TEXTURES);
+
         Ok(Self {
             raster_simple_render_pass,
 
@@ -114,6 +226,7 @@ impl VickiRenderClient {
             mesh_buffer,
             vertex_buffer,
             vertex_buffer_size: 0,
+            bindless_descriptor_set,
             frame_idx: 0u32,
         })
     }
@@ -137,28 +250,22 @@ impl VickiRenderClient {
         let vertex_core_offset;
         let vertex_aux_offset;
 
-        unsafe {
+        {
             let vertex_buffer_dst = self.vertex_buffer.allocation_info.get_mapped_data();
 
-            {
-                vertex_core_offset = self.vertex_buffer_size as _;
-                let dst = std::slice::from_raw_parts_mut(
-                    vertex_buffer_dst.add(self.vertex_buffer_size) as *mut PackedVertex,
-                    mesh.verts.len(),
-                );
-                dst.copy_from_slice(&mesh.verts);
-                self.vertex_buffer_size += mesh.verts.len() * size_of::<PackedVertex>();
-            }
+            vertex_core_offset = append_buffer_data(
+                vertex_buffer_dst,
+                &mut self.vertex_buffer_size,
+                VERTEX_BUFFER_CAPACITY,
+                &mesh.verts,
+            ) as _;
 
-            {
-                vertex_aux_offset = self.vertex_buffer_size as _;
-                let dst = std::slice::from_raw_parts_mut(
-                    vertex_buffer_dst.add(self.vertex_buffer_size) as *mut [f32; 4],
-                    mesh.colors.len(),
-                );
-                dst.copy_from_slice(&mesh.colors);
-                self.vertex_buffer_size += mesh.colors.len() * size_of::<[f32; 4]>();
-            }
+            vertex_aux_offset = append_buffer_data(
+                vertex_buffer_dst,
+                &mut self.vertex_buffer_size,
+                VERTEX_BUFFER_CAPACITY,
+                &mesh.colors,
+            ) as _;
         }
 
         let mesh_buffer_dst = unsafe {
@@ -238,6 +345,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
                 meshes: self.meshes.as_slice(),
                 mesh_buffer: &mesh_buffer,
                 vertex_buffer: &vertex_buffer,
+                bindless_descriptor_set: self.bindless_descriptor_set,
             },
         );
 

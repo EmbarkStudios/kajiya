@@ -203,6 +203,7 @@ impl Device {
             .shader_uniform_texel_buffer_array_dynamic_indexing(true)
             .shader_uniform_texel_buffer_array_non_uniform_indexing(true)
             .shader_sampled_image_array_non_uniform_indexing(true)
+            .descriptor_binding_sampled_image_update_after_bind(true)
             .build();
 
         let mut imageless_framebuffer =

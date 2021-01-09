@@ -302,6 +302,7 @@ pub struct RasterMeshesData<'a> {
     pub meshes: &'a [UploadedTriMesh],
     pub mesh_buffer: &'a Handle<Buffer>,
     pub vertex_buffer: &'a Handle<Buffer>,
+    pub bindless_descriptor_set: vk::DescriptorSet,
 }
 
 pub fn raster_meshes(
@@ -348,6 +349,8 @@ pub fn raster_meshes(
         AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer,
     );
 
+    let bindless_descriptor_set = mesh_data.bindless_descriptor_set;
+
     pass.render(move |api| {
         let [width, height, _] = color_ref.desc().extent;
 
@@ -369,7 +372,8 @@ pub fn raster_meshes(
         let _pipeline = api.bind_raster_pipeline(
             pipeline
                 .into_binding()
-                .descriptor_set(1, &[meshes_ref.bind(), vb_ref.bind()]),
+                .descriptor_set(1, &[meshes_ref.bind(), vb_ref.bind()])
+                .raw_descriptor_set(3, bindless_descriptor_set),
         );
 
         unsafe {

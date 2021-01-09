@@ -224,6 +224,7 @@ impl Renderer {
         self.backend.device.finish_frame(current_frame);
     }
 
+    // Descriptor set for per-frame data
     fn create_frame_descriptor_set(
         backend: &RenderBackend,
         dynamic_constants: &Buffer,

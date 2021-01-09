@@ -1,4 +1,4 @@
-[[vk::binding(2, 1)]] Texture2D material_textures[];
+[[vk::binding(0, 3)]] Texture2D material_textures[];
 
 struct PsIn {
     [[vk::location(0)]] float4 color: COLOR0;

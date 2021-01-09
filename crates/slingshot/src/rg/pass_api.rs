@@ -34,6 +34,7 @@ pub struct RenderPassComputePipelineBinding<'a> {
 
     // TODO: fixed size
     bindings: Vec<(u32, &'a [RenderPassBinding])>,
+    raw_bindings: Vec<(u32, vk::DescriptorSet)>,
 }
 
 impl<'a> RenderPassComputePipelineBinding<'a> {
@@ -41,11 +42,17 @@ impl<'a> RenderPassComputePipelineBinding<'a> {
         Self {
             pipeline,
             bindings: Vec::new(),
+            raw_bindings: Vec::new(),
         }
     }
 
     pub fn descriptor_set(mut self, set_idx: u32, bindings: &'a [RenderPassBinding]) -> Self {
         self.bindings.push((set_idx, bindings));
+        self
+    }
+
+    pub fn raw_descriptor_set(mut self, set_idx: u32, binding: vk::DescriptorSet) -> Self {
+        self.raw_bindings.push((set_idx, binding));
         self
     }
 }
@@ -61,6 +68,7 @@ pub struct RenderPassRasterPipelineBinding<'a> {
 
     // TODO: fixed size
     bindings: Vec<(u32, &'a [RenderPassBinding])>,
+    raw_bindings: Vec<(u32, vk::DescriptorSet)>,
 }
 
 impl<'a> RenderPassRasterPipelineBinding<'a> {
@@ -68,11 +76,17 @@ impl<'a> RenderPassRasterPipelineBinding<'a> {
         Self {
             pipeline,
             bindings: Vec::new(),
+            raw_bindings: Vec::new(),
         }
     }
 
     pub fn descriptor_set(mut self, set_idx: u32, bindings: &'a [RenderPassBinding]) -> Self {
         self.bindings.push((set_idx, bindings));
+        self
+    }
+
+    pub fn raw_descriptor_set(mut self, set_idx: u32, binding: vk::DescriptorSet) -> Self {
+        self.raw_bindings.push((set_idx, binding));
         self
     }
 }
@@ -153,6 +167,23 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                 set_index,
                 &bindings,
             );
+        }
+
+        for (set_idx, binding) in binding.raw_bindings {
+            unsafe {
+                self.resources
+                    .execution_params
+                    .device
+                    .raw
+                    .cmd_bind_descriptor_sets(
+                        self.cb.raw,
+                        pipeline.pipeline_bind_point,
+                        pipeline.pipeline_layout,
+                        set_idx,
+                        &[binding],
+                        &[],
+                    );
+            }
         }
 
         BoundComputePipeline {
