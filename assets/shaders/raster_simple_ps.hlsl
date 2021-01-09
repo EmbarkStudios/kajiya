@@ -14,11 +14,10 @@ struct PsIn {
 
 float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     Mesh mesh = meshes[0];
-    //MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * 40);
-    uint albedo_map = vertices.Load(mesh.mat_data_offset + 6 * 4 + ps.material_id * 40);
+    MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * sizeof(MeshMaterial));
 
-    Texture2D tex = material_textures[albedo_map];
-    float4 col = tex.Sample(sampler_llr, ps.uv);
+    Texture2D tex = material_textures[NonUniformResourceIndex(material.albedo_map)];
+    float4 col = tex.Sample(sampler_llr, ps.uv) * float4(material.base_color_mult);
     return col;
 
     return ps.color;
