@@ -61,18 +61,15 @@ impl ImageCache {
         }
     }
 
-    fn load_mesh_map(
-        &mut self,
-        device: &Device,
-        map: &MeshMaterialMap,
-    ) -> anyhow::Result<ImageCacheResponse> {
+    fn load_mesh_map(&mut self, map: &MeshMaterialMap) -> anyhow::Result<ImageCacheResponse> {
         match map {
             MeshMaterialMap::Asset { path, .. } => {
                 if !self.loaded_images.contains_key(path) {
                     let lazy_handle = LoadImage { path: path.clone() }.into_lazy();
                     let image = smol::block_on(lazy_handle.eval(&self.lazy_cache))?;
 
-                    let id = self.next_id.checked_add(1).expect("Ran out of image IDs");
+                    let id = self.next_id;
+                    self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
 
                     self.loaded_images.insert(
                         path.clone(),
@@ -160,17 +157,26 @@ fn try_main() -> anyhow::Result<()> {
 
     let mut image_cache = ImageCache::new(lazy_cache.clone());
 
-    let mesh = pack_triangle_mesh(&mesh);
-    for map in &mesh.maps {
-        let img = image_cache
-            .load_mesh_map(renderer.device().as_ref(), map)
-            .unwrap();
-        match img {
-            ImageCacheResponse::Hit { .. } => {}
-            ImageCacheResponse::Miss { id, image } => {
-                let handle = render_client.add_image(image.as_ref());
-                dbg!(id);
-                dbg!(handle);
+    let mut mesh = pack_triangle_mesh(&mesh);
+    {
+        let mesh_map_gpu_ids: Vec<u32> = mesh
+            .maps
+            .iter()
+            .map(|map| {
+                let img = image_cache.load_mesh_map(map).unwrap();
+                let id = match img {
+                    ImageCacheResponse::Hit { id } => id as u32,
+                    ImageCacheResponse::Miss { id, image } => {
+                        let handle = render_client.add_image(image.as_ref());
+                        id as u32
+                    }
+                };
+                id
+            })
+            .collect();
+        for mat in &mut mesh.materials {
+            for m in &mut mat.maps {
+                *m = mesh_map_gpu_ids[*m as usize];
             }
         }
     }

@@ -38,7 +38,8 @@ pub enum MeshMaterialMap {
     Placeholder([u8; 4]),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+#[repr(C)]
 pub struct MeshMaterial {
     pub base_color_mult: [f32; 4],
     pub maps: [u32; 3],

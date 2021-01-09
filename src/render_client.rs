@@ -38,7 +38,9 @@ struct FrameConstants {
 struct GpuMesh {
     vertex_core_offset: u32,
     vertex_uv_offset: u32,
+    vertex_mat_offset: u32,
     vertex_aux_offset: u32,
+    mat_data_offset: u32,
 }
 
 const MAX_GPU_MESHES: usize = 1024;
@@ -153,6 +155,26 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
     };
 
     set
+}
+
+struct BufferBuilder<'a> {
+    buf_ptr: *mut u8,
+    buf_size: &'a mut usize,
+    buf_capacity: usize,
+}
+
+impl<'a> BufferBuilder<'a> {
+    fn new(buf_ptr: *mut u8, buf_size: &'a mut usize, buf_capacity: usize) -> Self {
+        Self {
+            buf_ptr,
+            buf_size,
+            buf_capacity,
+        }
+    }
+
+    fn append<T: Copy>(&mut self, data: &[T]) -> usize {
+        append_buffer_data(self.buf_ptr, &mut self.buf_size, self.buf_capacity, data)
+    }
 }
 
 impl VickiRenderClient {
@@ -282,34 +304,17 @@ impl VickiRenderClient {
                 .unwrap(),
         );
 
-        let vertex_core_offset;
-        let vertex_uv_offset;
-        let vertex_aux_offset;
+        let mut buffer_builder = BufferBuilder::new(
+            self.vertex_buffer.allocation_info.get_mapped_data(),
+            &mut self.vertex_buffer_size,
+            VERTEX_BUFFER_CAPACITY,
+        );
 
-        {
-            let vertex_buffer_dst = self.vertex_buffer.allocation_info.get_mapped_data();
-
-            vertex_core_offset = append_buffer_data(
-                vertex_buffer_dst,
-                &mut self.vertex_buffer_size,
-                VERTEX_BUFFER_CAPACITY,
-                &mesh.verts,
-            ) as _;
-
-            vertex_uv_offset = append_buffer_data(
-                vertex_buffer_dst,
-                &mut self.vertex_buffer_size,
-                VERTEX_BUFFER_CAPACITY,
-                &mesh.uvs,
-            ) as _;
-
-            vertex_aux_offset = append_buffer_data(
-                vertex_buffer_dst,
-                &mut self.vertex_buffer_size,
-                VERTEX_BUFFER_CAPACITY,
-                &mesh.colors,
-            ) as _;
-        }
+        let vertex_core_offset = buffer_builder.append(&mesh.verts) as _;
+        let vertex_uv_offset = buffer_builder.append(&mesh.uvs) as _;
+        let vertex_mat_offset = buffer_builder.append(&mesh.material_ids) as _;
+        let vertex_aux_offset = buffer_builder.append(&mesh.colors) as _;
+        let mat_data_offset = buffer_builder.append(&mesh.materials) as _;
 
         let mesh_buffer_dst = unsafe {
             let mesh_buffer_dst =
@@ -321,7 +326,9 @@ impl VickiRenderClient {
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,
             vertex_uv_offset,
+            vertex_mat_offset,
             vertex_aux_offset,
+            mat_data_offset,
         };
 
         self.meshes.push(UploadedTriMesh {
