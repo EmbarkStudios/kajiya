@@ -64,8 +64,8 @@ fn try_main() -> anyhow::Result<()> {
     let mut new_mouse_state: MouseState = Default::default();
 
     let mesh = LoadGltfScene {
-        path: "assets/meshes/the_lighthouse/scene.gltf".into(),
-        scale: 0.01,
+        path: "assets/meshes/low_poly_isometric_rooms/scene.gltf".into(),
+        scale: 1.0,
     }
     .into_lazy();
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;

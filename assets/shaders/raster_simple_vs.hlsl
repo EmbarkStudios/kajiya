@@ -1,51 +1,16 @@
 #include "inc/frame_constants.hlsl"
 
-#if 0
-#include "sdf/sdf_consts.hlsl"
-
-struct VsOut {
-	float4 position: SV_Position;
-    [[vk::location(0)]] float4 color: COLOR0;
-    [[vk::location(1)]] float3 vs_pos: COLOR1;
-    [[vk::location(2)]] nointerpolation float4 cell_pos_extent: COLOR2;
-};
-
-struct BrickInstance {
-    uint3 brick_idx;
-    uint pad;
-};
-
-[[vk::binding(0)]] StructuredBuffer<BrickInstance> bricks_buffer;
-
-VsOut main(
-    uint vid: SV_VertexID,
-    uint instance_id: SV_InstanceID
-) {
-    VsOut vsout;
-
-    BrickInstance binst = bricks_buffer[instance_id];
-
-    float voxel_size = 2.0 * HSIZE / SDFRES;
-    float brick_size = voxel_size * BRICKRES;
-    float3 brick_center = (binst.brick_idx - BRICK_GRID_RES * 0.5) * brick_size + brick_size * 0.5;
-
-    float3 pos = (float3(vid & 1, (vid >> 1) & 1, (vid >> 2) & 1) - 0.5) * brick_size;
-    pos += brick_center;
-
-    float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(pos, 1.0));
-    float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
-
-    vsout.position = cs_pos;
-    vsout.color = float4(vid % 3 == 0, vid % 3 == 1, vid % 3 == 2, 1.0);
-    vsout.vs_pos = vs_pos.xyz / vs_pos.w;
-    vsout.cell_pos_extent = float4(brick_center, brick_size);
-
-    return vsout;
-}
-#else
 struct VertexPacked {
 	float4 data0;
 };
+
+struct Mesh {
+    uint vertex_core_offset;
+    uint vertex_aux_offset;
+};
+
+[[vk::binding(0, 1)]] StructuredBuffer<Mesh> meshes;
+[[vk::binding(1, 1)]] ByteAddressBuffer vertices;
 
 struct Vertex {
     float3 position;
@@ -71,8 +36,6 @@ Vertex unpack_vertex(VertexPacked p) {
     return res;
 }
 
-[[vk::binding(0)]] StructuredBuffer<VertexPacked> vertices;
-
 struct VsOut {
 	float4 position: SV_Position;
     [[vk::location(0)]] float4 color: COLOR0;
@@ -81,14 +44,21 @@ struct VsOut {
 VsOut main(uint vid: SV_VertexID) {
     VsOut vsout;
 
-    Vertex v = unpack_vertex(vertices[vid]);
+    Mesh mesh = meshes[0];
+
+    VertexPacked vp;
+    // TODO: replace with Load<float4> once there's a fast path for NV
+    // https://github.com/microsoft/DirectXShaderCompiler/issues/2193
+    vp.data0 = asfloat(vertices.Load4(vid * 16 + mesh.vertex_core_offset));
+    Vertex v = unpack_vertex(vp);
+
+    float4 v_color = asfloat(vertices.Load4(vid * 16 + mesh.vertex_aux_offset));
 
     float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(v.position, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
     vsout.position = cs_pos;
-    vsout.color = float4(v.normal * 0.5 + 0.5, 1);
+    vsout.color = v_color;//float4(v.normal * 0.5 + 0.5, 1);
 
     return vsout;
 }
-#endif

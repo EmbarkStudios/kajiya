@@ -13,6 +13,7 @@ pub struct Buffer {
 pub struct BufferDesc {
     pub size: usize,
     pub usage: vk::BufferUsageFlags,
+    pub mapped: bool,
 }
 
 impl Device {
@@ -77,6 +78,18 @@ impl Device {
     }
 
     pub fn create_buffer(&self, desc: BufferDesc, initial_data: Option<&[u8]>) -> Result<Buffer> {
+        let (memory_usage, allocation_create_flags) = if desc.mapped {
+            (
+                vk_mem::MemoryUsage::CpuToGpu,
+                vk_mem::AllocationCreateFlags::MAPPED,
+            )
+        } else {
+            (
+                vk_mem::MemoryUsage::GpuOnly,
+                vk_mem::AllocationCreateFlags::NONE,
+            )
+        };
+
         let buffer = self.create_buffer_impl(
             desc,
             if initial_data.is_some() {
@@ -85,7 +98,8 @@ impl Device {
                 vk::BufferUsageFlags::empty()
             },
             vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::GpuOnly,
+                usage: memory_usage,
+                flags: allocation_create_flags,
                 ..Default::default()
             },
         )?;

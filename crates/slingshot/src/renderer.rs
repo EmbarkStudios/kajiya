@@ -97,6 +97,7 @@ impl Renderer {
                 desc: BufferDesc {
                     size: buffer_info.size as _,
                     usage: buffer_info.usage,
+                    mapped: true,
                 },
                 allocation,
                 allocation_info,

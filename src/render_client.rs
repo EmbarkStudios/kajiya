@@ -26,12 +26,25 @@ struct FrameConstants {
     frame_idx: u32,
 }
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct GpuMesh {
+    vertex_core_offset: u32,
+    vertex_aux_offset: u32,
+}
+
+const MAX_GPU_MESHES: usize = 1024;
+const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
+
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
     //sdf_img: TemporalImage,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
+    mesh_buffer: Arc<Buffer>,
+    vertex_buffer: Arc<Buffer>,
+    vertex_buffer_size: usize,
     frame_idx: u32,
 }
 
@@ -63,6 +76,34 @@ impl VickiRenderClient {
             },
         )?;
 
+        let mesh_buffer = Arc::new(
+            backend
+                .device
+                .create_buffer(
+                    BufferDesc {
+                        size: MAX_GPU_MESHES * size_of::<GpuMesh>(),
+                        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+                        mapped: true,
+                    },
+                    None,
+                )
+                .unwrap(),
+        );
+
+        let vertex_buffer = Arc::new(
+            backend
+                .device
+                .create_buffer(
+                    BufferDesc {
+                        size: VERTEX_BUFFER_CAPACITY,
+                        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+                        mapped: true,
+                    },
+                    None,
+                )
+                .unwrap(),
+        );
+
         Ok(Self {
             raster_simple_render_pass,
 
@@ -70,38 +111,70 @@ impl VickiRenderClient {
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
             meshes: Default::default(),
+            mesh_buffer,
+            vertex_buffer,
+            vertex_buffer_size: 0,
             frame_idx: 0u32,
         })
     }
 
     pub fn add_mesh(&mut self, mesh: PackedTriangleMesh) {
+        let mesh_idx = self.meshes.len();
+
         let index_buffer = Arc::new(
             self.device
                 .create_buffer(
                     BufferDesc {
                         size: mesh.indices.len() * 4,
                         usage: vk::BufferUsageFlags::INDEX_BUFFER,
+                        mapped: false,
                     },
                     Some((&mesh.indices).as_byte_slice()),
                 )
                 .unwrap(),
         );
 
-        let vertex_buffer = Arc::new(
-            self.device
-                .create_buffer(
-                    BufferDesc {
-                        size: mesh.verts.len() * size_of::<PackedVertex>(),
-                        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-                    },
-                    Some(as_byte_slice_unchecked(&mesh.verts)),
-                )
-                .unwrap(),
-        );
+        let vertex_core_offset;
+        let vertex_aux_offset;
+
+        unsafe {
+            let vertex_buffer_dst = self.vertex_buffer.allocation_info.get_mapped_data();
+
+            {
+                vertex_core_offset = self.vertex_buffer_size as _;
+                let dst = std::slice::from_raw_parts_mut(
+                    vertex_buffer_dst.add(self.vertex_buffer_size) as *mut PackedVertex,
+                    mesh.verts.len(),
+                );
+                dst.copy_from_slice(&mesh.verts);
+                self.vertex_buffer_size += mesh.verts.len() * size_of::<PackedVertex>();
+            }
+
+            {
+                vertex_aux_offset = self.vertex_buffer_size as _;
+                let dst = std::slice::from_raw_parts_mut(
+                    vertex_buffer_dst.add(self.vertex_buffer_size) as *mut [f32; 4],
+                    mesh.colors.len(),
+                );
+                dst.copy_from_slice(&mesh.colors);
+                self.vertex_buffer_size += mesh.colors.len() * size_of::<[f32; 4]>();
+            }
+        }
+
+        let mesh_buffer_dst = unsafe {
+            let mesh_buffer_dst =
+                self.mesh_buffer.allocation_info.get_mapped_data() as *mut GpuMesh;
+            assert!(!mesh_buffer_dst.is_null());
+            std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
+        };
+
+        mesh_buffer_dst[mesh_idx] = GpuMesh {
+            vertex_core_offset,
+            vertex_aux_offset,
+        };
 
         self.meshes.push(UploadedTriMesh {
             index_buffer,
-            vertex_buffer,
             index_count: mesh.indices.len() as _,
         });
     }
@@ -146,8 +219,13 @@ impl RenderClient<FrameState> for VickiRenderClient {
         );
         crate::render_passes::clear_color(rg, &mut tex, [0.1, 0.2, 0.5, 1.0]);
 
+        let mesh_buffer = rg.import_buffer(
+            self.mesh_buffer.clone(),
+            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
         let vertex_buffer = rg.import_buffer(
-            self.meshes.first().unwrap().vertex_buffer.clone(),
+            self.vertex_buffer.clone(),
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
 
@@ -158,6 +236,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
             &mut tex,
             RasterMeshesData {
                 meshes: self.meshes.as_slice(),
+                mesh_buffer: &mesh_buffer,
                 vertex_buffer: &vertex_buffer,
             },
         );

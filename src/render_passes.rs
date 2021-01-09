@@ -295,12 +295,12 @@ pub fn raster_sdf(
 #[derive(Clone)]
 pub struct UploadedTriMesh {
     pub index_buffer: Arc<Buffer>,
-    pub vertex_buffer: Arc<Buffer>,
     pub index_count: u32,
 }
 
 pub struct RasterMeshesData<'a> {
     pub meshes: &'a [UploadedTriMesh],
+    pub mesh_buffer: &'a Handle<Buffer>,
     pub vertex_buffer: &'a Handle<Buffer>,
 }
 
@@ -337,6 +337,12 @@ pub fn raster_meshes(
 
     let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
+
+    let meshes_ref = pass.read(
+        mesh_data.mesh_buffer,
+        AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer,
+    );
+
     let vb_ref = pass.read(
         mesh_data.vertex_buffer,
         AccessType::VertexShaderReadSampledImageOrUniformTexelBuffer,
@@ -360,8 +366,11 @@ pub fn raster_meshes(
 
         api.set_default_view_and_scissor([width, height]);
 
-        let _pipeline =
-            api.bind_raster_pipeline(pipeline.into_binding().descriptor_set(0, &[vb_ref.bind()]));
+        let _pipeline = api.bind_raster_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(1, &[meshes_ref.bind(), vb_ref.bind()]),
+        );
 
         unsafe {
             let raw_device = &api.device().raw;
