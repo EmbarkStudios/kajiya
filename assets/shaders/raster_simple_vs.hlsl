@@ -6,6 +6,7 @@ struct VertexPacked {
 
 struct Mesh {
     uint vertex_core_offset;
+    uint vertex_uv_offset;
     uint vertex_aux_offset;
 };
 
@@ -39,6 +40,7 @@ Vertex unpack_vertex(VertexPacked p) {
 struct VsOut {
 	float4 position: SV_Position;
     [[vk::location(0)]] float4 color: COLOR0;
+    [[vk::location(1)]] float2 uv: COLOR1;
 };
 
 VsOut main(uint vid: SV_VertexID) {
@@ -53,6 +55,7 @@ VsOut main(uint vid: SV_VertexID) {
     Vertex v = unpack_vertex(vp);
 
     float4 v_color = asfloat(vertices.Load4(vid * 16 + mesh.vertex_aux_offset));
+    float2 uv = asfloat(vertices.Load2(vid * 8 + mesh.vertex_uv_offset));
 
     float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(v.position, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
@@ -60,6 +63,7 @@ VsOut main(uint vid: SV_VertexID) {
     vsout.position = cs_pos;
     //vsout.color = v_color;//float4(v.normal * 0.5 + 0.5, 1);
     vsout.color = float4(v.normal * 0.5 + 0.5, 1);
+    vsout.uv = uv;
 
     return vsout;
 }

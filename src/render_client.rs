@@ -37,6 +37,7 @@ struct FrameConstants {
 #[derive(Copy, Clone)]
 struct GpuMesh {
     vertex_core_offset: u32,
+    vertex_uv_offset: u32,
     vertex_aux_offset: u32,
 }
 
@@ -71,19 +72,24 @@ fn append_buffer_data<T: Copy>(
     buf_capacity: usize,
     data: &[T],
 ) -> usize {
-    let alignment = std::mem::align_of::<T>();
-    assert!(alignment.count_ones() == 1);
+    if !data.is_empty() {
+        let alignment = std::mem::align_of::<T>();
+        assert!(alignment.count_ones() == 1);
 
-    let data_start = (*buf_size + alignment - 1) & !(alignment - 1);
-    let data_bytes = data.len() * size_of::<T>();
-    assert!(data_start + data_bytes <= buf_capacity);
+        let data_start = (*buf_size + alignment - 1) & !(alignment - 1);
+        let data_bytes = data.len() * size_of::<T>();
+        assert!(data_start + data_bytes <= buf_capacity);
 
-    let dst =
-        unsafe { std::slice::from_raw_parts_mut(buf_ptr.add(data_start) as *mut T, data.len()) };
-    dst.copy_from_slice(data);
+        let dst = unsafe {
+            std::slice::from_raw_parts_mut(buf_ptr.add(data_start) as *mut T, data.len())
+        };
+        dst.copy_from_slice(data);
 
-    *buf_size = data_start + data_bytes;
-    data_start
+        *buf_size = data_start + data_bytes;
+        data_start
+    } else {
+        0
+    }
 }
 
 fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet {
@@ -277,6 +283,7 @@ impl VickiRenderClient {
         );
 
         let vertex_core_offset;
+        let vertex_uv_offset;
         let vertex_aux_offset;
 
         {
@@ -287,6 +294,13 @@ impl VickiRenderClient {
                 &mut self.vertex_buffer_size,
                 VERTEX_BUFFER_CAPACITY,
                 &mesh.verts,
+            ) as _;
+
+            vertex_uv_offset = append_buffer_data(
+                vertex_buffer_dst,
+                &mut self.vertex_buffer_size,
+                VERTEX_BUFFER_CAPACITY,
+                &mesh.uvs,
             ) as _;
 
             vertex_aux_offset = append_buffer_data(
@@ -306,6 +320,7 @@ impl VickiRenderClient {
 
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,
+            vertex_uv_offset,
             vertex_aux_offset,
         };
 
