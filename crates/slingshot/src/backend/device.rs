@@ -353,6 +353,39 @@ impl Device {
         resource.enqueue_release(&mut *self.current_frame().pending_resource_releases.lock());
     }
 
+    pub fn with_setup_cb(&self, callback: impl FnOnce(vk::CommandBuffer)) {
+        let cb = self.setup_cb.lock();
+
+        unsafe {
+            self.raw
+                .begin_command_buffer(
+                    cb.raw,
+                    &vk::CommandBufferBeginInfo::builder()
+                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                )
+                .unwrap();
+        }
+
+        callback(cb.raw);
+
+        unsafe {
+            self.raw.end_command_buffer(cb.raw).unwrap();
+
+            let submit_info =
+                vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&cb.raw));
+
+            self.raw
+                .queue_submit(
+                    self.universal_queue.raw,
+                    &[submit_info.build()],
+                    vk::Fence::null(),
+                )
+                .expect("queue submit failed.");
+
+            self.raw.device_wait_idle().unwrap();
+        }
+    }
+
     pub fn finish_frame(&self, frame: Arc<DeviceFrame>) {
         drop(frame);
 

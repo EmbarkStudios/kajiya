@@ -1,6 +1,6 @@
 use super::device::Device;
 use anyhow::Result;
-use ash::{version::DeviceV1_0, vk};
+use ash::{util::Align, version::DeviceV1_0, vk};
 use derive_builder::Builder;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -109,7 +109,7 @@ pub struct Image {
 }
 
 impl Image {
-    pub(crate) fn view(&self, device: &Device, desc: &ImageViewDesc) -> vk::ImageView {
+    pub fn view(&self, device: &Device, desc: &ImageViewDesc) -> vk::ImageView {
         let mut views = self.views.lock();
 
         if let Some(entry) = views.get(desc) {
@@ -160,10 +160,6 @@ impl Device {
         let desc = desc.into();
         let create_info = get_image_create_info(&desc, initial_data.is_some());
 
-        if initial_data.is_some() {
-            todo!();
-        }
-
         let allocation_info = vk_mem::AllocationCreateInfo {
             usage: vk_mem::MemoryUsage::GpuOnly,
             ..Default::default()
@@ -172,6 +168,91 @@ impl Device {
         let (image, allocation, _allocation_info) = self
             .global_allocator
             .create_image(&create_info, &allocation_info)?;
+
+        if let Some(initial_data) = initial_data {
+            let image_buffer_info = vk::BufferCreateInfo {
+                size: (std::mem::size_of::<u8>() * initial_data.data.len()) as u64,
+                usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                ..Default::default()
+            };
+
+            let buffer_mem_info = vk_mem::AllocationCreateInfo {
+                usage: vk_mem::MemoryUsage::CpuToGpu,
+                ..Default::default()
+            };
+
+            let (image_buffer, buffer_allocation, buffer_allocation_info) = self
+                .global_allocator
+                .create_buffer(&image_buffer_info, &buffer_mem_info)
+                .expect("vma::create_buffer");
+
+            unsafe {
+                let image_ptr = self
+                    .global_allocator
+                    .map_memory(&buffer_allocation)
+                    .expect("mapping an image upload buffer failed")
+                    as *mut std::ffi::c_void;
+
+                let mut image_slice = Align::new(
+                    image_ptr,
+                    std::mem::align_of::<u8>() as u64,
+                    buffer_allocation_info.get_size() as u64,
+                );
+
+                image_slice.copy_from_slice(initial_data.data);
+
+                self.global_allocator
+                    .unmap_memory(&buffer_allocation)
+                    .expect("unmap_memory");
+            }
+
+            self.with_setup_cb(|cb| unsafe {
+                super::barrier::record_image_barrier(
+                    self,
+                    cb,
+                    super::barrier::ImageBarrier::new(
+                        image,
+                        vk_sync::AccessType::Nothing,
+                        vk_sync::AccessType::TransferWrite,
+                        vk::ImageAspectFlags::COLOR,
+                    )
+                    .with_discard(true),
+                );
+
+                let buffer_copy_regions = vk::BufferImageCopy::builder()
+                    .image_subresource(
+                        vk::ImageSubresourceLayers::builder()
+                            .aspect_mask(vk::ImageAspectFlags::COLOR)
+                            .layer_count(1)
+                            .build(),
+                    )
+                    .image_extent(vk::Extent3D {
+                        width: desc.extent[0],
+                        height: desc.extent[1],
+                        depth: desc.extent[2],
+                    });
+
+                self.raw.cmd_copy_buffer_to_image(
+                    cb,
+                    image_buffer,
+                    image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[buffer_copy_regions.build()],
+                );
+
+                super::barrier::record_image_barrier(
+                    self,
+                    cb,
+                    super::barrier::ImageBarrier::new(
+                        image,
+                        vk_sync::AccessType::TransferWrite,
+                        vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+                        vk::ImageAspectFlags::COLOR,
+                    ),
+                )
+            });
+        }
 
         /*        let handle = self.storage.insert(Image {
             raw: image,

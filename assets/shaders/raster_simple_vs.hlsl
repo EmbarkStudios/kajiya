@@ -58,7 +58,8 @@ VsOut main(uint vid: SV_VertexID) {
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
     vsout.position = cs_pos;
-    vsout.color = v_color;//float4(v.normal * 0.5 + 0.5, 1);
+    //vsout.color = v_color;//float4(v.normal * 0.5 + 0.5, 1);
+    vsout.color = float4(v.normal * 0.5 + 0.5, 1);
 
     return vsout;
 }

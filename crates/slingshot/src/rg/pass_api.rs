@@ -137,7 +137,11 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             }
         }
 
-        for (set_index, bindings) in binding.bindings {
+        for (set_idx, bindings) in binding.bindings {
+            if pipeline.set_layout_info.get(set_idx as usize).is_none() {
+                continue;
+            }
+
             let bindings = bindings
                 .iter()
                 .map(|binding| match binding {
@@ -164,12 +168,16 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                 &*self.resources.execution_params.device,
                 self.cb,
                 pipeline,
-                set_index,
+                set_idx,
                 &bindings,
             );
         }
 
         for (set_idx, binding) in binding.raw_bindings {
+            if pipeline.set_layout_info.get(set_idx as usize).is_none() {
+                continue;
+            }
+
             unsafe {
                 self.resources
                     .execution_params
@@ -227,7 +235,11 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             }
         }
 
-        for (set_index, bindings) in binding.bindings {
+        for (set_idx, bindings) in binding.bindings {
+            if pipeline.set_layout_info.get(set_idx as usize).is_none() {
+                continue;
+            }
+
             let bindings = bindings
                 .iter()
                 .map(|binding| match binding {
@@ -254,9 +266,30 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                 &*self.resources.execution_params.device,
                 self.cb,
                 pipeline,
-                set_index,
+                set_idx,
                 &bindings,
             );
+        }
+
+        for (set_idx, binding) in binding.raw_bindings {
+            if pipeline.set_layout_info.get(set_idx as usize).is_none() {
+                continue;
+            }
+
+            unsafe {
+                self.resources
+                    .execution_params
+                    .device
+                    .raw
+                    .cmd_bind_descriptor_sets(
+                        self.cb.raw,
+                        pipeline.pipeline_bind_point,
+                        pipeline.pipeline_layout,
+                        set_idx,
+                        &[binding],
+                        &[],
+                    );
+            }
         }
 
         BoundRasterPipeline {

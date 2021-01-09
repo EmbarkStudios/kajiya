@@ -7,7 +7,10 @@ mod render_client;
 mod render_passes;
 mod viewport;
 
-use asset::mesh::*;
+use asset::{
+    image::{LoadImage, RawRgba8Image},
+    mesh::*,
+};
 use camera::*;
 use input::*;
 use math::*;
@@ -15,7 +18,7 @@ use math::*;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use slingshot::*;
-use std::{panic, sync::Arc};
+use std::{collections::HashMap, panic, path::PathBuf, sync::Arc};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
@@ -23,6 +26,91 @@ pub struct FrameState {
     pub camera_matrices: CameraMatrices,
     pub window_cfg: WindowConfig,
     pub input: InputState,
+}
+
+enum ImageCacheResponse {
+    Hit {
+        id: usize,
+    },
+    Miss {
+        id: usize,
+        image: Arc<RawRgba8Image>,
+    },
+}
+struct CachedImage {
+    lazy_handle: Lazy<RawRgba8Image>,
+    //image: Arc<RawRgba8Image>,
+    //texture: Arc<Image>,
+    id: usize,
+}
+
+struct ImageCache {
+    lazy_cache: Arc<LazyCache>,
+    loaded_images: HashMap<PathBuf, CachedImage>,
+    placeholder_images: HashMap<[u8; 4], usize>,
+    next_id: usize,
+}
+
+impl ImageCache {
+    fn new(lazy_cache: Arc<LazyCache>) -> Self {
+        Self {
+            lazy_cache,
+            loaded_images: Default::default(),
+            placeholder_images: Default::default(),
+            next_id: 0,
+        }
+    }
+
+    fn load_mesh_map(
+        &mut self,
+        device: &Device,
+        map: &MeshMaterialMap,
+    ) -> anyhow::Result<ImageCacheResponse> {
+        match map {
+            MeshMaterialMap::Asset { path, .. } => {
+                if !self.loaded_images.contains_key(path) {
+                    let lazy_handle = LoadImage { path: path.clone() }.into_lazy();
+                    let image = smol::block_on(lazy_handle.eval(&self.lazy_cache))?;
+
+                    let id = self.next_id.checked_add(1).expect("Ran out of image IDs");
+
+                    self.loaded_images.insert(
+                        path.clone(),
+                        CachedImage {
+                            lazy_handle,
+                            //image,
+                            id,
+                        },
+                    );
+
+                    Ok(ImageCacheResponse::Miss { id, image })
+                } else {
+                    Ok(ImageCacheResponse::Hit {
+                        id: self.loaded_images[path].id,
+                    })
+                }
+            }
+            MeshMaterialMap::Placeholder(init_val) => {
+                if !self.placeholder_images.contains_key(init_val) {
+                    let image = Arc::new(RawRgba8Image {
+                        data: init_val.to_vec(),
+                        dimensions: [1, 1],
+                    });
+
+                    let id = self.next_id;
+                    self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
+
+                    self.placeholder_images.insert(*init_val, id);
+
+                    Ok(ImageCacheResponse::Miss { id, image })
+                } else {
+                    Ok(ImageCacheResponse::Hit {
+                        id: self.placeholder_images[init_val],
+                    })
+                }
+            }
+        }
+    }
 }
 
 fn try_main() -> anyhow::Result<()> {
@@ -64,12 +152,28 @@ fn try_main() -> anyhow::Result<()> {
     let mut new_mouse_state: MouseState = Default::default();
 
     let mesh = LoadGltfScene {
-        path: "assets/meshes/low_poly_isometric_rooms/scene.gltf".into(),
-        scale: 1.0,
+        path: "assets/meshes/the_lighthouse/scene.gltf".into(),
+        scale: 0.01,
     }
     .into_lazy();
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
+
+    let mut image_cache = ImageCache::new(lazy_cache.clone());
+
     let mesh = pack_triangle_mesh(&mesh);
+    for map in &mesh.maps {
+        let img = image_cache
+            .load_mesh_map(renderer.device().as_ref(), map)
+            .unwrap();
+        match img {
+            ImageCacheResponse::Hit { .. } => {}
+            ImageCacheResponse::Miss { id, image } => {
+                let handle = render_client.add_image(image.as_ref());
+                dbg!(id);
+                dbg!(handle);
+            }
+        }
+    }
     render_client.add_mesh(mesh);
 
     let mut last_frame_instant = std::time::Instant::now();

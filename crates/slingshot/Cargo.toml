@@ -31,7 +31,7 @@ raw-window-handle = "0.3"
 relative-path = "1.3"
 rspirv = { git = "https://github.com/Traverse-Research/rspirv.git" }
 serde = { version = "1.0", features = ["derive"] }
-rspirv-reflect = { git = "https://github.com/Traverse-Research/rspirv-reflect.git", rev = "396a6fa" }
+rspirv-reflect = { git = "https://github.com/Traverse-Research/rspirv-reflect.git", rev = "1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f" }
 shader-prepper = "0.2"
 smol = "0.3"
 thiserror = "1.0"

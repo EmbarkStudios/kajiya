@@ -326,6 +326,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "color_quant"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d7b894f5411737b7867f4827955924d7c254fc9f4d91a6aad6b097804b1018b"
+
+[[package]]
 name = "colored"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -753,6 +759,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "gif"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "471d90201b3b223f3451cd4ad53e34295f16a1df17b1edf3736d47761c3981af"
+dependencies = [
+ "color_quant",
+ "lzw",
+]
+
+[[package]]
 name = "gimli"
 version = "0.22.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -848,11 +864,14 @@ checksum = "543904170510c1b5fb65140485d84de4a57fddb2ed685481e9020ce3d2c9f64c"
 dependencies = [
  "bytemuck",
  "byteorder",
+ "gif",
  "jpeg-decoder",
  "num-iter",
  "num-rational",
  "num-traits",
  "png",
+ "scoped_threadpool",
+ "tiff",
 ]
 
 [[package]]
@@ -983,6 +1002,12 @@ checksum = "4fabed175da42fed1fa0746b0ea71f412aa9d35e76e95e59b192c64b9dc2bf8b"
 dependencies = [
  "cfg-if",
 ]
+
+[[package]]
+name = "lzw"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7d947cbb889ed21c2a84be6ffbaebf5b4e0f4340638cba0444907e38b56be084"
 
 [[package]]
 name = "malloc_buf"
@@ -1450,31 +1475,32 @@ checksum = "65aff7c83039e88c1c0b4bedf8dfa93d6ec84d5fc2945b37c1fa4186f46c5f94"
 [[package]]
 name = "rspirv"
 version = "0.6.0"
-source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
-dependencies = [
- "derive_more",
- "fxhash",
- "num-traits",
- "spirv_headers 1.4.2 (git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83)",
-]
-
-[[package]]
-name = "rspirv"
-version = "0.6.0"
 source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
 dependencies = [
  "derive_more",
  "fxhash",
  "num-traits",
- "spirv_headers 1.4.2 (git+https://github.com/Traverse-Research/rspirv.git)",
+ "spirv_headers 1.4.2",
+]
+
+[[package]]
+name = "rspirv"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31b11de7481ced3d22182a2be7670323028b38a7cc3457e470f91d144947fba4"
+dependencies = [
+ "derive_more",
+ "fxhash",
+ "num-traits",
+ "spirv_headers 1.5.0",
 ]
 
 [[package]]
 name = "rspirv-reflect"
-version = "0.1.0"
-source = "git+https://github.com/Traverse-Research/rspirv-reflect.git?rev=396a6fa#396a6fad344ca4fb0b569ad7c12669ef3cc45c68"
+version = "0.3.0"
+source = "git+https://github.com/Traverse-Research/rspirv-reflect.git?rev=1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f#1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f"
 dependencies = [
- "rspirv 0.6.0 (git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83)",
+ "rspirv 0.7.0",
  "thiserror",
 ]
 
@@ -1533,6 +1559,12 @@ name = "scoped-tls"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea6a9290e3c9cf0f18145ef7ffa62d68ee0bf5fcd651017e586dc7fd5da448c2"
+
+[[package]]
+name = "scoped_threadpool"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d51f5df5af43ab3f1360b429fa5e0152ac5ce8c0bd6485cae490332e96846a8"
 
 [[package]]
 name = "scopeguard"
@@ -1625,7 +1657,7 @@ dependencies = [
  "parking_lot 0.11.0",
  "raw-window-handle",
  "relative-path",
- "rspirv 0.6.0 (git+https://github.com/Traverse-Research/rspirv.git)",
+ "rspirv 0.6.0",
  "rspirv-reflect",
  "serde",
  "shader-prepper",
@@ -1700,7 +1732,7 @@ dependencies = [
 [[package]]
 name = "spirv_headers"
 version = "1.4.2"
-source = "git+https://github.com/gfx-rs/rspirv.git?rev=5bf0faa2e02c1116385a16c70ef2594c93d2bf83#5bf0faa2e02c1116385a16c70ef2594c93d2bf83"
+source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
 dependencies = [
  "bitflags",
  "num-traits",
@@ -1708,8 +1740,9 @@ dependencies = [
 
 [[package]]
 name = "spirv_headers"
-version = "1.4.2"
-source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f5b132530b1ac069df335577e3581765995cba5a13995cdbbdbc8fb057c532c"
 dependencies = [
  "bitflags",
  "num-traits",
@@ -1794,6 +1827,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "tiff"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f3b8a87c4da944c3f27e5943289171ac71a6150a79ff6bacfff06d159dfff2f"
+dependencies = [
+ "byteorder",
+ "lzw",
+ "miniz_oxide 0.3.7",
+]
+
+[[package]]
 name = "time"
 version = "0.1.43"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1846,6 +1890,7 @@ dependencies = [
  "gltf",
  "hassle-rs",
  "hotwatch",
+ "image",
  "lazy_static",
  "log",
  "parking_lot 0.11.0",

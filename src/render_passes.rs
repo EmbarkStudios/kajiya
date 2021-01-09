@@ -372,6 +372,7 @@ pub fn raster_meshes(
         let _pipeline = api.bind_raster_pipeline(
             pipeline
                 .into_binding()
+                .descriptor_set(0, &[])
                 .descriptor_set(1, &[meshes_ref.bind(), vb_ref.bind()])
                 .raw_descriptor_set(3, bindless_descriptor_set),
         );

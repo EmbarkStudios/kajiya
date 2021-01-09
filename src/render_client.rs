@@ -1,5 +1,8 @@
 use crate::{
-    asset::mesh::{PackedTriangleMesh, PackedVertex},
+    asset::{
+        image::RawRgba8Image,
+        mesh::{PackedTriangleMesh, PackedVertex},
+    },
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
     render_passes::{RasterMeshesData, UploadedTriMesh},
@@ -51,8 +54,12 @@ pub struct VickiRenderClient {
     vertex_buffer: Arc<Buffer>,
     vertex_buffer_size: usize,
     bindless_descriptor_set: vk::DescriptorSet,
+    bindless_images: Vec<Image>,
     frame_idx: u32,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct BindlessImageHandle(pub u32);
 
 /*fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
     unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * size_of::<T>()) }
@@ -79,15 +86,13 @@ fn append_buffer_data<T: Copy>(
     data_start
 }
 
-fn create_bindless_descriptor_set(
-    device: &device::Device,
-    descriptor_count: usize,
-) -> vk::DescriptorSet {
+fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet {
     let raw_device = &device.raw;
 
-    let set_binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND
+    let set_binding_flags = [vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
         | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
-        | vk::DescriptorBindingFlags::UPDATE_AFTER_BIND];
+        | vk::DescriptorBindingFlags::PARTIALLY_BOUND
+        | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT];
     let mut binding_flags_create_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
         .binding_flags(&set_binding_flags)
         .build();
@@ -98,7 +103,7 @@ fn create_bindless_descriptor_set(
                 &vk::DescriptorSetLayoutCreateInfo::builder()
                     .bindings(&[vk::DescriptorSetLayoutBinding::builder()
                         .binding(0)
-                        .descriptor_count(descriptor_count as _)
+                        .descriptor_count(MAX_BINDLESS_DESCRIPTOR_COUNT as _)
                         .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                         .stage_flags(
                             vk::ShaderStageFlags::COMPUTE
@@ -116,7 +121,7 @@ fn create_bindless_descriptor_set(
 
     let descriptor_sizes = [vk::DescriptorPoolSize {
         ty: vk::DescriptorType::SAMPLED_IMAGE,
-        descriptor_count: descriptor_count as _,
+        descriptor_count: MAX_BINDLESS_DESCRIPTOR_COUNT as _,
     }];
 
     let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
@@ -140,23 +145,6 @@ fn create_bindless_descriptor_set(
             )
             .unwrap()[0]
     };
-
-    /*{
-        let buffer_info = vk::DescriptorBufferInfo::builder()
-            .buffer(dynamic_constants.raw)
-            .range(16384)
-            .build();
-
-        let write_descriptor_set = vk::WriteDescriptorSet::builder()
-            .dst_set(set)
-            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-            .buffer_info(std::slice::from_ref(&buffer_info))
-            .build();
-
-        unsafe {
-            raw_device.update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[])
-        };
-    }*/
 
     set
 }
@@ -213,8 +201,7 @@ impl VickiRenderClient {
                 .unwrap(),
         );
 
-        let bindless_descriptor_set =
-            create_bindless_descriptor_set(backend.device.as_ref(), MAX_TEXTURES);
+        let bindless_descriptor_set = create_bindless_descriptor_set(backend.device.as_ref());
 
         Ok(Self {
             raster_simple_render_pass,
@@ -227,8 +214,50 @@ impl VickiRenderClient {
             vertex_buffer,
             vertex_buffer_size: 0,
             bindless_descriptor_set,
+            bindless_images: Default::default(),
             frame_idx: 0u32,
         })
+    }
+
+    pub fn add_image(&mut self, src: &RawRgba8Image) -> BindlessImageHandle {
+        let image = self
+            .device
+            .create_image(
+                ImageDesc::new_2d(vk::Format::R8G8B8A8_SRGB, src.dimensions)
+                    .usage(vk::ImageUsageFlags::SAMPLED),
+                Some(ImageSubResourceData {
+                    data: &src.data,
+                    row_pitch: src.dimensions[0] as usize * 4,
+                    slice_pitch: 0,
+                }),
+            )
+            .unwrap();
+
+        let handle = BindlessImageHandle(self.bindless_images.len() as _);
+        let view = image.view(self.device.as_ref(), &ImageViewDesc::default());
+
+        self.bindless_images.push(image);
+
+        let image_info = vk::DescriptorImageInfo::builder()
+            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image_view(view)
+            .build();
+
+        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            .dst_set(self.bindless_descriptor_set)
+            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+            .dst_binding(0)
+            .dst_array_element(handle.0 as _)
+            .image_info(std::slice::from_ref(&image_info))
+            .build();
+
+        unsafe {
+            self.device
+                .raw
+                .update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[]);
+        }
+
+        handle
     }
 
     pub fn add_mesh(&mut self, mesh: PackedTriangleMesh) {

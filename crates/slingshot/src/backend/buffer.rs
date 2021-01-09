@@ -17,14 +17,13 @@ pub struct BufferDesc {
 }
 
 impl Device {
-    fn create_buffer_impl(
+    pub(crate) fn create_buffer_impl(
         &self,
         desc: BufferDesc,
         extra_usage: vk::BufferUsageFlags,
         buffer_mem_info: vk_mem::AllocationCreateInfo,
     ) -> Result<Buffer> {
         let buffer_info = vk::BufferCreateInfo {
-            // Allocate twice the size for even and odd frames
             size: desc.size as u64,
             usage: desc.usage | extra_usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
@@ -42,39 +41,6 @@ impl Device {
             allocation,
             allocation_info,
         })
-    }
-
-    fn with_setup_cb(&self, callback: impl FnOnce(vk::CommandBuffer)) {
-        let cb = self.setup_cb.lock();
-
-        unsafe {
-            self.raw
-                .begin_command_buffer(
-                    cb.raw,
-                    &vk::CommandBufferBeginInfo::builder()
-                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-                )
-                .unwrap();
-        }
-
-        callback(cb.raw);
-
-        unsafe {
-            self.raw.end_command_buffer(cb.raw).unwrap();
-
-            let submit_info =
-                vk::SubmitInfo::builder().command_buffers(std::slice::from_ref(&cb.raw));
-
-            self.raw
-                .queue_submit(
-                    self.universal_queue.raw,
-                    &[submit_info.build()],
-                    vk::Fence::null(),
-                )
-                .expect("queue submit failed.");
-
-            self.raw.device_wait_idle().unwrap();
-        }
     }
 
     pub fn create_buffer(&self, desc: BufferDesc, initial_data: Option<&[u8]>) -> Result<Buffer> {

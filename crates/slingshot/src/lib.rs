@@ -10,7 +10,12 @@ pub mod shader_compiler;
 pub mod transient_resource_cache;
 
 pub use ash;
-pub use backend::RenderBackend;
+pub use backend::shader::{MAX_BINDLESS_DESCRIPTOR_COUNT, MAX_DESCRIPTOR_SETS};
+pub use backend::{
+    device::Device,
+    image::{Image, ImageDesc, ImageSubResourceData},
+    RenderBackend,
+};
 pub use vk_mem;
 pub use vk_sync;
 

@@ -5,6 +5,7 @@ use crate::{
     rg::RenderGraph,
     rg::{RenderGraphExecutionParams, RetiredRenderGraph},
     transient_resource_cache::TransientResourceCache,
+    Device,
 };
 use crate::{dynamic_constants::*, pipeline_cache::*};
 use ash::{version::DeviceV1_0, vk};
@@ -15,7 +16,7 @@ use backend::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 
 pub struct Renderer {
@@ -37,12 +38,12 @@ lazy_static::lazy_static! {
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::UNIFORM_BUFFER,
             is_bindless: false,
-            stages: rspirv_reflect::ShaderStageFlags(
+            /*stages: rspirv_reflect::ShaderStageFlags(
                 (vk::ShaderStageFlags::COMPUTE
                     | vk::ShaderStageFlags::ALL_GRAPHICS
                     | vk::ShaderStageFlags::RAYGEN_KHR)
                     .as_raw(),
-            ),
+            ),*/
             name: Default::default(),
         },
     )]
@@ -309,5 +310,9 @@ impl Renderer {
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
         Ok(())
+    }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.backend.device
     }
 }

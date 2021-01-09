@@ -16,7 +16,8 @@ use std::{
     sync::Arc,
 };
 
-const MAX_DESCRIPTOR_SETS: usize = 4;
+pub const MAX_DESCRIPTOR_SETS: usize = 4;
+pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 1024 * 1024;
 
 type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
 type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
@@ -129,8 +130,16 @@ pub fn create_descriptor_set_layouts(
 
         if let Some(set) = set {
             let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
+            let mut binding_flags: Vec<vk::DescriptorBindingFlags> =
+                vec![vk::DescriptorBindingFlags::empty(); set.len()];
+
+            let mut set_layout_create_flags = vk::DescriptorSetLayoutCreateFlags::empty();
 
             for (binding_index, binding) in set.into_iter() {
+                /*if binding.name == "material_textures" {
+                    panic!("{:?}", binding);
+                }*/
+
                 match binding.ty {
                     rspirv_reflect::DescriptorType::UNIFORM_BUFFER
                     | rspirv_reflect::DescriptorType::UNIFORM_TEXEL_BUFFER
@@ -159,11 +168,25 @@ pub fn create_descriptor_set_layouts(
                             .build(),
                     ),
                     rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
+                        if binding.is_bindless {
+                            binding_flags[bindings.len()] =
+                                vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
+                                    | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
+                                    | vk::DescriptorBindingFlags::PARTIALLY_BOUND
+                                    | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT;
+
+                            set_layout_create_flags |=
+                                vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL;
+                        }
+
                         bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
                                 .binding(*binding_index)
-                                //.descriptor_count(binding.count)
-                                .descriptor_count(1) // TODO
+                                .descriptor_count(if binding.is_bindless {
+                                    MAX_BINDLESS_DESCRIPTOR_COUNT as _
+                                } else {
+                                    1
+                                }) // TODO
                                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                                 .stage_flags(stage_flags)
                                 .build(),
@@ -196,8 +219,7 @@ pub fn create_descriptor_set_layouts(
 
                             bindings.push(
                                 vk::DescriptorSetLayoutBinding::builder()
-                                    //.descriptor_count(binding.count)
-                                    .descriptor_count(1) // TODO
+                                    .descriptor_count(1)
                                     .descriptor_type(vk::DescriptorType::SAMPLER)
                                     .stage_flags(stage_flags)
                                     .binding(*binding_index)
@@ -219,13 +241,17 @@ pub fn create_descriptor_set_layouts(
                 }
             }
 
+            let mut set_layout_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                .binding_flags(&binding_flags);
+
             let set_layout = unsafe {
                 device
                     .raw
                     .create_descriptor_set_layout(
                         &vk::DescriptorSetLayoutCreateInfo::builder()
-                            .flags(set_opts.flags.unwrap_or_default())
+                            .flags(set_opts.flags.unwrap_or_default() | set_layout_create_flags)
                             .bindings(&bindings)
+                            .push_next(&mut set_layout_flags)
                             .build(),
                         None,
                     )
