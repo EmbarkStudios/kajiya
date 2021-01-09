@@ -17,8 +17,9 @@ use math::*;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use render_client::BindlessImageHandle;
 use slingshot::*;
-use std::{collections::HashMap, panic, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
@@ -38,6 +39,7 @@ enum ImageCacheResponse {
     },
 }
 struct CachedImage {
+    #[allow(dead_code)] // Stored to keep the lifetime
     lazy_handle: Lazy<RawRgba8Image>,
     //image: Arc<RawRgba8Image>,
     //texture: Arc<Image>,
@@ -156,27 +158,29 @@ fn try_main() -> anyhow::Result<()> {
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
 
     let mut image_cache = ImageCache::new(lazy_cache.clone());
+    let mut cached_image_to_bindless_handle: HashMap<usize, BindlessImageHandle> =
+        Default::default();
 
     let mut mesh = pack_triangle_mesh(&mesh);
     {
-        let mesh_map_gpu_ids: Vec<u32> = mesh
+        let mesh_map_gpu_ids: Vec<BindlessImageHandle> = mesh
             .maps
             .iter()
             .map(|map| {
                 let img = image_cache.load_mesh_map(map).unwrap();
-                let id = match img {
-                    ImageCacheResponse::Hit { id } => id as u32,
+                match img {
+                    ImageCacheResponse::Hit { id } => cached_image_to_bindless_handle[&id],
                     ImageCacheResponse::Miss { id, image } => {
                         let handle = render_client.add_image(image.as_ref());
-                        id as u32
+                        cached_image_to_bindless_handle.insert(id, handle);
+                        handle
                     }
-                };
-                id
+                }
             })
             .collect();
         for mat in &mut mesh.materials {
             for m in &mut mat.maps {
-                *m = mesh_map_gpu_ids[*m as usize];
+                *m = mesh_map_gpu_ids[*m as usize].0;
             }
         }
     }

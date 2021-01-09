@@ -1,8 +1,5 @@
 use crate::{
-    asset::{
-        image::RawRgba8Image,
-        mesh::{PackedTriangleMesh, PackedVertex},
-    },
+    asset::{image::RawRgba8Image, mesh::PackedTriangleMesh},
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
     render_passes::{RasterMeshesData, UploadedTriMesh},
@@ -44,7 +41,6 @@ struct GpuMesh {
 }
 
 const MAX_GPU_MESHES: usize = 1024;
-const MAX_TEXTURES: usize = 1024;
 const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
 
 pub struct VickiRenderClient {
@@ -413,7 +409,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
             },
         );*/
 
-        //let tex = crate::render_passes::blur(rg, &tex);
+        let tex = crate::render_passes::blur(rg, &tex);
         //self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
 
         rg.export_image(tex, vk::ImageUsageFlags::SAMPLED)
@@ -435,7 +431,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
         });
     }
 
-    fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph) {
+    fn retire_render_graph(&mut self, _retired_rg: &RetiredRenderGraph) {
         /*if let Some(handle) = self.sdf_img.last_rg_handle.take() {
             self.sdf_img.access_type = retired_rg.get_image(handle).1;
         }*/
@@ -444,7 +440,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
     }
 }
 
-// Vertices: bits 0, 1, 2, map to +/- X, Y, Z
+/*// Vertices: bits 0, 1, 2, map to +/- X, Y, Z
 fn cube_indices() -> Vec<u32> {
     let mut res = Vec::with_capacity(6 * 2 * 3);
 
@@ -461,7 +457,7 @@ fn cube_indices() -> Vec<u32> {
     }
 
     res
-}
+}*/
 
 fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
     let pos = frame_state.input.mouse.pos
@@ -486,12 +482,14 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
     ]
 }
 
+#[allow(dead_code)]
 struct TemporalImage {
     resource: Arc<Image>,
     access_type: vk_sync::AccessType,
     last_rg_handle: Option<rg::ExportedHandle<Image>>,
 }
 
+#[allow(dead_code)]
 impl TemporalImage {
     pub fn new(resource: Arc<Image>) -> Self {
         Self {
