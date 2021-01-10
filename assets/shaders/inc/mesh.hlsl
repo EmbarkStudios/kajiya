@@ -35,5 +35,7 @@ struct MeshMaterial {
     uint normal_map;
     uint spec_map;
     uint albedo_map;
+    float roughness_mult;
+    float metalness_factor;
     float emissive[3];
 };

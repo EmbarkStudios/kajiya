@@ -8,7 +8,8 @@ struct VsOut {
 	float4 position: SV_Position;
     [[vk::location(0)]] float4 color: TEXCOORD0;
     [[vk::location(1)]] float2 uv: TEXCOORD1;
-    [[vk::location(2)]] nointerpolation uint material_id: TEXCOORD2;
+    [[vk::location(2)]] float3 normal: TEXCOORD2;
+    [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
 };
 
 VsOut main(uint vid: SV_VertexID) {
@@ -22,7 +23,11 @@ VsOut main(uint vid: SV_VertexID) {
     vp.data0 = asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_core_offset));
     Vertex v = unpack_vertex(vp);
 
-    float4 v_color = asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_aux_offset));
+    /*float4 v_color =
+        mesh.vertex_aux_offset != 0
+            ? asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_aux_offset))
+            : 1.0.xxxx;*/
+
     float2 uv = asfloat(vertices.Load2(vid * sizeof(float2) + mesh.vertex_uv_offset));
     uint material_id = vertices.Load(vid * sizeof(uint) + mesh.vertex_mat_offset);
 
@@ -30,9 +35,9 @@ VsOut main(uint vid: SV_VertexID) {
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
     vsout.position = cs_pos;
-    //vsout.color = v_color;//float4(v.normal * 0.5 + 0.5, 1);
-    vsout.color = float4(v.normal * 0.5 + 0.5, 1);
+    vsout.color = 1.0;
     vsout.uv = uv;
+    vsout.normal = v.normal;
     vsout.material_id = material_id;
 
     return vsout;

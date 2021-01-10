@@ -188,7 +188,7 @@ impl VickiRenderClient {
             &*backend.device,
             RenderPassDesc {
                 color_attachments: &[RenderPassAttachmentDesc::new(
-                    vk::Format::R16G16B16A16_SFLOAT,
+                    vk::Format::R32G32B32A32_SFLOAT,
                 )
                 .garbage_input()],
                 depth_attachment: Some(RenderPassAttachmentDesc::new(
@@ -364,14 +364,14 @@ impl RenderClient<FrameState> for VickiRenderClient {
             ),
         );*/
 
-        let mut tex = crate::render_passes::create_image(
+        let mut gbuffer = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(
-                vk::Format::R16G16B16A16_SFLOAT,
+                vk::Format::R32G32B32A32_SFLOAT,
                 frame_state.window_cfg.dims(),
             ),
         );
-        crate::render_passes::clear_color(rg, &mut tex, [0.1, 0.2, 0.5, 1.0]);
+        crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
         let mesh_buffer = rg.import_buffer(
             self.mesh_buffer.clone(),
@@ -387,7 +387,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
             rg,
             self.raster_simple_render_pass.clone(),
             &mut depth_img,
-            &mut tex,
+            &mut gbuffer,
             RasterMeshesData {
                 meshes: self.meshes.as_slice(),
                 mesh_buffer: &mesh_buffer,
@@ -395,6 +395,16 @@ impl RenderClient<FrameState> for VickiRenderClient {
                 bindless_descriptor_set: self.bindless_descriptor_set,
             },
         );
+
+        let mut lit = crate::render_passes::create_image(
+            rg,
+            ImageDesc::new_2d(
+                vk::Format::R16G16B16A16_SFLOAT,
+                frame_state.window_cfg.dims(),
+            ),
+        );
+        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
+        crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
 
         /*crate::render_passes::raster_sdf(
             rg,
@@ -409,10 +419,10 @@ impl RenderClient<FrameState> for VickiRenderClient {
             },
         );*/
 
-        let tex = crate::render_passes::blur(rg, &tex);
+        //let tex = crate::render_passes::blur(rg, &tex);
         //self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
 
-        rg.export_image(tex, vk::ImageUsageFlags::SAMPLED)
+        rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
     }
 
     fn prepare_frame_constants(

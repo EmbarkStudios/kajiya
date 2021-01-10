@@ -1,5 +1,6 @@
 mod asset;
 mod camera;
+mod image_cache;
 mod input;
 mod logging;
 mod math;
@@ -7,11 +8,9 @@ mod render_client;
 mod render_passes;
 mod viewport;
 
-use asset::{
-    image::{LoadImage, RawRgba8Image},
-    mesh::*,
-};
+use asset::mesh::*;
 use camera::*;
+use image_cache::*;
 use input::*;
 use math::*;
 
@@ -19,7 +18,7 @@ use math::*;
 use log::{debug, error, info, trace, warn};
 use render_client::BindlessImageHandle;
 use slingshot::*;
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
@@ -27,89 +26,6 @@ pub struct FrameState {
     pub camera_matrices: CameraMatrices,
     pub window_cfg: WindowConfig,
     pub input: InputState,
-}
-
-enum ImageCacheResponse {
-    Hit {
-        id: usize,
-    },
-    Miss {
-        id: usize,
-        image: Arc<RawRgba8Image>,
-    },
-}
-struct CachedImage {
-    #[allow(dead_code)] // Stored to keep the lifetime
-    lazy_handle: Lazy<RawRgba8Image>,
-    //image: Arc<RawRgba8Image>,
-    //texture: Arc<Image>,
-    id: usize,
-}
-
-struct ImageCache {
-    lazy_cache: Arc<LazyCache>,
-    loaded_images: HashMap<PathBuf, CachedImage>,
-    placeholder_images: HashMap<[u8; 4], usize>,
-    next_id: usize,
-}
-
-impl ImageCache {
-    fn new(lazy_cache: Arc<LazyCache>) -> Self {
-        Self {
-            lazy_cache,
-            loaded_images: Default::default(),
-            placeholder_images: Default::default(),
-            next_id: 0,
-        }
-    }
-
-    fn load_mesh_map(&mut self, map: &MeshMaterialMap) -> anyhow::Result<ImageCacheResponse> {
-        match map {
-            MeshMaterialMap::Asset { path, .. } => {
-                if !self.loaded_images.contains_key(path) {
-                    let lazy_handle = LoadImage { path: path.clone() }.into_lazy();
-                    let image = smol::block_on(lazy_handle.eval(&self.lazy_cache))?;
-
-                    let id = self.next_id;
-                    self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
-
-                    self.loaded_images.insert(
-                        path.clone(),
-                        CachedImage {
-                            lazy_handle,
-                            //image,
-                            id,
-                        },
-                    );
-
-                    Ok(ImageCacheResponse::Miss { id, image })
-                } else {
-                    Ok(ImageCacheResponse::Hit {
-                        id: self.loaded_images[path].id,
-                    })
-                }
-            }
-            MeshMaterialMap::Placeholder(init_val) => {
-                if !self.placeholder_images.contains_key(init_val) {
-                    let image = Arc::new(RawRgba8Image {
-                        data: init_val.to_vec(),
-                        dimensions: [1, 1],
-                    });
-
-                    let id = self.next_id;
-                    self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
-
-                    self.placeholder_images.insert(*init_val, id);
-
-                    Ok(ImageCacheResponse::Miss { id, image })
-                } else {
-                    Ok(ImageCacheResponse::Hit {
-                        id: self.placeholder_images[init_val],
-                    })
-                }
-            }
-        }
-    }
 }
 
 fn try_main() -> anyhow::Result<()> {
@@ -151,8 +67,8 @@ fn try_main() -> anyhow::Result<()> {
     let mut new_mouse_state: MouseState = Default::default();
 
     let mesh = LoadGltfScene {
-        path: "assets/meshes/the_lighthouse/scene.gltf".into(),
-        scale: 0.01,
+        path: "assets/meshes2/rm_342/scene.gltf".into(),
+        scale: 0.03,
     }
     .into_lazy();
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;

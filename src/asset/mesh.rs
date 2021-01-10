@@ -43,6 +43,8 @@ pub enum MeshMaterialMap {
 pub struct MeshMaterial {
     pub base_color_mult: [f32; 4],
     pub maps: [u32; 3],
+    pub roughness_mult: f32,
+    pub metalness_factor: f32,
     pub emissive: [f32; 3],
 }
 
@@ -133,12 +135,16 @@ fn load_gltf_material(
     };
 
     let base_color_mult = mat.pbr_metallic_roughness().base_color_factor();
+    let roughness_mult = mat.pbr_metallic_roughness().roughness_factor();
+    let metalness_factor = mat.pbr_metallic_roughness().metallic_factor();
 
     (
         vec![normal_map, spec_map, albedo_map],
         MeshMaterial {
             base_color_mult,
             maps: [0, 1, 2],
+            roughness_mult,
+            metalness_factor,
             emissive,
         },
     )

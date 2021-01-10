@@ -397,6 +397,43 @@ pub fn raster_meshes(
     });
 }
 
+pub fn light_gbuffer(
+    rg: &mut RenderGraph,
+    gbuffer: &Handle<Image>,
+    depth: &Handle<Image>,
+    output: &mut Handle<Image>,
+) {
+    let mut pass = rg.add_pass();
+
+    let pipeline = pass.register_compute_pipeline("/assets/shaders/light_gbuffer.hlsl");
+
+    let gbuffer_ref = pass.read(
+        gbuffer,
+        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+    );
+    let depth_ref = pass.read(
+        depth,
+        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+    );
+    let output_ref = pass.write(output, AccessType::ComputeShaderWrite);
+
+    pass.render(move |api| {
+        let pipeline =
+            api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
+                0,
+                &[
+                    gbuffer_ref.bind(ImageViewDescBuilder::default()),
+                    depth_ref.bind(
+                        ImageViewDescBuilder::default().aspect_mask(vk::ImageAspectFlags::DEPTH),
+                    ),
+                    output_ref.bind(ImageViewDescBuilder::default()),
+                ],
+            ));
+
+        pipeline.dispatch(gbuffer_ref.desc().extent);
+    });
+}
+
 pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
     let mut pass = rg.add_pass();
 
