@@ -14,6 +14,7 @@ use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use parking_lot::Mutex;
 use slingshot::{
     ash::{version::DeviceV1_0, vk},
     backend::device,
@@ -49,9 +50,9 @@ pub struct VickiRenderClient {
     //sdf_img: TemporalImage,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
-    mesh_buffer: Arc<Buffer>,
-    vertex_buffer: Arc<Buffer>,
-    vertex_buffer_size: usize,
+    mesh_buffer: Mutex<Arc<Buffer>>,
+    vertex_buffer: Mutex<Arc<Buffer>>,
+    vertex_buffer_written: usize,
     bindless_descriptor_set: vk::DescriptorSet,
     bindless_images: Vec<Image>,
     frame_idx: u32,
@@ -64,26 +65,21 @@ pub struct BindlessImageHandle(pub u32);
     unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * size_of::<T>()) }
 }*/
 
-fn append_buffer_data<T: Copy>(
-    buf_ptr: *mut u8,
-    buf_size: &mut usize,
-    buf_capacity: usize,
-    data: &[T],
-) -> usize {
+fn append_buffer_data<T: Copy>(buf_slice: &mut [u8], buf_written: &mut usize, data: &[T]) -> usize {
     if !data.is_empty() {
         let alignment = std::mem::align_of::<T>();
         assert!(alignment.count_ones() == 1);
 
-        let data_start = (*buf_size + alignment - 1) & !(alignment - 1);
+        let data_start = (*buf_written + alignment - 1) & !(alignment - 1);
         let data_bytes = data.len() * size_of::<T>();
-        assert!(data_start + data_bytes <= buf_capacity);
+        assert!(data_start + data_bytes <= buf_slice.len());
 
         let dst = unsafe {
-            std::slice::from_raw_parts_mut(buf_ptr.add(data_start) as *mut T, data.len())
+            std::slice::from_raw_parts_mut(buf_slice.as_ptr().add(data_start) as *mut T, data.len())
         };
         dst.copy_from_slice(data);
 
-        *buf_size = data_start + data_bytes;
+        *buf_written = data_start + data_bytes;
         data_start
     } else {
         0
@@ -154,22 +150,20 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
 }
 
 struct BufferBuilder<'a> {
-    buf_ptr: *mut u8,
-    buf_size: &'a mut usize,
-    buf_capacity: usize,
+    buf_slice: &'a mut [u8],
+    buf_written: &'a mut usize,
 }
 
 impl<'a> BufferBuilder<'a> {
-    fn new(buf_ptr: *mut u8, buf_size: &'a mut usize, buf_capacity: usize) -> Self {
+    fn new(buf_slice: &'a mut [u8], buf_size: &'a mut usize) -> Self {
         Self {
-            buf_ptr,
-            buf_size,
-            buf_capacity,
+            buf_slice,
+            buf_written: buf_size,
         }
     }
 
     fn append<T: Copy>(&mut self, data: &[T]) -> usize {
-        append_buffer_data(self.buf_ptr, &mut self.buf_size, self.buf_capacity, data)
+        append_buffer_data(self.buf_slice, &mut self.buf_written, data)
     }
 }
 
@@ -197,7 +191,7 @@ impl VickiRenderClient {
             },
         )?;
 
-        let mesh_buffer = Arc::new(
+        let mesh_buffer = Mutex::new(Arc::new(
             backend
                 .device
                 .create_buffer(
@@ -209,9 +203,9 @@ impl VickiRenderClient {
                     None,
                 )
                 .unwrap(),
-        );
+        ));
 
-        let vertex_buffer = Arc::new(
+        let vertex_buffer = Mutex::new(Arc::new(
             backend
                 .device
                 .create_buffer(
@@ -223,7 +217,7 @@ impl VickiRenderClient {
                     None,
                 )
                 .unwrap(),
-        );
+        ));
 
         let bindless_descriptor_set = create_bindless_descriptor_set(backend.device.as_ref());
 
@@ -236,7 +230,7 @@ impl VickiRenderClient {
             meshes: Default::default(),
             mesh_buffer,
             vertex_buffer,
-            vertex_buffer_size: 0,
+            vertex_buffer_written: 0,
             bindless_descriptor_set,
             bindless_images: Default::default(),
             frame_idx: 0u32,
@@ -300,10 +294,14 @@ impl VickiRenderClient {
                 .unwrap(),
         );
 
+        let mut vertex_buffer = self.vertex_buffer.lock();
         let mut buffer_builder = BufferBuilder::new(
-            self.vertex_buffer.allocation_info.get_mapped_data(),
-            &mut self.vertex_buffer_size,
-            VERTEX_BUFFER_CAPACITY,
+            Arc::get_mut(&mut *vertex_buffer)
+                .expect("refs may not be retained")
+                .allocation
+                .mapped_slice_mut()
+                .expect("vertex buffer pointer"),
+            &mut self.vertex_buffer_written,
         );
 
         let vertex_core_offset = buffer_builder.append(&mesh.verts) as _;
@@ -313,9 +311,13 @@ impl VickiRenderClient {
         let mat_data_offset = buffer_builder.append(&mesh.materials) as _;
 
         let mesh_buffer_dst = unsafe {
-            let mesh_buffer_dst =
-                self.mesh_buffer.allocation_info.get_mapped_data() as *mut GpuMesh;
-            assert!(!mesh_buffer_dst.is_null());
+            let mut mesh_buffer = self.mesh_buffer.lock();
+            let mesh_buffer_dst = Arc::get_mut(&mut *mesh_buffer)
+                .expect("refs may not be retained")
+                .allocation
+                .mapped_ptr()
+                .unwrap()
+                .as_ptr() as *mut GpuMesh;
             std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
         };
 
@@ -374,12 +376,12 @@ impl RenderClient<FrameState> for VickiRenderClient {
         crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
         let mesh_buffer = rg.import_buffer(
-            self.mesh_buffer.clone(),
+            self.mesh_buffer.lock().clone(),
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
 
         let vertex_buffer = rg.import_buffer(
-            self.vertex_buffer.clone(),
+            self.vertex_buffer.lock().clone(),
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
 

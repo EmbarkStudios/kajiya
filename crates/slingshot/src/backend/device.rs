@@ -5,6 +5,7 @@ use ash::{
     version::{DeviceV1_0, InstanceV1_0, InstanceV1_1},
     vk,
 };
+use gpu_allocator::{AllocatorDebugSettings, VulkanAllocator, VulkanAllocatorCreateDesc};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -122,7 +123,7 @@ pub struct Device {
     pub(crate) pdevice: Arc<PhysicalDevice>,
     pub(crate) instance: Arc<super::instance::Instance>,
     pub(crate) universal_queue: Queue,
-    pub(crate) global_allocator: vk_mem::Allocator,
+    pub(crate) global_allocator: Arc<Mutex<VulkanAllocator>>,
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) cmd_ext: CmdExt,
     pub(crate) setup_cb: Mutex<CommandBuffer>,
@@ -250,18 +251,15 @@ impl Device {
 
             info!("Created a Vulkan device");
 
-            let allocator_info = vk_mem::AllocatorCreateInfo {
-                physical_device: pdevice.raw,
-                device: device.clone(),
+            let global_allocator = VulkanAllocator::new(&VulkanAllocatorCreateDesc {
                 instance: instance.clone(),
-                flags: vk_mem::AllocatorCreateFlags::NONE,
-                preferred_large_heap_block_size: 0,
-                frame_in_use_count: 0,
-                heap_size_limits: None,
-            };
-
-            let global_allocator = vk_mem::Allocator::new(&allocator_info)
-                .expect("Failed to initialize the Vulkan Memory Allocator");
+                device: device.clone(),
+                physical_device: pdevice.raw,
+                debug_settings: AllocatorDebugSettings {
+                    log_leaks_on_shutdown: false,
+                    ..Default::default()
+                },
+            });
 
             let universal_queue = Queue {
                 raw: device.get_device_queue(universal_queue.index, 0),
@@ -283,7 +281,7 @@ impl Device {
                 instance: pdevice.instance.clone(),
                 raw: device,
                 universal_queue,
-                global_allocator,
+                global_allocator: Arc::new(Mutex::new(global_allocator)),
                 immutable_samplers,
                 cmd_ext,
                 setup_cb: Mutex::new(setup_cb),
@@ -422,6 +420,14 @@ impl Device {
             .pending_resource_releases
             .get_mut()
             .release_all(&self.raw);
+    }
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = self.raw.device_wait_idle();
+        }
     }
 }
 

@@ -21,6 +21,7 @@ fern = { version = "0.6", features = ["colored"] }
 futures = "0.3"
 glam = "0.9"
 gltf = "0.15"
+gpu-allocator = "0.4.0"
 hassle-rs = "0.4"
 hotwatch = "0.4"
 lazy_static = "1.4"
@@ -36,8 +37,6 @@ shader-prepper = "0.2"
 smol = "0.3"
 thiserror = "1.0"
 turbosloth = "0.2.0"
-vk-mem = { git = "https://github.com/cheako/vk-mem-rs.git", rev = "4a5f613" }   # Ray tracing and VK 1.2 support
-# vk-mem = { path = "../../ext/vk-mem-rs" }   # Ditto, NDEBUG
 vk-sync = { git = "https://github.com/zedrian/vk-sync-rs.git", rev = "e28c05d" }
 # winit = "0.21"  # 0.22 panics in NSight with this error: https://github.com/rust-windowing/winit/issues/1585
 winit = "=0.19.5"
@@ -51,5 +50,6 @@ incremental = true
 lto = false
 
 [features]
+#default = ["ray-tracing"]
 default = []
 ray-tracing = []

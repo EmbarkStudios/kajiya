@@ -1,5 +1,6 @@
 use crate::backend;
 use crate::bytes::as_byte_slice;
+use ash::{version::DeviceV1_0, vk};
 use backend::buffer::Buffer;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -39,15 +40,8 @@ impl DynamicConstants {
         let buffer_offset =
             self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES + self.frame_offset_bytes;
 
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(
-                self.buffer
-                    .allocation_info
-                    .get_mapped_data()
-                    .add(buffer_offset),
-                t_size,
-            )
-        };
+        let dst = &mut self.buffer.allocation.mapped_slice_mut().unwrap()
+            [buffer_offset..buffer_offset + t_size];
 
         dst.copy_from_slice(as_byte_slice(&t));
 
@@ -58,9 +52,20 @@ impl DynamicConstants {
         buffer_offset as _
     }
 
-    pub fn flush(&self, allocator: &vk_mem::Allocator) {
-        //self.buffer.allocation_info.get_mapped_data()
+    pub fn flush(&self, device: &impl ash::version::DeviceV1_0) {
         let buffer_start = self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES;
+        let bytes_to_flush = self.frame_offset_bytes;
+
+        unsafe {
+            let memory_range = vk::MappedMemoryRange::builder()
+                .memory(self.buffer.allocation.memory())
+                .offset(self.buffer.allocation.offset() + buffer_start as u64)
+                .size(bytes_to_flush as _);
+
+            device.flush_mapped_memory_ranges(std::slice::from_ref(&memory_range));
+        }
+        //self.buffer.allocation_info.get_mapped_data()
+        /*let buffer_start = self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES;
 
         allocator
             .flush_allocation(
@@ -68,6 +73,6 @@ impl DynamicConstants {
                 buffer_start,
                 self.frame_offset_bytes,
             )
-            .unwrap();
+            .unwrap();*/
     }
 }

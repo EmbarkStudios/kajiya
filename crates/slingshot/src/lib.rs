@@ -16,7 +16,6 @@ pub use backend::{
     image::{Image, ImageDesc, ImageSubResourceData},
     RenderBackend,
 };
-pub use vk_mem;
 pub use vk_sync;
 
 #[derive(Copy, Clone)]

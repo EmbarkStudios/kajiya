@@ -39,11 +39,10 @@ winit = "=0.19.5"
 [patch.crates-io]
 turbosloth = { path = "../turbosloth" }
 
+# Official ray-tracing extensions
+#ash = { git = "https://github.com/MaikKlein/ash.git", rev = "7fa182cc4330da8da98a7c023049162a4979d0bf" }
+
 [profile.release]
 debug = true
 incremental = true
 lto = false
-
-[features]
-default = []
-ray-tracing = []

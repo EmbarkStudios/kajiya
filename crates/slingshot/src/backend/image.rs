@@ -2,6 +2,7 @@ use super::device::Device;
 use anyhow::Result;
 use ash::{util::Align, version::DeviceV1_0, vk};
 use derive_builder::Builder;
+use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 
@@ -105,7 +106,7 @@ pub struct Image {
     pub raw: vk::Image,
     pub desc: ImageDesc,
     pub views: Mutex<HashMap<ImageViewDesc, vk::ImageView>>,
-    allocation: vk_mem::Allocation,
+    allocation: gpu_allocator::SubAllocation,
 }
 
 impl Image {
@@ -160,17 +161,56 @@ impl Device {
         let desc = desc.into();
         let create_info = get_image_create_info(&desc, initial_data.is_some());
 
-        let allocation_info = vk_mem::AllocationCreateInfo {
+        /*let allocation_info = vk_mem::AllocationCreateInfo {
             usage: vk_mem::MemoryUsage::GpuOnly,
             ..Default::default()
         };
 
         let (image, allocation, _allocation_info) = self
             .global_allocator
-            .create_image(&create_info, &allocation_info)?;
+            .create_image(&create_info, &allocation_info)?;*/
+
+        let image = unsafe {
+            self.raw
+                .create_image(&create_info, None)
+                .expect("create_image")
+        };
+        let requirements = unsafe { self.raw.get_image_memory_requirements(image) };
+
+        let allocation = self
+            .global_allocator
+            .lock()
+            .allocate(&AllocationCreateDesc {
+                name: "image",
+                requirements,
+                location: MemoryLocation::GpuOnly,
+                linear: false,
+            })?;
+
+        // Bind memory to the image
+        unsafe {
+            self.raw
+                .bind_image_memory(image, allocation.memory(), allocation.offset())
+                .expect("bind_image_memory")
+        };
 
         if let Some(initial_data) = initial_data {
-            let image_buffer_info = vk::BufferCreateInfo {
+            let mut image_buffer = self
+                .create_buffer_impl(
+                    super::buffer::BufferDesc {
+                        size: std::mem::size_of::<u8>() * initial_data.data.len(),
+                        usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                        mapped: true,
+                    },
+                    Default::default(),
+                    MemoryLocation::CpuToGpu,
+                )
+                .expect("allocating a image upload buffer");
+
+            image_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.data.len()]
+                .copy_from_slice(initial_data.data);
+
+            /*let image_buffer_info = vk::BufferCreateInfo {
                 size: (std::mem::size_of::<u8>() * initial_data.data.len()) as u64,
                 usage: vk::BufferUsageFlags::TRANSFER_SRC,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
@@ -205,7 +245,7 @@ impl Device {
                 self.global_allocator
                     .unmap_memory(&buffer_allocation)
                     .expect("unmap_memory");
-            }
+            }*/
 
             self.with_setup_cb(|cb| unsafe {
                 super::barrier::record_image_barrier(
@@ -235,7 +275,7 @@ impl Device {
 
                 self.raw.cmd_copy_buffer_to_image(
                     cb,
-                    image_buffer,
+                    image_buffer.raw,
                     image,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                     &[buffer_copy_regions.build()],

@@ -818,6 +818,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "gpu-allocator"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf767ddadc7b41b350fc4ed21f646a1f1383c715eb4f3aed2e7bf37433313744"
+dependencies = [
+ "ash",
+ "backtrace",
+ "log",
+ "thiserror",
+]
+
+[[package]]
 name = "hassle-rs"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1650,6 +1662,7 @@ dependencies = [
  "futures",
  "glam",
  "gltf",
+ "gpu-allocator",
  "hassle-rs",
  "hotwatch",
  "lazy_static",
@@ -1664,7 +1677,6 @@ dependencies = [
  "smol",
  "thiserror",
  "turbosloth",
- "vk-mem",
  "vk-sync",
  "winit",
 ]
@@ -1902,16 +1914,6 @@ dependencies = [
  "thiserror",
  "turbosloth",
  "winit",
-]
-
-[[package]]
-name = "vk-mem"
-version = "0.3.0"
-source = "git+https://github.com/cheako/vk-mem-rs.git?rev=4a5f613#4a5f6139e2b5bbed7b5b520f66adb28d45b95bca"
-dependencies = [
- "ash",
- "bitflags",
- "cc",
 ]
 
 [[package]]

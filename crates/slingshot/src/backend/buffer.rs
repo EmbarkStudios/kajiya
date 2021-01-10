@@ -1,12 +1,12 @@
 use super::device::Device;
 use anyhow::Result;
 use ash::{version::DeviceV1_0, vk};
+use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 
 pub struct Buffer {
     pub raw: vk::Buffer,
     pub desc: BufferDesc,
-    pub allocation: vk_mem::Allocation,
-    pub allocation_info: vk_mem::AllocationInfo,
+    pub allocation: gpu_allocator::SubAllocation,
 }
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -21,7 +21,7 @@ impl Device {
         &self,
         desc: BufferDesc,
         extra_usage: vk::BufferUsageFlags,
-        buffer_mem_info: vk_mem::AllocationCreateInfo,
+        memory_location: MemoryLocation,
     ) -> Result<Buffer> {
         let buffer_info = vk::BufferCreateInfo {
             size: desc.size as u64,
@@ -30,30 +30,47 @@ impl Device {
             ..Default::default()
         };
 
-        let (buffer, allocation, allocation_info) = self
+        let buffer = unsafe {
+            self.raw
+                .create_buffer(&buffer_info, None)
+                .expect("create_buffer")
+        };
+        let requirements = unsafe { self.raw.get_buffer_memory_requirements(buffer) };
+
+        let allocation = self
             .global_allocator
-            .create_buffer(&buffer_info, &buffer_mem_info)
-            .expect("vma::create_buffer");
+            .lock()
+            .allocate(&AllocationCreateDesc {
+                name: "buffer",
+                requirements,
+                location: memory_location,
+                linear: true, // Buffers are always linear
+            })?;
+
+        // Bind memory to the buffer
+        unsafe {
+            self.raw
+                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+                .expect("bind_buffer_memory")
+        };
+
+        /*let (buffer, allocation, allocation_info) = self
+        .global_allocator
+        .create_buffer(&buffer_info, &buffer_mem_info)
+        .expect("vma::create_buffer");*/
 
         Ok(Buffer {
             raw: buffer,
             desc,
             allocation,
-            allocation_info,
         })
     }
 
     pub fn create_buffer(&self, desc: BufferDesc, initial_data: Option<&[u8]>) -> Result<Buffer> {
-        let (memory_usage, allocation_create_flags) = if desc.mapped {
-            (
-                vk_mem::MemoryUsage::CpuToGpu,
-                vk_mem::AllocationCreateFlags::MAPPED,
-            )
+        let memory_location = if desc.mapped {
+            MemoryLocation::CpuToGpu
         } else {
-            (
-                vk_mem::MemoryUsage::GpuOnly,
-                vk_mem::AllocationCreateFlags::NONE,
-            )
+            MemoryLocation::GpuOnly
         };
 
         let buffer = self.create_buffer_impl(
@@ -63,30 +80,18 @@ impl Device {
             } else {
                 vk::BufferUsageFlags::empty()
             },
-            vk_mem::AllocationCreateInfo {
-                usage: memory_usage,
-                flags: allocation_create_flags,
-                ..Default::default()
-            },
+            memory_location,
         )?;
 
         if let Some(initial_data) = initial_data {
-            let scratch_buffer = self.create_buffer_impl(
+            let mut scratch_buffer = self.create_buffer_impl(
                 desc,
                 vk::BufferUsageFlags::TRANSFER_SRC,
-                vk_mem::AllocationCreateInfo {
-                    usage: vk_mem::MemoryUsage::CpuToGpu,
-                    flags: vk_mem::AllocationCreateFlags::MAPPED,
-                    ..Default::default()
-                },
+                MemoryLocation::CpuToGpu,
             )?;
-            unsafe {
-                std::slice::from_raw_parts_mut(
-                    scratch_buffer.allocation_info.get_mapped_data(),
-                    desc.size,
-                )
-            }
-            .copy_from_slice(&initial_data);
+
+            scratch_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.len()]
+                .copy_from_slice(&initial_data);
 
             self.with_setup_cb(|cb| unsafe {
                 self.raw.cmd_copy_buffer(

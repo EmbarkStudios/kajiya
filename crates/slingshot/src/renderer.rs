@@ -14,6 +14,7 @@ use backend::{
     barrier::ImageBarrier,
     buffer::{Buffer, BufferDesc},
 };
+use gpu_allocator::MemoryLocation;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
@@ -73,15 +74,27 @@ impl Renderer {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
 
         let dynamic_constants = DynamicConstants::new({
-            let buffer_info = vk::BufferCreateInfo {
+            /*let buffer_info = vk::BufferCreateInfo {
                 // Allocate twice the size for even and odd frames
                 size: (DYNAMIC_CONSTANTS_SIZE_BYTES * 2) as u64,
                 usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
-            };
+            };*/
 
-            let buffer_mem_info = vk_mem::AllocationCreateInfo {
+            backend
+                .device
+                .create_buffer_impl(
+                    BufferDesc {
+                        size: DYNAMIC_CONSTANTS_SIZE_BYTES * 2,
+                        usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
+                        mapped: true,
+                    },
+                    Default::default(),
+                    MemoryLocation::CpuToGpu,
+                )
+                .expect("a buffer for dynamic constants")
+            /*let buffer_mem_info = vk_mem::AllocationCreateInfo {
                 usage: vk_mem::MemoryUsage::CpuToGpu,
                 flags: vk_mem::AllocationCreateFlags::MAPPED,
                 ..Default::default()
@@ -102,7 +115,7 @@ impl Renderer {
                 },
                 allocation,
                 allocation_info,
-            }
+            }*/
         });
 
         let frame_descriptor_set =
@@ -199,8 +212,7 @@ impl Renderer {
             raw_device.end_command_buffer(cb.raw).unwrap();
         }
 
-        self.dynamic_constants
-            .flush(&self.backend.device.global_allocator);
+        self.dynamic_constants.flush(&self.backend.device.raw);
 
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
