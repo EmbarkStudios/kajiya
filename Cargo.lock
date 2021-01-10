@@ -74,8 +74,7 @@ checksum = "cff77d8686867eceff3105329d4698d96c2391c176d5d03adc90c7389162b5b8"
 [[package]]
 name = "ash"
 version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c69a8137596e84c22d57f3da1b5de1d4230b1742a710091c85f4d7ce50f00f38"
+source = "git+https://github.com/MaikKlein/ash.git?rev=7fa182cc4330da8da98a7c023049162a4979d0bf#7fa182cc4330da8da98a7c023049162a4979d0bf"
 dependencies = [
  "libloading",
 ]

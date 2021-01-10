@@ -217,9 +217,13 @@ impl Device {
                 .fragment_shader_pixel_interlock(true)
                 .build();
 
-        let mut ray_tracing_features = ash::vk::PhysicalDeviceRayTracingFeaturesKHR::default();
-        ray_tracing_features.ray_tracing = 1;
-        ray_tracing_features.ray_query = 1;
+        #[cfg(feature = "ray-tracing")]
+        let mut ray_tracing_features = {
+            let mut ray_tracing_features = ash::vk::PhysicalDeviceRayTracingFeaturesKHR::default();
+            ray_tracing_features.ray_tracing = 1;
+            ray_tracing_features.ray_query = 1;
+            ray_tracing_features
+        };
 
         let mut get_buffer_device_address_features =
             ash::vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
@@ -241,8 +245,11 @@ impl Device {
                 .push_next(&mut descriptor_indexing)
                 .push_next(&mut imageless_framebuffer)
                 .push_next(&mut fragment_shader_interlock)
+                .push_next(&mut get_buffer_device_address_features);
+
+            #[cfg(feature = "ray-tracing")]
+            let device_create_info = device_create_info
                 .push_next(&mut ray_tracing_features)
-                .push_next(&mut get_buffer_device_address_features)
                 .build();
 
             let device = instance
