@@ -27,7 +27,7 @@ use slingshot::{
         device,
         ray_tracing::{
             RayTracingBottomAccelerationDesc, RayTracingGeometryDesc, RayTracingGeometryPart,
-            RayTracingGeometryType,
+            RayTracingGeometryType, RayTracingTopAccelerationDesc,
         },
     },
     vk_sync,
@@ -343,27 +343,35 @@ impl VickiRenderClient {
             vertex_buffer.device_address(&self.device) + vertex_core_offset as u64;
         let index_buffer_da = index_buffer.device_address(&self.device);
 
-        let blas =
-            self.device
-                .create_ray_tracing_bottom_acceleration(&RayTracingBottomAccelerationDesc {
-                    geometries: vec![RayTracingGeometryDesc {
-                        geometry_type: RayTracingGeometryType::Triangle,
-                        vertex_buffer: vertex_buffer_da,
-                        index_buffer: index_buffer_da,
-                        vertex_format: vk::Format::R32G32B32_SFLOAT,
-                        vertex_stride: size_of::<PackedVertex>(),
-                        parts: vec![RayTracingGeometryPart {
-                            index_count: mesh.indices.len(),
-                            index_offset: 0,
-                            max_vertex: mesh
-                                .indices
-                                .iter()
-                                .copied()
-                                .max()
-                                .expect("mesh must not be empty"),
-                        }],
+        let blas = self
+            .device
+            .create_ray_tracing_bottom_acceleration(&RayTracingBottomAccelerationDesc {
+                geometries: vec![RayTracingGeometryDesc {
+                    geometry_type: RayTracingGeometryType::Triangle,
+                    vertex_buffer: vertex_buffer_da,
+                    index_buffer: index_buffer_da,
+                    vertex_format: vk::Format::R32G32B32_SFLOAT,
+                    vertex_stride: size_of::<PackedVertex>(),
+                    parts: vec![RayTracingGeometryPart {
+                        index_count: mesh.indices.len(),
+                        index_offset: 0,
+                        max_vertex: mesh
+                            .indices
+                            .iter()
+                            .copied()
+                            .max()
+                            .expect("mesh must not be empty"),
                     }],
-                });
+                }],
+            })
+            .expect("blas");
+            
+        let tlas = self
+            .device
+            .create_ray_tracing_top_acceleration(&RayTracingTopAccelerationDesc {
+                instances: vec![&blas],
+            })
+            .expect("tlas");
 
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,
