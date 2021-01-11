@@ -135,12 +135,19 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
             .unwrap()
     };
 
+    let variable_descriptor_count = MAX_BINDLESS_DESCRIPTOR_COUNT as _;
+    let mut variable_descriptor_count_allocate_info =
+        vk::DescriptorSetVariableDescriptorCountAllocateInfo::builder()
+            .descriptor_counts(std::slice::from_ref(&variable_descriptor_count))
+            .build();
+
     let set = unsafe {
         raw_device
             .allocate_descriptor_sets(
                 &vk::DescriptorSetAllocateInfo::builder()
                     .descriptor_pool(descriptor_pool)
                     .set_layouts(std::slice::from_ref(&descriptor_set_layout))
+                    .push_next(&mut variable_descriptor_count_allocate_info)
                     .build(),
             )
             .unwrap()[0]

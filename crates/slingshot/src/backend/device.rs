@@ -156,7 +156,10 @@ impl Device {
                     vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
                     vk::KhrDeferredHostOperationsFn::name().as_ptr(), // rt dep
                     vk::KhrBufferDeviceAddressFn::name().as_ptr(),    // rt dep
-                    khr::RayTracing::name().as_ptr(),
+                    vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
+                    vk::KhrAccelerationStructureFn::name().as_ptr(),
+                    vk::KhrRayTracingPipelineFn::name().as_ptr(),
+                    vk::KhrRayQueryFn::name().as_ptr(),
                 ]
                 .iter(),
             );
@@ -197,14 +200,26 @@ impl Device {
             .build();
 
         let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
-            .descriptor_binding_variable_descriptor_count(true)
+            .shader_input_attachment_array_dynamic_indexing(true)
+            .shader_uniform_texel_buffer_array_dynamic_indexing(true)
+            .shader_storage_texel_buffer_array_dynamic_indexing(true)
+            .shader_uniform_buffer_array_non_uniform_indexing(true)
+            .shader_sampled_image_array_non_uniform_indexing(true)
+            .shader_storage_buffer_array_non_uniform_indexing(true)
+            .shader_storage_image_array_non_uniform_indexing(true)
+            .shader_input_attachment_array_non_uniform_indexing(true)
+            .shader_uniform_texel_buffer_array_non_uniform_indexing(true)
+            .shader_storage_texel_buffer_array_non_uniform_indexing(true)
+            .descriptor_binding_uniform_buffer_update_after_bind(true)
+            .descriptor_binding_sampled_image_update_after_bind(true)
+            .descriptor_binding_storage_image_update_after_bind(true)
+            .descriptor_binding_storage_buffer_update_after_bind(true)
+            .descriptor_binding_uniform_texel_buffer_update_after_bind(true)
+            .descriptor_binding_storage_texel_buffer_update_after_bind(true)
             .descriptor_binding_update_unused_while_pending(true)
             .descriptor_binding_partially_bound(true)
+            .descriptor_binding_variable_descriptor_count(true)
             .runtime_descriptor_array(true)
-            .shader_uniform_texel_buffer_array_dynamic_indexing(true)
-            .shader_uniform_texel_buffer_array_non_uniform_indexing(true)
-            .shader_sampled_image_array_non_uniform_indexing(true)
-            .descriptor_binding_sampled_image_update_after_bind(true)
             .build();
 
         let mut imageless_framebuffer =
@@ -218,12 +233,24 @@ impl Device {
                 .build();
 
         #[cfg(feature = "ray-tracing")]
-        let mut ray_tracing_features = {
-            let mut ray_tracing_features = ash::vk::PhysicalDeviceRayTracingFeaturesKHR::default();
-            ray_tracing_features.ray_tracing = 1;
-            ray_tracing_features.ray_query = 1;
-            ray_tracing_features
-        };
+        let mut acceleration_structure_features =
+            ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
+                .acceleration_structure(true)
+                //.acceleration_structure_host_commands(true)
+                .descriptor_binding_acceleration_structure_update_after_bind(true)
+                .build();
+
+        #[cfg(feature = "ray-tracing")]
+        let mut ray_tracing_pipeline_features =
+            ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
+                .ray_tracing_pipeline(true)
+                .ray_tracing_pipeline_trace_rays_indirect(true)
+                .build();
+
+        #[cfg(feature = "ray-tracing")]
+        let mut ray_query_features = ash::vk::PhysicalDeviceRayQueryFeaturesKHR::builder()
+            .ray_query(true)
+            .build();
 
         let mut get_buffer_device_address_features =
             ash::vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
@@ -249,7 +276,9 @@ impl Device {
 
             #[cfg(feature = "ray-tracing")]
             let device_create_info = device_create_info
-                .push_next(&mut ray_tracing_features)
+                .push_next(&mut acceleration_structure_features)
+                .push_next(&mut ray_tracing_pipeline_features)
+                .push_next(&mut ray_query_features)
                 .build();
 
             let device = instance

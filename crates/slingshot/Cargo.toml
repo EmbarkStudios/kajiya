@@ -50,6 +50,6 @@ incremental = true
 lto = false
 
 [features]
-#default = ["ray-tracing"]
-default = []
+default = ["ray-tracing"]
+#default = []
 ray-tracing = []
