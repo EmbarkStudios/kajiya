@@ -127,6 +127,10 @@ pub struct Device {
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) cmd_ext: CmdExt,
     pub(crate) setup_cb: Mutex<CommandBuffer>,
+    pub(crate) acceleration_structure_ext: khr::AccelerationStructure,
+    pub(crate) ray_tracing_pipeline_ext: khr::RayTracingPipeline,
+    pub(crate) ray_query_ext: khr::RayQuery,
+    pub(crate) ray_tracing_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
     frame0: Mutex<Arc<DeviceFrame>>,
     frame1: Mutex<Arc<DeviceFrame>>,
 }
@@ -312,6 +316,14 @@ impl Device {
 
             let setup_cb = CommandBuffer::new(&device, &universal_queue.family).unwrap();
 
+            let acceleration_structure_ext =
+                khr::AccelerationStructure::new(&pdevice.instance.raw, &device);
+            let ray_tracing_pipeline_ext =
+                khr::RayTracingPipeline::new(&pdevice.instance.raw, &device);
+            let ray_query_ext = khr::RayQuery::new(&pdevice.instance.raw, &device);
+            let ray_tracing_pipeline_properties =
+                khr::RayTracingPipeline::get_properties(&pdevice.instance.raw, pdevice.raw);
+
             Ok(Arc::new(Device {
                 pdevice: pdevice.clone(),
                 instance: pdevice.instance.clone(),
@@ -321,6 +333,10 @@ impl Device {
                 immutable_samplers,
                 cmd_ext,
                 setup_cb: Mutex::new(setup_cb),
+                acceleration_structure_ext,
+                ray_tracing_pipeline_ext,
+                ray_query_ext,
+                ray_tracing_pipeline_properties,
                 frame0: Mutex::new(Arc::new(frame0)),
                 frame1: Mutex::new(Arc::new(frame1)),
             }))

@@ -246,7 +246,7 @@ impl LazyWorker for LoadGltfScene {
                                     (base_index..(base_index + positions.len() as u32)).collect();
                             }
 
-                            log::info!("Loading a mesh with {} indices", indices.len());
+                            // log::info!("Loading a mesh with {} indices", indices.len());
 
                             res.indices.append(&mut indices);
                             res.tangents.append(&mut tangents);

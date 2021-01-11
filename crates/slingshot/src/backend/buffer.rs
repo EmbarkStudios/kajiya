@@ -1,12 +1,22 @@
 use super::device::Device;
 use anyhow::Result;
-use ash::{version::DeviceV1_0, vk};
+use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 
 pub struct Buffer {
     pub raw: vk::Buffer,
     pub desc: BufferDesc,
     pub allocation: gpu_allocator::SubAllocation,
+}
+
+impl Buffer {
+    pub fn device_address(&self, device: &Device) -> u64 {
+        unsafe {
+            device.raw.get_buffer_device_address(
+                &ash::vk::BufferDeviceAddressInfo::builder().buffer(self.raw),
+            )
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]

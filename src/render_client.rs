@@ -1,5 +1,8 @@
 use crate::{
-    asset::{image::RawRgba8Image, mesh::PackedTriangleMesh},
+    asset::{
+        image::RawRgba8Image,
+        mesh::{PackedTriangleMesh, PackedVertex},
+    },
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
     render_passes::{RasterMeshesData, UploadedTriMesh},
@@ -9,7 +12,10 @@ use crate::{
     viewport::ViewConstants,
     FrameState,
 };
-use backend::buffer::{Buffer, BufferDesc};
+use backend::{
+    buffer::{Buffer, BufferDesc},
+    ray_tracing::RayTracingBottomAcceleration,
+};
 use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
@@ -17,7 +23,13 @@ use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use slingshot::{
     ash::{version::DeviceV1_0, vk},
-    backend::device,
+    backend::{
+        device,
+        ray_tracing::{
+            RayTracingBottomAccelerationDesc, RayTracingGeometryDesc, RayTracingGeometryPart,
+            RayTracingGeometryType,
+        },
+    },
     vk_sync,
 };
 use std::{mem::size_of, sync::Arc};
@@ -218,7 +230,8 @@ impl VickiRenderClient {
                 .create_buffer(
                     BufferDesc {
                         size: VERTEX_BUFFER_CAPACITY,
-                        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+                        usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                         mapped: true,
                     },
                     None,
@@ -293,7 +306,8 @@ impl VickiRenderClient {
                 .create_buffer(
                     BufferDesc {
                         size: mesh.indices.len() * 4,
-                        usage: vk::BufferUsageFlags::INDEX_BUFFER,
+                        usage: vk::BufferUsageFlags::INDEX_BUFFER
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                         mapped: false,
                     },
                     Some((&mesh.indices).as_byte_slice()),
@@ -319,14 +333,37 @@ impl VickiRenderClient {
 
         let mesh_buffer_dst = unsafe {
             let mut mesh_buffer = self.mesh_buffer.lock();
-            let mesh_buffer_dst = Arc::get_mut(&mut *mesh_buffer)
-                .expect("refs may not be retained")
-                .allocation
-                .mapped_ptr()
-                .unwrap()
-                .as_ptr() as *mut GpuMesh;
+            let mesh_buffer = Arc::get_mut(&mut *mesh_buffer).expect("refs may not be retained");
+            let mesh_buffer_dst =
+                mesh_buffer.allocation.mapped_ptr().unwrap().as_ptr() as *mut GpuMesh;
             std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
         };
+
+        let vertex_buffer_da =
+            vertex_buffer.device_address(&self.device) + vertex_core_offset as u64;
+        let index_buffer_da = index_buffer.device_address(&self.device);
+
+        let blas =
+            self.device
+                .create_ray_tracing_bottom_acceleration(&RayTracingBottomAccelerationDesc {
+                    geometries: vec![RayTracingGeometryDesc {
+                        geometry_type: RayTracingGeometryType::Triangle,
+                        vertex_buffer: vertex_buffer_da,
+                        index_buffer: index_buffer_da,
+                        vertex_format: vk::Format::R32G32B32_SFLOAT,
+                        vertex_stride: size_of::<PackedVertex>(),
+                        parts: vec![RayTracingGeometryPart {
+                            index_count: mesh.indices.len(),
+                            index_offset: 0,
+                            max_vertex: mesh
+                                .indices
+                                .iter()
+                                .copied()
+                                .max()
+                                .expect("mesh must not be empty"),
+                        }],
+                    }],
+                });
 
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,

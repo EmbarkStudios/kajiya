@@ -21,7 +21,7 @@ fern = { version = "0.6", features = ["colored"] }
 futures = "0.3"
 glam = "0.9"
 gltf = "0.15"
-gpu-allocator = "0.4.0"
+gpu-allocator = { version = "0.4.0", features = ["vulkan_device_address"] }
 hassle-rs = "0.4"
 hotwatch = "0.4"
 lazy_static = "1.4"
