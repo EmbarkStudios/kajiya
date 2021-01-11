@@ -1,10 +1,7 @@
 #include "inc/mesh.hlsl"
 #include "inc/pack_unpack.hlsl"
+#include "inc/bindless.hlsl"
 
-[[vk::binding(0, 1)]] StructuredBuffer<Mesh> meshes;
-[[vk::binding(1, 1)]] ByteAddressBuffer vertices;
-
-[[vk::binding(0, 3)]] Texture2D material_textures[];
 SamplerState sampler_llr;
 
 struct PsIn {

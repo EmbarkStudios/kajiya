@@ -1,8 +1,6 @@
 #include "inc/frame_constants.hlsl"
 #include "inc/mesh.hlsl"
-
-[[vk::binding(0, 1)]] StructuredBuffer<Mesh> meshes;
-[[vk::binding(1, 1)]] ByteAddressBuffer vertices;
+#include "inc/bindless.hlsl"
 
 struct VsOut {
 	float4 position: SV_Position;

@@ -98,10 +98,15 @@ fn append_buffer_data<T: Copy>(buf_slice: &mut [u8], buf_written: &mut usize, da
 fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet {
     let raw_device = &device.raw;
 
-    let set_binding_flags = [vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
-        | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
-        | vk::DescriptorBindingFlags::PARTIALLY_BOUND
-        | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT];
+    let set_binding_flags = [
+        vk::DescriptorBindingFlags::empty(),
+        vk::DescriptorBindingFlags::empty(),
+        vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
+            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
+            | vk::DescriptorBindingFlags::PARTIALLY_BOUND
+            | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
+    ];
+
     let mut binding_flags_create_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
         .binding_flags(&set_binding_flags)
         .build();
@@ -110,16 +115,38 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
         raw_device
             .create_descriptor_set_layout(
                 &vk::DescriptorSetLayoutCreateInfo::builder()
-                    .bindings(&[vk::DescriptorSetLayoutBinding::builder()
-                        .binding(0)
-                        .descriptor_count(MAX_BINDLESS_DESCRIPTOR_COUNT as _)
-                        .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                        .stage_flags(
-                            vk::ShaderStageFlags::COMPUTE
-                                | vk::ShaderStageFlags::ALL_GRAPHICS
-                                | vk::ShaderStageFlags::RAYGEN_KHR,
-                        )
-                        .build()])
+                    .bindings(&[
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(0)
+                            .descriptor_count(1)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .stage_flags(
+                                vk::ShaderStageFlags::COMPUTE
+                                    | vk::ShaderStageFlags::ALL_GRAPHICS
+                                    | vk::ShaderStageFlags::RAYGEN_KHR,
+                            )
+                            .build(),
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(1)
+                            .descriptor_count(1)
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+                            .stage_flags(
+                                vk::ShaderStageFlags::COMPUTE
+                                    | vk::ShaderStageFlags::ALL_GRAPHICS
+                                    | vk::ShaderStageFlags::RAYGEN_KHR,
+                            )
+                            .build(),
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(2)
+                            .descriptor_count(MAX_BINDLESS_DESCRIPTOR_COUNT as _)
+                            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                            .stage_flags(
+                                vk::ShaderStageFlags::COMPUTE
+                                    | vk::ShaderStageFlags::ALL_GRAPHICS
+                                    | vk::ShaderStageFlags::RAYGEN_KHR,
+                            )
+                            .build(),
+                    ])
                     .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
                     .push_next(&mut binding_flags_create_info)
                     .build(),
@@ -128,10 +155,16 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
             .unwrap()
     };
 
-    let descriptor_sizes = [vk::DescriptorPoolSize {
-        ty: vk::DescriptorType::SAMPLED_IMAGE,
-        descriptor_count: MAX_BINDLESS_DESCRIPTOR_COUNT as _,
-    }];
+    let descriptor_sizes = [
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::STORAGE_BUFFER,
+            descriptor_count: 2,
+        },
+        vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::SAMPLED_IMAGE,
+            descriptor_count: MAX_BINDLESS_DESCRIPTOR_COUNT as _,
+        },
+    ];
 
     let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
         .pool_sizes(&descriptor_sizes)
@@ -207,36 +240,46 @@ impl VickiRenderClient {
             },
         )?;
 
-        let mesh_buffer = Mutex::new(Arc::new(
-            backend
-                .device
-                .create_buffer(
-                    BufferDesc {
-                        size: MAX_GPU_MESHES * size_of::<GpuMesh>(),
-                        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-                        mapped: true,
-                    },
-                    None,
-                )
-                .unwrap(),
-        ));
+        let mesh_buffer = backend
+            .device
+            .create_buffer(
+                BufferDesc {
+                    size: MAX_GPU_MESHES * size_of::<GpuMesh>(),
+                    usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+                    mapped: true,
+                },
+                None,
+            )
+            .unwrap();
 
-        let vertex_buffer = Mutex::new(Arc::new(
-            backend
-                .device
-                .create_buffer(
-                    BufferDesc {
-                        size: VERTEX_BUFFER_CAPACITY,
-                        usage: vk::BufferUsageFlags::STORAGE_BUFFER
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                        mapped: true,
-                    },
-                    None,
-                )
-                .unwrap(),
-        ));
+        let vertex_buffer = backend
+            .device
+            .create_buffer(
+                BufferDesc {
+                    size: VERTEX_BUFFER_CAPACITY,
+                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    mapped: true,
+                },
+                None,
+            )
+            .unwrap();
 
         let bindless_descriptor_set = create_bindless_descriptor_set(backend.device.as_ref());
+
+        Self::write_descriptor_set_buffer(
+            &backend.device.raw,
+            bindless_descriptor_set,
+            0,
+            &mesh_buffer,
+        );
+
+        Self::write_descriptor_set_buffer(
+            &backend.device.raw,
+            bindless_descriptor_set,
+            1,
+            &vertex_buffer,
+        );
 
         Ok(Self {
             raster_simple_render_pass,
@@ -245,13 +288,36 @@ impl VickiRenderClient {
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
             meshes: Default::default(),
-            mesh_buffer,
-            vertex_buffer,
+            mesh_buffer: Mutex::new(Arc::new(mesh_buffer)),
+            vertex_buffer: Mutex::new(Arc::new(vertex_buffer)),
             vertex_buffer_written: 0,
             bindless_descriptor_set,
             bindless_images: Default::default(),
             frame_idx: 0u32,
         })
+    }
+
+    fn write_descriptor_set_buffer(
+        device: &slingshot::ash::Device,
+        set: vk::DescriptorSet,
+        dst_binding: u32,
+        buffer: &Buffer,
+    ) {
+        let buffer_info = vk::DescriptorBufferInfo::builder()
+            .buffer(buffer.raw)
+            .range(vk::WHOLE_SIZE)
+            .build();
+
+        let write_descriptor_set = vk::WriteDescriptorSet::builder()
+            .dst_set(set)
+            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+            .dst_binding(dst_binding)
+            .buffer_info(std::slice::from_ref(&buffer_info))
+            .build();
+
+        unsafe {
+            device.update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[]);
+        }
     }
 
     pub fn add_image(&mut self, src: &RawRgba8Image) -> BindlessImageHandle {
@@ -281,7 +347,7 @@ impl VickiRenderClient {
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
             .dst_set(self.bindless_descriptor_set)
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-            .dst_binding(0)
+            .dst_binding(2)
             .dst_array_element(handle.0 as _)
             .image_info(std::slice::from_ref(&image_info))
             .build();
@@ -424,16 +490,6 @@ impl RenderClient<FrameState> for VickiRenderClient {
         );
         crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
-        let mesh_buffer = rg.import_buffer(
-            self.mesh_buffer.lock().clone(),
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
-        let vertex_buffer = rg.import_buffer(
-            self.vertex_buffer.lock().clone(),
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
         crate::render_passes::raster_meshes(
             rg,
             self.raster_simple_render_pass.clone(),
@@ -441,8 +497,6 @@ impl RenderClient<FrameState> for VickiRenderClient {
             &mut gbuffer,
             RasterMeshesData {
                 meshes: self.meshes.as_slice(),
-                mesh_buffer: &mesh_buffer,
-                vertex_buffer: &vertex_buffer,
                 bindless_descriptor_set: self.bindless_descriptor_set,
             },
         );
