@@ -294,12 +294,13 @@ pub fn raster_sdf(
 
 #[derive(Clone)]
 pub struct UploadedTriMesh {
-    pub index_buffer: Arc<Buffer>,
+    pub index_buffer_offset: u64,
     pub index_count: u32,
 }
 
 pub struct RasterMeshesData<'a> {
     pub meshes: &'a [UploadedTriMesh],
+    pub vertex_buffer: Arc<Buffer>,
     pub bindless_descriptor_set: vk::DescriptorSet,
 }
 
@@ -337,6 +338,7 @@ pub fn raster_meshes(
     let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
 
+    let vertex_buffer = mesh_data.vertex_buffer.clone();
     let bindless_descriptor_set = mesh_data.bindless_descriptor_set;
 
     pass.render(move |api| {
@@ -371,8 +373,8 @@ pub fn raster_meshes(
             for chunk in chunks {
                 raw_device.cmd_bind_index_buffer(
                     cb.raw,
-                    chunk.index_buffer.raw,
-                    0,
+                    vertex_buffer.raw,
+                    chunk.index_buffer_offset,
                     vk::IndexType::UINT32,
                 );
 

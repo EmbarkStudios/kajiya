@@ -48,6 +48,7 @@ struct GpuMesh {
     vertex_mat_offset: u32,
     vertex_aux_offset: u32,
     mat_data_offset: u32,
+    index_offset: u32,
 }
 
 const MAX_GPU_MESHES: usize = 1024;
@@ -258,7 +259,8 @@ impl VickiRenderClient {
                 BufferDesc {
                     size: VERTEX_BUFFER_CAPACITY,
                     usage: vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                        | vk::BufferUsageFlags::INDEX_BUFFER,
                     mapped: true,
                 },
                 None,
@@ -364,7 +366,7 @@ impl VickiRenderClient {
     pub fn add_mesh(&mut self, mesh: PackedTriangleMesh) {
         let mesh_idx = self.meshes.len();
 
-        let index_buffer = Arc::new(
+        /*let index_buffer = Arc::new(
             self.device
                 .create_buffer(
                     BufferDesc {
@@ -376,7 +378,7 @@ impl VickiRenderClient {
                     Some((&mesh.indices).as_byte_slice()),
                 )
                 .unwrap(),
-        );
+        );*/
 
         let mut vertex_buffer = self.vertex_buffer.lock();
         let mut buffer_builder = BufferBuilder::new(
@@ -388,6 +390,7 @@ impl VickiRenderClient {
             &mut self.vertex_buffer_written,
         );
 
+        let vertex_index_offset = buffer_builder.append(&mesh.indices) as _;
         let vertex_core_offset = buffer_builder.append(&mesh.verts) as _;
         let vertex_uv_offset = buffer_builder.append(&mesh.uvs) as _;
         let vertex_mat_offset = buffer_builder.append(&mesh.material_ids) as _;
@@ -402,9 +405,9 @@ impl VickiRenderClient {
             std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
         };
 
-        let vertex_buffer_da =
-            vertex_buffer.device_address(&self.device) + vertex_core_offset as u64;
-        let index_buffer_da = index_buffer.device_address(&self.device);
+        let base_da = vertex_buffer.device_address(&self.device);
+        let vertex_buffer_da = base_da + vertex_core_offset as u64;
+        let index_buffer_da = base_da + vertex_index_offset as u64;
 
         let blas = self
             .device
@@ -442,10 +445,11 @@ impl VickiRenderClient {
             vertex_mat_offset,
             vertex_aux_offset,
             mat_data_offset,
+            index_offset: vertex_index_offset,
         };
 
         self.meshes.push(UploadedTriMesh {
-            index_buffer,
+            index_buffer_offset: vertex_index_offset as u64,
             index_count: mesh.indices.len() as _,
         });
     }
@@ -497,6 +501,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
             &mut gbuffer,
             RasterMeshesData {
                 meshes: self.meshes.as_slice(),
+                vertex_buffer: self.vertex_buffer.lock().clone(),
                 bindless_descriptor_set: self.bindless_descriptor_set,
             },
         );

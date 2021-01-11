@@ -8,6 +8,7 @@ struct Mesh {
     uint vertex_mat_offset;
     uint vertex_aux_offset;
     uint mat_data_offset;
+    uint index_offset;
 };
 
 struct Vertex {
