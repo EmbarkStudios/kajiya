@@ -65,7 +65,7 @@ type RenderResourceHandle = ();
 
 #[derive(Clone)]
 pub struct RayTracingTopAccelerationDesc<'a> {
-    pub instances: Vec<&'a RayTracingBottomAcceleration>,
+    pub instances: Vec<&'a RayTracingAcceleration>,
 }
 
 #[derive(Clone, Debug)]
@@ -86,12 +86,7 @@ pub struct RayTracingShaderTableDesc {
     pub miss_entry_count: u32,
 }
 
-pub struct RayTracingBottomAcceleration {
-    raw: vk::AccelerationStructureKHR,
-    buffer: super::buffer::Buffer,
-}
-
-pub struct RayTracingTopAcceleration {
+pub struct RayTracingAcceleration {
     raw: vk::AccelerationStructureKHR,
     buffer: super::buffer::Buffer,
 }
@@ -100,7 +95,7 @@ impl Device {
     pub fn create_ray_tracing_bottom_acceleration(
         &self,
         desc: &RayTracingBottomAccelerationDesc,
-    ) -> Result<RayTracingBottomAcceleration> {
+    ) -> Result<RayTracingAcceleration> {
         //log::trace!("Creating ray tracing bottom acceleration: {:?}", desc);
 
         let geometries: Result<Vec<ash::vk::AccelerationStructureGeometryKHR>> = desc
@@ -146,119 +141,33 @@ impl Device {
             })
             .collect();
 
-        let mut geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
             .geometries(geometries.as_slice())
             .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
             .build();
 
+        let max_primitive_counts: Vec<_> = desc
+            .geometries
+            .iter()
+            .map(|desc| desc.parts[0].index_count as u32 / 3)
+            .collect();
+
         // Create bottom-level acceleration structure
 
-        let memory_requirements = unsafe {
-            let max_primitive_counts: Vec<_> = desc
-                .geometries
-                .iter()
-                .map(|desc| desc.parts[0].index_count as u32 / 3)
-                .collect();
-
-            self.acceleration_structure_ext
-                .get_acceleration_structure_build_sizes(
-                    self.raw.handle(),
-                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
-                    &geometry_info,
-                    &max_primitive_counts,
-                )
-        };
-
-        log::info!(
-            "BLAS size: {}, scratch size: {}",
-            memory_requirements.acceleration_structure_size,
-            memory_requirements.build_scratch_size
-        );
-
-        let blas_buffer = self
-            .create_buffer(
-                super::buffer::BufferDesc {
-                    size: memory_requirements.acceleration_structure_size as _,
-                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    mapped: false,
-                },
-                None,
-            )
-            .expect("BLAS buffer");
-
-        let accel_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
-            .ty(ash::vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL)
-            .buffer(blas_buffer.raw)
-            .size(memory_requirements.acceleration_structure_size as _)
-            .build();
-
-        unsafe {
-            let blas = self
-                .acceleration_structure_ext
-                .create_acceleration_structure(&accel_info, None)
-                .expect("create_acceleration_structure");
-
-            let scratch_buffer = self
-                .create_buffer(
-                    super::buffer::BufferDesc {
-                        size: memory_requirements.build_scratch_size as _,
-                        usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                        mapped: false,
-                    },
-                    None,
-                )
-                .expect("BLAS scratch buffer");
-
-            geometry_info.dst_acceleration_structure = blas;
-            geometry_info.scratch_data = ash::vk::DeviceOrHostAddressKHR {
-                device_address: self.raw.get_buffer_device_address(
-                    &ash::vk::BufferDeviceAddressInfo::builder().buffer(scratch_buffer.raw),
-                ),
-            };
-
-            self.with_setup_cb(|cb| {
-                self.acceleration_structure_ext
-                    .cmd_build_acceleration_structures(
-                        cb,
-                        std::slice::from_ref(&geometry_info),
-                        std::slice::from_ref(&build_range_infos.as_slice()),
-                    );
-
-                self.raw.cmd_pipeline_barrier(
-                    cb,
-                    ash::vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-                    ash::vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
-                    ash::vk::DependencyFlags::empty(),
-                    &[ash::vk::MemoryBarrier::builder()
-                        .src_access_mask(
-                            ash::vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-                                | ash::vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
-                        )
-                        .dst_access_mask(
-                            ash::vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-                                | ash::vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
-                        )
-                        .build()],
-                    &[],
-                    &[],
-                );
-            });
-
-            Ok(RayTracingBottomAcceleration {
-                raw: blas,
-                buffer: blas_buffer,
-            })
-        }
+        self.create_ray_tracing_acceleration(
+            vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
+            geometry_info,
+            &build_range_infos,
+            &max_primitive_counts,
+        )
     }
 
     pub fn create_ray_tracing_top_acceleration(
         &self,
         desc: &RayTracingTopAccelerationDesc<'_>,
-    ) -> Result<RayTracingTopAcceleration> {
+    ) -> Result<RayTracingAcceleration> {
         //log::trace!("Creating ray tracing top acceleration: {:?}", desc);
 
         // Create instance buffer
@@ -328,18 +237,33 @@ impl Device {
             .primitive_count(instances.len() as _)
             .build()];
 
-        let mut geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
             .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
             .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
             .geometries(std::slice::from_ref(&geometry))
             .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
             .build();
 
+        let max_primitive_counts = [instances.len() as u32];
+
         // Create top-level acceleration structure
 
-        let memory_requirements = unsafe {
-            let max_primitive_counts = [instances.len() as u32];
+        self.create_ray_tracing_acceleration(
+            vk::AccelerationStructureTypeKHR::TOP_LEVEL,
+            geometry_info,
+            &build_range_infos,
+            &max_primitive_counts,
+        )
+    }
 
+    fn create_ray_tracing_acceleration(
+        &self,
+        ty: vk::AccelerationStructureTypeKHR,
+        mut geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
+        max_primitive_counts: &[u32],
+    ) -> Result<RayTracingAcceleration> {
+        let memory_requirements = unsafe {
             self.acceleration_structure_ext
                 .get_acceleration_structure_build_sizes(
                     self.raw.handle(),
@@ -350,12 +274,12 @@ impl Device {
         };
 
         log::info!(
-            "TLAS size: {}, scratch size: {}",
+            "Acceleration structure size: {}, scratch size: {}",
             memory_requirements.acceleration_structure_size,
             memory_requirements.build_scratch_size
         );
 
-        let tlas_buffer = self
+        let accel_buffer = self
             .create_buffer(
                 super::buffer::BufferDesc {
                     size: memory_requirements.acceleration_structure_size as _,
@@ -365,16 +289,16 @@ impl Device {
                 },
                 None,
             )
-            .expect("TLAS buffer");
+            .expect("Acceleration structure buffer");
 
         let accel_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
-            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
-            .buffer(tlas_buffer.raw)
+            .ty(ty)
+            .buffer(accel_buffer.raw)
             .size(memory_requirements.acceleration_structure_size as _)
             .build();
 
         unsafe {
-            let tlas = self
+            let accel_raw = self
                 .acceleration_structure_ext
                 .create_acceleration_structure(&accel_info, None)
                 .expect("create_acceleration_structure");
@@ -389,9 +313,9 @@ impl Device {
                     },
                     None,
                 )
-                .expect("TLAS scratch buffer");
+                .expect("Acceleration structure scratch buffer");
 
-            geometry_info.dst_acceleration_structure = tlas;
+            geometry_info.dst_acceleration_structure = accel_raw;
             geometry_info.scratch_data = ash::vk::DeviceOrHostAddressKHR {
                 device_address: self.raw.get_buffer_device_address(
                     &ash::vk::BufferDeviceAddressInfo::builder().buffer(scratch_buffer.raw),
@@ -403,7 +327,7 @@ impl Device {
                     .cmd_build_acceleration_structures(
                         cb,
                         std::slice::from_ref(&geometry_info),
-                        std::slice::from_ref(&build_range_infos.as_slice()),
+                        std::slice::from_ref(&build_range_infos),
                     );
 
                 self.raw.cmd_pipeline_barrier(
@@ -426,9 +350,9 @@ impl Device {
                 );
             });
 
-            Ok(RayTracingTopAcceleration {
-                raw: tlas,
-                buffer: tlas_buffer,
+            Ok(RayTracingAcceleration {
+                raw: accel_raw,
+                buffer: accel_buffer,
             })
         }
     }

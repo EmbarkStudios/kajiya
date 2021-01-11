@@ -12,10 +12,7 @@ use crate::{
     viewport::ViewConstants,
     FrameState,
 };
-use backend::{
-    buffer::{Buffer, BufferDesc},
-    ray_tracing::RayTracingBottomAcceleration,
-};
+use backend::buffer::{Buffer, BufferDesc};
 use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
@@ -365,7 +362,7 @@ impl VickiRenderClient {
                 }],
             })
             .expect("blas");
-            
+
         let tlas = self
             .device
             .create_ray_tracing_top_acceleration(&RayTracingTopAccelerationDesc {
