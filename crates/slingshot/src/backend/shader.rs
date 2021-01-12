@@ -234,6 +234,14 @@ pub fn create_descriptor_set_layouts(
                             panic!("{}", binding.name);
                         }
                     }
+                    rspirv_reflect::DescriptorType::ACCELERATION_STRUCTURE_KHR => bindings.push(
+                        vk::DescriptorSetLayoutBinding::builder()
+                            .binding(*binding_index)
+                            .descriptor_count(1) // TODO
+                            .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                            .stage_flags(stage_flags)
+                            .build(),
+                    ),
 
                     _ => unimplemented!("{:?}", binding),
                 }
@@ -426,7 +434,7 @@ pub enum ShaderPipelineStage {
     RayClosestHit,
 }
 
-#[derive(Builder, Hash, PartialEq, Eq, Clone)]
+#[derive(Builder, Hash, PartialEq, Eq, Clone, Debug)]
 #[builder(pattern = "owned")]
 pub struct PipelineShaderDesc {
     pub stage: ShaderPipelineStage,

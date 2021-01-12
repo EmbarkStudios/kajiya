@@ -2,7 +2,8 @@ use super::{
     graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
     resource::*,
     PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
-    RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle,
+    RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle, RgRtPipeline,
+    RgRtPipelineHandle,
 };
 
 use crate::backend::shader::{
@@ -252,6 +253,41 @@ impl<'rg> PassBuilder<'rg> {
         });
 
         RgRasterPipelineHandle { id }
+    }
+
+    pub fn register_ray_tracing_pipeline(
+        &mut self,
+        shaders: &[PipelineShader<&'static str>],
+    ) -> RgRtPipelineHandle {
+        let id = self.rg.rt_pipelines.len();
+
+        self.rg.rt_pipelines.push(RgRtPipeline {
+            shaders: shaders
+                .iter()
+                .map(|shader| {
+                    let desc = shader.desc.clone();
+
+                    if let Some(_frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout
+                    {
+                        // TODO
+                        /*desc.descriptor_set_opts[0] = Some((
+                            2,
+                            DescriptorSetLayoutOpts::builder()
+                                .replace(frame_descriptor_set_layout.clone())
+                                .build()
+                                .unwrap(),
+                        ));*/
+                    }
+
+                    PipelineShader {
+                        code: shader.code,
+                        desc,
+                    }
+                })
+                .collect(),
+        });
+
+        RgRtPipelineHandle { id }
     }
 
     pub fn render(mut self, render: impl FnOnce(&mut RenderPassApi) + 'static) {

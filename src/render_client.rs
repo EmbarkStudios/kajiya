@@ -504,6 +504,8 @@ impl RenderClient<FrameState> for VickiRenderClient {
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
         crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
 
+        crate::render_passes::ray_trace_test(rg, &mut lit, self.bindless_descriptor_set);
+
         /*crate::render_passes::raster_sdf(
             rg,
             self.raster_simple_render_pass.clone(),

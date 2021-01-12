@@ -449,3 +449,36 @@ pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
 
     output
 }
+
+pub fn ray_trace_test(
+    rg: &mut RenderGraph,
+    output_img: &mut Handle<Image>,
+    bindless_descriptor_set: vk::DescriptorSet,
+) {
+    let mut pass = rg.add_pass();
+
+    let pipeline = pass.register_ray_tracing_pipeline(&[
+        PipelineShader {
+            code: "/assets/shaders/rt/triangle.rgen.hlsl",
+            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                .build()
+                .unwrap(),
+        },
+        PipelineShader {
+            code: "/assets/shaders/rt/triangle.rmiss.hlsl",
+            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                .build()
+                .unwrap(),
+        },
+        PipelineShader {
+            code: "/assets/shaders/rt/triangle.rchit.hlsl",
+            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+                .build()
+                .unwrap(),
+        },
+    ]);
+
+    let output_ref = pass.write(output_img, AccessType::AnyShaderWrite);
+
+    pass.render(move |api| {});
+}

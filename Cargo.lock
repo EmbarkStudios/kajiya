@@ -22,15 +22,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aae1277d39aeec15cb388266ecc24b11c80469deae6067e17a1a7aa9e5c1f234"
 
 [[package]]
-name = "aho-corasick"
-version = "0.7.15"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7404febffaa47dac81aa44dba71523c9d069b1bdc50a77db41195149e17f68e5"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "andrew"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -148,7 +139,7 @@ checksum = "a265e3abeffdce30b2e26b7a11b222fe37c6067404001b434101457d0385eb92"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -442,7 +433,7 @@ dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
  "strsim",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -453,7 +444,7 @@ checksum = "d9b5a2f4ac4969822c62224815d069952656cadc7084fdca9751e6d959189b72"
 dependencies = [
  "darling_core",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -476,7 +467,7 @@ dependencies = [
  "derive_builder_core",
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -488,21 +479,18 @@ dependencies = [
  "darling",
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
 name = "derive_more"
-version = "0.15.0"
+version = "0.99.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7a141330240c921ec6d074a3e188a7c7ef95668bb95e7d44fa0e5778ec2a7afe"
+checksum = "41cb0e6161ad61ed084a36ba71fbba9e3ac5aee3606fb607fe08da6acbcf3d8c"
 dependencies = [
- "lazy_static",
- "proc-macro2 0.4.30",
- "quote 0.6.13",
- "regex",
- "rustc_version",
- "syn 0.15.44",
+ "proc-macro2 1.0.19",
+ "quote 1.0.7",
+ "syn",
 ]
 
 [[package]]
@@ -550,7 +538,7 @@ checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
  "synstructure",
 ]
 
@@ -710,7 +698,7 @@ dependencies = [
  "proc-macro-hack",
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -801,7 +789,7 @@ dependencies = [
  "inflections",
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -1333,7 +1321,7 @@ checksum = "2c0e815c3ee9a031fdf5af21c10aa17c573c9c6a566328d99e3936c34e36461f"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -1460,24 +1448,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41cc0f7e4d5d4544e8861606a285bb08d3e70712ccc7d2b84d7c0ccfaf4b05ce"
 
 [[package]]
-name = "regex"
-version = "1.4.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9251239e129e16308e70d853559389de218ac275b515068abc96829d05b948a"
-dependencies = [
- "aho-corasick",
- "memchr",
- "regex-syntax",
- "thread_local",
-]
-
-[[package]]
-name = "regex-syntax"
-version = "0.6.22"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5eb417147ba9860a96cfe72a0b93bf88fee1744b5636ec99ab20c1aa9376581"
-
-[[package]]
 name = "relative-path"
 version = "1.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1485,25 +1455,13 @@ checksum = "65aff7c83039e88c1c0b4bedf8dfa93d6ec84d5fc2945b37c1fa4186f46c5f94"
 
 [[package]]
 name = "rspirv"
-version = "0.6.0"
-source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
-dependencies = [
- "derive_more",
- "fxhash",
- "num-traits",
- "spirv_headers 1.4.2",
-]
-
-[[package]]
-name = "rspirv"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "31b11de7481ced3d22182a2be7670323028b38a7cc3457e470f91d144947fba4"
+source = "git+https://github.com/gfx-rs/rspirv.git?rev=dae552c#dae552c484974ca280a2f18a686b42b38b0dc2ad"
 dependencies = [
  "derive_more",
  "fxhash",
  "num-traits",
- "spirv_headers 1.5.0",
+ "spirv_headers",
 ]
 
 [[package]]
@@ -1511,7 +1469,7 @@ name = "rspirv-reflect"
 version = "0.3.0"
 source = "git+https://github.com/Traverse-Research/rspirv-reflect.git?rev=1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f#1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f"
 dependencies = [
- "rspirv 0.7.0",
+ "rspirv",
  "thiserror",
 ]
 
@@ -1615,7 +1573,7 @@ checksum = "609feed1d0a73cc36a0182a840a9b37b4a82f0b1150369f0536a9e3f2a31dc48"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
 ]
 
 [[package]]
@@ -1669,7 +1627,7 @@ dependencies = [
  "parking_lot 0.11.0",
  "raw-window-handle",
  "relative-path",
- "rspirv 0.6.0",
+ "rspirv",
  "rspirv-reflect",
  "serde",
  "shader-prepper",
@@ -1742,18 +1700,8 @@ dependencies = [
 
 [[package]]
 name = "spirv_headers"
-version = "1.4.2"
-source = "git+https://github.com/Traverse-Research/rspirv.git#9b9544ecbd6cead36e5f8bc3c33a0c5dc0cab633"
-dependencies = [
- "bitflags",
- "num-traits",
-]
-
-[[package]]
-name = "spirv_headers"
 version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f5b132530b1ac069df335577e3581765995cba5a13995cdbbdbc8fb057c532c"
+source = "git+https://github.com/gfx-rs/rspirv.git?rev=dae552c#dae552c484974ca280a2f18a686b42b38b0dc2ad"
 dependencies = [
  "bitflags",
  "num-traits",
@@ -1776,17 +1724,6 @@ checksum = "6446ced80d6c486436db5c078dde11a9f73d42b57fb273121e160b84f63d894c"
 
 [[package]]
 name = "syn"
-version = "0.15.44"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9ca4b3b69a77cbe1ffc9e198781b7acb0c7365a883670e8f1c1bc66fba79a5c5"
-dependencies = [
- "proc-macro2 0.4.30",
- "quote 0.6.13",
- "unicode-xid 0.1.0",
-]
-
-[[package]]
-name = "syn"
 version = "1.0.38"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e69abc24912995b3038597a7a593be5053eb0fb44f3cc5beec0deb421790c1f4"
@@ -1804,7 +1741,7 @@ checksum = "b834f2d66f734cb897113e34aaff2f1ab4719ca946f9a7358dba8f8064148701"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
+ "syn",
  "unicode-xid 0.2.1",
 ]
 
@@ -1825,16 +1762,7 @@ checksum = "bd80fc12f73063ac132ac92aceea36734f04a1d93c1240c6944e23a3b8841793"
 dependencies = [
  "proc-macro2 1.0.19",
  "quote 1.0.7",
- "syn 1.0.38",
-]
-
-[[package]]
-name = "thread_local"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bb9bc092d0d51e76b2b19d9d85534ffc9ec2db959a2523cdae0697e2972cd447"
-dependencies = [
- "lazy_static",
+ "syn",
 ]
 
 [[package]]

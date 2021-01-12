@@ -22,7 +22,7 @@ use crate::{
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
-    pipeline_cache::RasterPipelineHandle,
+    pipeline_cache::{RasterPipelineHandle, RtPipelineHandle},
     transient_resource_cache::TransientResourceCache,
 };
 use ash::{version::DeviceV1_0, vk};
@@ -77,12 +77,22 @@ pub(crate) struct RgRasterPipeline {
     pub(crate) desc: RasterPipelineDesc,
 }
 
+#[derive(Clone, Copy)]
+pub struct RgRtPipelineHandle {
+    pub(crate) id: usize,
+}
+
+pub(crate) struct RgRtPipeline {
+    pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
+}
+
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceInfo>,
     exported_images: Vec<(GraphRawResourceHandle, vk::ImageUsageFlags)>,
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
     pub(crate) raster_pipelines: Vec<RgRasterPipeline>,
+    pub(crate) rt_pipelines: Vec<RgRtPipeline>,
     pub(crate) frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
 }
 
@@ -96,6 +106,7 @@ impl RenderGraph {
             exported_images: Vec::new(),
             compute_pipelines: Vec::new(),
             raster_pipelines: Vec::new(),
+            rt_pipelines: Vec::new(),
             frame_descriptor_set_layout,
         }
     }
@@ -199,6 +210,7 @@ pub struct CompiledRenderGraph {
     resource_info: ResourceInfo,
     compute_pipelines: Vec<ComputePipelineHandle>,
     raster_pipelines: Vec<RasterPipelineHandle>,
+    rt_pipelines: Vec<RtPipelineHandle>,
 }
 
 impl RenderGraph {
@@ -334,11 +346,18 @@ impl RenderGraph {
             .map(|pipeline| pipeline_cache.register_raster(&pipeline.shaders, &pipeline.desc))
             .collect::<Vec<_>>();
 
+        let rt_pipelines = self
+            .rt_pipelines
+            .iter()
+            .map(|pipeline| pipeline_cache.register_ray_tracing(&pipeline.shaders))
+            .collect::<Vec<_>>();
+
         CompiledRenderGraph {
             rg: self,
             resource_info,
             compute_pipelines,
             raster_pipelines,
+            rt_pipelines,
         }
     }
 

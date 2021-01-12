@@ -1,4 +1,7 @@
-use crate::backend::shader::*;
+use crate::backend::{
+    ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline},
+    shader::*,
+};
 use crate::shader_compiler::{CompileShader, CompiledShader};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -21,7 +24,10 @@ struct ComputePipelineCacheEntry {
 #[derive(Clone, Copy, Hash, Eq, PartialEq)]
 pub struct RasterPipelineHandle(usize);
 
-pub struct CompiledRasterShaders {
+#[derive(Clone, Copy, Hash, Eq, PartialEq)]
+pub struct RtPipelineHandle(usize);
+
+pub struct CompiledPipelineShaders {
     shaders: Vec<PipelineShader<Arc<CompiledShader>>>,
 }
 
@@ -32,7 +38,7 @@ pub struct CompilePipelineShaders {
 
 #[async_trait]
 impl LazyWorker for CompilePipelineShaders {
-    type Output = anyhow::Result<CompiledRasterShaders>;
+    type Output = anyhow::Result<CompiledPipelineShaders>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
         let shaders = futures::future::try_join_all(self.shaders.iter().map(|shader| {
@@ -60,32 +66,47 @@ impl LazyWorker for CompilePipelineShaders {
             })
             .collect();
 
-        Ok(CompiledRasterShaders { shaders })
+        Ok(CompiledPipelineShaders { shaders })
     }
 }
 
 struct RasterPipelineCacheEntry {
-    lazy_handle: Lazy<CompiledRasterShaders>,
+    lazy_handle: Lazy<CompiledPipelineShaders>,
     desc: RasterPipelineDesc,
     pipeline: Option<Arc<RasterPipeline>>,
 }
 
+struct RtPipelineCacheEntry {
+    lazy_handle: Lazy<CompiledPipelineShaders>,
+    pipeline: Option<Arc<RayTracingPipeline>>,
+}
+
 pub struct PipelineCache {
     lazy_cache: Arc<LazyCache>,
+
     compute_entries: HashMap<ComputePipelineHandle, ComputePipelineCacheEntry>,
     raster_entries: HashMap<RasterPipelineHandle, RasterPipelineCacheEntry>,
+    rt_entries: HashMap<RtPipelineHandle, RtPipelineCacheEntry>,
+
     path_to_handle: HashMap<PathBuf, ComputePipelineHandle>,
+
     raster_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RasterPipelineHandle>,
+    rt_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RtPipelineHandle>,
 }
 
 impl PipelineCache {
     pub fn new(lazy_cache: &Arc<LazyCache>) -> Self {
         Self {
+            lazy_cache: lazy_cache.clone(),
+
             compute_entries: Default::default(),
             raster_entries: Default::default(),
-            lazy_cache: lazy_cache.clone(),
+            rt_entries: Default::default(),
+
             path_to_handle: Default::default(),
+
             raster_shaders_to_handle: Default::default(),
+            rt_shaders_to_handle: Default::default(),
         }
     }
 
@@ -135,7 +156,7 @@ impl PipelineCache {
             return *handle;
         }
 
-        let handle = RasterPipelineHandle(self.compute_entries.len());
+        let handle = RasterPipelineHandle(self.raster_entries.len());
         self.raster_shaders_to_handle
             .insert(shaders.to_owned(), handle);
         self.raster_entries.insert(
@@ -160,6 +181,44 @@ impl PipelineCache {
 
     pub fn get_raster(&self, handle: RasterPipelineHandle) -> Arc<RasterPipeline> {
         self.raster_entries
+            .get(&handle)
+            .unwrap()
+            .pipeline
+            .clone()
+            .unwrap()
+    }
+
+    pub fn register_ray_tracing(
+        &mut self,
+        shaders: &[PipelineShader<&'static str>],
+    ) -> RtPipelineHandle {
+        if let Some(handle) = self.rt_shaders_to_handle.get(shaders) {
+            return *handle;
+        }
+
+        let handle = RtPipelineHandle(self.rt_entries.len());
+        self.rt_shaders_to_handle.insert(shaders.to_owned(), handle);
+        self.rt_entries.insert(
+            handle,
+            RtPipelineCacheEntry {
+                lazy_handle: CompilePipelineShaders {
+                    shaders: shaders
+                        .iter()
+                        .map(|shader| PipelineShader {
+                            code: PathBuf::from(shader.code),
+                            desc: shader.desc.clone(),
+                        })
+                        .collect(),
+                }
+                .into_lazy(),
+                pipeline: None,
+            },
+        );
+        handle
+    }
+
+    pub fn get_ray_tracing(&self, handle: RtPipelineHandle) -> Arc<RayTracingPipeline> {
+        self.rt_entries
             .get(&handle)
             .unwrap()
             .pipeline
@@ -207,6 +266,31 @@ impl PipelineCache {
                     .collect::<Vec<_>>();
 
                 let pipeline = create_raster_pipeline(&*device, &compiled_shaders, &entry.desc)?;
+
+                entry.pipeline = Some(Arc::new(pipeline));
+            }
+        }
+
+        for entry in self.rt_entries.values_mut() {
+            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
+                // TODO: release
+                entry.pipeline = None;
+            }
+
+            if entry.pipeline.is_none() {
+                let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
+                assert!(!entry.lazy_handle.is_stale());
+
+                let compiled_shaders = compiled_shaders
+                    .shaders
+                    .iter()
+                    .map(|shader| PipelineShader {
+                        code: shader.code.spirv.as_slice(),
+                        desc: shader.desc.clone(),
+                    })
+                    .collect::<Vec<_>>();
+
+                let pipeline = create_ray_tracing_pipeline(&*device, &compiled_shaders)?;
 
                 entry.pipeline = Some(Arc::new(pipeline));
             }

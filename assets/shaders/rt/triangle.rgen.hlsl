@@ -1,15 +1,13 @@
-struct Payload
-{
+struct Payload {
     float3 hitValue;
 };
 
-struct Attribute
-{
+struct Attribute {
     float2 bary;
 };
 
-RaytracingAccelerationStructure g_topLevel : register(t0, space0);
-RWTexture2D<float4> g_output : register(u1, space0);
+[[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
+[[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
 [shader("raygeneration")]
 void main()
@@ -32,8 +30,8 @@ void main()
     Payload payload;
     payload.hitValue = float3(0.0, 0.0, 0.0);
 
-    TraceRay(g_topLevel, RAY_FLAG_NONE, 0xff, 0, 0, 0, ray, payload);
+    TraceRay(acceleration_structure, RAY_FLAG_NONE, 0xff, 0, 0, 0, ray, payload);
 
-    g_output[launchIndex] = float4(payload.hitValue, 1.0f);
-    //g_output[launchIndex] = float4(ray.Direction, 1.0f);
+    output_tex[launchIndex] = float4(payload.hitValue, 1.0f);
+    //output_tex[launchIndex] = float4(ray.Direction, 1.0f);
 }

@@ -487,7 +487,7 @@ pub fn create_ray_tracing_pipeline(
         .iter()
         .map(|desc| {
             rspirv_reflect::Reflection::new_from_spirv(desc.code)
-                .unwrap()
+                .unwrap_or_else(|err| panic!("Failed compiling shader {:?}:\n{:?}", desc.desc, err))
                 .get_descriptor_sets()
                 .unwrap()
         })
