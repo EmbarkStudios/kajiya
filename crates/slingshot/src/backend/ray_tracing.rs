@@ -172,8 +172,9 @@ impl Device {
                     0, /* instance id */
                     0xff,
                     0,
-                    ash::vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE
-                        | ash::vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE,
+                    /*ash::vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE
+                    | */
+                    ash::vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE,
                     blas_address,
                 )
             })

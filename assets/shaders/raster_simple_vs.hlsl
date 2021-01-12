@@ -15,10 +15,9 @@ VsOut main(uint vid: SV_VertexID) {
 
     Mesh mesh = meshes[0];
 
-    VertexPacked vp;
     // TODO: replace with Load<float4> once there's a fast path for NV
     // https://github.com/microsoft/DirectXShaderCompiler/issues/2193
-    vp.data0 = asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_core_offset));
+    VertexPacked vp = VertexPacked(asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_core_offset)));
     Vertex v = unpack_vertex(vp);
 
     /*float4 v_color =

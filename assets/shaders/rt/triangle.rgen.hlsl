@@ -42,9 +42,9 @@ void main()
     Payload payload;
     payload.hitValue = 0.0.xxx;
 
-    TraceRay(acceleration_structure, RAY_FLAG_NONE, 0xff, 0, 0, 0, ray, payload);
+    TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
 
-    if (launchIndex.x > 1280 / 2 && any(payload.hitValue > 0.0.xxx)) {
+    if (launchIndex.x < 1280 / 2 && any(payload.hitValue > 0.0.xxx)) {
         output_tex[launchIndex] = float4(payload.hitValue, 1.0f);
         //output_tex[launchIndex] = float4(ray.Direction, 1.0f);
         //output_tex[launchIndex] = float4(payload.hitValue.xxx, 1.0f);
