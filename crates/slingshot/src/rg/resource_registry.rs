@@ -1,12 +1,19 @@
 use ash::vk;
 
 use super::{
-    graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle, RgRasterPipelineHandle,
+    graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle,
+    RgRasterPipelineHandle, RgRtPipelineHandle,
 };
 use crate::{
-    backend::image::ImageViewDesc, backend::shader::ComputePipeline,
-    backend::shader::RasterPipeline, dynamic_constants::DynamicConstants,
-    pipeline_cache::ComputePipelineHandle, pipeline_cache::RasterPipelineHandle,
+    backend::image::ImageViewDesc,
+    backend::shader::ComputePipeline,
+    backend::{
+        ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
+        shader::RasterPipeline,
+    },
+    dynamic_constants::DynamicConstants,
+    pipeline_cache::ComputePipelineHandle,
+    pipeline_cache::{RasterPipelineHandle, RtPipelineHandle},
 };
 use std::sync::Arc;
 
@@ -15,6 +22,7 @@ pub enum AnyRenderResource {
     ImportedImage(Arc<crate::backend::image::Image>),
     OwnedBuffer(crate::backend::buffer::Buffer),
     ImportedBuffer(Arc<crate::backend::buffer::Buffer>),
+    ImportedRayTracingAcceleration(Arc<crate::backend::ray_tracing::RayTracingAcceleration>),
 }
 
 impl AnyRenderResource {
@@ -24,6 +32,9 @@ impl AnyRenderResource {
             AnyRenderResource::ImportedImage(inner) => AnyRenderResourceRef::Image(&*inner),
             AnyRenderResource::OwnedBuffer(inner) => AnyRenderResourceRef::Buffer(inner),
             AnyRenderResource::ImportedBuffer(inner) => AnyRenderResourceRef::Buffer(&*inner),
+            AnyRenderResource::ImportedRayTracingAcceleration(inner) => {
+                AnyRenderResourceRef::RayTracingAcceleration(&*inner)
+            }
         }
     }
 }
@@ -31,6 +42,7 @@ impl AnyRenderResource {
 pub enum AnyRenderResourceRef<'a> {
     Image(&'a crate::backend::image::Image),
     Buffer(&'a crate::backend::buffer::Buffer),
+    RayTracingAcceleration(&'a crate::backend::ray_tracing::RayTracingAcceleration),
 }
 
 pub(crate) struct RegistryResource {
@@ -44,6 +56,7 @@ pub struct ResourceRegistry<'exec_params, 'constants> {
     pub dynamic_constants: &'constants mut DynamicConstants,
     pub compute_pipelines: Vec<ComputePipelineHandle>,
     pub raster_pipelines: Vec<RasterPipelineHandle>,
+    pub rt_pipelines: Vec<RtPipelineHandle>,
 }
 
 impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
@@ -75,6 +88,16 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         }
     }
 
+    pub(crate) fn rt_acceleration_from_raw_handle<ViewType: GpuViewType>(
+        &self,
+        handle: GraphRawResourceHandle,
+    ) -> &RayTracingAcceleration {
+        match &self.resources[handle.id as usize].resource.borrow() {
+            AnyRenderResourceRef::RayTracingAcceleration(acc) => *acc,
+            _ => panic!(),
+        }
+    }
+
     pub(crate) fn image_view<'a, 's>(
         &'s self,
         resource: GraphRawResourceHandle,
@@ -87,7 +110,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
 
         let image = match &self.resources[resource.id as usize].resource.borrow() {
             AnyRenderResourceRef::Image(img) => *img,
-            AnyRenderResourceRef::Buffer(_) => panic!(),
+            _ => panic!(),
         };
 
         let device = self.execution_params.device;
@@ -102,5 +125,10 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     pub fn raster_pipeline(&self, pipeline: RgRasterPipelineHandle) -> Arc<RasterPipeline> {
         let handle = self.raster_pipelines[pipeline.id];
         self.execution_params.pipeline_cache.get_raster(handle)
+    }
+
+    pub fn ray_tracing_pipeline(&self, pipeline: RgRtPipelineHandle) -> Arc<RayTracingPipeline> {
+        let handle = self.rt_pipelines[pipeline.id];
+        self.execution_params.pipeline_cache.get_ray_tracing(handle)
     }
 }

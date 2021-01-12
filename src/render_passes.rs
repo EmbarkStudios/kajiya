@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use slingshot::ash::{version::DeviceV1_0, vk};
+use slingshot::{
+    ash::{version::DeviceV1_0, vk},
+    backend::ray_tracing::RayTracingAcceleration,
+};
 
 use crate::{backend::image::ImageViewDesc, backend::shader::*, rg::*};
 
@@ -454,6 +457,7 @@ pub fn ray_trace_test(
     rg: &mut RenderGraph,
     output_img: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
+    tlas: Handle<RayTracingAcceleration>,
 ) {
     let mut pass = rg.add_pass();
 
@@ -478,7 +482,18 @@ pub fn ray_trace_test(
         },
     ]);
 
+    let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
     let output_ref = pass.write(output_img, AccessType::AnyShaderWrite);
 
-    pass.render(move |api| {});
+    pass.render(move |api| {
+        let pipeline = api.bind_ray_tracing_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())])
+                .raw_descriptor_set(1, bindless_descriptor_set)
+                .descriptor_set(3, &[tlas_ref.bind()]),
+        );
+
+        pipeline.trace_rays(output_ref.desc().extent);
+    });
 }

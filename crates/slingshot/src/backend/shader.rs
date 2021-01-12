@@ -129,7 +129,7 @@ pub fn create_descriptor_set_layouts(
         if let Some(set) = set {
             let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
             let mut binding_flags: Vec<vk::DescriptorBindingFlags> =
-                vec![vk::DescriptorBindingFlags::empty(); set.len()];
+                vec![vk::DescriptorBindingFlags::empty(); set.len()]; // TODO: vk::DescriptorBindingFlags::PARTIALLY_BOUND
 
             let mut set_layout_create_flags = vk::DescriptorSetLayoutCreateFlags::empty();
 

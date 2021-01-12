@@ -1,3 +1,4 @@
+use crate::backend::ray_tracing::RayTracingAcceleration;
 pub use crate::backend::{
     buffer::{Buffer, BufferDesc},
     image::{Image, ImageDesc, ImageViewDescBuilder},
@@ -20,7 +21,7 @@ impl Resource for Image {
     fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
         match res.borrow() {
             AnyRenderResourceRef::Image(img) => img,
-            AnyRenderResourceRef::Buffer(_) => unimplemented!(),
+            _ => unimplemented!(),
         }
     }
 }
@@ -31,8 +32,23 @@ impl Resource for Buffer {
 
     fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
         match res.borrow() {
-            AnyRenderResourceRef::Image(_) => unimplemented!(),
             AnyRenderResourceRef::Buffer(buffer) => buffer,
+            _ => unimplemented!(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct RayTracingAccelerationDesc;
+
+impl Resource for RayTracingAcceleration {
+    type Desc = RayTracingAccelerationDesc;
+    type Impl = crate::backend::ray_tracing::RayTracingAcceleration; // TODO: nuke
+
+    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
+        match res.borrow() {
+            AnyRenderResourceRef::RayTracingAcceleration(inner) => inner,
+            _ => unimplemented!(),
         }
     }
 }
@@ -41,6 +57,7 @@ impl Resource for Buffer {
 pub enum GraphResourceDesc {
     Image(ImageDesc),
     Buffer(BufferDesc),
+    RayTracingAcceleration(RayTracingAccelerationDesc),
 }
 
 impl From<ImageDesc> for GraphResourceDesc {
@@ -55,6 +72,12 @@ impl From<BufferDesc> for GraphResourceDesc {
     }
 }
 
+impl From<RayTracingAccelerationDesc> for GraphResourceDesc {
+    fn from(desc: RayTracingAccelerationDesc) -> Self {
+        Self::RayTracingAcceleration(desc)
+    }
+}
+
 pub trait ResourceDesc: Clone + std::fmt::Debug + Into<GraphResourceDesc> {
     type Resource: Resource;
 }
@@ -65,6 +88,10 @@ impl ResourceDesc for ImageDesc {
 
 impl ResourceDesc for BufferDesc {
     type Resource = Buffer;
+}
+
+impl ResourceDesc for RayTracingAccelerationDesc {
+    type Resource = RayTracingAcceleration;
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug)]

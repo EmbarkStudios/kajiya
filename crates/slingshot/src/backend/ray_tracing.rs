@@ -56,14 +56,13 @@ pub struct RayTracingPipelineStateDesc {
 
 #[derive(Clone, Debug)]
 pub struct RayTracingShaderTableDesc {
-    pub pipeline_state: RenderResourceHandle,
     pub raygen_entry_count: u32,
     pub hit_entry_count: u32,
     pub miss_entry_count: u32,
 }
 
 pub struct RayTracingAcceleration {
-    raw: vk::AccelerationStructureKHR,
+    pub(crate) raw: vk::AccelerationStructureKHR,
     buffer: super::buffer::Buffer,
 }
 
@@ -333,39 +332,30 @@ impl Device {
         }
     }
 
-    /*fn create_ray_tracing_shader_table(
+    fn create_ray_tracing_shader_table(
         &self,
-        handle: RenderResourceHandle,
         desc: &RayTracingShaderTableDesc,
-        debug_name: Cow<'static, str>,
-    ) -> Result<()> {
-        log::info!(
-            "Creating ray tracing shader table: {}, {:?}",
-            debug_name,
-            desc
-        );
+        pipeline: vk::Pipeline,
+    ) -> Result<RayTracingShaderTable> {
+        log::trace!("Creating ray tracing shader table: {:?}", desc);
 
-        let shader_group_handle_size =
-            self.ray_tracing_properties.shader_group_handle_size as usize;
+        let shader_group_handle_size = self
+            .ray_tracing_pipeline_properties
+            .shader_group_handle_size as usize;
         let group_count =
             (desc.raygen_entry_count + desc.miss_entry_count + desc.hit_entry_count) as usize;
         let group_handles_size = (shader_group_handle_size * group_count) as usize;
 
-        let pipeline = &*self
-            .storage
-            .get_typed::<RenderRayTracingPipelineStateVk>(desc.pipeline_state)?;
-
-        let mut group_handles: Vec<u8> = vec![0u8; group_handles_size];
-        unsafe {
-            self.ray_tracing
+        let group_handles: Vec<u8> = unsafe {
+            self.ray_tracing_pipeline_ext
                 .get_ray_tracing_shader_group_handles(
-                    pipeline.pipeline,
+                    pipeline,
                     0,
                     group_count as _,
-                    &mut group_handles,
+                    group_handles_size,
                 )
-                .unwrap();
-        }
+                .unwrap()
+        };
 
         let prog_size = shader_group_handle_size;
 
@@ -382,15 +372,16 @@ impl Device {
                     );
             }
 
-            let mut shader_binding_table = BufferResource::new(
-                shader_binding_table_data.len() as _,
-                ash::vk::BufferUsageFlags::TRANSFER_SRC,
-                ash::vk::MemoryPropertyFlags::HOST_VISIBLE,
-                self.logical_device.clone(),
-                self.global_allocator.clone(),
-            );
-            shader_binding_table.store(&shader_binding_table_data);
-            shader_binding_table
+            self.create_buffer(
+                super::buffer::BufferDesc {
+                    size: shader_binding_table_data.len(),
+                    usage: vk::BufferUsageFlags::TRANSFER_SRC
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    mapped: false,
+                },
+                Some(&shader_binding_table_data),
+            )
+            .expect("SBT sub-buffer")
         };
 
         let raygen_shader_binding_table = create_binding_table(0, desc.raygen_entry_count);
@@ -401,82 +392,46 @@ impl Device {
             desc.hit_entry_count,
         );
 
-        //dbg!(shader_group_handle_size);
-        //dbg!(self.ray_tracing_properties.shader_group_base_alignment);
-
-        /*let descriptor_sets = unsafe {
-            let descriptor_pool_info = ash::vk::DescriptorPoolCreateInfo::builder()
-                .pool_sizes(&pipeline.data.pool_sizes)
-                .max_sets(pipeline.descriptor_set_layouts.len() as _);
-
-            let device = Arc::clone(&self.logical_device);
-            let raw_device = device.device();
-
-            let descriptor_pool = raw_device
-                .create_descriptor_pool(&descriptor_pool_info, None)
-                .unwrap();
-
-            raw_device
-                .allocate_descriptor_sets(
-                    &ash::vk::DescriptorSetAllocateInfo::builder()
-                        .descriptor_pool(descriptor_pool)
-                        .set_layouts(&pipeline.descriptor_set_layouts)
-                        .build(),
-                )
-                .unwrap_or_else(|_| {
-                    panic!(
-                        "Failed to allocate pipeline {:?} from pool with sizes {:?}",
-                        pipeline.data.combined_layouts, pipeline.data.pool_sizes
-                    )
-                })
-        };*/
-
-        let resource: Arc<RwLock<Box<dyn RenderResourceBase>>> =
-            Arc::new(RwLock::new(Box::new(RenderRayTracingShaderTableVk {
-                name: debug_name.to_string().into(),
-                raygen_shader_binding_table: ash::vk::StridedBufferRegionKHR {
-                    buffer: raygen_shader_binding_table.buffer,
-                    offset: 0,
-                    stride: prog_size as u64,
-                    size: (prog_size * desc.raygen_entry_count as usize) as u64,
-                },
-                raygen_shader_binding_table_buffer: Some(raygen_shader_binding_table),
-                miss_shader_binding_table: ash::vk::StridedBufferRegionKHR {
-                    buffer: miss_shader_binding_table.buffer,
-                    offset: 0,
-                    stride: prog_size as u64,
-                    size: (prog_size * desc.miss_entry_count as usize) as u64,
-                },
-                miss_shader_binding_table_buffer: Some(miss_shader_binding_table),
-                hit_shader_binding_table: ash::vk::StridedBufferRegionKHR {
-                    buffer: hit_shader_binding_table.buffer,
-                    offset: 0,
-                    stride: prog_size as u64,
-                    size: (prog_size * desc.hit_entry_count as usize) as u64,
-                },
-                hit_shader_binding_table_buffer: Some(hit_shader_binding_table),
-                callable_shader_binding_table_buffer: None,
-                callable_shader_binding_table: ash::vk::StridedBufferRegionKHR {
-                    buffer: Default::default(),
-                    offset: 0,
-                    stride: 0,
-                    size: 0,
-                },
-                descriptor_sets: Default::default(),
-                cbuffer_descriptor_sets: Default::default(),
-                cbuffer_dynamic_offsets: vec![
-                    0u32;
-                    MAX_SHADER_PARAMETERS + MAX_RAYGEN_SHADER_PARAMETERS
-                ],
-            })));
-
-        self.storage.put(handle, resource)?;
-        Ok(())
-    }*/
+        Ok(RayTracingShaderTable {
+            raygen_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
+                device_address: raygen_shader_binding_table.device_address(self),
+                stride: prog_size as u64,
+                size: (prog_size * desc.raygen_entry_count as usize) as u64,
+            },
+            raygen_shader_binding_table_buffer: Some(raygen_shader_binding_table),
+            miss_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
+                device_address: miss_shader_binding_table.device_address(self),
+                stride: prog_size as u64,
+                size: (prog_size * desc.miss_entry_count as usize) as u64,
+            },
+            miss_shader_binding_table_buffer: Some(miss_shader_binding_table),
+            hit_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
+                device_address: hit_shader_binding_table.device_address(self),
+                stride: prog_size as u64,
+                size: (prog_size * desc.hit_entry_count as usize) as u64,
+            },
+            hit_shader_binding_table_buffer: Some(hit_shader_binding_table),
+            callable_shader_binding_table_buffer: None,
+            callable_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
+                device_address: Default::default(),
+                stride: 0,
+                size: 0,
+            },
+        })
+    }
 }
 
 pub struct RayTracingPipeline {
     pub common: ShaderPipelineCommon,
+    pub sbt: RayTracingShaderTable,
+}
+
+impl std::ops::Deref for RayTracingPipeline {
+    type Target = ShaderPipelineCommon;
+
+    fn deref(&self) -> &Self::Target {
+        &self.common
+    }
 }
 
 pub fn create_ray_tracing_pipeline(
@@ -492,6 +447,8 @@ pub fn create_ray_tracing_pipeline(
                 .unwrap()
         })
         .collect::<Vec<_>>();
+
+    log::info!("{:#?}", stage_layouts);
 
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
@@ -656,6 +613,18 @@ pub fn create_ray_tracing_pipeline(
             }
         }
 
+        let sbt = device
+            .create_ray_tracing_shader_table(
+                &RayTracingShaderTableDesc {
+                    // TODO
+                    raygen_entry_count: 1,
+                    hit_entry_count: 1,
+                    miss_entry_count: 1,
+                },
+                pipeline,
+            )
+            .expect("SBT");
+
         Ok(RayTracingPipeline {
             common: ShaderPipelineCommon {
                 pipeline_layout,
@@ -664,28 +633,23 @@ pub fn create_ray_tracing_pipeline(
                 set_layout_info,
                 descriptor_pool_sizes,
                 descriptor_set_layouts,
-                pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+                pipeline_bind_point: vk::PipelineBindPoint::RAY_TRACING_KHR,
             },
+            sbt,
         })
     }
 }
 
-/*#[derive(Clone, Debug)]
-pub struct RenderRayTracingShaderTableVk {
-    pub name: Cow<'static, str>,
-    pub raygen_shader_binding_table_buffer: Option<crate::device::BufferResource>,
-    pub raygen_shader_binding_table: ash::vk::StridedBufferRegionKHR,
-    pub miss_shader_binding_table_buffer: Option<crate::device::BufferResource>,
-    pub miss_shader_binding_table: ash::vk::StridedBufferRegionKHR,
-    pub hit_shader_binding_table_buffer: Option<crate::device::BufferResource>,
-    pub hit_shader_binding_table: ash::vk::StridedBufferRegionKHR,
-    pub callable_shader_binding_table_buffer: Option<crate::device::BufferResource>,
-    pub callable_shader_binding_table: ash::vk::StridedBufferRegionKHR,
-    pub descriptor_sets: Vec<ash::vk::DescriptorSet>,
-    pub cbuffer_descriptor_sets: Vec<ash::vk::DescriptorSet>,
-    pub cbuffer_dynamic_offsets: Vec<u32>,
+pub struct RayTracingShaderTable {
+    pub raygen_shader_binding_table_buffer: Option<super::buffer::Buffer>,
+    pub raygen_shader_binding_table: vk::StridedDeviceAddressRegionKHR,
+    pub miss_shader_binding_table_buffer: Option<super::buffer::Buffer>,
+    pub miss_shader_binding_table: vk::StridedDeviceAddressRegionKHR,
+    pub hit_shader_binding_table_buffer: Option<super::buffer::Buffer>,
+    pub hit_shader_binding_table: vk::StridedDeviceAddressRegionKHR,
+    pub callable_shader_binding_table_buffer: Option<super::buffer::Buffer>,
+    pub callable_shader_binding_table: vk::StridedDeviceAddressRegionKHR,
 }
-*/
 
 #[repr(C)]
 #[derive(Clone, Debug, Copy)]

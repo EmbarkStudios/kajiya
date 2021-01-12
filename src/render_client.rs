@@ -23,8 +23,8 @@ use slingshot::{
     backend::{
         device,
         ray_tracing::{
-            RayTracingBottomAccelerationDesc, RayTracingGeometryDesc, RayTracingGeometryPart,
-            RayTracingGeometryType, RayTracingTopAccelerationDesc,
+            RayTracingAcceleration, RayTracingBottomAccelerationDesc, RayTracingGeometryDesc,
+            RayTracingGeometryPart, RayTracingGeometryType, RayTracingTopAccelerationDesc,
         },
     },
     vk_sync,
@@ -60,6 +60,8 @@ pub struct VickiRenderClient {
     //sdf_img: TemporalImage,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
+    mesh_blas: Vec<RayTracingAcceleration>,
+    tlas: Option<Arc<RayTracingAcceleration>>,
     mesh_buffer: Mutex<Arc<Buffer>>,
     vertex_buffer: Mutex<Arc<Buffer>>,
     vertex_buffer_written: usize,
@@ -278,6 +280,8 @@ impl VickiRenderClient {
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
             meshes: Default::default(),
+            mesh_blas: Default::default(),
+            tlas: Default::default(),
             mesh_buffer: Mutex::new(Arc::new(mesh_buffer)),
             vertex_buffer: Mutex::new(Arc::new(vertex_buffer)),
             vertex_buffer_written: 0,
@@ -420,13 +424,6 @@ impl VickiRenderClient {
             })
             .expect("blas");
 
-        let tlas = self
-            .device
-            .create_ray_tracing_top_acceleration(&RayTracingTopAccelerationDesc {
-                instances: vec![&blas],
-            })
-            .expect("tlas");
-
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,
             vertex_uv_offset,
@@ -440,6 +437,19 @@ impl VickiRenderClient {
             index_buffer_offset: vertex_index_offset as u64,
             index_count: mesh.indices.len() as _,
         });
+
+        self.mesh_blas.push(blas);
+    }
+
+    pub fn build_ray_tracing_top_level_acceleration(&mut self) {
+        let tlas = self
+            .device
+            .create_ray_tracing_top_acceleration(&RayTracingTopAccelerationDesc {
+                instances: self.mesh_blas.iter().collect::<Vec<_>>(),
+            })
+            .expect("tlas");
+
+        self.tlas = Some(Arc::new(tlas));
     }
 }
 
@@ -504,7 +514,12 @@ impl RenderClient<FrameState> for VickiRenderClient {
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
         crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
 
-        crate::render_passes::ray_trace_test(rg, &mut lit, self.bindless_descriptor_set);
+        let tlas = rg.import_ray_tracing_acceleration(
+            self.tlas.as_ref().unwrap().clone(),
+            vk_sync::AccessType::AnyShaderReadOther,
+        );
+
+        crate::render_passes::ray_trace_test(rg, &mut lit, self.bindless_descriptor_set, tlas);
 
         /*crate::render_passes::raster_sdf(
             rg,

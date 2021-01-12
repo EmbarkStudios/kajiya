@@ -5,7 +5,7 @@ use ash::{version::DeviceV1_0, vk};
 
 use super::{
     Buffer, GpuRt, GpuSrv, GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry,
-    RgComputePipelineHandle, RgRasterPipelineHandle,
+    RgComputePipelineHandle, RgRasterPipelineHandle, RgRtPipelineHandle,
 };
 use crate::{
     backend::shader::FramebufferCacheKey,
@@ -14,6 +14,7 @@ use crate::{
     backend::{
         device::{CommandBuffer, Device},
         image::{ImageViewDesc, ImageViewDescBuilder},
+        ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
         shader::{ComputePipeline, RasterPipeline},
     },
     chunky_list::TempList,
@@ -27,73 +28,55 @@ pub struct RenderPassApi<'a, 'exec_params, 'constants> {
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
     Buffer(vk::DescriptorBufferInfo),
+    RayTracingAcceleration(vk::AccelerationStructureKHR),
 }
 
-pub struct RenderPassComputePipelineBinding<'a> {
-    pipeline: RgComputePipelineHandle,
-
+#[derive(Default)]
+pub struct RenderPassCommonShaderPipelineBinding<'a> {
     // TODO: fixed size
     bindings: Vec<(u32, &'a [RenderPassBinding])>,
     raw_bindings: Vec<(u32, vk::DescriptorSet)>,
 }
 
-impl<'a> RenderPassComputePipelineBinding<'a> {
-    pub fn new(pipeline: RgComputePipelineHandle) -> Self {
+pub struct RenderPassPipelineBinding<'a, HandleType> {
+    pipeline: HandleType,
+    binding: RenderPassCommonShaderPipelineBinding<'a>,
+}
+
+impl<'a, HandleType> RenderPassPipelineBinding<'a, HandleType> {
+    pub fn new(pipeline: HandleType) -> Self {
         Self {
             pipeline,
-            bindings: Vec::new(),
-            raw_bindings: Vec::new(),
+            binding: Default::default(),
         }
     }
 
     pub fn descriptor_set(mut self, set_idx: u32, bindings: &'a [RenderPassBinding]) -> Self {
-        self.bindings.push((set_idx, bindings));
+        self.binding.bindings.push((set_idx, bindings));
         self
     }
 
     pub fn raw_descriptor_set(mut self, set_idx: u32, binding: vk::DescriptorSet) -> Self {
-        self.raw_bindings.push((set_idx, binding));
+        self.binding.raw_bindings.push((set_idx, binding));
         self
     }
 }
 
 impl RgComputePipelineHandle {
-    pub fn into_binding<'a>(self) -> RenderPassComputePipelineBinding<'a> {
-        RenderPassComputePipelineBinding::new(self)
-    }
-}
-
-pub struct RenderPassRasterPipelineBinding<'a> {
-    pipeline: RgRasterPipelineHandle,
-
-    // TODO: fixed size
-    bindings: Vec<(u32, &'a [RenderPassBinding])>,
-    raw_bindings: Vec<(u32, vk::DescriptorSet)>,
-}
-
-impl<'a> RenderPassRasterPipelineBinding<'a> {
-    pub fn new(pipeline: RgRasterPipelineHandle) -> Self {
-        Self {
-            pipeline,
-            bindings: Vec::new(),
-            raw_bindings: Vec::new(),
-        }
-    }
-
-    pub fn descriptor_set(mut self, set_idx: u32, bindings: &'a [RenderPassBinding]) -> Self {
-        self.bindings.push((set_idx, bindings));
-        self
-    }
-
-    pub fn raw_descriptor_set(mut self, set_idx: u32, binding: vk::DescriptorSet) -> Self {
-        self.raw_bindings.push((set_idx, binding));
-        self
+    pub fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
+        RenderPassPipelineBinding::new(self)
     }
 }
 
 impl RgRasterPipelineHandle {
-    pub fn into_binding<'a>(self) -> RenderPassRasterPipelineBinding<'a> {
-        RenderPassRasterPipelineBinding::new(self)
+    pub fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
+        RenderPassPipelineBinding::new(self)
+    }
+}
+
+impl RgRtPipelineHandle {
+    pub fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
+        RenderPassPipelineBinding::new(self)
     }
 }
 
@@ -104,95 +87,12 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
 
     pub fn bind_compute_pipeline<'s>(
         &'s mut self,
-        binding: RenderPassComputePipelineBinding<'_>,
+        binding: RenderPassPipelineBinding<'_, RgComputePipelineHandle>,
     ) -> BoundComputePipeline<'s, 'a, 'exec_params, 'constants> {
         let device = self.resources.execution_params.device;
         let pipeline_arc = self.resources.compute_pipeline(binding.pipeline);
-        let pipeline = &*pipeline_arc;
 
-        unsafe {
-            device.raw.cmd_bind_pipeline(
-                self.cb.raw,
-                pipeline.pipeline_bind_point,
-                pipeline.pipeline,
-            );
-        }
-
-        // Bind frame constants
-        if pipeline
-            .set_layout_info
-            .get(2)
-            .map(|set| !set.is_empty())
-            .unwrap_or_default()
-        {
-            unsafe {
-                device.raw.cmd_bind_descriptor_sets(
-                    self.cb.raw,
-                    pipeline.pipeline_bind_point,
-                    pipeline.pipeline_layout,
-                    2,
-                    &[self.resources.execution_params.frame_descriptor_set],
-                    &[self.resources.execution_params.frame_constants_offset],
-                );
-            }
-        }
-
-        for (set_idx, bindings) in binding.bindings {
-            if pipeline.set_layout_info.get(set_idx as usize).is_none() {
-                continue;
-            }
-
-            let bindings = bindings
-                .iter()
-                .map(|binding| match binding {
-                    RenderPassBinding::Image(image) => DescriptorSetBinding::Image(
-                        vk::DescriptorImageInfo::builder()
-                            .image_layout(image.image_layout)
-                            .image_view(self.resources.image_view(image.handle, &image.view_desc))
-                            .build(),
-                    ),
-                    RenderPassBinding::Buffer(buffer) => DescriptorSetBinding::Buffer(
-                        vk::DescriptorBufferInfo::builder()
-                            .buffer(
-                                self.resources
-                                    .buffer_from_raw_handle::<GpuSrv>(buffer.handle)
-                                    .raw,
-                            )
-                            .range(vk::WHOLE_SIZE)
-                            .build(),
-                    ),
-                })
-                .collect::<Vec<_>>();
-
-            bind_descriptor_set(
-                &*self.resources.execution_params.device,
-                self.cb,
-                pipeline,
-                set_idx,
-                &bindings,
-            );
-        }
-
-        for (set_idx, binding) in binding.raw_bindings {
-            if pipeline.set_layout_info.get(set_idx as usize).is_none() {
-                continue;
-            }
-
-            unsafe {
-                self.resources
-                    .execution_params
-                    .device
-                    .raw
-                    .cmd_bind_descriptor_sets(
-                        self.cb.raw,
-                        pipeline.pipeline_bind_point,
-                        pipeline.pipeline_layout,
-                        set_idx,
-                        &[binding],
-                        &[],
-                    );
-            }
-        }
+        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding);
 
         BoundComputePipeline {
             api: self,
@@ -202,12 +102,40 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
 
     pub fn bind_raster_pipeline<'s>(
         &'s mut self,
-        binding: RenderPassRasterPipelineBinding<'_>,
+        binding: RenderPassPipelineBinding<'_, RgRasterPipelineHandle>,
     ) -> BoundRasterPipeline<'s, 'a, 'exec_params, 'constants> {
         let device = self.resources.execution_params.device;
         let pipeline_arc = self.resources.raster_pipeline(binding.pipeline);
-        let pipeline = &*pipeline_arc;
 
+        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding);
+
+        BoundRasterPipeline {
+            api: self,
+            pipeline: pipeline_arc,
+        }
+    }
+
+    pub fn bind_ray_tracing_pipeline<'s>(
+        &'s mut self,
+        binding: RenderPassPipelineBinding<'_, RgRtPipelineHandle>,
+    ) -> BoundRayTracingPipeline<'s, 'a, 'exec_params, 'constants> {
+        let device = self.resources.execution_params.device;
+        let pipeline_arc = self.resources.ray_tracing_pipeline(binding.pipeline);
+
+        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding);
+
+        BoundRayTracingPipeline {
+            api: self,
+            pipeline: pipeline_arc,
+        }
+    }
+
+    fn bind_pipeline_common(
+        &mut self,
+        device: &Device,
+        pipeline: &ShaderPipelineCommon,
+        binding: &RenderPassCommonShaderPipelineBinding,
+    ) {
         unsafe {
             device.raw.cmd_bind_pipeline(
                 self.cb.raw,
@@ -235,7 +163,8 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             }
         }
 
-        for (set_idx, bindings) in binding.bindings {
+        for (set_idx, bindings) in &binding.bindings {
+            let set_idx = *set_idx;
             if pipeline.set_layout_info.get(set_idx as usize).is_none() {
                 continue;
             }
@@ -259,19 +188,27 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                             .range(vk::WHOLE_SIZE)
                             .build(),
                     ),
+                    RenderPassBinding::RayTracingAcceleration(acc) => {
+                        DescriptorSetBinding::RayTracingAcceleration(
+                            self.resources
+                                .rt_acceleration_from_raw_handle::<GpuSrv>(acc.handle)
+                                .raw,
+                        )
+                    }
                 })
                 .collect::<Vec<_>>();
 
             bind_descriptor_set(
                 &*self.resources.execution_params.device,
                 self.cb,
-                pipeline,
+                &pipeline,
                 set_idx,
                 &bindings,
             );
         }
 
-        for (set_idx, binding) in binding.raw_bindings {
+        for (set_idx, binding) in &binding.raw_bindings {
+            let set_idx = *set_idx;
             if pipeline.set_layout_info.get(set_idx as usize).is_none() {
                 continue;
             }
@@ -286,15 +223,10 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                         pipeline.pipeline_bind_point,
                         pipeline.pipeline_layout,
                         set_idx,
-                        &[binding],
+                        std::slice::from_ref(binding),
                         &[],
                     );
             }
-        }
-
-        BoundRasterPipeline {
-            api: self,
-            pipeline: pipeline_arc,
         }
     }
 
@@ -433,9 +365,38 @@ pub struct RenderPassBufferBinding {
     handle: GraphRawResourceHandle,
 }
 
+pub struct RenderPassRayTracingAccelerationBinding {
+    handle: GraphRawResourceHandle,
+}
+
 pub enum RenderPassBinding {
     Image(RenderPassImageBinding),
     Buffer(RenderPassBufferBinding),
+    RayTracingAcceleration(RenderPassRayTracingAccelerationBinding),
+}
+
+pub struct BoundRayTracingPipeline<'api, 'a, 'exec_params, 'constants> {
+    api: &'api mut RenderPassApi<'a, 'exec_params, 'constants>,
+    pipeline: Arc<RayTracingPipeline>,
+}
+
+impl<'api, 'a, 'exec_params, 'constants>
+    BoundRayTracingPipeline<'api, 'a, 'exec_params, 'constants>
+{
+    pub fn trace_rays(&self, threads: [u32; 3]) {
+        unsafe {
+            self.api.device().ray_tracing_pipeline_ext.cmd_trace_rays(
+                self.api.cb.raw,
+                &self.pipeline.sbt.raygen_shader_binding_table,
+                &self.pipeline.sbt.miss_shader_binding_table,
+                &self.pipeline.sbt.hit_shader_binding_table,
+                &self.pipeline.sbt.callable_shader_binding_table,
+                threads[0],
+                threads[1],
+                threads[2],
+            );
+        }
+    }
 }
 
 impl Ref<Image, GpuSrv> {
@@ -474,6 +435,14 @@ impl Ref<Buffer, GpuUav> {
     }
 }
 
+impl Ref<RayTracingAcceleration, GpuSrv> {
+    pub fn bind(&self) -> RenderPassBinding {
+        RenderPassBinding::RayTracingAcceleration(RenderPassRayTracingAccelerationBinding {
+            handle: self.handle,
+        })
+    }
+}
+
 fn bind_descriptor_set(
     device: &Device,
     cb: &CommandBuffer,
@@ -493,6 +462,7 @@ fn bind_descriptor_set(
 
     let image_info = TempList::new();
     let buffer_info = TempList::new();
+    let accel_info = TempList::new();
 
     let raw_device = &device.raw;
 
@@ -541,6 +511,24 @@ fn bind_descriptor_set(
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                         .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
                         .build(),
+                    DescriptorSetBinding::RayTracingAcceleration(acc) => {
+                        let mut write = write
+                            .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
+                            .push_next(
+                                &mut *(accel_info.add(
+                                    vk::WriteDescriptorSetAccelerationStructureKHR::builder()
+                                        .acceleration_structures(std::slice::from_ref(acc))
+                                        .build(),
+                                )
+                                    as *const vk::WriteDescriptorSetAccelerationStructureKHR
+                                    as *mut vk::WriteDescriptorSetAccelerationStructureKHR),
+                            )
+                            .build();
+
+                        // This is only set by the builder for images, buffers, or views; need to set explicitly after
+                        write.descriptor_count = 1;
+                        write
+                    }
                 }
             })
             .collect();

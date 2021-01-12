@@ -100,7 +100,9 @@ fn try_main() -> anyhow::Result<()> {
             }
         }
     }
+
     render_client.add_mesh(mesh);
+    render_client.build_ray_tracing_top_level_acceleration();
 
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;

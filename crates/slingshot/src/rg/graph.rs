@@ -18,7 +18,7 @@ use crate::{
     backend::image::ImageViewDesc,
     backend::shader::ComputePipelineDesc,
     backend::shader::PipelineShader,
-    backend::shader::RasterPipelineDesc,
+    backend::{ray_tracing::RayTracingAcceleration, shader::RasterPipelineDesc},
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
@@ -48,6 +48,10 @@ pub(crate) enum GraphResourceImportInfo {
     },
     Buffer {
         resource: Arc<Buffer>,
+        access_type: vk_sync::AccessType,
+    },
+    RayTracingAcceleration {
+        resource: Arc<RayTracingAcceleration>,
         access_type: vk_sync::AccessType,
     },
 }
@@ -176,6 +180,32 @@ impl RenderGraph {
         }
     }
 
+    pub fn import_ray_tracing_acceleration(
+        &mut self,
+        acc: Arc<RayTracingAcceleration>,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<RayTracingAcceleration> {
+        let res = GraphRawResourceHandle {
+            id: self.resources.len() as u32,
+            version: 0,
+        };
+
+        let desc = RayTracingAccelerationDesc;
+
+        self.resources.push(GraphResourceInfo::Imported(
+            GraphResourceImportInfo::RayTracingAcceleration {
+                resource: acc,
+                access_type: access_type_at_import_time,
+            },
+        ));
+
+        Handle {
+            raw: res,
+            desc,
+            marker: PhantomData,
+        }
+    }
+
     pub fn export_image(
         &mut self,
         img: Handle<Image>,
@@ -253,58 +283,72 @@ impl RenderGraph {
                 res.last_access = res.last_access.max(pass_idx);
 
                 let access_mask = get_access_info(res_access.access.access_type).access_mask;
-                let is_image = match &self.resources[resource_index] {
-                    GraphResourceInfo::Created(info) => match info.desc {
-                        GraphResourceDesc::Image(_) => true,
-                        GraphResourceDesc::Buffer(_) => false,
-                    },
-                    GraphResourceInfo::Imported(info) => match info {
-                        GraphResourceImportInfo::Image { .. } => true,
-                        GraphResourceImportInfo::Buffer { .. } => false,
-                    },
+
+                match &self.resources[resource_index] {
+                    GraphResourceInfo::Created(GraphResourceCreateInfo {
+                        desc: GraphResourceDesc::Image(_),
+                        ..
+                    })
+                    | GraphResourceInfo::Imported(GraphResourceImportInfo::Image { .. }) => {
+                        let image_usage: vk::ImageUsageFlags = match access_mask {
+                            vk::AccessFlags::SHADER_READ => vk::ImageUsageFlags::SAMPLED,
+                            vk::AccessFlags::SHADER_WRITE => vk::ImageUsageFlags::STORAGE,
+                            vk::AccessFlags::COLOR_ATTACHMENT_READ => {
+                                vk::ImageUsageFlags::COLOR_ATTACHMENT
+                            }
+                            vk::AccessFlags::COLOR_ATTACHMENT_WRITE => {
+                                vk::ImageUsageFlags::COLOR_ATTACHMENT
+                            }
+                            vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ => {
+                                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                            }
+                            vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE => {
+                                vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
+                            }
+                            vk::AccessFlags::TRANSFER_READ => vk::ImageUsageFlags::TRANSFER_SRC,
+                            vk::AccessFlags::TRANSFER_WRITE => vk::ImageUsageFlags::TRANSFER_DST,
+                            _ => panic!("Invalid image access mask: {:?}", access_mask),
+                        };
+
+                        image_usage_flags[res_access.handle.id as usize] |= image_usage;
+                    }
+                    GraphResourceInfo::Created(GraphResourceCreateInfo {
+                        desc: GraphResourceDesc::Buffer(_),
+                        ..
+                    })
+                    | GraphResourceInfo::Imported(GraphResourceImportInfo::Buffer { .. }) => {
+                        let buffer_usage: vk::BufferUsageFlags = match access_mask {
+                            vk::AccessFlags::INDIRECT_COMMAND_READ => {
+                                vk::BufferUsageFlags::INDIRECT_BUFFER
+                            }
+                            vk::AccessFlags::INDEX_READ => vk::BufferUsageFlags::INDEX_BUFFER,
+                            vk::AccessFlags::VERTEX_ATTRIBUTE_READ => {
+                                vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER
+                            }
+                            vk::AccessFlags::UNIFORM_READ => vk::BufferUsageFlags::UNIFORM_BUFFER,
+                            vk::AccessFlags::SHADER_READ => {
+                                vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER
+                            }
+                            vk::AccessFlags::SHADER_WRITE => vk::BufferUsageFlags::STORAGE_BUFFER,
+                            vk::AccessFlags::TRANSFER_READ => vk::BufferUsageFlags::TRANSFER_SRC,
+                            vk::AccessFlags::TRANSFER_WRITE => vk::BufferUsageFlags::TRANSFER_DST,
+                            _ => panic!("Invalid buffer access mask: {:?}", access_mask),
+                        };
+
+                        buffer_usage_flags[res_access.handle.id as usize] |= buffer_usage;
+                    }
+                    GraphResourceInfo::Created(GraphResourceCreateInfo {
+                        desc: GraphResourceDesc::RayTracingAcceleration(_),
+                        ..
+                    }) => {
+                        unimplemented!("Creation of acceleration structures via the render graph is not currently supported");
+                    }
+                    GraphResourceInfo::Imported(
+                        GraphResourceImportInfo::RayTracingAcceleration { .. },
+                    ) => {
+                        // TODO; not currently tracking usage flags for RT acceleration
+                    }
                 };
-
-                if is_image {
-                    let image_usage: vk::ImageUsageFlags = match access_mask {
-                        vk::AccessFlags::SHADER_READ => vk::ImageUsageFlags::SAMPLED,
-                        vk::AccessFlags::SHADER_WRITE => vk::ImageUsageFlags::STORAGE,
-                        vk::AccessFlags::COLOR_ATTACHMENT_READ => {
-                            vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        }
-                        vk::AccessFlags::COLOR_ATTACHMENT_WRITE => {
-                            vk::ImageUsageFlags::COLOR_ATTACHMENT
-                        }
-                        vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ => {
-                            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                        }
-                        vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE => {
-                            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
-                        }
-                        vk::AccessFlags::TRANSFER_READ => vk::ImageUsageFlags::TRANSFER_SRC,
-                        vk::AccessFlags::TRANSFER_WRITE => vk::ImageUsageFlags::TRANSFER_DST,
-                        _ => panic!("Invalid image access mask: {:?}", access_mask),
-                    };
-
-                    image_usage_flags[res_access.handle.id as usize] |= image_usage;
-                } else {
-                    let buffer_usage: vk::BufferUsageFlags = match access_mask {
-                        vk::AccessFlags::INDIRECT_COMMAND_READ => {
-                            vk::BufferUsageFlags::INDIRECT_BUFFER
-                        }
-                        vk::AccessFlags::INDEX_READ => vk::BufferUsageFlags::INDEX_BUFFER,
-                        vk::AccessFlags::VERTEX_ATTRIBUTE_READ => {
-                            vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER
-                        }
-                        vk::AccessFlags::UNIFORM_READ => vk::BufferUsageFlags::UNIFORM_BUFFER,
-                        vk::AccessFlags::SHADER_READ => vk::BufferUsageFlags::UNIFORM_TEXEL_BUFFER,
-                        vk::AccessFlags::SHADER_WRITE => vk::BufferUsageFlags::STORAGE_BUFFER,
-                        vk::AccessFlags::TRANSFER_READ => vk::BufferUsageFlags::TRANSFER_SRC,
-                        vk::AccessFlags::TRANSFER_WRITE => vk::BufferUsageFlags::TRANSFER_DST,
-                        _ => panic!("Invalid buffer access mask: {:?}", access_mask),
-                    };
-
-                    buffer_usage_flags[res_access.handle.id as usize] |= buffer_usage;
-                }
             }
         }
 
@@ -407,6 +451,9 @@ impl CompiledRenderGraph {
                             access_type: vk_sync::AccessType::Nothing,
                         }
                     }
+                    GraphResourceDesc::RayTracingAcceleration(_) => {
+                        unimplemented!();
+                    }
                 },
                 GraphResourceInfo::Imported(resource) => match resource {
                     GraphResourceImportInfo::Image {
@@ -423,6 +470,15 @@ impl CompiledRenderGraph {
                         resource: AnyRenderResource::ImportedBuffer(resource.clone()),
                         access_type: *access_type,
                     },
+                    GraphResourceImportInfo::RayTracingAcceleration {
+                        resource,
+                        access_type,
+                    } => RegistryResource {
+                        resource: AnyRenderResource::ImportedRayTracingAcceleration(
+                            resource.clone(),
+                        ),
+                        access_type: *access_type,
+                    },
                 },
             })
             .collect();
@@ -433,6 +489,7 @@ impl CompiledRenderGraph {
             dynamic_constants: dynamic_constants,
             compute_pipelines: self.compute_pipelines,
             raster_pipelines: self.raster_pipelines,
+            rt_pipelines: self.rt_pipelines,
         };
 
         for pass in self.rg.passes.into_iter() {
@@ -478,6 +535,17 @@ impl CompiledRenderGraph {
                                 &[resource.access_type],
                                 &[access.access_type],
                             );
+
+                            resource.access_type = access.access_type;
+                        }
+                        AnyRenderResourceRef::RayTracingAcceleration(_) => {
+                            /*global_barrier(
+                                &params.device,
+                                cb,
+                                &[resource.access_type],
+                                &[access.access_type],
+                            );*/
+                            // TODO
 
                             resource.access_type = access.access_type;
                         }
@@ -538,11 +606,12 @@ impl RetiredRenderGraph {
                 AnyRenderResource::OwnedImage(image) => {
                     transient_resource_cache.insert_image(image)
                 }
-                AnyRenderResource::ImportedImage(_) => {}
                 AnyRenderResource::OwnedBuffer(buffer) => {
                     transient_resource_cache.insert_buffer(buffer)
                 }
-                AnyRenderResource::ImportedBuffer(_) => {}
+                AnyRenderResource::ImportedImage(_)
+                | AnyRenderResource::ImportedBuffer(_)
+                | AnyRenderResource::ImportedRayTracingAcceleration(_) => {}
             }
         }
     }
