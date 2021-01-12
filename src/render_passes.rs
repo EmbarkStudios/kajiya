@@ -461,26 +461,36 @@ pub fn ray_trace_test(
 ) {
     let mut pass = rg.add_pass();
 
-    let pipeline = pass.register_ray_tracing_pipeline(&[
-        PipelineShader {
-            code: "/assets/shaders/rt/triangle.rgen.hlsl",
-            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
-                .build()
-                .unwrap(),
-        },
-        PipelineShader {
-            code: "/assets/shaders/rt/triangle.rmiss.hlsl",
-            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                .build()
-                .unwrap(),
-        },
-        PipelineShader {
-            code: "/assets/shaders/rt/triangle.rchit.hlsl",
-            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
-                .build()
-                .unwrap(),
-        },
-    ]);
+    let pipeline = pass.register_ray_tracing_pipeline(
+        &[
+            PipelineShader {
+                code: "/assets/shaders/rt/triangle.rgen.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/triangle.rmiss.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/shadow.rmiss.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/triangle.rchit.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+                    .build()
+                    .unwrap(),
+            },
+        ],
+        slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
+            .max_pipeline_ray_recursion_depth(2),
+    );
 
     let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
     let output_ref = pass.write(output_img, AccessType::AnyShaderWrite);

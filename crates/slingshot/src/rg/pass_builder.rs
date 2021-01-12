@@ -6,8 +6,11 @@ use super::{
     RgRtPipelineHandle,
 };
 
-use crate::backend::shader::{
-    ComputePipelineDesc, DescriptorSetLayoutOpts, PipelineShader, RasterPipelineDescBuilder,
+use crate::backend::{
+    ray_tracing::RayTracingPipelineDesc,
+    shader::{
+        ComputePipelineDesc, DescriptorSetLayoutOpts, PipelineShader, RasterPipelineDescBuilder,
+    },
 };
 use std::{marker::PhantomData, path::Path};
 
@@ -258,6 +261,7 @@ impl<'rg> PassBuilder<'rg> {
     pub fn register_ray_tracing_pipeline(
         &mut self,
         shaders: &[PipelineShader<&'static str>],
+        desc: RayTracingPipelineDesc,
     ) -> RgRtPipelineHandle {
         let id = self.rg.rt_pipelines.len();
 
@@ -285,6 +289,7 @@ impl<'rg> PassBuilder<'rg> {
                     }
                 })
                 .collect(),
+            desc,
         });
 
         RgRtPipelineHandle { id }

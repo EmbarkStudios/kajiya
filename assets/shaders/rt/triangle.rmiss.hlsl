@@ -1,10 +1,8 @@
-struct Payload
-{
-    float3 hitValue;
+struct ShadowPayload {
+    bool is_shadowed;
 };
 
 [shader("miss")]
-void main(inout Payload payload : SV_RayPayload)
-{
-    payload.hitValue = float3(0.0, 0.0, 0.0);
+void main(inout ShadowPayload payload: SV_RayPayload) {
+    payload.is_shadowed = false;
 }

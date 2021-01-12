@@ -435,9 +435,33 @@ impl std::ops::Deref for RayTracingPipeline {
     }
 }
 
+#[derive(Clone, Copy)]
+pub struct RayTracingPipelineDesc {
+    pub max_pipeline_ray_recursion_depth: u32,
+}
+
+impl Default for RayTracingPipelineDesc {
+    fn default() -> Self {
+        Self {
+            max_pipeline_ray_recursion_depth: 1,
+        }
+    }
+}
+
+impl RayTracingPipelineDesc {
+    pub fn max_pipeline_ray_recursion_depth(
+        mut self,
+        max_pipeline_ray_recursion_depth: u32,
+    ) -> Self {
+        self.max_pipeline_ray_recursion_depth = max_pipeline_ray_recursion_depth;
+        self
+    }
+}
+
 pub fn create_ray_tracing_pipeline(
     device: &Device,
     shaders: &[PipelineShader<&[u8]>],
+    desc: &RayTracingPipelineDesc,
 ) -> anyhow::Result<RayTracingPipeline> {
     let stage_layouts = shaders
         .iter()
@@ -449,7 +473,7 @@ pub fn create_ray_tracing_pipeline(
         })
         .collect::<Vec<_>>();
 
-    log::info!("{:#?}", stage_layouts);
+    //log::info!("{:#?}", stage_layouts);
 
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
@@ -469,17 +493,15 @@ pub fn create_ray_tracing_pipeline(
             .create_pipeline_layout(&layout_create_info, None)
             .unwrap();
 
-        let mut shader_groups = vec![ash::vk::RayTracingShaderGroupCreateInfoKHR::default(); 2];
-        let mut shader_stages = vec![ash::vk::PipelineShaderStageCreateInfo::default(); 2];
+        let mut shader_groups: Vec<vk::RayTracingShaderGroupCreateInfoKHR> = Vec::new();
+        let mut shader_stages: Vec<vk::PipelineShaderStageCreateInfo> = Vec::new();
 
         // Keep entry point names alive, since build() forgets references.
         let mut entry_points: Vec<std::ffi::CString> = Vec::new();
 
-        let mut raygen_found = false;
-        let mut miss_found = false;
-
-        const RAYGEN_IDX: usize = 0;
-        const MISS_IDX: usize = 1;
+        let mut raygen_entry_count = 0;
+        let mut miss_entry_count = 0;
+        let mut hit_entry_count = 0;
 
         let create_shader_module =
             |desc: &PipelineShader<&[u8]>| -> (ash::vk::ShaderModule, String) {
@@ -494,11 +516,15 @@ pub fn create_ray_tracing_pipeline(
                 (shader_module, desc.desc.entry_name.clone())
             };
 
+        let mut prev_stage: Option<ShaderPipelineStage> = None;
+
         for desc in shaders {
+            let group_idx = shader_stages.len();
+
             match desc.desc.stage {
                 ShaderPipelineStage::RayGen => {
-                    assert!(!raygen_found, "only one raygen shader supported right now");
-                    raygen_found = true;
+                    assert!(prev_stage == None || prev_stage == Some(ShaderPipelineStage::RayGen));
+                    raygen_entry_count += 1;
 
                     let (module, entry_point) = create_shader_module(desc);
 
@@ -513,18 +539,21 @@ pub fn create_ray_tracing_pipeline(
 
                     let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
                         .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                        .general_shader(RAYGEN_IDX as _)
+                        .general_shader(group_idx as _)
                         .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
                         .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
                         .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
                         .build();
 
-                    shader_stages[RAYGEN_IDX] = stage;
-                    shader_groups[RAYGEN_IDX] = group;
+                    shader_stages.push(stage);
+                    shader_groups.push(group);
                 }
                 ShaderPipelineStage::RayMiss => {
-                    assert!(!miss_found, "only one miss shader supported right now");
-                    miss_found = true;
+                    assert!(
+                        prev_stage == Some(ShaderPipelineStage::RayGen)
+                            || prev_stage == Some(ShaderPipelineStage::RayMiss)
+                    );
+                    miss_entry_count += 1;
 
                     let (module, entry_point) = create_shader_module(desc);
 
@@ -539,17 +568,21 @@ pub fn create_ray_tracing_pipeline(
 
                     let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
                         .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                        .general_shader(MISS_IDX as _)
+                        .general_shader(group_idx as _)
                         .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
                         .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
                         .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
                         .build();
 
-                    shader_stages[MISS_IDX] = stage;
-                    shader_groups[MISS_IDX] = group;
+                    shader_stages.push(stage);
+                    shader_groups.push(group);
                 }
                 ShaderPipelineStage::RayClosestHit => {
-                    // TODO: procedural geometry
+                    assert!(
+                        prev_stage == Some(ShaderPipelineStage::RayMiss)
+                            || prev_stage == Some(ShaderPipelineStage::RayClosestHit)
+                    );
+                    hit_entry_count += 1;
 
                     let (module, entry_point) = create_shader_module(desc);
 
@@ -565,7 +598,7 @@ pub fn create_ray_tracing_pipeline(
                     let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
                         .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
                         .general_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .closest_hit_shader(shader_stages.len() as _)
+                        .closest_hit_shader(group_idx as _)
                         .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
                         .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
                         .build();
@@ -575,14 +608,13 @@ pub fn create_ray_tracing_pipeline(
                 }
                 _ => unimplemented!(),
             }
+
+            prev_stage = Some(desc.desc.stage);
         }
 
-        assert!(raygen_found);
-        assert!(miss_found);
-        assert!(
-            shader_groups.len() >= 3,
-            "Must supply at least closest hit shader"
-        );
+        assert!(raygen_entry_count > 0);
+        assert!(miss_entry_count > 0);
+        assert!(hit_entry_count > 0);
 
         let pipeline = device
             .ray_tracing_pipeline_ext
@@ -592,7 +624,7 @@ pub fn create_ray_tracing_pipeline(
                 &[ash::vk::RayTracingPipelineCreateInfoKHR::builder()
                     .stages(&shader_stages)
                     .groups(&shader_groups)
-                    .max_pipeline_ray_recursion_depth(1) // TODO
+                    .max_pipeline_ray_recursion_depth(desc.max_pipeline_ray_recursion_depth) // TODO
                     .layout(pipeline_layout)
                     .build()],
                 None,
@@ -617,10 +649,9 @@ pub fn create_ray_tracing_pipeline(
         let sbt = device
             .create_ray_tracing_shader_table(
                 &RayTracingShaderTableDesc {
-                    // TODO
-                    raygen_entry_count: 1,
-                    hit_entry_count: 1,
-                    miss_entry_count: 1,
+                    raygen_entry_count,
+                    hit_entry_count,
+                    miss_entry_count,
                 },
                 pipeline,
             )

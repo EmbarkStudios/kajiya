@@ -18,7 +18,10 @@ use crate::{
     backend::image::ImageViewDesc,
     backend::shader::ComputePipelineDesc,
     backend::shader::PipelineShader,
-    backend::{ray_tracing::RayTracingAcceleration, shader::RasterPipelineDesc},
+    backend::{
+        ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
+        shader::RasterPipelineDesc,
+    },
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
@@ -88,6 +91,7 @@ pub struct RgRtPipelineHandle {
 
 pub(crate) struct RgRtPipeline {
     pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) desc: RayTracingPipelineDesc,
 }
 
 pub struct RenderGraph {
@@ -393,7 +397,7 @@ impl RenderGraph {
         let rt_pipelines = self
             .rt_pipelines
             .iter()
-            .map(|pipeline| pipeline_cache.register_ray_tracing(&pipeline.shaders))
+            .map(|pipeline| pipeline_cache.register_ray_tracing(&pipeline.shaders, &pipeline.desc))
             .collect::<Vec<_>>();
 
         CompiledRenderGraph {

@@ -1,5 +1,5 @@
 use crate::backend::{
-    ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline},
+    ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
     shader::*,
 };
 use crate::shader_compiler::{CompileShader, CompiledShader};
@@ -78,6 +78,7 @@ struct RasterPipelineCacheEntry {
 
 struct RtPipelineCacheEntry {
     lazy_handle: Lazy<CompiledPipelineShaders>,
+    desc: RayTracingPipelineDesc,
     pipeline: Option<Arc<RayTracingPipeline>>,
 }
 
@@ -191,6 +192,7 @@ impl PipelineCache {
     pub fn register_ray_tracing(
         &mut self,
         shaders: &[PipelineShader<&'static str>],
+        desc: &RayTracingPipelineDesc,
     ) -> RtPipelineHandle {
         if let Some(handle) = self.rt_shaders_to_handle.get(shaders) {
             return *handle;
@@ -211,6 +213,7 @@ impl PipelineCache {
                         .collect(),
                 }
                 .into_lazy(),
+                desc: desc.clone(),
                 pipeline: None,
             },
         );
@@ -290,7 +293,8 @@ impl PipelineCache {
                     })
                     .collect::<Vec<_>>();
 
-                let pipeline = create_ray_tracing_pipeline(&*device, &compiled_shaders)?;
+                let pipeline =
+                    create_ray_tracing_pipeline(&*device, &compiled_shaders, &entry.desc)?;
 
                 entry.pipeline = Some(Arc::new(pipeline));
             }
