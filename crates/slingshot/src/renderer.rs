@@ -42,7 +42,7 @@ lazy_static::lazy_static! {
             /*stages: rspirv_reflect::ShaderStageFlags(
                 (vk::ShaderStageFlags::COMPUTE
                     | vk::ShaderStageFlags::ALL_GRAPHICS
-                    | vk::ShaderStageFlags::RAYGEN_KHR)
+                    | vk::ShaderStageFlags::ALL)
                     .as_raw(),
             ),*/
             name: Default::default(),
@@ -250,11 +250,7 @@ impl Renderer {
                         .bindings(&[vk::DescriptorSetLayoutBinding::builder()
                             .descriptor_count(1)
                             .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                            .stage_flags(
-                                vk::ShaderStageFlags::COMPUTE
-                                    | vk::ShaderStageFlags::ALL_GRAPHICS
-                                    | vk::ShaderStageFlags::RAYGEN_KHR,
-                            )
+                            .stage_flags(vk::ShaderStageFlags::ALL)
                             .binding(0)
                             .build()])
                         .build(),

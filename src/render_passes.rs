@@ -315,15 +315,15 @@ pub fn raster_meshes(
 
     let pipeline = pass.register_raster_pipeline(
         &[
-            RasterPipelineShader {
+            PipelineShader {
                 code: "/assets/shaders/raster_simple_vs.hlsl",
-                desc: RasterShaderDesc::builder(RasterStage::Vertex)
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
                     .build()
                     .unwrap(),
             },
-            RasterPipelineShader {
+            PipelineShader {
                 code: "/assets/shaders/raster_simple_ps.hlsl",
-                desc: RasterShaderDesc::builder(RasterStage::Pixel)
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
                     .build()
                     .unwrap(),
             },

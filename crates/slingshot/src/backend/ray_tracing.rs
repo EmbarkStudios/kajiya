@@ -1,47 +1,23 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, ffi::CString};
 
-use super::device::Device;
+use crate::chunky_list::TempList;
+
+use super::{
+    device::Device,
+    shader::{
+        merge_shader_stage_layouts, PipelineShader, ShaderPipelineCommon, ShaderPipelineStage,
+    },
+};
 use anyhow::Result;
 use ash::{extensions::khr, version::DeviceV1_0, version::DeviceV1_2, vk};
+use byte_slice_cast::AsSliceOf;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-enum RayTracingShaderType {
-    RayGen = 0,
-    Miss = 1,
-    IntersectionHit = 2,
-    AnyHit = 3,
-    ClosestHit = 4,
-}
-const MAX_RAY_TRACING_SHADER_TYPE: usize = 5;
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum RayTracingProgramType {
-    RayGen = 0,
-    Miss = 1,
-    Hit = 2,
-}
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum RayTracingGeometryType {
     Triangle = 0,
     BoundingBox = 1,
 }
-
-/*
-// TODO: Should make this just use generic shader and program desc types
-#[derive(Clone, Default, Debug)]
-pub struct RayTracingShaderDesc {
-    pub entry_point: String,
-    pub shader_data: Vec<u8>,
-}
-
-#[derive(Clone, Debug)]
-pub struct RayTracingProgramDesc {
-    pub program_type: RayTracingProgramType,
-    pub shaders: [Option<RayTracingShaderDesc>; MAX_RAY_TRACING_SHADER_TYPE],
-    pub signature: RenderShaderSignatureDesc,
-}*/
 
 #[derive(Clone, Copy, Debug)]
 pub struct RayTracingGeometryPart {
@@ -357,307 +333,7 @@ impl Device {
         }
     }
 
-    /*fn create_ray_tracing_pipeline_state(
-        &self,
-        handle: RenderResourceHandle,
-        desc: &RayTracingPipelineStateDesc,
-        debug_name: Cow<'static, str>,
-    ) -> Result<()> {
-        log::info!(
-            "Creating ray tracing pipeline state: {}, {:?}",
-            debug_name,
-            desc
-        );
-
-        let device = Arc::clone(&self.logical_device);
-        let raw_device = device.device();
-
-        let programs = desc
-            .programs
-            .iter()
-            .map(|prog| self.storage.get_typed::<RenderRayTracingProgramVk>(*prog))
-            .collect::<Result<Vec<_>>>()?;
-
-        let mut combined_layouts: Vec<DescriptorSetLayout> = Vec::new();
-
-        for program in desc.programs.iter() {
-            let program = self
-                .storage
-                .get_typed::<RenderRayTracingProgramVk>(*program)?;
-            for shader in program.shaders.iter().filter_map(|s| s.as_ref()) {
-                merge_descriptor_set_layouts(&shader.set_layouts, &mut combined_layouts);
-            }
-        }
-
-        // Make the set indices go in 0...N order
-        combined_layouts.sort_by(|ref a, ref b| a.set_index.cmp(&b.set_index));
-
-        // Create descriptor set layout objects
-        // TODO
-        /*for layout in &mut combined_layouts {
-            // Add in global static sampler bindings
-            for sampler_binding in &data.sampler_layouts {
-                layout.bindings.push(*sampler_binding);
-            }
-        }*/
-
-        let mut descriptor_layouts: Vec<ash::vk::DescriptorSetLayout> = vec![
-                ash::vk::DescriptorSetLayout::null();
-                MAX_SHADER_PARAMETERS * 2 + MAX_RAYGEN_SHADER_PARAMETERS * 2
-            ];
-
-        let mut pool_sizes = Vec::new();
-        for index in 0..combined_layouts.len() {
-            let mut combined_layout = &mut combined_layouts[index];
-            let create_info = ash::vk::DescriptorSetLayoutCreateInfo::builder()
-                .bindings(&combined_layout.bindings)
-                .build();
-
-            combined_layout.layout = unsafe {
-                raw_device
-                    .create_descriptor_set_layout(&create_info, None)
-                    .unwrap()
-            };
-
-            assert_eq!(
-                descriptor_layouts[combined_layout.set_index as usize],
-                ash::vk::DescriptorSetLayout::null()
-            );
-            descriptor_layouts[combined_layout.set_index as usize] = combined_layout.layout;
-            for binding in &combined_layout.bindings {
-                tally_descriptor_pool_sizes(&mut pool_sizes, binding.descriptor_type);
-            }
-        }
-
-        for descriptor_layout in descriptor_layouts[0..MAX_SHADER_PARAMETERS].iter_mut() {
-            if *descriptor_layout == ash::vk::DescriptorSetLayout::null() {
-                *descriptor_layout = self.empty_descriptor_set_layout;
-            }
-        }
-        for (idx, descriptor_layout) in descriptor_layouts
-            [MAX_SHADER_PARAMETERS..2 * MAX_SHADER_PARAMETERS]
-            .iter_mut()
-            .enumerate()
-        {
-            *descriptor_layout = self.cbuffer_descriptor_set_layouts[idx];
-        }
-
-        let raygen_descriptor_set_idx = 2 * MAX_SHADER_PARAMETERS;
-
-        // TODO
-        descriptor_layouts[raygen_descriptor_set_idx] = self.empty_descriptor_set_layout;
-        descriptor_layouts[raygen_descriptor_set_idx + 1] = self.cbuffer_descriptor_set_layouts[0];
-
-        /*let descriptor_set_layout = unsafe {
-            raw_device
-                .create_descriptor_set_layout(
-                    &ash::vk::DescriptorSetLayoutCreateInfo::builder()
-                        .bindings(&[
-                            ash::vk::DescriptorSetLayoutBinding::builder()
-                                .descriptor_count(1)
-                                .descriptor_type(
-                                    ash::vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
-                                )
-                                .stage_flags(ash::vk::ShaderStageFlags::RAYGEN_KHR)
-                                .binding(0)
-                                .build(),
-                            ash::vk::DescriptorSetLayoutBinding::builder()
-                                .descriptor_count(1)
-                                .descriptor_type(ash::vk::DescriptorType::STORAGE_IMAGE)
-                                .stage_flags(ash::vk::ShaderStageFlags::RAYGEN_KHR)
-                                .binding(1)
-                                .build(),
-                            /*ash::vk::DescriptorSetLayoutBinding::builder()
-                            .descriptor_count(3)
-                            .descriptor_type(ash::vk::DescriptorType::UNIFORM_BUFFER)
-                            .stage_flags(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                            .binding(2)
-                            .build(),*/
-                        ])
-                        .build(),
-                    None,
-                )
-                .unwrap()
-        };*/
-
-        let create_shader_module =
-            |desc: &RayTracingShaderDesc| -> Result<(ash::vk::ShaderModule, String)> {
-                let shader_data: *const u8 = desc.shader_data.as_ptr();
-                let shader_info = ash::vk::ShaderModuleCreateInfo {
-                    flags: Default::default(),
-                    code_size: desc.shader_data.len(), // in bytes
-                    p_code: shader_data as *const u32,
-                    ..Default::default()
-                };
-
-                let module = unsafe { raw_device.create_shader_module(&shader_info, None) }
-                    .map_err(|err| {
-                        Error::backend(format!("failed to create shader - {:?}", err))
-                    })?;
-                let entry_point = desc.entry_point.clone();
-
-                Ok((module, entry_point))
-            };
-
-        let mut shader_groups = vec![ash::vk::RayTracingShaderGroupCreateInfoKHR::default(); 2];
-        let mut shader_stages = vec![ash::vk::PipelineShaderStageCreateInfo::default(); 2];
-
-        // Keep entry point names alive, since build() forgets references.
-        let mut entry_points: Vec<std::ffi::CString> = Vec::new();
-
-        let mut raygen_found = false;
-        let mut miss_found = false;
-
-        const RAYGEN_IDX: usize = 0;
-        const MISS_IDX: usize = 1;
-
-        for program in programs {
-            let program = &*program;
-            match program.program_type {
-                RayTracingProgramType::RayGen => {
-                    assert!(!raygen_found, "only one raygen shader supported right now");
-                    raygen_found = true;
-
-                    let (module, entry_point) = create_shader_module(
-                        &program.shaders[RayTracingShaderType::RayGen as usize]
-                            .as_ref()
-                            .expect("raygen shader")
-                            .desc,
-                    )?;
-
-                    entry_points.push(std::ffi::CString::new(entry_point).unwrap());
-                    let entry_point = &**entry_points.last().unwrap();
-
-                    let stage = ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::RAYGEN_KHR)
-                        .module(module)
-                        .name(entry_point)
-                        .build();
-
-                    let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                        .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                        .general_shader(RAYGEN_IDX as _)
-                        .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .build();
-
-                    shader_stages[RAYGEN_IDX] = stage;
-                    shader_groups[RAYGEN_IDX] = group;
-                }
-                RayTracingProgramType::Miss => {
-                    assert!(!miss_found, "only one miss shader supported right now");
-                    miss_found = true;
-
-                    let (module, entry_point) = create_shader_module(
-                        &program.shaders[RayTracingShaderType::Miss as usize]
-                            .as_ref()
-                            .expect("miss shader")
-                            .desc,
-                    )?;
-
-                    entry_points.push(std::ffi::CString::new(entry_point).unwrap());
-                    let entry_point = &**entry_points.last().unwrap();
-
-                    let stage = ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::MISS_KHR)
-                        .module(module)
-                        .name(entry_point)
-                        .build();
-
-                    let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                        .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
-                        .general_shader(MISS_IDX as _)
-                        .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .build();
-
-                    shader_stages[MISS_IDX] = stage;
-                    shader_groups[MISS_IDX] = group;
-                }
-                RayTracingProgramType::Hit => {
-                    // TODO: procedural geometry
-
-                    let (module, entry_point) = create_shader_module(
-                        &program.shaders[RayTracingShaderType::ClosestHit as usize]
-                            .as_ref()
-                            .expect("closest hit shader")
-                            .desc,
-                    )?;
-
-                    entry_points.push(std::ffi::CString::new(entry_point).unwrap());
-                    let entry_point = &**entry_points.last().unwrap();
-
-                    let stage = ash::vk::PipelineShaderStageCreateInfo::builder()
-                        .stage(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
-                        .module(module)
-                        .name(entry_point)
-                        .build();
-
-                    let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
-                        .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
-                        .general_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .closest_hit_shader(shader_stages.len() as _)
-                        .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
-                        .build();
-
-                    shader_stages.push(stage);
-                    shader_groups.push(group);
-                }
-            }
-        }
-
-        assert!(raygen_found);
-        assert!(miss_found);
-        assert!(
-            shader_groups.len() >= 3,
-            "Must supply at least closest hit shader"
-        );
-
-        let layout_create_info =
-            ash::vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_layouts);
-        let pipeline_layout = unsafe {
-            raw_device
-                .create_pipeline_layout(&layout_create_info, None)
-                .unwrap()
-        };
-
-        let pipeline = unsafe {
-            self.ray_tracing
-                .create_ray_tracing_pipelines(
-                    self.pipeline_cache,
-                    &[ash::vk::RayTracingPipelineCreateInfoKHR::builder()
-                        .stages(&shader_stages)
-                        .groups(&shader_groups)
-                        .max_recursion_depth(1) // TODO
-                        .layout(pipeline_layout)
-                        .build()],
-                    None,
-                )
-                .unwrap()[0]
-        };
-
-        let resource: Arc<RwLock<Box<dyn RenderResourceBase>>> =
-            Arc::new(RwLock::new(Box::new(RenderRayTracingPipelineStateVk {
-                name: debug_name.to_string().into(),
-                pipeline,
-                data: RenderPipelineLayoutVk {
-                    static_samplers: Vec::new(), // TODO
-                    pipeline_layout,
-                    combined_layouts,
-                    sampler_layouts: Vec::new(), // TODO
-                    pool_sizes,
-                },
-                descriptor_set_layouts: descriptor_layouts,
-            })));
-
-        self.storage.put(handle, resource)?;
-        Ok(())
-    }
-
-    fn create_ray_tracing_shader_table(
+    /*fn create_ray_tracing_shader_table(
         &self,
         handle: RenderResourceHandle,
         desc: &RayTracingShaderTableDesc,
@@ -796,242 +472,203 @@ impl Device {
 
         self.storage.put(handle, resource)?;
         Ok(())
-    }
+    }*/
+}
 
-    // Ray tracing features are only supported on some devices
-    fn create_ray_tracing_program(
-        &self,
-        handle: RenderResourceHandle,
-        desc: &RayTracingProgramDesc,
-        debug_name: Cow<'static, str>,
-    ) -> Result<()> {
-        log::info!("Creating ray tracing program: {}, {:?}", debug_name, desc);
+pub struct RayTracingPipeline {
+    pub common: ShaderPipelineCommon,
+}
 
-        // Tom-NOTE: can't really do anything here because the shader modules
-        // need to have their layouts merged in the context of a ray-tracing pipeline.
-        // This just persists the desc for use in `create_ray_tracing_pipeline_state`
+pub fn create_ray_tracing_pipeline(
+    device: &Device,
+    shaders: &[PipelineShader<&[u8]>],
+) -> anyhow::Result<RayTracingPipeline> {
+    let stage_layouts = shaders
+        .iter()
+        .map(|desc| {
+            rspirv_reflect::Reflection::new_from_spirv(desc.code)
+                .unwrap()
+                .get_descriptor_sets()
+                .unwrap()
+        })
+        .collect::<Vec<_>>();
 
-        let device = Arc::clone(&self.logical_device);
-        let raw_device = device.device();
+    let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
+        device,
+        &merge_shader_stage_layouts(stage_layouts),
+        vk::ShaderStageFlags::RAYGEN_KHR,
+        //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
+        &Default::default(),
+    );
 
-        let mut remapped_shaders: [Option<RenderRayTracingShaderVk>; MAX_RAY_TRACING_SHADER_TYPE] =
-            [None, None, None, None, None];
+    unsafe {
+        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
+            .set_layouts(&descriptor_set_layouts)
+            .build();
 
-        for (shader_idx, desc) in desc.shaders.iter().enumerate() {
-            if let Some(desc) = desc {
-                let mut remaps: Vec<BindingSetRemap> = Vec::new();
-                match spirv_reflect::ShaderModule::load_u8_data(&desc.shader_data) {
-                    Ok(mut reflect_module) => {
-                        let mut srv_count = 0;
-                        let mut smp_count = 0;
-                        let mut uav_count = 0;
+        let pipeline_layout = device
+            .raw
+            .create_pipeline_layout(&layout_create_info, None)
+            .unwrap();
 
-                        let descriptor_sets =
-                            reflect_module.enumerate_descriptor_sets(None).unwrap();
-                        log::trace!("Shader descriptor sets: {:#?}", descriptor_sets);
+        let mut shader_groups = vec![ash::vk::RayTracingShaderGroupCreateInfoKHR::default(); 2];
+        let mut shader_stages = vec![ash::vk::PipelineShaderStageCreateInfo::default(); 2];
 
-                        for set_index in 0..descriptor_sets.len() {
-                            let set = &descriptor_sets[set_index].value;
+        // Keep entry point names alive, since build() forgets references.
+        let mut entry_points: Vec<std::ffi::CString> = Vec::new();
 
-                            for (binding_index, binding) in set.binding_refs.iter().enumerate() {
-                                let binding = &binding.value;
+        let mut raygen_found = false;
+        let mut miss_found = false;
 
-                                assert_ne!(
-                                    binding.resource_type,
-                                    ReflectResourceTypeFlags::UNDEFINED
-                                );
+        const RAYGEN_IDX: usize = 0;
+        const MISS_IDX: usize = 1;
 
-                                match binding.resource_type {
-                                    ReflectResourceTypeFlags::CONSTANT_BUFFER_VIEW => {
-                                        assert_eq!(binding.binding, 0);
-                                        remaps.push(BindingSetRemap {
-                                            binding_index: binding_index as u32,
-                                            old_binding: binding.binding,
-                                            new_binding: binding.binding,
-                                            old_set: set_index as u32,
-                                            new_set: SET_OFFSET + set_index as u32,
-                                        });
-                                        // Make sure we don't use more spaces/sets than MAX_SHADER_PARAMETERS
-                                        assert!(
-                                            SET_OFFSET as usize + set_index
-                                                >= descriptor_sets.len()
-                                        );
-                                    }
-                                    ReflectResourceTypeFlags::SHADER_RESOURCE_VIEW => {
-                                        remaps.push(BindingSetRemap {
-                                            binding_index: binding_index as u32,
-                                            old_binding: binding.binding,
-                                            new_binding: srv_count + SRV_OFFSET,
-                                            old_set: set_index as u32,
-                                            new_set: ARG_OFFSET + set_index as u32,
-                                        });
-                                        srv_count += 1;
-                                    }
-                                    ReflectResourceTypeFlags::SAMPLER => {
-                                        remaps.push(BindingSetRemap {
-                                            binding_index: binding_index as u32,
-                                            old_binding: binding.binding,
-                                            new_binding: smp_count + SMP_OFFSET,
-                                            old_set: set_index as u32,
-                                            new_set: ARG_OFFSET + set_index as u32,
-                                        });
-                                        smp_count += 1;
-                                    }
-                                    ReflectResourceTypeFlags::UNORDERED_ACCESS_VIEW => {
-                                        remaps.push(BindingSetRemap {
-                                            binding_index: binding_index as u32,
-                                            old_binding: binding.binding,
-                                            new_binding: uav_count + UAV_OFFSET,
-                                            old_set: set_index as u32,
-                                            new_set: ARG_OFFSET + set_index as u32,
-                                        });
-                                        uav_count += 1;
-                                    }
-                                    ReflectResourceTypeFlags::ACCELERATION_STRUCTURE => {
-                                        remaps.push(BindingSetRemap {
-                                            binding_index: binding_index as u32,
-                                            old_binding: binding.binding,
-                                            new_binding: srv_count + SRV_OFFSET,
-                                            old_set: set_index as u32,
-                                            new_set: ARG_OFFSET + set_index as u32,
-                                        });
-                                        srv_count += 1;
-                                    }
-                                    _ => unimplemented!(),
-                                }
-                            }
+        let create_shader_module =
+            |desc: &PipelineShader<&[u8]>| -> (ash::vk::ShaderModule, String) {
+                let shader_info = vk::ShaderModuleCreateInfo::builder()
+                    .code(desc.code.as_slice_of::<u32>().unwrap());
 
-                            for remap in &remaps {
-                                let binding = &set.binding_refs[remap.binding_index as usize];
-                                match reflect_module.change_descriptor_binding_numbers(
-                                    binding,
-                                    Some(remap.new_binding),
-                                    Some(remap.new_set),
-                                ) {
-                                    Ok(_) => {}
-                                    Err(err) => {
-                                        return Err(Error::backend(format!(
-                                            "failed to patch descriptor binding - {:?}",
-                                            err
-                                        )));
-                                    }
-                                }
-                            }
-                        }
+                let shader_module = device
+                    .raw
+                    .create_shader_module(&shader_info, None)
+                    .expect("Shader module error");
 
-                        // Create descriptor set layouts
-                        let descriptor_sets =
-                            reflect_module.enumerate_descriptor_sets(None).unwrap();
-                        let mut set_layouts: Vec<(
-                            u32, /* set index */
-                            Vec<ash::vk::DescriptorSetLayoutBinding>,
-                        )> = Vec::with_capacity(descriptor_sets.len());
-                        for set_index in 0..descriptor_sets.len() {
-                            let reflected_set = &descriptor_sets[set_index].value;
+                (shader_module, desc.desc.entry_name.clone())
+            };
 
-                            let mut layout_bindings: Vec<ash::vk::DescriptorSetLayoutBinding> =
-                                Vec::with_capacity(reflected_set.binding_refs.len());
+        for desc in shaders {
+            match desc.desc.stage {
+                ShaderPipelineStage::RayGen => {
+                    assert!(!raygen_found, "only one raygen shader supported right now");
+                    raygen_found = true;
 
-                            for (binding_index, reflected_binding) in
-                                reflected_set.binding_refs.iter().enumerate()
-                            {
-                                let reflected_binding = &reflected_binding.value;
+                    let (module, entry_point) = create_shader_module(desc);
 
-                                let mut layout_binding =
-                                    ash::vk::DescriptorSetLayoutBinding::default();
-                                layout_binding.binding = reflected_binding.binding;
-                                layout_binding.descriptor_type =
-                                    reflection_descriptor_to_vk(reflected_binding.descriptor_type);
+                    entry_points.push(std::ffi::CString::new(entry_point).unwrap());
+                    let entry_point = &**entry_points.last().unwrap();
 
-                                layout_binding.descriptor_count = 1;
-                                for dim in &reflected_binding.array.dims {
-                                    layout_binding.descriptor_count *= dim;
-                                }
+                    let stage = ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::RAYGEN_KHR)
+                        .module(module)
+                        .name(entry_point)
+                        .build();
 
-                                layout_binding.stage_flags = reflection_shader_stage_to_vk(
-                                    reflect_module.get_shader_stage(),
-                                );
+                    let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                        .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                        .general_shader(RAYGEN_IDX as _)
+                        .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .build();
 
-                                layout_bindings.push(layout_binding);
-                            }
-                            set_layouts.push((reflected_set.set, layout_bindings));
-                        }
+                    shader_stages[RAYGEN_IDX] = stage;
+                    shader_groups[RAYGEN_IDX] = group;
+                }
+                ShaderPipelineStage::RayMiss => {
+                    assert!(!miss_found, "only one miss shader supported right now");
+                    miss_found = true;
 
-                        let patched_spv = reflect_module.get_code();
+                    let (module, entry_point) = create_shader_module(desc);
 
-                        remapped_shaders[shader_idx] = Some(RenderRayTracingShaderVk {
-                            desc: RayTracingShaderDesc {
-                                entry_point: desc.entry_point.clone(),
-                                shader_data: render_core::utilities::typed_to_bytes(patched_spv)
-                                    .to_owned(),
-                            },
-                            set_layouts,
-                        });
-                    }
-                    Err(err) => {
-                        return Err(Error::backend(format!(
-                            "failed to parse shader - {:#?}",
-                            err
-                        )))
-                    }
+                    entry_points.push(std::ffi::CString::new(entry_point).unwrap());
+                    let entry_point = &**entry_points.last().unwrap();
+
+                    let stage = ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::MISS_KHR)
+                        .module(module)
+                        .name(entry_point)
+                        .build();
+
+                    let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                        .ty(ash::vk::RayTracingShaderGroupTypeKHR::GENERAL)
+                        .general_shader(MISS_IDX as _)
+                        .closest_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .build();
+
+                    shader_stages[MISS_IDX] = stage;
+                    shader_groups[MISS_IDX] = group;
+                }
+                ShaderPipelineStage::RayClosestHit => {
+                    // TODO: procedural geometry
+
+                    let (module, entry_point) = create_shader_module(desc);
+
+                    entry_points.push(std::ffi::CString::new(entry_point).unwrap());
+                    let entry_point = &**entry_points.last().unwrap();
+
+                    let stage = ash::vk::PipelineShaderStageCreateInfo::builder()
+                        .stage(ash::vk::ShaderStageFlags::CLOSEST_HIT_KHR)
+                        .module(module)
+                        .name(entry_point)
+                        .build();
+
+                    let group = ash::vk::RayTracingShaderGroupCreateInfoKHR::builder()
+                        .ty(ash::vk::RayTracingShaderGroupTypeKHR::TRIANGLES_HIT_GROUP)
+                        .general_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .closest_hit_shader(shader_stages.len() as _)
+                        .any_hit_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .intersection_shader(ash::vk::SHADER_UNUSED_KHR)
+                        .build();
+
+                    shader_stages.push(stage);
+                    shader_groups.push(group);
+                }
+                _ => unimplemented!(),
+            }
+        }
+
+        assert!(raygen_found);
+        assert!(miss_found);
+        assert!(
+            shader_groups.len() >= 3,
+            "Must supply at least closest hit shader"
+        );
+
+        let pipeline = device
+            .ray_tracing_pipeline_ext
+            .create_ray_tracing_pipelines(
+                vk::DeferredOperationKHR::null(),
+                vk::PipelineCache::null(),
+                &[ash::vk::RayTracingPipelineCreateInfoKHR::builder()
+                    .stages(&shader_stages)
+                    .groups(&shader_groups)
+                    .max_pipeline_ray_recursion_depth(1) // TODO
+                    .layout(pipeline_layout)
+                    .build()],
+                None,
+            )
+            .unwrap()[0];
+
+        let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
+        for bindings in set_layout_info.iter() {
+            for ty in bindings.values() {
+                if let Some(mut dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty)
+                {
+                    dps.descriptor_count += 1;
+                } else {
+                    descriptor_pool_sizes.push(vk::DescriptorPoolSize {
+                        ty: *ty,
+                        descriptor_count: 1,
+                    })
                 }
             }
         }
 
-        let resource: Arc<RwLock<Box<dyn RenderResourceBase>>> =
-            Arc::new(RwLock::new(Box::new(RenderRayTracingProgramVk {
-                name: debug_name.to_string().into(),
-                program_type: desc.program_type,
-                shaders: remapped_shaders,
-            })));
-
-        self.storage.put(handle, resource)?;
-        Ok(())
-    }*/
+        Ok(RayTracingPipeline {
+            common: ShaderPipelineCommon {
+                pipeline_layout,
+                pipeline,
+                //render_pass: desc.render_pass.clone(),
+                set_layout_info,
+                descriptor_pool_sizes,
+                descriptor_set_layouts,
+                pipeline_bind_point: vk::PipelineBindPoint::GRAPHICS,
+            },
+        })
+    }
 }
-
-/*#[derive(Clone, Debug)]
-pub struct RenderRayTracingPipelineStateVk {
-    pub name: Cow<'static, str>,
-    pub pipeline: ash::vk::Pipeline,
-    pub data: RenderPipelineLayoutVk,
-    pub descriptor_set_layouts: Vec<ash::vk::DescriptorSetLayout>, // TODO: nuke
-}
-
-#[derive(Clone, Debug)]
-pub struct RenderRayTracingShaderVk {
-    pub desc: RayTracingShaderDesc,
-    pub set_layouts: Vec<(
-        u32, /* set index */
-        Vec<ash::vk::DescriptorSetLayoutBinding>,
-    )>,
-}
-
-#[derive(Clone, Debug)]
-pub struct RenderRayTracingProgramVk {
-    pub name: Cow<'static, str>,
-    pub program_type: RayTracingProgramType,
-    pub shaders: [Option<RenderRayTracingShaderVk>; MAX_RAY_TRACING_SHADER_TYPE],
-}*/
-
-#[derive(Clone, Debug)]
-pub struct RenderRayTracingGeometryVk {
-    pub name: Cow<'static, str>,
-}
-
-/*#[derive(Clone, Debug)]
-pub struct RenderRayTracingBottomAccelerationVk {
-    pub name: Cow<'static, str>,
-    pub allocation: vk_mem::Allocation,
-    pub handle: ash::vk::AccelerationStructureKHR,
-}
-
-#[derive(Clone, Debug)]
-pub struct RenderRayTracingTopAccelerationVk {
-    pub name: Cow<'static, str>,
-    pub allocation: vk_mem::Allocation,
-    pub handle: ash::vk::AccelerationStructureKHR,
-}*/
 
 /*#[derive(Clone, Debug)]
 pub struct RenderRayTracingShaderTableVk {

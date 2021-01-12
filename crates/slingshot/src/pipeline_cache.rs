@@ -22,16 +22,16 @@ struct ComputePipelineCacheEntry {
 pub struct RasterPipelineHandle(usize);
 
 pub struct CompiledRasterShaders {
-    shaders: Vec<RasterPipelineShader<Arc<CompiledShader>>>,
+    shaders: Vec<PipelineShader<Arc<CompiledShader>>>,
 }
 
 #[derive(Clone, Hash)]
-pub struct CompileRasterShaders {
-    shaders: Vec<RasterPipelineShader<PathBuf>>,
+pub struct CompilePipelineShaders {
+    shaders: Vec<PipelineShader<PathBuf>>,
 }
 
 #[async_trait]
-impl LazyWorker for CompileRasterShaders {
+impl LazyWorker for CompilePipelineShaders {
     type Output = anyhow::Result<CompiledRasterShaders>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
@@ -39,8 +39,11 @@ impl LazyWorker for CompileRasterShaders {
             CompileShader {
                 path: shader.code.clone(),
                 profile: match shader.desc.stage {
-                    RasterStage::Vertex => "vs".to_owned(),
-                    RasterStage::Pixel => "ps".to_owned(),
+                    ShaderPipelineStage::Vertex => "vs".to_owned(),
+                    ShaderPipelineStage::Pixel => "ps".to_owned(),
+                    ShaderPipelineStage::RayGen
+                    | ShaderPipelineStage::RayMiss
+                    | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
                 },
             }
             .into_lazy()
@@ -51,7 +54,7 @@ impl LazyWorker for CompileRasterShaders {
         let shaders = shaders
             .into_iter()
             .zip(self.shaders.iter())
-            .map(|(shader, src_shader)| RasterPipelineShader {
+            .map(|(shader, src_shader)| PipelineShader {
                 code: shader,
                 desc: src_shader.desc.clone(),
             })
@@ -72,8 +75,7 @@ pub struct PipelineCache {
     compute_entries: HashMap<ComputePipelineHandle, ComputePipelineCacheEntry>,
     raster_entries: HashMap<RasterPipelineHandle, RasterPipelineCacheEntry>,
     path_to_handle: HashMap<PathBuf, ComputePipelineHandle>,
-    raster_shaders_to_handle:
-        HashMap<Vec<RasterPipelineShader<&'static str>>, RasterPipelineHandle>,
+    raster_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RasterPipelineHandle>,
 }
 
 impl PipelineCache {
@@ -126,7 +128,7 @@ impl PipelineCache {
 
     pub fn register_raster(
         &mut self,
-        shaders: &[RasterPipelineShader<&'static str>],
+        shaders: &[PipelineShader<&'static str>],
         desc: &RasterPipelineDesc,
     ) -> RasterPipelineHandle {
         if let Some(handle) = self.raster_shaders_to_handle.get(shaders) {
@@ -139,10 +141,10 @@ impl PipelineCache {
         self.raster_entries.insert(
             handle,
             RasterPipelineCacheEntry {
-                lazy_handle: CompileRasterShaders {
+                lazy_handle: CompilePipelineShaders {
                     shaders: shaders
                         .iter()
-                        .map(|shader| RasterPipelineShader {
+                        .map(|shader| PipelineShader {
                             code: PathBuf::from(shader.code),
                             desc: shader.desc.clone(),
                         })
@@ -198,7 +200,7 @@ impl PipelineCache {
                 let compiled_shaders = compiled_shaders
                     .shaders
                     .iter()
-                    .map(|shader| RasterPipelineShader {
+                    .map(|shader| PipelineShader {
                         code: shader.code.spirv.as_slice(),
                         desc: shader.desc.clone(),
                     })

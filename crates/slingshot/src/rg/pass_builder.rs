@@ -6,7 +6,7 @@ use super::{
 };
 
 use crate::backend::shader::{
-    ComputePipelineDesc, DescriptorSetLayoutOpts, RasterPipelineDescBuilder, RasterPipelineShader,
+    ComputePipelineDesc, DescriptorSetLayoutOpts, PipelineShader, RasterPipelineDescBuilder,
 };
 use std::{marker::PhantomData, path::Path};
 
@@ -218,7 +218,7 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn register_raster_pipeline(
         &mut self,
-        shaders: &[RasterPipelineShader<&'static str>],
+        shaders: &[PipelineShader<&'static str>],
         desc: RasterPipelineDescBuilder,
     ) -> RgRasterPipelineHandle {
         let id = self.rg.raster_pipelines.len();
@@ -242,7 +242,7 @@ impl<'rg> PassBuilder<'rg> {
                         ));*/
                     }
 
-                    RasterPipelineShader {
+                    PipelineShader {
                         code: shader.code,
                         desc,
                     }

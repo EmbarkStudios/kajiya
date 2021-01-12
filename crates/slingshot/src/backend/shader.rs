@@ -102,9 +102,7 @@ pub fn create_descriptor_set_layouts(
             // Set 0 is for draw params,
             // Further sets are for pass/frame bindings, and use all stage flags
             // TODO: pass those as a parameter here?
-            vk::ShaderStageFlags::COMPUTE
-                | vk::ShaderStageFlags::ALL_GRAPHICS
-                | vk::ShaderStageFlags::RAYGEN_KHR
+            vk::ShaderStageFlags::ALL
         };
 
         let _set_opts_default = Default::default();
@@ -420,15 +418,18 @@ pub fn create_compute_pipeline(
 }
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
-pub enum RasterStage {
+pub enum ShaderPipelineStage {
     Vertex,
     Pixel,
+    RayGen,
+    RayMiss,
+    RayClosestHit,
 }
 
 #[derive(Builder, Hash, PartialEq, Eq, Clone)]
 #[builder(pattern = "owned")]
-pub struct RasterShaderDesc {
-    pub stage: RasterStage,
+pub struct PipelineShaderDesc {
+    pub stage: ShaderPipelineStage,
     #[builder(setter(strip_option), default)]
     pub descriptor_set_layout_flags: Option<Vec<(usize, vk::DescriptorSetLayoutCreateFlags)>>,
     #[builder(default)]
@@ -437,9 +438,9 @@ pub struct RasterShaderDesc {
     pub entry_name: String,
 }
 
-impl RasterShaderDesc {
-    pub fn builder(stage: RasterStage) -> RasterShaderDescBuilder {
-        RasterShaderDescBuilder::default().stage(stage)
+impl PipelineShaderDesc {
+    pub fn builder(stage: ShaderPipelineStage) -> PipelineShaderDescBuilder {
+        PipelineShaderDescBuilder::default().stage(stage)
     }
 }
 
@@ -716,12 +717,12 @@ pub fn create_render_pass(
 }
 
 #[derive(Hash, PartialEq, Eq)]
-pub struct RasterPipelineShader<ShaderCode> {
+pub struct PipelineShader<ShaderCode> {
     pub code: ShaderCode,
-    pub desc: RasterShaderDesc,
+    pub desc: PipelineShaderDesc,
 }
 
-impl<ShaderCode> Clone for RasterPipelineShader<ShaderCode>
+impl<ShaderCode> Clone for PipelineShader<ShaderCode>
 where
     ShaderCode: Clone,
 {
@@ -734,8 +735,8 @@ where
 }
 //impl<ShaderCode> Hash for RasterPipelineShader<ShaderCode> {}
 
-impl<ShaderCode> RasterPipelineShader<ShaderCode> {
-    pub fn new(code: ShaderCode, desc: RasterShaderDescBuilder) -> Self {
+impl<ShaderCode> PipelineShader<ShaderCode> {
+    pub fn new(code: ShaderCode, desc: PipelineShaderDescBuilder) -> Self {
         Self {
             code,
             desc: desc.build().unwrap(),
@@ -745,7 +746,7 @@ impl<ShaderCode> RasterPipelineShader<ShaderCode> {
 
 pub fn create_raster_pipeline(
     device: &Device,
-    shaders: &[RasterPipelineShader<&[u8]>],
+    shaders: &[PipelineShader<&[u8]>],
     desc: &RasterPipelineDesc,
 ) -> anyhow::Result<RasterPipeline> {
     let stage_layouts = shaders
@@ -789,8 +790,9 @@ pub fn create_raster_pipeline(
                     .expect("Shader module error");
 
                 let stage = match desc.desc.stage {
-                    RasterStage::Vertex => vk::ShaderStageFlags::VERTEX,
-                    RasterStage::Pixel => vk::ShaderStageFlags::FRAGMENT,
+                    ShaderPipelineStage::Vertex => vk::ShaderStageFlags::VERTEX,
+                    ShaderPipelineStage::Pixel => vk::ShaderStageFlags::FRAGMENT,
+                    _ => unimplemented!(),
                 };
 
                 vk::PipelineShaderStageCreateInfo::builder()
@@ -944,7 +946,9 @@ fn merge_shader_stage_layout_pair(
     }
 }
 
-fn merge_shader_stage_layouts(stages: Vec<StageDescriptorSetLayouts>) -> StageDescriptorSetLayouts {
+pub(crate) fn merge_shader_stage_layouts(
+    stages: Vec<StageDescriptorSetLayouts>,
+) -> StageDescriptorSetLayouts {
     let mut stages = stages.into_iter();
     let mut result = stages.next().unwrap_or_default();
 

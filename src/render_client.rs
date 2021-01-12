@@ -121,31 +121,19 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
                             .binding(0)
                             .descriptor_count(1)
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .stage_flags(
-                                vk::ShaderStageFlags::COMPUTE
-                                    | vk::ShaderStageFlags::ALL_GRAPHICS
-                                    | vk::ShaderStageFlags::RAYGEN_KHR,
-                            )
+                            .stage_flags(vk::ShaderStageFlags::ALL)
                             .build(),
                         vk::DescriptorSetLayoutBinding::builder()
                             .binding(1)
                             .descriptor_count(1)
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .stage_flags(
-                                vk::ShaderStageFlags::COMPUTE
-                                    | vk::ShaderStageFlags::ALL_GRAPHICS
-                                    | vk::ShaderStageFlags::RAYGEN_KHR,
-                            )
+                            .stage_flags(vk::ShaderStageFlags::ALL)
                             .build(),
                         vk::DescriptorSetLayoutBinding::builder()
                             .binding(2)
                             .descriptor_count(MAX_BINDLESS_DESCRIPTOR_COUNT as _)
                             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                            .stage_flags(
-                                vk::ShaderStageFlags::COMPUTE
-                                    | vk::ShaderStageFlags::ALL_GRAPHICS
-                                    | vk::ShaderStageFlags::RAYGEN_KHR,
-                            )
+                            .stage_flags(vk::ShaderStageFlags::ALL)
                             .build(),
                     ])
                     .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)

@@ -17,8 +17,8 @@ use crate::{
     backend::device::{CommandBuffer, Device},
     backend::image::ImageViewDesc,
     backend::shader::ComputePipelineDesc,
+    backend::shader::PipelineShader,
     backend::shader::RasterPipelineDesc,
-    backend::shader::RasterPipelineShader,
     dynamic_constants::DynamicConstants,
     pipeline_cache::ComputePipelineHandle,
     pipeline_cache::PipelineCache,
@@ -73,7 +73,7 @@ pub struct RgRasterPipelineHandle {
 }
 
 pub(crate) struct RgRasterPipeline {
-    pub(crate) shaders: Vec<RasterPipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
     pub(crate) desc: RasterPipelineDesc,
 }
 
