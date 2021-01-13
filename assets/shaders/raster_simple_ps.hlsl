@@ -30,7 +30,6 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
 
     float roughness = clamp(material.roughness_mult * metalness_roughness.x, 0.01, 0.99);
     float metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
-    float z_over_w = 1.0;
 
     float4 res = 0.0.xxxx;
     res.x = asfloat(pack_color_888(albedo));

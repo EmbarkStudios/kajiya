@@ -12,8 +12,7 @@ RWTexture2D<float4> output_tex;
 
 static const float3 ambient_light = 0.1;
 
-float g_smith_ggx_correlated(float ndotv, float ndotl, float ag)
-{
+float g_smith_ggx_correlated(float ndotv, float ndotl, float ag) {
 	float ag2 = ag * ag;
 
 	float lambda_v = ndotl * sqrt((-ndotv * ag2 + ndotv) * ndotv + ag2);

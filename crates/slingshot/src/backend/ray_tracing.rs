@@ -478,7 +478,7 @@ pub fn create_ray_tracing_pipeline(
     let (descriptor_set_layouts, set_layout_info) = super::shader::create_descriptor_set_layouts(
         device,
         &merge_shader_stage_layouts(stage_layouts),
-        vk::ShaderStageFlags::RAYGEN_KHR,
+        vk::ShaderStageFlags::ALL,
         //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
         &Default::default(),
     );
