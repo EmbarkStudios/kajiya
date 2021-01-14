@@ -1,42 +1,20 @@
 #include "../inc/mesh.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/bindless.hlsl"
+#include "../inc/rt.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(1, 0)]] SamplerState sampler_llr;
 
-struct Payload {
-    float4 gbuffer_packed;
-    float t;
-};
-
-struct Attribute {
+struct RayHitAttrib {
     float2 bary;
 };
 
-struct ShadowPayload {
-    bool is_shadowed;
-};
-
 [shader("closesthit")]
-void main(inout Payload payload : SV_RayPayload, in Attribute attribs : SV_IntersectionAttributes) {
+void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attrib : SV_IntersectionAttributes) {
     float3 hit_point = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
 
-    /*RayDesc shadow_ray;
-    shadow_ray.Origin = hit_point;
-    shadow_ray.Direction = normalize(float3(1, 1, 1));
-    shadow_ray.TMin = 0.001;
-    shadow_ray.TMax = 100000.0;
-
-    ShadowPayload shadow_payload;
-    shadow_payload.is_shadowed = true;
-    TraceRay(
-        acceleration_structure,
-        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
-        0xff, 0, 0, 0, shadow_ray, shadow_payload
-    );*/
-
-    float3 barycentrics = float3(1.0 - attribs.bary.x - attribs.bary.y, attribs.bary.x, attribs.bary.y);
+    float3 barycentrics = float3(1.0 - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
     barycentrics.z += float(meshes[0].vertex_core_offset) * 1e-20;
     barycentrics.z += float(vertices.Load(0)) * 1e-20;
     barycentrics.z += material_textures[0][uint2(0, 0)].x * 1e-20;

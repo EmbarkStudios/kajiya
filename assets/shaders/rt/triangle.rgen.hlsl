@@ -3,37 +3,9 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/tonemap.hlsl"
 #include "../inc/brdf.hlsl"
+#include "../inc/rt.hlsl"
 
 static const float3 ambient_light = 0.1;
-
-float g_smith_ggx_correlated(float ndotv, float ndotl, float ag) {
-	float ag2 = ag * ag;
-
-	float lambda_v = ndotl * sqrt((-ndotv * ag2 + ndotv) * ndotv + ag2);
-	float lambda_l = ndotv * sqrt((-ndotl * ag2 + ndotl) * ndotl + ag2);
-
-	return 2.0 * ndotl * ndotv / (lambda_v + lambda_l);
-}
-
-float d_ggx(float ndotm, float a) {
-    float a2 = a * a;
-	float denom_sqrt = ndotm * ndotm * (a2 - 1.0) + 1.0;
-	return a2 / (M_PI * denom_sqrt * denom_sqrt);
-}
-
-struct Payload {
-    float4 gbuffer_packed;
-    float t;
-};
-
-struct ShadowPayload {
-    bool is_shadowed;
-};
-
-
-struct Attribute {
-    float2 bary;
-};
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
@@ -41,37 +13,27 @@ struct Attribute {
 [shader("raygeneration")]
 void main()
 {
-    uint2 launchIndex = DispatchRaysIndex().xy;
-    float2 dims = DispatchRaysDimensions().xy;
+    const uint2 launchIndex = DispatchRaysIndex().xy;
+    const float2 dims = DispatchRaysDimensions().xy;
 
-    float2 pixelCenter = launchIndex + 0.5;
-    float2 uv = pixelCenter / dims.xy;
+    const float2 pixelCenter = launchIndex + 0.5;
+    const float2 uv = pixelCenter / dims.xy;
 
-    ViewConstants view_constants = frame_constants.view_constants;
-    float4 ray_dir_cs = float4(uv_to_cs(uv), 0.0, 1.0);
-    float4 ray_dir_vs = mul(view_constants.sample_to_view, ray_dir_cs);
-    float4 ray_dir_ws = mul(view_constants.view_to_world, ray_dir_vs);
-
-    float4 ray_origin_cs = float4(uv_to_cs(uv), 1.0, 1.0);
-    float4 ray_origin_ws = mul(view_constants.view_to_world, mul(view_constants.sample_to_view, ray_origin_cs));
-    ray_origin_ws /= ray_origin_ws.w;
-
-    /*float2 d = uv * 2.0 - 1.0;
-    float aspectRatio = float(dims.x) / float(dims.y);*/
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
+    const float3 ray_origin_ws = view_ray_context.ray_origin_ws();
+    const float3 ray_dir_ws = view_ray_context.ray_dir_ws();
 
     RayDesc ray;
     ray.Origin = ray_origin_ws.xyz;
     ray.Direction = normalize(ray_dir_ws.xyz);
-    ray.TMin = 0.001;
-    ray.TMax = 100000.0;
+    ray.TMin = 0.0;
+    ray.TMax = FLT_MAX;
 
-    Payload payload;
-    payload.gbuffer_packed = 0;
-    payload.t = 0;
+    GbufferRayPayload payload = GbufferRayPayload::new_miss();
 
     TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
 
-    if (/*launchIndex.x < 1280 / 2 && */payload.t > 0.0) {
+    if (/*launchIndex.x < 1280 / 2 && */payload.is_hit()) {
         float3 hit_point = ray.Origin + ray.Direction * payload.t;
 
         RayDesc shadow_ray;
@@ -80,7 +42,7 @@ void main()
         shadow_ray.TMin = 1e-4;
         shadow_ray.TMax = 100000.0;
 
-        ShadowPayload shadow_payload;
+        ShadowRayPayload shadow_payload;
         shadow_payload.is_shadowed = true;
         TraceRay(
             acceleration_structure,
