@@ -2,14 +2,14 @@
 #define RT_HLSL
 
 #include "math_const.hlsl"
+#include "gbuffer.hlsl"
 
 struct GbufferRayPayload {
-    float4 gbuffer_packed;
+    GbufferDataPacked gbuffer_packed;
     float t;
 
     static GbufferRayPayload new_miss() {
         GbufferRayPayload res;
-        res.gbuffer_packed = 0.0.xxxx;
         res.t = FLT_MAX;
         return res;
     }
@@ -26,9 +26,9 @@ struct GbufferRayPayload {
 struct ShadowRayPayload {
     bool is_shadowed;
 
-    static ShadowRayPayload new_miss() {
+    static ShadowRayPayload new_hit() {
         ShadowRayPayload res;
-        res.is_shadowed = false;
+        res.is_shadowed = true;
         return res;
     }
 
@@ -40,5 +40,28 @@ struct ShadowRayPayload {
         return !is_miss();
     }
 };
+
+RayDesc new_ray(float3 origin, float3 direction, float tmin, float tmax) {
+    RayDesc ray;
+    ray.Origin = origin;
+    ray.Direction = direction;
+    ray.TMin = tmin;
+    ray.TMax = tmax;
+    return ray;
+}
+
+bool rt_is_shadowed(
+    RaytracingAccelerationStructure acceleration_structure,
+    RayDesc ray
+) {
+    ShadowRayPayload shadow_payload = ShadowRayPayload::new_hit();
+    TraceRay(
+        acceleration_structure,
+        RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
+        0xff, 0, 0, 0, ray, shadow_payload
+    );
+
+    return shadow_payload.is_shadowed;
+}
 
 #endif

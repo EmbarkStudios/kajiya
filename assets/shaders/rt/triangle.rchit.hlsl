@@ -49,15 +49,12 @@ void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attri
     Texture2D spec_tex = material_textures[NonUniformResourceIndex(material.spec_map)];
     float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, uv, 0);
 
-    float roughness = clamp(material.roughness_mult * metalness_roughness.x, 0.01, 0.99);
-    float metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
+    GbufferData gbuffer;
+    gbuffer.albedo = albedo;
+    gbuffer.normal = normal;
+    gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.x, 0.01, 0.99);
+    gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
 
-    float4 gbuffer_packed = 0.0.xxxx;
-    gbuffer_packed.x = asfloat(pack_color_888(albedo));
-    gbuffer_packed.y = pack_normal_11_10_11(normal);
-    gbuffer_packed.z = roughness * roughness;      // UE4 remap
-    gbuffer_packed.w = metalness;
-
-    payload.gbuffer_packed = gbuffer_packed;
+    payload.gbuffer_packed = gbuffer.pack();
     payload.t = RayTCurrent();
 }

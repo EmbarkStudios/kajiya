@@ -4,6 +4,7 @@
 #include "../inc/tonemap.hlsl"
 #include "../inc/brdf.hlsl"
 #include "../inc/rt.hlsl"
+#include "../inc/gbuffer.hlsl"
 
 static const float3 ambient_light = 0.1;
 
@@ -20,65 +21,51 @@ void main()
     const float2 uv = pixelCenter / dims.xy;
 
     const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
-    const float3 ray_origin_ws = view_ray_context.ray_origin_ws();
     const float3 ray_dir_ws = view_ray_context.ray_dir_ws();
 
-    RayDesc ray;
-    ray.Origin = ray_origin_ws.xyz;
-    ray.Direction = normalize(ray_dir_ws.xyz);
-    ray.TMin = 0.0;
-    ray.TMax = FLT_MAX;
+    const RayDesc primary_ray = new_ray(
+        view_ray_context.ray_origin_ws(), 
+        normalize(ray_dir_ws.xyz),
+        0.0,
+        FLT_MAX
+    );
 
     GbufferRayPayload payload = GbufferRayPayload::new_miss();
-
-    TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
+    TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, primary_ray, payload);
 
     if (/*launchIndex.x < 1280 / 2 && */payload.is_hit()) {
-        float3 hit_point = ray.Origin + ray.Direction * payload.t;
-
-        RayDesc shadow_ray;
-        shadow_ray.Origin = hit_point;
-        shadow_ray.Direction = normalize(float3(1, 1, 1));
-        shadow_ray.TMin = 1e-4;
-        shadow_ray.TMax = 100000.0;
-
-        ShadowRayPayload shadow_payload;
-        shadow_payload.is_shadowed = true;
-        TraceRay(
+        const float3 hit_point = primary_ray.Origin + primary_ray.Direction * payload.t;
+        const float3 to_light_norm = normalize(float3(1, 1, 1));
+        
+        const bool is_shadowed = rt_is_shadowed(
             acceleration_structure,
-            RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
-            0xff, 0, 0, 0, shadow_ray, shadow_payload
-        );
+            new_ray(
+                hit_point,
+                normalize(float3(1, 1, 1)),
+                1e-4,
+                FLT_MAX
+        ));
 
-        float4 gbuffer = payload.gbuffer_packed;
+        const GbufferData gbuffer = payload.gbuffer_packed.unpack();
 
-        float3 albedo = unpack_color_888(asuint(gbuffer.x));
-        float3 normal = unpack_normal_11_10_11(gbuffer.y);
-        float roughness = sqrt(gbuffer.z);
-        float metalness = gbuffer.w;
-
-        float3 v = -normalize(ray_dir_ws.xyz);
-        float3 l = normalize(float3(1, 1, 1));
-
-        float3x3 shading_basis = build_orthonormal_basis(normal);
+        const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
+        const float3 wo = mul(-normalize(ray_dir_ws.xyz), shading_basis);
+        const float3 wi = mul(to_light_norm, shading_basis);
 
         SpecularBrdf specular_brdf;
-        specular_brdf.roughness = roughness;
-        specular_brdf.albedo = lerp(0.04, albedo, metalness);
+        specular_brdf.roughness = gbuffer.roughness;
+        specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
 
         DiffuseBrdf diffuse_brdf;
-        diffuse_brdf.albedo = max(0.0, 1.0 - metalness) * albedo;
+        diffuse_brdf.albedo = max(0.0, 1.0 - gbuffer.metalness) * gbuffer.albedo;
 
-        float3 wo = mul(v, shading_basis);
-        float3 wi = mul(l, shading_basis);
+        const BrdfValue spec = specular_brdf.evaluate(wo, wi);
+        const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
 
-        BrdfValue spec = specular_brdf.evaluate(wo, wi);
-        BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
+        const float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
+        const float3 ambient = ambient_light * gbuffer.albedo;
 
-        float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
-        float3 ambient = ambient_light * albedo;
-
-        float3 light_radiance = shadow_payload.is_shadowed ? 0.0 : 5.0;
+        const float3 light_radiance = is_shadowed ? 0.0 : 5.0;
 
         float4 res = float4(0.0.xxx, 1.0);
         res.xyz += radiance * light_radiance + ambient;
