@@ -2,9 +2,7 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/tonemap.hlsl"
-
-#define PI 3.14159
-#define TWO_PI 6.28318
+#include "../inc/brdf.hlsl"
 
 static const float3 ambient_light = 0.1;
 
@@ -20,7 +18,7 @@ float g_smith_ggx_correlated(float ndotv, float ndotl, float ag) {
 float d_ggx(float ndotm, float a) {
     float a2 = a * a;
 	float denom_sqrt = ndotm * ndotm * (a2 - 1.0) + 1.0;
-	return a2 / (PI * denom_sqrt * denom_sqrt);
+	return a2 / (M_PI * denom_sqrt * denom_sqrt);
 }
 
 struct Payload {
@@ -97,38 +95,33 @@ void main()
         float roughness = sqrt(gbuffer.z);
         float metalness = gbuffer.w;
 
-        float4 res = 0.0.xxxx;
-
         float3 v = -normalize(ray_dir_ws.xyz);
         float3 l = normalize(float3(1, 1, 1));
-        float3 h = normalize(l + v);
 
-        float ndoth = abs(dot(normal, h));
-        float ldoth = abs(dot(l, h));
-        float ndotv = max(0.0, dot(normal, v));
-        float ndotl = max(0.0, dot(normal, l));
+        float3x3 shading_basis = build_orthonormal_basis(normal);
 
-        float3 f0 = lerp(0.04, albedo, metalness);
-        float schlick = pow(max(0.0, 1.0 - ldoth), 5.0);
-        float3 fr = lerp(f0, 1.0.xxx, schlick);
+        SpecularBrdf specular_brdf;
+        specular_brdf.roughness = roughness;
+        specular_brdf.albedo = lerp(0.04, albedo, metalness);
 
-        float brdf_d = d_ggx(ndoth, roughness);
-        float brdf_g = g_smith_ggx_correlated(ndotv, ndotl, roughness);
+        DiffuseBrdf diffuse_brdf;
+        diffuse_brdf.albedo = max(0.0, 1.0 - metalness) * albedo;
 
-        float3 diffuse_color = max(0.0, 1.0 - metalness) * albedo;
-        float3 diffuse = diffuse_color * ndotl;
-        float3 spec = brdf_d * brdf_g / PI;
+        float3 wo = mul(v, shading_basis);
+        float3 wi = mul(l, shading_basis);
 
-        float3 radiance = lerp(diffuse, spec, fr);
+        BrdfValue spec = specular_brdf.evaluate(wo, wi);
+        BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
+
+        float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
         float3 ambient = ambient_light * albedo;
 
-        float3 light_radiance = shadow_payload.is_shadowed ? 0.0 : 3.0;
-        //res.xyz += normal * 0.5 + 0.5;
+        float3 light_radiance = shadow_payload.is_shadowed ? 0.0 : 5.0;
+
+        float4 res = float4(0.0.xxx, 1.0);
         res.xyz += radiance * light_radiance + ambient;
         res.xyz = neutral_tonemap(res.xyz);
 
         output_tex[launchIndex] = res;
-        //output_tex[launchIndex] = float4(ray.Direction, 1.0f);
-        //output_tex[launchIndex] = float4(payload.hitValue.xxx, 1.0f);
     }
 }
