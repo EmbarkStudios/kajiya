@@ -507,3 +507,58 @@ pub fn ray_trace_test(
         pipeline.trace_rays(output_ref.desc().extent);
     });
 }
+
+pub fn reference_path_trace(
+    rg: &mut RenderGraph,
+    output_img: &mut Handle<Image>,
+    bindless_descriptor_set: vk::DescriptorSet,
+    tlas: Handle<RayTracingAcceleration>,
+) {
+    let mut pass = rg.add_pass();
+
+    let pipeline = pass.register_ray_tracing_pipeline(
+        &[
+            PipelineShader {
+                code: "/assets/shaders/rt/reference_path_trace.rgen.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/triangle.rmiss.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/shadow.rmiss.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/triangle.rchit.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+                    .build()
+                    .unwrap(),
+            },
+        ],
+        slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
+            .max_pipeline_ray_recursion_depth(2),
+    );
+
+    let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
+    let output_ref = pass.write(output_img, AccessType::AnyShaderWrite);
+
+    pass.render(move |api| {
+        let pipeline = api.bind_ray_tracing_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())])
+                .raw_descriptor_set(1, bindless_descriptor_set)
+                .descriptor_set(3, &[tlas_ref.bind()]),
+        );
+
+        pipeline.trace_rays(output_ref.desc().extent);
+    });
+}

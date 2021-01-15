@@ -26,9 +26,13 @@ struct BrdfSample: BrdfValue {
         BrdfSample res;
         res.value_over_pdf = 0.0;
         res.pdf = 0.0;
-        res.wi = float3(0.0, 0.0, 1.0);
+        res.wi = float3(0.0, 0.0, -1.0);
         res.transmission_fraction = 0.0;
         return res;
+    }
+
+    bool is_valid() {
+        return wi.z > 0.0;
     }
 };
 

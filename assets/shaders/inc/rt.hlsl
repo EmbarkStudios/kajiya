@@ -64,4 +64,30 @@ bool rt_is_shadowed(
     return shadow_payload.is_shadowed;
 }
 
+struct GbufferPathVertex {
+    bool is_hit;
+    GbufferDataPacked gbuffer_packed;
+    float3 position;
+};
+
+GbufferPathVertex rt_trace_gbuffer(
+    RaytracingAccelerationStructure acceleration_structure,
+    RayDesc ray
+) {
+    GbufferRayPayload payload = GbufferRayPayload::new_miss();
+    TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
+
+    if (payload.is_hit()) {
+        GbufferPathVertex res;
+        res.is_hit = true;
+        res.position = ray.Origin + ray.Direction * payload.t;
+        res.gbuffer_packed = payload.gbuffer_packed;
+        return res;
+    } else {
+        GbufferPathVertex res;
+        res.is_hit = false;
+        return res;
+    }
+}
+
 #endif

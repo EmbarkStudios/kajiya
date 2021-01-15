@@ -512,14 +512,19 @@ impl RenderClient<FrameState> for VickiRenderClient {
             ),
         );
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
-        crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
+        //crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
 
         let tlas = rg.import_ray_tracing_acceleration(
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
         );
 
-        crate::render_passes::ray_trace_test(rg, &mut lit, self.bindless_descriptor_set, tlas);
+        crate::render_passes::reference_path_trace(
+            rg,
+            &mut lit,
+            self.bindless_descriptor_set,
+            tlas,
+        );
 
         /*crate::render_passes::raster_sdf(
             rg,
