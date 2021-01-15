@@ -57,7 +57,7 @@ const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
-    //sdf_img: TemporalImage,
+    accum_img: TemporalImage,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
     mesh_blas: Vec<RayTracingAcceleration>,
@@ -273,10 +273,22 @@ impl VickiRenderClient {
             &vertex_buffer,
         );
 
+        let accum_img = backend
+            .device
+            .create_image(
+                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, [1280, 720]).usage(
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ),
+                None,
+            )
+            .unwrap();
+
         Ok(Self {
             raster_simple_render_pass,
 
-            //sdf_img: TemporalImage::new(Arc::new(sdf_img)),
+            accum_img: TemporalImage::new(Arc::new(accum_img)),
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
             meshes: Default::default(),
@@ -451,6 +463,10 @@ impl VickiRenderClient {
 
         self.tlas = Some(Arc::new(tlas));
     }
+
+    pub fn reset_frame_idx(&mut self) {
+        self.frame_idx = 0;
+    }
 }
 
 impl RenderClient<FrameState> for VickiRenderClient {
@@ -459,11 +475,8 @@ impl RenderClient<FrameState> for VickiRenderClient {
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        /*let mut sdf_img = rg.import_image(self.sdf_img.resource.clone(), self.sdf_img.access_type);
-        let cube_index_buffer = rg.import_buffer(
-            self.cube_index_buffer.clone(),
-            vk_sync::AccessType::TransferWrite,
-        );*/
+        let mut accum_img =
+            rg.import_image(self.accum_img.resource.clone(), self.accum_img.access_type);
 
         let mut depth_img = crate::render_passes::create_image(
             rg,
@@ -504,15 +517,19 @@ impl RenderClient<FrameState> for VickiRenderClient {
             },
         );
 
-        let mut lit = crate::render_passes::create_image(
+        /*let mut lit = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ),
-        );
-        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
+        );*/
+        //crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
         //crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
+
+        if self.frame_idx == 0 {
+            crate::render_passes::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
+        }
 
         let tlas = rg.import_ray_tracing_acceleration(
             self.tlas.as_ref().unwrap().clone(),
@@ -521,10 +538,13 @@ impl RenderClient<FrameState> for VickiRenderClient {
 
         crate::render_passes::reference_path_trace(
             rg,
-            &mut lit,
+            &mut accum_img,
             self.bindless_descriptor_set,
             tlas,
         );
+
+        let lit =
+            crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
 
         /*crate::render_passes::raster_sdf(
             rg,
@@ -540,8 +560,9 @@ impl RenderClient<FrameState> for VickiRenderClient {
         );*/
 
         //let tex = crate::render_passes::blur(rg, &tex);
-        //self.sdf_img.last_rg_handle = Some(rg.export_image(sdf_img, vk::ImageUsageFlags::empty()));
 
+        self.accum_img.last_rg_handle =
+            Some(rg.export_image(accum_img, vk::ImageUsageFlags::empty()));
         rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
     }
 
@@ -561,10 +582,10 @@ impl RenderClient<FrameState> for VickiRenderClient {
         });
     }
 
-    fn retire_render_graph(&mut self, _retired_rg: &RetiredRenderGraph) {
-        /*if let Some(handle) = self.sdf_img.last_rg_handle.take() {
-            self.sdf_img.access_type = retired_rg.get_image(handle).1;
-        }*/
+    fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph) {
+        if let Some(handle) = self.accum_img.last_rg_handle.take() {
+            self.accum_img.access_type = retired_rg.get_image(handle).1;
+        }
 
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }

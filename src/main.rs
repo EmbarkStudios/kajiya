@@ -58,7 +58,8 @@ fn try_main() -> anyhow::Result<()> {
     let mut last_error_text = None;
 
     #[allow(unused_mut)]
-    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 2.0, 10.0));
+    let mut camera =
+        CameraConvergenceEnforcer::new(camera::FirstPersonCamera::new(Vec3::new(0.0, 2.0, 10.0)));
 
     let mut mouse_state: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
@@ -157,6 +158,10 @@ fn try_main() -> anyhow::Result<()> {
             dt,
         };
         camera.update(&input_state);
+
+        if !camera.is_converged() {
+            render_client.reset_frame_idx();
+        }
 
         let frame_state = FrameState {
             camera_matrices: camera.calc_matrices(),
