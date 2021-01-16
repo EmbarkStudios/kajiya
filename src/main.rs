@@ -4,6 +4,7 @@ mod image_cache;
 mod image_lut;
 mod input;
 mod logging;
+mod lut_renderers;
 mod math;
 mod render_client;
 mod render_passes;
@@ -13,6 +14,7 @@ use asset::mesh::*;
 use camera::*;
 use image_cache::*;
 use input::*;
+use lut_renderers::*;
 use math::*;
 
 #[allow(unused_imports)]
@@ -54,6 +56,8 @@ fn try_main() -> anyhow::Result<()> {
 
     let render_backend = RenderBackend::new(&*window, &window_cfg)?;
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
+    render_client.add_image_lut(BrdfFgLutComputer, 0);
+
     let mut renderer = renderer::Renderer::new(render_backend)?;
 
     let mut last_error_text = None;

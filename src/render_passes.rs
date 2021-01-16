@@ -394,6 +394,7 @@ pub fn light_gbuffer(
     gbuffer: &Handle<Image>,
     depth: &Handle<Image>,
     output: &mut Handle<Image>,
+    bindless_descriptor_set: vk::DescriptorSet,
 ) {
     let mut pass = rg.add_pass();
 
@@ -410,17 +411,22 @@ pub fn light_gbuffer(
     let output_ref = pass.write(output, AccessType::ComputeShaderWrite);
 
     pass.render(move |api| {
-        let pipeline =
-            api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
-                0,
-                &[
-                    gbuffer_ref.bind(ImageViewDescBuilder::default()),
-                    depth_ref.bind(
-                        ImageViewDescBuilder::default().aspect_mask(vk::ImageAspectFlags::DEPTH),
-                    ),
-                    output_ref.bind(ImageViewDescBuilder::default()),
-                ],
-            ));
+        let pipeline = api.bind_compute_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(
+                    0,
+                    &[
+                        gbuffer_ref.bind(ImageViewDescBuilder::default()),
+                        depth_ref.bind(
+                            ImageViewDescBuilder::default()
+                                .aspect_mask(vk::ImageAspectFlags::DEPTH),
+                        ),
+                        output_ref.bind(ImageViewDescBuilder::default()),
+                    ],
+                )
+                .raw_descriptor_set(1, bindless_descriptor_set),
+        );
 
         pipeline.dispatch(gbuffer_ref.desc().extent);
     });

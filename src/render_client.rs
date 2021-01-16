@@ -5,6 +5,7 @@ use crate::{
     },
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
+    image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
     rg,
@@ -18,7 +19,10 @@ use glam::Vec2;
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use slingshot::{
-    ash::{version::DeviceV1_0, vk},
+    ash::{
+        version::DeviceV1_0,
+        vk::{self, ImageView},
+    },
     backend::{
         device,
         ray_tracing::{
@@ -67,6 +71,8 @@ pub struct VickiRenderClient {
     vertex_buffer_written: usize,
     bindless_descriptor_set: vk::DescriptorSet,
     bindless_images: Vec<Image>,
+    image_luts: Vec<ImageLut>,
+    next_bindless_image_id: usize,
     pub render_mode: RenderMode,
     frame_idx: u32,
 }
@@ -109,8 +115,8 @@ fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet 
     let raw_device = &device.raw;
 
     let set_binding_flags = [
-        vk::DescriptorBindingFlags::empty(),
-        vk::DescriptorBindingFlags::empty(),
+        vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+        vk::DescriptorBindingFlags::PARTIALLY_BOUND,
         vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
             | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
             | vk::DescriptorBindingFlags::PARTIALLY_BOUND
@@ -298,6 +304,8 @@ impl VickiRenderClient {
             vertex_buffer_written: 0,
             bindless_descriptor_set,
             bindless_images: Default::default(),
+            image_luts: Default::default(),
+            next_bindless_image_id: 0,
             render_mode: RenderMode::Standard,
             frame_idx: 0u32,
         })
@@ -326,24 +334,9 @@ impl VickiRenderClient {
         }
     }
 
-    pub fn add_image(&mut self, src: &RawRgba8Image) -> BindlessImageHandle {
-        let image = self
-            .device
-            .create_image(
-                ImageDesc::new_2d(vk::Format::R8G8B8A8_SRGB, src.dimensions)
-                    .usage(vk::ImageUsageFlags::SAMPLED),
-                Some(ImageSubResourceData {
-                    data: &src.data,
-                    row_pitch: src.dimensions[0] as usize * 4,
-                    slice_pitch: 0,
-                }),
-            )
-            .unwrap();
-
-        let handle = BindlessImageHandle(self.bindless_images.len() as _);
-        let view = image.view(self.device.as_ref(), &ImageViewDesc::default());
-
-        self.bindless_images.push(image);
+    fn add_bindless_image_view(&mut self, view: ImageView) -> BindlessImageHandle {
+        let handle = BindlessImageHandle(self.next_bindless_image_id as _);
+        self.next_bindless_image_id += 1;
 
         let image_info = vk::DescriptorImageInfo::builder()
             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
@@ -364,6 +357,41 @@ impl VickiRenderClient {
                 .update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[]);
         }
 
+        handle
+    }
+
+    pub fn add_image_lut(&mut self, computer: impl ComputeImageLut + 'static, id: usize) {
+        self.image_luts
+            .push(ImageLut::new(self.device.as_ref(), Box::new(computer)));
+
+        let handle = self.add_bindless_image_view(
+            self.image_luts
+                .last()
+                .unwrap()
+                .image
+                .view(self.device.as_ref(), &ImageViewDesc::default()),
+        );
+
+        assert_eq!(handle.0 as usize, id);
+    }
+
+    pub fn add_image(&mut self, src: &RawRgba8Image) -> BindlessImageHandle {
+        let image = self
+            .device
+            .create_image(
+                ImageDesc::new_2d(vk::Format::R8G8B8A8_SRGB, src.dimensions)
+                    .usage(vk::ImageUsageFlags::SAMPLED),
+                Some(ImageSubResourceData {
+                    data: &src.data,
+                    row_pitch: src.dimensions[0] as usize * 4,
+                    slice_pitch: 0,
+                }),
+            )
+            .unwrap();
+
+        let handle = self
+            .add_bindless_image_view(image.view(self.device.as_ref(), &ImageViewDesc::default()));
+        self.bindless_images.push(image);
         handle
     }
 
@@ -496,7 +524,13 @@ impl VickiRenderClient {
             ),
         );
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
-        crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
+        crate::render_passes::light_gbuffer(
+            rg,
+            &gbuffer,
+            &depth_img,
+            &mut lit,
+            self.bindless_descriptor_set,
+        );
 
         rg.export_image(
             lit,
@@ -548,6 +582,10 @@ impl RenderClient<FrameState> for VickiRenderClient {
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
+        for image_lut in self.image_luts.iter_mut() {
+            image_lut.compute(rg);
+        }
+
         match self.render_mode {
             RenderMode::Standard => self.prepare_render_graph_standard(rg, frame_state),
             RenderMode::Reference => self.prepare_render_graph_reference(rg, frame_state),

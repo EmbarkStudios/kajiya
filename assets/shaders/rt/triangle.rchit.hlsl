@@ -17,7 +17,7 @@ void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attri
     float3 barycentrics = float3(1.0 - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
     barycentrics.z += float(meshes[0].vertex_core_offset) * 1e-20;
     barycentrics.z += float(vertices.Load(0)) * 1e-20;
-    barycentrics.z += material_textures[0][uint2(0, 0)].x * 1e-20;
+    barycentrics.z += bindless_textures[0][uint2(0, 0)].x * 1e-20;
 
     Mesh mesh = meshes[InstanceIndex()];
 
@@ -43,10 +43,10 @@ void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attri
     uint material_id = vertices.Load(ind.x * sizeof(uint) + mesh.vertex_mat_offset);
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + material_id * sizeof(MeshMaterial));
 
-    Texture2D albedo_tex = material_textures[NonUniformResourceIndex(material.albedo_map)];
+    Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float3 albedo = albedo_tex.SampleLevel(sampler_llr, uv, 0).xyz * float4(material.base_color_mult).xyz * color.xyz;
 
-    Texture2D spec_tex = material_textures[NonUniformResourceIndex(material.spec_map)];
+    Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, uv, 0);
 
     GbufferData gbuffer;

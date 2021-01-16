@@ -13,7 +13,7 @@ pub use ash;
 pub use backend::shader::{MAX_BINDLESS_DESCRIPTOR_COUNT, MAX_DESCRIPTOR_SETS};
 pub use backend::{
     device::Device,
-    image::{Image, ImageDesc, ImageSubResourceData},
+    image::{Image, ImageDesc, ImageSubResourceData, ImageViewDescBuilder},
     RenderBackend,
 };
 pub use vk_sync;

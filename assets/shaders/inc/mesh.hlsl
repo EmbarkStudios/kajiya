@@ -1,3 +1,6 @@
+#ifndef MESH_HLSL
+#define MESH_HLSL
+
 struct VertexPacked {
 	float4 data0;
 };
@@ -40,3 +43,5 @@ struct MeshMaterial {
     float metalness_factor;
     float emissive[3];
 };
+
+#endif

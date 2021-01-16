@@ -4,6 +4,7 @@
 #include "inc/uv.hlsl"
 #include "inc/rt.hlsl"
 #include "inc/tonemap.hlsl"
+#include "inc/bindless.hlsl"
 
 Texture2D<float4> gbuffer_tex;
 Texture2D<float> depth_tex;
@@ -107,6 +108,8 @@ void main(in uint2 pix : SV_DispatchThreadID) {
 
     //res.xyz = 1.0 - exp(-res.xyz);
     total_radiance = neutral_tonemap(total_radiance);
+
+    total_radiance += bindless_textures[0].Load(uint3(0, 0, 0)).xyz;
 
     output_tex[pix] = float4(total_radiance, 1.0);
 }

@@ -17,7 +17,7 @@ use std::{
 };
 
 pub const MAX_DESCRIPTOR_SETS: usize = 4;
-pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 1024 * 1024;
+pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 512 * 1024;
 
 type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
 type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
@@ -129,12 +129,12 @@ pub fn create_descriptor_set_layouts(
         if let Some(set) = set {
             let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
             let mut binding_flags: Vec<vk::DescriptorBindingFlags> =
-                vec![vk::DescriptorBindingFlags::empty(); set.len()]; // TODO: vk::DescriptorBindingFlags::PARTIALLY_BOUND
+                vec![vk::DescriptorBindingFlags::PARTIALLY_BOUND; set.len()];
 
             let mut set_layout_create_flags = vk::DescriptorSetLayoutCreateFlags::empty();
 
             for (binding_index, binding) in set.into_iter() {
-                /*if binding.name == "material_textures" {
+                /*if binding.name == "bindless_textures" {
                     panic!("{:?}", binding);
                 }*/
 
@@ -247,8 +247,9 @@ pub fn create_descriptor_set_layouts(
                 }
             }
 
-            let mut set_layout_flags = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
-                .binding_flags(&binding_flags);
+            let mut binding_flags_create_info =
+                vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                    .binding_flags(&binding_flags);
 
             let set_layout = unsafe {
                 device
@@ -257,7 +258,7 @@ pub fn create_descriptor_set_layouts(
                         &vk::DescriptorSetLayoutCreateInfo::builder()
                             .flags(set_opts.flags.unwrap_or_default() | set_layout_create_flags)
                             .bindings(&bindings)
-                            .push_next(&mut set_layout_flags)
+                            .push_next(&mut binding_flags_create_info)
                             .build(),
                         None,
                     )

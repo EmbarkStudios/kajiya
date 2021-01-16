@@ -232,6 +232,14 @@ impl Renderer {
         dynamic_constants: &Buffer,
     ) -> vk::DescriptorSet {
         let device = &backend.device.raw;
+
+        let set_binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND];
+
+        let mut binding_flags_create_info =
+            vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
+                .binding_flags(&set_binding_flags)
+                .build();
+
         let descriptor_set_layout = unsafe {
             device
                 .create_descriptor_set_layout(
@@ -242,6 +250,7 @@ impl Renderer {
                             .stage_flags(vk::ShaderStageFlags::ALL)
                             .binding(0)
                             .build()])
+                        .push_next(&mut binding_flags_create_info)
                         .build(),
                     None,
                 )

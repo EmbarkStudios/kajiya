@@ -22,10 +22,10 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     }*/
     normal = normalize(normal);
 
-    Texture2D albedo_tex = material_textures[NonUniformResourceIndex(material.albedo_map)];
+    Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float3 albedo = albedo_tex.Sample(sampler_llr, ps.uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
 
-    Texture2D spec_tex = material_textures[NonUniformResourceIndex(material.spec_map)];
+    Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     float4 metalness_roughness = spec_tex.Sample(sampler_llr, ps.uv);
 
     float roughness = clamp(material.roughness_mult * metalness_roughness.x, 0.01, 0.99);
