@@ -1,6 +1,7 @@
 mod asset;
 mod camera;
 mod image_cache;
+mod image_lut;
 mod input;
 mod logging;
 mod math;

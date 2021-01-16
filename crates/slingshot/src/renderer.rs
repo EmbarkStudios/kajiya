@@ -9,11 +9,7 @@ use crate::{
 };
 use crate::{dynamic_constants::*, pipeline_cache::*};
 use ash::{version::DeviceV1_0, vk};
-use backend::{
-    barrier::record_image_barrier,
-    barrier::ImageBarrier,
-    buffer::{Buffer, BufferDesc},
-};
+use backend::buffer::{Buffer, BufferDesc};
 use gpu_allocator::MemoryLocation;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -184,19 +180,12 @@ impl Renderer {
                 );
 
                 let (rg_output_img, rg_output_access_type) = retired_rg.get_image(rg_output_img);
+                assert!(
+                    rg_output_access_type
+                        == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
+                );
 
                 render_client.retire_render_graph(&retired_rg);
-
-                record_image_barrier(
-                    device,
-                    cb.raw,
-                    ImageBarrier::new(
-                        rg_output_img.raw,
-                        rg_output_access_type,
-                        vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-                        vk::ImageAspectFlags::COLOR,
-                    ),
-                );
 
                 blit_image_to_swapchain(
                     &*self.backend.device,

@@ -498,7 +498,10 @@ impl VickiRenderClient {
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
         crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
 
-        rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
+        rg.export_image(
+            lit,
+            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        )
     }
 
     fn prepare_render_graph_reference(
@@ -530,8 +533,12 @@ impl VickiRenderClient {
             crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
 
         self.accum_img.last_rg_handle =
-            Some(rg.export_image(accum_img, vk::ImageUsageFlags::empty()));
-        rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
+            Some(rg.export_image(accum_img, vk_sync::AccessType::Nothing));
+
+        rg.export_image(
+            lit,
+            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        )
     }
 }
 
