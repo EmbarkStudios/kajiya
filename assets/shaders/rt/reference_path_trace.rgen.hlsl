@@ -49,7 +49,7 @@ void main() {
     const uint2 px = DispatchRaysIndex().xy;
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 
-    const float psf_scale = 0.85;
+    const float psf_scale = 1.0;
     float px_off0 = 0.5 + psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
     float px_off1 = 0.5 + psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
 
@@ -78,7 +78,7 @@ void main() {
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
-            const float3 to_light_norm = normalize(float3(1, 3, 1));
+            const float3 to_light_norm = normalize(float3(1, 1, 1));
             
             const bool is_shadowed = rt_is_shadowed(
                 acceleration_structure,
@@ -94,6 +94,8 @@ void main() {
                 gbuffer.albedo = 1.0;
                 //gbuffer.roughness = 0.001;
             }
+
+            //gbuffer.metalness = 1;
 
             const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
             const float3 wi = mul(to_light_norm, shading_basis);
@@ -131,14 +133,9 @@ void main() {
                 total_radiance += throughput * radiance * light_radiance;
             }
 
-            const float approx_fresnel = calculate_luma(eval_fresnel_schlick(specular_brdf.albedo, 1.0.xxx, wo.z));
-
             BrdfSample brdf_sample;
             float lobe_pdf;
-            float3 lobe_throughput = 1.0;
 
-            const float lobe_xi = uint_to_u01_float(hash1_mut(seed));
-            //if (lobe_xi < spec_p)
             {
                 // Sample top level (specular)
                 const float u0 = uint_to_u01_float(hash1_mut(seed));
@@ -152,6 +149,7 @@ void main() {
                 const float diffuse_wt = calculate_luma(brdf_sample.transmission_fraction * diffuse_brdf.albedo);
                 const float transmission_p = diffuse_wt / (spec_wt + diffuse_wt);
 
+                const float lobe_xi = uint_to_u01_float(hash1_mut(seed));
                 if (lobe_xi < transmission_p) {
                     // Transmission wins! Now sample the bottom layer (diffuse)
 
@@ -161,7 +159,7 @@ void main() {
                     // Now account for the masking that the top level exerts on the bottom.
                     // Even though we used `brdf_sample.transmission_fraction` in lobe selection,
                     // that factor cancelled out with division by the lobe selection PDF.
-                    lobe_throughput = brdf_sample.transmission_fraction;
+                    throughput *= brdf_sample.transmission_fraction;
 
                     const float u0 = uint_to_u01_float(hash1_mut(seed));
                     const float u1 = uint_to_u01_float(hash1_mut(seed));
@@ -178,7 +176,7 @@ void main() {
                 outgoing_ray.Origin = primary_hit.position;
                 outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
                 outgoing_ray.TMin = 1e-4;
-                throughput *= lobe_throughput * brdf_sample.value_over_pdf / lobe_pdf;
+                throughput *= brdf_sample.value_over_pdf / lobe_pdf;
             } else {
                 break;
             }
