@@ -161,19 +161,14 @@ fn try_main() -> anyhow::Result<()> {
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
             render_client.render_mode = match render_client.render_mode {
-                RenderMode::Standard => {
-                    render_client.reset_frame_idx();
-                    RenderMode::Reference
-                }
+                RenderMode::Standard => RenderMode::Reference,
                 RenderMode::Reference => RenderMode::Standard,
             };
         }
 
         // Reset accumulation of the path tracer whenever the camera moves
-        if render_client.render_mode == RenderMode::Reference {
-            if !camera.is_converged() {
-                render_client.reset_frame_idx();
-            }
+        if !camera.is_converged() {
+            render_client.reset_reference_accumulation = true;
         }
 
         let frame_state = FrameState {

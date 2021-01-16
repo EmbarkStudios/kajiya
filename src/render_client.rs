@@ -57,6 +57,7 @@ pub struct VickiRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
     accum_img: TemporalImage,
+    pub reset_reference_accumulation: bool,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
     mesh_blas: Vec<RayTracingAcceleration>,
@@ -286,6 +287,7 @@ impl VickiRenderClient {
             raster_simple_render_pass,
 
             accum_img: TemporalImage::new(Arc::new(accum_img)),
+            reset_reference_accumulation: false,
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
             meshes: Default::default(),
@@ -459,9 +461,6 @@ impl VickiRenderClient {
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        let mut accum_img =
-            rg.import_image(self.accum_img.resource.clone(), self.accum_img.access_type);
-
         let mut depth_img = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
@@ -499,8 +498,6 @@ impl VickiRenderClient {
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
         crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
 
-        self.accum_img.last_rg_handle =
-            Some(rg.export_image(accum_img, vk::ImageUsageFlags::empty()));
         rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
     }
 
@@ -512,7 +509,8 @@ impl VickiRenderClient {
         let mut accum_img =
             rg.import_image(self.accum_img.resource.clone(), self.accum_img.access_type);
 
-        if self.frame_idx == 0 {
+        if self.reset_reference_accumulation {
+            self.reset_reference_accumulation = false;
             crate::render_passes::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
