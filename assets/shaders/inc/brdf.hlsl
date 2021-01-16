@@ -32,7 +32,7 @@ struct BrdfSample: BrdfValue {
     }
 
     bool is_valid() {
-        return wi.z > 0.0;
+        return wi.z > 1e-6;
     }
 };
 
@@ -152,3 +152,11 @@ struct SpecularBrdf {
         return res;
 	}
 };
+
+float roughness_to_perceptual_roughness(float r) {
+    return sqrt(r);
+}
+
+float perceptual_roughness_to_roughness(float r) {
+    return r * r;
+}

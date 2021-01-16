@@ -21,7 +21,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 col = fetch_color(px);
 
     // TODO: move to its own pass
-#if 1
+#if 0
     static const float sharpen_amount = 0.4;
 
 	float neighbors = 0;
@@ -52,6 +52,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 	col.rgb *= max(0.0, sharpened_luma / max(1e-5, calculate_luma(col.rgb)));
 #endif
 
+    //col *= 2;
     col = neutral_tonemap(col);
+    //col = 1-exp(-col);
+    
     output_tex[px] = float4(col, 1.0);
 }
