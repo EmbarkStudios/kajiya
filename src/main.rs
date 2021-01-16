@@ -16,7 +16,7 @@ use math::*;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use render_client::BindlessImageHandle;
+use render_client::{BindlessImageHandle, RenderMode};
 use slingshot::*;
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
@@ -159,8 +159,21 @@ fn try_main() -> anyhow::Result<()> {
         };
         camera.update(&input_state);
 
-        if !camera.is_converged() {
-            render_client.reset_frame_idx();
+        if keyboard.was_just_pressed(VirtualKeyCode::Space) {
+            render_client.render_mode = match render_client.render_mode {
+                RenderMode::Standard => {
+                    render_client.reset_frame_idx();
+                    RenderMode::Reference
+                }
+                RenderMode::Reference => RenderMode::Standard,
+            };
+        }
+
+        // Reset accumulation of the path tracer whenever the camera moves
+        if render_client.render_mode == RenderMode::Reference {
+            if !camera.is_converged() {
+                render_client.reset_frame_idx();
+            }
         }
 
         let frame_state = FrameState {

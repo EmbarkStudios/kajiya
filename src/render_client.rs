@@ -13,7 +13,6 @@ use crate::{
     FrameState,
 };
 use backend::buffer::{Buffer, BufferDesc};
-use byte_slice_cast::AsByteSlice;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -67,7 +66,14 @@ pub struct VickiRenderClient {
     vertex_buffer_written: usize,
     bindless_descriptor_set: vk::DescriptorSet,
     bindless_images: Vec<Image>,
+    pub render_mode: RenderMode,
     frame_idx: u32,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RenderMode {
+    Standard,
+    Reference,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -209,15 +215,6 @@ impl<'a> BufferBuilder<'a> {
 
 impl VickiRenderClient {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
-        /*let cube_indices = cube_indices();
-        let cube_index_buffer = backend.device.create_buffer(
-            BufferDesc {
-                size: cube_indices.len() * 4,
-                usage: vk::BufferUsageFlags::INDEX_BUFFER,
-            },
-            Some((&cube_indices).as_byte_slice()),
-        )?;*/
-
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -299,6 +296,7 @@ impl VickiRenderClient {
             vertex_buffer_written: 0,
             bindless_descriptor_set,
             bindless_images: Default::default(),
+            render_mode: RenderMode::Standard,
             frame_idx: 0u32,
         })
     }
@@ -369,20 +367,6 @@ impl VickiRenderClient {
 
     pub fn add_mesh(&mut self, mesh: PackedTriangleMesh) {
         let mesh_idx = self.meshes.len();
-
-        /*let index_buffer = Arc::new(
-            self.device
-                .create_buffer(
-                    BufferDesc {
-                        size: mesh.indices.len() * 4,
-                        usage: vk::BufferUsageFlags::INDEX_BUFFER
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                        mapped: false,
-                    },
-                    Some((&mesh.indices).as_byte_slice()),
-                )
-                .unwrap(),
-        );*/
 
         let mut vertex_buffer = self.vertex_buffer.lock();
         let mut buffer_builder = BufferBuilder::new(
@@ -469,8 +453,8 @@ impl VickiRenderClient {
     }
 }
 
-impl RenderClient<FrameState> for VickiRenderClient {
-    fn prepare_render_graph(
+impl VickiRenderClient {
+    fn prepare_render_graph_standard(
         &mut self,
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
@@ -483,18 +467,6 @@ impl RenderClient<FrameState> for VickiRenderClient {
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
         );
         crate::render_passes::clear_depth(rg, &mut depth_img);
-        /*crate::render_passes::edit_sdf(rg, &mut sdf_img, self.frame_idx == 0);
-
-        let sdf_raster_bricks: SdfRasterBricks =
-            crate::render_passes::calculate_sdf_bricks_meta(rg, &sdf_img);*/
-        /*let mut tex = crate::render_passes::raymarch_sdf(
-            rg,
-            &sdf_img,
-            ImageDesc::new_2d(
-                vk::Format::R16G16B16A16_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ),
-        );*/
 
         let mut gbuffer = crate::render_passes::create_image(
             rg,
@@ -517,15 +489,28 @@ impl RenderClient<FrameState> for VickiRenderClient {
             },
         );
 
-        /*let mut lit = crate::render_passes::create_image(
+        let mut lit = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ),
-        );*/
-        //crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
-        //crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
+        );
+        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
+        crate::render_passes::light_gbuffer(rg, &gbuffer, &depth_img, &mut lit);
+
+        self.accum_img.last_rg_handle =
+            Some(rg.export_image(accum_img, vk::ImageUsageFlags::empty()));
+        rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
+    }
+
+    fn prepare_render_graph_reference(
+        &mut self,
+        rg: &mut crate::rg::RenderGraph,
+        _frame_state: &FrameState,
+    ) -> rg::ExportedHandle<Image> {
+        let mut accum_img =
+            rg.import_image(self.accum_img.resource.clone(), self.accum_img.access_type);
 
         if self.frame_idx == 0 {
             crate::render_passes::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
@@ -546,24 +531,22 @@ impl RenderClient<FrameState> for VickiRenderClient {
         let lit =
             crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
 
-        /*crate::render_passes::raster_sdf(
-            rg,
-            self.raster_simple_render_pass.clone(),
-            &mut depth_img,
-            &mut tex,
-            crate::render_passes::RasterSdfData {
-                sdf_img: &sdf_img,
-                brick_inst_buffer: &sdf_raster_bricks.brick_inst_buffer,
-                brick_meta_buffer: &sdf_raster_bricks.brick_meta_buffer,
-                cube_index_buffer: &cube_index_buffer,
-            },
-        );*/
-
-        //let tex = crate::render_passes::blur(rg, &tex);
-
         self.accum_img.last_rg_handle =
             Some(rg.export_image(accum_img, vk::ImageUsageFlags::empty()));
         rg.export_image(lit, vk::ImageUsageFlags::SAMPLED)
+    }
+}
+
+impl RenderClient<FrameState> for VickiRenderClient {
+    fn prepare_render_graph(
+        &mut self,
+        rg: &mut crate::rg::RenderGraph,
+        frame_state: &FrameState,
+    ) -> rg::ExportedHandle<Image> {
+        match self.render_mode {
+            RenderMode::Standard => self.prepare_render_graph_standard(rg, frame_state),
+            RenderMode::Reference => self.prepare_render_graph_reference(rg, frame_state),
+        }
     }
 
     fn prepare_frame_constants(
