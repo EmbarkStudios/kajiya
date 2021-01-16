@@ -50,8 +50,8 @@ void main() {
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 
     const float psf_scale = 0.85;
-    float px_off0 = 0.5 + psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-5);
-    float px_off1 = 0.5 + psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-5);
+    float px_off0 = 0.5 + psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
+    float px_off1 = 0.5 + psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
 
     const float2 pixel_center = px + float2(px_off0, px_off1);
     const float2 uv = pixel_center / DispatchRaysDimensions().xy;
@@ -95,9 +95,6 @@ void main() {
                 //gbuffer.roughness = 0.001;
             }
 
-            //output_tex[px] = float4(dot(gbuffer.normal, -outgoing_ray.Direction).xxx, 1.0);
-            //return;
-
             const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
             const float3 wi = mul(to_light_norm, shading_basis);
 
@@ -140,38 +137,6 @@ void main() {
             float lobe_pdf;
             float3 lobe_throughput = 1.0;
 
-#if 0
-            float spec_p = approx_fresnel;
-            float diffuse_p = /*(1.0 - approx_fresnel) * */calculate_luma(diffuse_brdf.albedo);
-            const float layers_p_sum = diffuse_p + spec_p;
-            
-            diffuse_p /= layers_p_sum;
-            spec_p /= layers_p_sum;
-
-            const float lobe_xi = uint_to_u01_float(hash1_mut(seed));
-            if (lobe_xi < spec_p) {
-                lobe_pdf = spec_p;
-
-                const float u0 = uint_to_u01_float(hash1_mut(seed));
-                const float u1 = uint_to_u01_float(hash1_mut(seed));
-
-                brdf_sample = specular_brdf.sample(wo, float2(u0, u1));
-
-                roughness_bias = lerp(roughness_bias, 1.0, gbuffer.roughness * 0.5);
-            } else {
-                const float u0 = uint_to_u01_float(hash1_mut(seed));
-                const float u1 = uint_to_u01_float(hash1_mut(seed));
-
-                brdf_sample = diffuse_brdf.sample(wo, float2(u0, u1));
-                lobe_pdf = diffuse_p;
-
-                roughness_bias = lerp(roughness_bias, 1.0, 0.5);
-                lobe_throughput = specular_brdf.evaluate(wo, brdf_sample.wi).transmission_fraction;
-
-                //output_tex[px] = float4(lobe_throughput, 1.0);
-                //return;
-            }
-#else
             const float lobe_xi = uint_to_u01_float(hash1_mut(seed));
             //if (lobe_xi < spec_p)
             {
@@ -208,14 +173,12 @@ void main() {
                     roughness_bias = lerp(roughness_bias, 1.0, gbuffer.roughness * 0.5);
                 }
             }
-#endif
-
 
             if (lobe_pdf > 1e-9 && brdf_sample.is_valid()) {
                 outgoing_ray.Origin = primary_hit.position;
                 outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
                 outgoing_ray.TMin = 1e-4;
-                throughput *= /*max(0.0, brdf_sample.wi.z) * */lobe_throughput * brdf_sample.value_over_pdf / lobe_pdf;
+                throughput *= lobe_throughput * brdf_sample.value_over_pdf / lobe_pdf;
             } else {
                 break;
             }

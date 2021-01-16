@@ -21,7 +21,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 col = fetch_color(px);
 
     // TODO: move to its own pass
-#if 0
+#if 1
     static const float sharpen_amount = 0.4;
 
 	float neighbors = 0;
