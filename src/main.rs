@@ -10,7 +10,7 @@ mod render_client;
 mod render_passes;
 mod viewport;
 
-use asset::mesh::*;
+use asset::{image::LoadImage, mesh::*};
 use camera::*;
 use image_cache::*;
 use input::*;
@@ -58,6 +58,20 @@ fn try_main() -> anyhow::Result<()> {
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
+    let metalness_albedo_boost_lut = LoadImage {
+        path: "assets/images/metalness_albedo_boost_lut.png".into(),
+    }
+    .into_lazy();
+    let metalness_albedo_boost_lut =
+        smol::block_on(metalness_albedo_boost_lut.eval(&lazy_cache)).unwrap();
+
+    render_client.add_image(
+        metalness_albedo_boost_lut.as_ref(),
+        TexParams {
+            gamma: TexGamma::Linear,
+        },
+    );
+
     let mut renderer = renderer::Renderer::new(render_backend)?;
 
     let mut last_error_text = None;
@@ -72,11 +86,24 @@ fn try_main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
+    /*let mesh = LoadGltfScene {
+        path: "assets/meshes/mireys_cute_gas_stove/scene.gltf".into(),
+        scale: 0.03,
+    }
+    .into_lazy();*/
+
+    /*let mesh = LoadGltfScene {
+        path: "assets/meshes/sploosh-o-matic/scene.gltf".into(),
+        scale: 0.03,
+    }
+    .into_lazy();*/
+
     let mesh = LoadGltfScene {
-        path: "assets/meshes2/rm_342/scene.gltf".into(),
+        path: "assets/meshes2/detailed_draft_xyz_homework/scene.gltf".into(),
         scale: 0.03,
     }
     .into_lazy();
+
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
 
     let mut image_cache = ImageCache::new(lazy_cache.clone());
@@ -92,8 +119,8 @@ fn try_main() -> anyhow::Result<()> {
                 let img = image_cache.load_mesh_map(map).unwrap();
                 match img {
                     ImageCacheResponse::Hit { id } => cached_image_to_bindless_handle[&id],
-                    ImageCacheResponse::Miss { id, image } => {
-                        let handle = render_client.add_image(image.as_ref());
+                    ImageCacheResponse::Miss { id, image, params } => {
+                        let handle = render_client.add_image(image.as_ref(), params);
                         cached_image_to_bindless_handle.insert(id, handle);
                         handle
                     }
@@ -172,7 +199,7 @@ fn try_main() -> anyhow::Result<()> {
         }
 
         // Reset accumulation of the path tracer whenever the camera moves
-        if !camera.is_converged() {
+        if !camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back) {
             render_client.reset_reference_accumulation = true;
         }
 

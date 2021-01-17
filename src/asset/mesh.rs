@@ -126,7 +126,7 @@ fn load_gltf_material(
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
         .and_then(|tex| get_gltf_texture_source(tex.texture()).map(make_material_map))
-        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 0, 255]));
+        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]));
 
     let emissive = if mat.emissive_texture().is_some() {
         [0.0, 0.0, 0.0]

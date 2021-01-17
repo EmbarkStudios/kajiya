@@ -1,5 +1,9 @@
 #include "math.hlsl"
 
+static const uint2 BRDF_FG_LUT_DIMS = uint2(64, 64);
+static const float2 BRDF_FG_LUT_UV_SCALE = (BRDF_FG_LUT_DIMS - 1.0) / BRDF_FG_LUT_DIMS;
+static const float2 BRDF_FG_LUT_UV_BIAS = 0.5.xx / BRDF_FG_LUT_DIMS;
+
 struct BrdfValue {
     float3 value_over_pdf;
     float pdf;

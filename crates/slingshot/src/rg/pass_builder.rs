@@ -202,11 +202,11 @@ impl<'rg> PassBuilder<'rg> {
 
         let mut desc = ComputePipelineDesc::builder().build().unwrap();
 
-        if let Some(frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout {
-            desc.descriptor_set_opts[0] = Some((
-                2,
+        for (set_idx, layout) in &self.rg.predefined_descriptor_set_layouts {
+            desc.descriptor_set_opts[*set_idx as usize] = Some((
+                *set_idx,
                 DescriptorSetLayoutOpts::builder()
-                    .replace(frame_descriptor_set_layout.clone())
+                    .replace(layout.bindings.clone())
                     .build()
                     .unwrap(),
             ));
@@ -226,25 +226,23 @@ impl<'rg> PassBuilder<'rg> {
         desc: RasterPipelineDescBuilder,
     ) -> RgRasterPipelineHandle {
         let id = self.rg.raster_pipelines.len();
-        let desc = desc.build().unwrap();
+        let mut desc = desc.build().unwrap();
+
+        for (set_idx, layout) in &self.rg.predefined_descriptor_set_layouts {
+            desc.descriptor_set_opts[*set_idx as usize] = Some((
+                *set_idx,
+                DescriptorSetLayoutOpts::builder()
+                    .replace(layout.bindings.clone())
+                    .build()
+                    .unwrap(),
+            ));
+        }
 
         self.rg.raster_pipelines.push(RgRasterPipeline {
             shaders: shaders
                 .iter()
                 .map(|shader| {
                     let desc = shader.desc.clone();
-
-                    if let Some(_frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout
-                    {
-                        // TODO
-                        /*desc.descriptor_set_opts[0] = Some((
-                            2,
-                            DescriptorSetLayoutOpts::builder()
-                                .replace(frame_descriptor_set_layout.clone())
-                                .build()
-                                .unwrap(),
-                        ));*/
-                    }
 
                     PipelineShader {
                         code: shader.code,
@@ -261,27 +259,25 @@ impl<'rg> PassBuilder<'rg> {
     pub fn register_ray_tracing_pipeline(
         &mut self,
         shaders: &[PipelineShader<&'static str>],
-        desc: RayTracingPipelineDesc,
+        mut desc: RayTracingPipelineDesc,
     ) -> RgRtPipelineHandle {
         let id = self.rg.rt_pipelines.len();
+
+        for (set_idx, layout) in &self.rg.predefined_descriptor_set_layouts {
+            desc.descriptor_set_opts[*set_idx as usize] = Some((
+                *set_idx,
+                DescriptorSetLayoutOpts::builder()
+                    .replace(layout.bindings.clone())
+                    .build()
+                    .unwrap(),
+            ));
+        }
 
         self.rg.rt_pipelines.push(RgRtPipeline {
             shaders: shaders
                 .iter()
                 .map(|shader| {
                     let desc = shader.desc.clone();
-
-                    if let Some(_frame_descriptor_set_layout) = &self.rg.frame_descriptor_set_layout
-                    {
-                        // TODO
-                        /*desc.descriptor_set_opts[0] = Some((
-                            2,
-                            DescriptorSetLayoutOpts::builder()
-                                .replace(frame_descriptor_set_layout.clone())
-                                .build()
-                                .unwrap(),
-                        ));*/
-                    }
 
                     PipelineShader {
                         code: shader.code,

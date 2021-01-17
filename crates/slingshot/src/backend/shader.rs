@@ -456,6 +456,8 @@ impl PipelineShaderDesc {
 #[derive(Builder, Clone)]
 #[builder(pattern = "owned", derive(Clone))]
 pub struct RasterPipelineDesc {
+    #[builder(default)]
+    pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     pub render_pass: Arc<RenderPass>,
     #[builder(default)]
     pub face_cull: bool,
@@ -773,7 +775,7 @@ pub fn create_raster_pipeline(
         &merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL_GRAPHICS,
         //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
-        &Default::default(),
+        &desc.descriptor_set_opts,
     );
 
     unsafe {

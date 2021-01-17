@@ -1,11 +1,12 @@
 use std::{borrow::Cow, ffi::CString};
 
-use crate::chunky_list::TempList;
+use crate::{chunky_list::TempList, MAX_DESCRIPTOR_SETS};
 
 use super::{
     device::Device,
     shader::{
-        merge_shader_stage_layouts, PipelineShader, ShaderPipelineCommon, ShaderPipelineStage,
+        merge_shader_stage_layouts, DescriptorSetLayoutOpts, PipelineShader, ShaderPipelineCommon,
+        ShaderPipelineStage,
     },
 };
 use anyhow::Result;
@@ -435,8 +436,9 @@ impl std::ops::Deref for RayTracingPipeline {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub struct RayTracingPipelineDesc {
+    pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     pub max_pipeline_ray_recursion_depth: u32,
 }
 
@@ -444,6 +446,7 @@ impl Default for RayTracingPipelineDesc {
     fn default() -> Self {
         Self {
             max_pipeline_ray_recursion_depth: 1,
+            descriptor_set_opts: Default::default(),
         }
     }
 }
@@ -480,7 +483,7 @@ pub fn create_ray_tracing_pipeline(
         &merge_shader_stage_layouts(stage_layouts),
         vk::ShaderStageFlags::ALL,
         //desc.descriptor_set_layout_flags.unwrap_or(&[]),  // TODO: merge flags
-        &Default::default(),
+        &desc.descriptor_set_opts,
     );
 
     unsafe {

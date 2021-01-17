@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use crate::asset::{
     image::{LoadImage, RawRgba8Image},
-    mesh::MeshMaterialMap,
+    mesh::{MeshMaterialMap, TexParams},
 };
 use turbosloth::*;
 
@@ -13,6 +13,7 @@ pub enum ImageCacheResponse {
     Miss {
         id: usize,
         image: Arc<RawRgba8Image>,
+        params: TexParams,
     },
 }
 struct CachedImage {
@@ -40,7 +41,7 @@ impl ImageCache {
 
     pub fn load_mesh_map(&mut self, map: &MeshMaterialMap) -> anyhow::Result<ImageCacheResponse> {
         match map {
-            MeshMaterialMap::Asset { path, .. } => {
+            MeshMaterialMap::Asset { path, params } => {
                 if !self.loaded_images.contains_key(path) {
                     let lazy_handle = LoadImage { path: path.clone() }.into_lazy();
                     let image = smol::block_on(lazy_handle.eval(&self.lazy_cache))?;
@@ -57,7 +58,11 @@ impl ImageCache {
                         },
                     );
 
-                    Ok(ImageCacheResponse::Miss { id, image })
+                    Ok(ImageCacheResponse::Miss {
+                        id,
+                        image,
+                        params: *params,
+                    })
                 } else {
                     Ok(ImageCacheResponse::Hit {
                         id: self.loaded_images[path].id,
@@ -76,7 +81,13 @@ impl ImageCache {
 
                     self.placeholder_images.insert(*init_val, id);
 
-                    Ok(ImageCacheResponse::Miss { id, image })
+                    Ok(ImageCacheResponse::Miss {
+                        id,
+                        image,
+                        params: TexParams {
+                            gamma: crate::asset::mesh::TexGamma::Linear,
+                        },
+                    })
                 } else {
                     Ok(ImageCacheResponse::Hit {
                         id: self.placeholder_images[init_val],

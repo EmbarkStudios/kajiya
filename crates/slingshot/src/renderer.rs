@@ -308,7 +308,13 @@ impl Renderer {
         render_client: &mut dyn RenderClient<FrameState>,
         frame_state: &FrameState,
     ) -> anyhow::Result<()> {
-        let mut rg = RenderGraph::new(Some(FRAME_CONSTANTS_LAYOUT.clone()));
+        let mut rg = RenderGraph::new();
+        rg.predefined_descriptor_set_layouts.insert(
+            2,
+            rg::PredefinedDescriptorSet {
+                bindings: FRAME_CONSTANTS_LAYOUT.clone(),
+            },
+        );
 
         self.rg_output_tex = Some(render_client.prepare_render_graph(&mut rg, frame_state));
 

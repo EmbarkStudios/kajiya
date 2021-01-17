@@ -52,8 +52,9 @@ void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attri
     GbufferData gbuffer;
     gbuffer.albedo = albedo;
     gbuffer.normal = normal;
-    gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.x, 0.01, 0.99);
-    gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
+    gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 0.01, 0.99);
+    //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
+    gbuffer.metalness = metalness_roughness.z * material.metalness_factor;
 
     payload.gbuffer_packed = gbuffer.pack();
     payload.t = RayTCurrent();

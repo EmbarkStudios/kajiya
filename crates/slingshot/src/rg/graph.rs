@@ -94,6 +94,10 @@ pub(crate) struct RgRtPipeline {
     pub(crate) desc: RayTracingPipelineDesc,
 }
 
+pub struct PredefinedDescriptorSet {
+    pub bindings: HashMap<u32, rspirv_reflect::DescriptorInfo>,
+}
+
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceInfo>,
@@ -101,13 +105,11 @@ pub struct RenderGraph {
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
     pub(crate) raster_pipelines: Vec<RgRasterPipeline>,
     pub(crate) rt_pipelines: Vec<RgRtPipeline>,
-    pub(crate) frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
+    pub predefined_descriptor_set_layouts: HashMap<u32, PredefinedDescriptorSet>,
 }
 
 impl RenderGraph {
-    pub fn new(
-        frame_descriptor_set_layout: Option<HashMap<u32, rspirv_reflect::DescriptorInfo>>,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
             passes: Vec::new(),
             resources: Vec::new(),
@@ -115,7 +117,7 @@ impl RenderGraph {
             compute_pipelines: Vec::new(),
             raster_pipelines: Vec::new(),
             rt_pipelines: Vec::new(),
-            frame_descriptor_set_layout,
+            predefined_descriptor_set_layouts: HashMap::new(),
         }
     }
 

@@ -9,7 +9,7 @@ impl ComputeImageLut for BrdfFgLutComputer {
     fn create(&mut self, device: &slingshot::Device) -> slingshot::Image {
         device
             .create_image(
-                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, [64, 64])
+                ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, [64, 64])
                     .usage(ImageUsageFlags::STORAGE | ImageUsageFlags::SAMPLED),
                 None,
             )

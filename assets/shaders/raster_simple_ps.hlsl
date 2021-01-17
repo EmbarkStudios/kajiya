@@ -28,8 +28,8 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     float4 metalness_roughness = spec_tex.Sample(sampler_llr, ps.uv);
 
-    float roughness = clamp(material.roughness_mult * metalness_roughness.x, 0.01, 0.99);
-    float metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
+    float roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
+    float metalness = metalness_roughness.z * material.metalness_factor;//lerp(metalness_roughness.z, 1.0, material.metalness_factor);
 
     float4 res = 0.0.xxxx;
     res.x = asfloat(pack_color_888(albedo));

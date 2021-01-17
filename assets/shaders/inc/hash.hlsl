@@ -46,5 +46,5 @@ float radical_inverse_vdc(uint bits) {
 }
 
 float2 hammersley(uint i, uint n) {
-    return float2(float(i + 0.5) / n, radical_inverse_vdc(i));
+    return float2(float(i + 1) / n, radical_inverse_vdc(i + 1));
 }

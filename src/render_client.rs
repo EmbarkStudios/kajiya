@@ -1,7 +1,7 @@
 use crate::{
     asset::{
         image::RawRgba8Image,
-        mesh::{PackedTriangleMesh, PackedVertex},
+        mesh::{PackedTriangleMesh, PackedVertex, TexParams},
     },
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
@@ -30,9 +30,9 @@ use slingshot::{
             RayTracingGeometryPart, RayTracingGeometryType, RayTracingTopAccelerationDesc,
         },
     },
-    vk_sync,
+    rspirv_reflect, vk_sync,
 };
-use std::{mem::size_of, sync::Arc};
+use std::{collections::HashMap, mem::size_of, sync::Arc};
 use winit::VirtualKeyCode;
 
 #[repr(C)]
@@ -375,12 +375,16 @@ impl VickiRenderClient {
         assert_eq!(handle.0 as usize, id);
     }
 
-    pub fn add_image(&mut self, src: &RawRgba8Image) -> BindlessImageHandle {
+    pub fn add_image(&mut self, src: &RawRgba8Image, params: TexParams) -> BindlessImageHandle {
+        let format = match params.gamma {
+            crate::asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
+            crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
+        };
+
         let image = self
             .device
             .create_image(
-                ImageDesc::new_2d(vk::Format::R8G8B8A8_SRGB, src.dimensions)
-                    .usage(vk::ImageUsageFlags::SAMPLED),
+                ImageDesc::new_2d(format, src.dimensions).usage(vk::ImageUsageFlags::SAMPLED),
                 Some(ImageSubResourceData {
                     data: &src.data,
                     row_pitch: src.dimensions[0] as usize * 4,
@@ -576,12 +580,42 @@ impl VickiRenderClient {
     }
 }
 
+lazy_static::lazy_static! {
+    static ref BINDLESS_DESCRIPTOR_SET_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [
+        (0, rspirv_reflect::DescriptorInfo {
+            ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER,
+            is_bindless: false,
+            name: Default::default(),
+        }),
+        (1, rspirv_reflect::DescriptorInfo {
+            ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER,
+            is_bindless: false,
+            name: Default::default(),
+        }),
+        (2, rspirv_reflect::DescriptorInfo {
+            ty: rspirv_reflect::DescriptorType::SAMPLED_IMAGE,
+            is_bindless: true,
+            name: Default::default(),
+        }),
+    ]
+    .iter()
+    .cloned()
+    .collect();
+}
+
 impl RenderClient<FrameState> for VickiRenderClient {
     fn prepare_render_graph(
         &mut self,
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
+        rg.predefined_descriptor_set_layouts.insert(
+            1,
+            rg::PredefinedDescriptorSet {
+                bindings: BINDLESS_DESCRIPTOR_SET_LAYOUT.clone(),
+            },
+        );
+
         for image_lut in self.image_luts.iter_mut() {
             image_lut.compute(rg);
         }

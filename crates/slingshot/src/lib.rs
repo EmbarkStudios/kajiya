@@ -16,6 +16,7 @@ pub use backend::{
     image::{Image, ImageDesc, ImageSubResourceData, ImageViewDescBuilder},
     RenderBackend,
 };
+pub use rspirv_reflect;
 pub use vk_sync;
 
 #[derive(Copy, Clone)]
