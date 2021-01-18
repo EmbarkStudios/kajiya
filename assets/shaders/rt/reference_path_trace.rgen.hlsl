@@ -151,7 +151,6 @@ void main() {
             //gbuffer.metalness = 1.0;
             //gbuffer.albedo = max(gbuffer.albedo, 1e-3);
             //gbuffer.albedo = float3(1, 0.765557, 0.336057);
-            //gbuffer.metalness = 0.5;
             //gbuffer.roughness = 0.001;
             //gbuffer.roughness = clamp((int(primary_hit.position.x * 0.2) % 5) / 5.0, 1e-4, 1.0);
 
@@ -180,7 +179,7 @@ void main() {
             DiffuseBrdf diffuse_brdf;
             diffuse_brdf.albedo = max(0.0, 1.0 - gbuffer.metalness) * gbuffer.albedo;
 
-            const float3 albedo_boost = calculate_metalness_albedo_boost(gbuffer.metalness, gbuffer.albedo);
+            const float3 albedo_boost = metalness_albedo_boost(gbuffer.metalness, gbuffer.albedo);
             specular_brdf.albedo = min(1.0, specular_brdf.albedo * albedo_boost);
             diffuse_brdf.albedo = min(1.0, diffuse_brdf.albedo * albedo_boost);
 

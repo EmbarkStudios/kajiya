@@ -165,20 +165,19 @@ float perceptual_roughness_to_roughness(float r) {
     return r * r;
 }
 
-float3 calculate_metalness_albedo_boost(float metalness, float3 diffuse_albedo) {
-    static const float a0 = 0.9203;
-    static const float a1 = 3.21;
-    static const float b1 =-8.412;
-    static const float e1 = 0.8295;
-    static const float e3 = 1.81;
+// Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo
+// is spread between the specular and diffuse layers. Scaling both the specular
+// and diffuse albedo by a constant can recover this energy.
+// This is a reasonably accurate fit (RMSE: 0.0007691) to the scaling function.
+float3 metalness_albedo_boost(float metalness, float3 diffuse_albedo) {
+    static const float a0 = 1.749;
+    static const float a1 = -1.61;
+    static const float e1 = 0.5555;
+    static const float e3 = 0.8244;
 
-    const float lobe_offset = (metalness - 0.5) * (metalness - 0.5);
-    const float envelope = 0.25 - lobe_offset;
-    const float lobe = envelope * exp(a1 * lobe_offset);
-
+    const float x = metalness;
     const float3 y = diffuse_albedo;
     const float3 y3 = y * y * y;
-    const float3 ramp = e1 * y + e3 * y3;
 
-    return 1 + lobe * ramp;
+    return 1.0 + (0.25-(x-0.5)*(x-0.5)) * (a0+a1*abs(x-0.5)) * (e1*y + e3*y3);
 }
