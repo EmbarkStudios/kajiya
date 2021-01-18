@@ -21,7 +21,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 col = fetch_color(px);
 
     // TODO: move to its own pass
-#if 1
+#if 0
     static const float sharpen_amount = 0.4;
 
 	float neighbors = 0;
@@ -53,8 +53,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 #endif
 
     //col *= 2;
-    //col -= 0.49;
-    //col *= 10;
+    //col -= 0.47;
+    //col *= 5;
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 

@@ -86,11 +86,11 @@ fn try_main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
-    /*let mesh = LoadGltfScene {
+    let mesh = LoadGltfScene {
         path: "assets/meshes/mireys_cute_gas_stove/scene.gltf".into(),
         scale: 0.03,
     }
-    .into_lazy();*/
+    .into_lazy();
 
     /*let mesh = LoadGltfScene {
         path: "assets/meshes/sploosh-o-matic/scene.gltf".into(),
@@ -104,11 +104,11 @@ fn try_main() -> anyhow::Result<()> {
     }
     .into_lazy();*/
 
-    let mesh = LoadGltfScene {
+    /*let mesh = LoadGltfScene {
         path: "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf".into(),
         scale: 0.003,
     }
-    .into_lazy();
+    .into_lazy();*/
 
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
 
