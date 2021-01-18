@@ -58,7 +58,7 @@ fn try_main() -> anyhow::Result<()> {
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
-    let metalness_albedo_boost_lut = LoadImage {
+    /*let metalness_albedo_boost_lut = LoadImage {
         path: "assets/images/metalness_albedo_boost_lut.png".into(),
     }
     .into_lazy();
@@ -70,7 +70,7 @@ fn try_main() -> anyhow::Result<()> {
         TexParams {
             gamma: TexGamma::Linear,
         },
-    );
+    );*/
 
     let mut renderer = renderer::Renderer::new(render_backend)?;
 

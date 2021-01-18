@@ -78,59 +78,6 @@ float3 preintegrated_specular_brdf_energy_preservation_mult(float3 specular_albe
     return corrected / max(1e-5, single_scatter);
 }
 
-float sample_metalness_albedo_boost_lut(float metalness, float diffuse_albedo) {
-    float2 uv = float2(metalness, diffuse_albedo);
-    return bindless_textures[1].SampleLevel(sampler_lnc, uv, 0).x + 1.0;
-}
-
-float3 calculate_metalness_albedo_boost(float metalness, float3 diffuse_albedo) {
-#if 0
-    return float3(
-        sample_metalness_albedo_boost_lut(metalness, diffuse_albedo.x),
-        sample_metalness_albedo_boost_lut(metalness, diffuse_albedo.y),
-        sample_metalness_albedo_boost_lut(metalness, diffuse_albedo.z)
-    );
-#elif 1
-    // Good enough fit
-
-    static const float a0 = 0.9203;
-    static const float a1 = 3.21;
-    static const float b1 =-8.412;
-    static const float e1 = 0.8295;
-    static const float e3 = 1.81;
-
-    const float lobe_offset = (metalness - 0.5) * (metalness - 0.5);
-    const float envelope = 0.25 - lobe_offset;
-    const float lobe = envelope * exp(a1 * lobe_offset);
-
-    const float3 y = diffuse_albedo;
-    const float3 y3 = y * y * y;
-    const float3 ramp = e1 * y + e3 * y3;
-
-    return 1 + lobe * ramp;
-#else
-    // More precise fit, 3x exp
-
-    static const float a0 = 1.034;
-    static const float a1 = -3.429;
-    static const float b1 = 8.716;
-    static const float e1 = 0.7323;
-    static const float e3 = 1.612;
-    static const float m = 0.4901;
-
-    const float3 y = diffuse_albedo;
-    const float3 y3 = y * y * y;
-
-    const float envelope = 0.25 - (metalness - 0.5) * (metalness - 0.5);
-    const float lobe_offset = (metalness - m) * (metalness - m);
-    const float3 lobe_scale = a1 + b1 * y;
-    const float3 ramp = e1 * y + e3 * y3;
-    const float3 lobe = exp(-(lobe_scale * lobe_offset));
-
-    return (1 + envelope * lobe * ramp);
-#endif
-}
-
 // Approximate Gaussian remap
 // https://www.shadertoy.com/view/MlVSzw
 float inv_error_function(float x, float truncation) {

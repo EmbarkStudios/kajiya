@@ -164,3 +164,21 @@ float roughness_to_perceptual_roughness(float r) {
 float perceptual_roughness_to_roughness(float r) {
     return r * r;
 }
+
+float3 calculate_metalness_albedo_boost(float metalness, float3 diffuse_albedo) {
+    static const float a0 = 0.9203;
+    static const float a1 = 3.21;
+    static const float b1 =-8.412;
+    static const float e1 = 0.8295;
+    static const float e3 = 1.81;
+
+    const float lobe_offset = (metalness - 0.5) * (metalness - 0.5);
+    const float envelope = 0.25 - lobe_offset;
+    const float lobe = envelope * exp(a1 * lobe_offset);
+
+    const float3 y = diffuse_albedo;
+    const float3 y3 = y * y * y;
+    const float3 ramp = e1 * y + e3 * y3;
+
+    return 1 + lobe * ramp;
+}
