@@ -5,14 +5,17 @@
 #include "inc/rt.hlsl"
 #include "inc/tonemap.hlsl"
 #include "inc/bindless_textures.hlsl"
+#include "inc/atmosphere.hlsl"
 
 Texture2D<float4> gbuffer_tex;
 Texture2D<float> depth_tex;
+Texture2D<float> sun_shadow_mask_tex;
 RWTexture2D<float4> output_tex;
 SamplerState sampler_lnc;
 
-static const float3 ambient_light = 0.5;
-static const float3 SUN_COLOR = float3(1.0, 1.0, 1.0) * 10;
+static const float3 ambient_light = 0.3;
+static const float3 SUN_DIRECTION = normalize(float3(1, 0.3, 1));
+static const float3 SUN_COLOR = float3(1.3, 1, 0.7) * 2.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, float ndotv) {
     float2 uv = float2(ndotv, roughness) * BRDF_FG_LUT_UV_SCALE + BRDF_FG_LUT_UV_BIAS;
@@ -75,10 +78,9 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     }
 
     static const float3 throughput = 1.0.xxx;
-    const float3 to_light_norm = normalize(float3(1, 3, 1));
+    const float3 to_light_norm = SUN_DIRECTION;
     
-    // TODO
-    const bool is_shadowed = false;
+    const float shadow_mask = sun_shadow_mask_tex[pix];
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
             //gbuffer.albedo = float3(1, 0.765557, 0.336057);
@@ -113,7 +115,7 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
 
     const float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
-    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+    const float3 light_radiance = shadow_mask * SUN_COLOR;
 
     float3 total_radiance = 0.0.xxx;
     total_radiance += throughput * radiance * light_radiance;

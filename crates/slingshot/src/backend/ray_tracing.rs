@@ -362,6 +362,10 @@ impl Device {
         let prog_size = shader_group_handle_size;
 
         let create_binding_table = |entry_offset: u32, entry_count: u32| {
+            if 0 == entry_count {
+                return None;
+            }
+
             let mut shader_binding_table_data = vec![0u8; (entry_count as usize * prog_size) as _];
 
             for dst in 0..(entry_count as usize) {
@@ -374,16 +378,18 @@ impl Device {
                     );
             }
 
-            self.create_buffer(
-                super::buffer::BufferDesc {
-                    size: shader_binding_table_data.len(),
-                    usage: vk::BufferUsageFlags::TRANSFER_SRC
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    mapped: false,
-                },
-                Some(&shader_binding_table_data),
+            Some(
+                self.create_buffer(
+                    super::buffer::BufferDesc {
+                        size: shader_binding_table_data.len(),
+                        usage: vk::BufferUsageFlags::TRANSFER_SRC
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                        mapped: false,
+                    },
+                    Some(&shader_binding_table_data),
+                )
+                .expect("SBT sub-buffer"),
             )
-            .expect("SBT sub-buffer")
         };
 
         let raygen_shader_binding_table = create_binding_table(0, desc.raygen_entry_count);
@@ -396,23 +402,32 @@ impl Device {
 
         Ok(RayTracingShaderTable {
             raygen_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
-                device_address: raygen_shader_binding_table.device_address(self),
+                device_address: raygen_shader_binding_table
+                    .as_ref()
+                    .map(|b| b.device_address(self))
+                    .unwrap_or(0),
                 stride: prog_size as u64,
                 size: (prog_size * desc.raygen_entry_count as usize) as u64,
             },
-            raygen_shader_binding_table_buffer: Some(raygen_shader_binding_table),
+            raygen_shader_binding_table_buffer: raygen_shader_binding_table,
             miss_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
-                device_address: miss_shader_binding_table.device_address(self),
+                device_address: miss_shader_binding_table
+                    .as_ref()
+                    .map(|b| b.device_address(self))
+                    .unwrap_or(0),
                 stride: prog_size as u64,
                 size: (prog_size * desc.miss_entry_count as usize) as u64,
             },
-            miss_shader_binding_table_buffer: Some(miss_shader_binding_table),
+            miss_shader_binding_table_buffer: miss_shader_binding_table,
             hit_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
-                device_address: hit_shader_binding_table.device_address(self),
+                device_address: hit_shader_binding_table
+                    .as_ref()
+                    .map(|b| b.device_address(self))
+                    .unwrap_or(0),
                 stride: prog_size as u64,
                 size: (prog_size * desc.hit_entry_count as usize) as u64,
             },
-            hit_shader_binding_table_buffer: Some(hit_shader_binding_table),
+            hit_shader_binding_table_buffer: hit_shader_binding_table,
             callable_shader_binding_table_buffer: None,
             callable_shader_binding_table: vk::StridedDeviceAddressRegionKHR {
                 device_address: Default::default(),
@@ -617,7 +632,6 @@ pub fn create_ray_tracing_pipeline(
 
         assert!(raygen_entry_count > 0);
         assert!(miss_entry_count > 0);
-        assert!(hit_entry_count > 0);
 
         let pipeline = device
             .ray_tracing_pipeline_ext

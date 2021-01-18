@@ -393,6 +393,7 @@ pub fn light_gbuffer(
     rg: &mut RenderGraph,
     gbuffer: &Handle<Image>,
     depth: &Handle<Image>,
+    sun_shadow_mask: &Handle<Image>,
     output: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
@@ -406,6 +407,10 @@ pub fn light_gbuffer(
     );
     let depth_ref = pass.read(
         depth,
+        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+    );
+    let sun_shadow_mask_ref = pass.read(
+        sun_shadow_mask,
         AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
     );
     let output_ref = pass.write(output, AccessType::ComputeShaderWrite);
@@ -422,6 +427,7 @@ pub fn light_gbuffer(
                             ImageViewDescBuilder::default()
                                 .aspect_mask(vk::ImageAspectFlags::DEPTH),
                         ),
+                        sun_shadow_mask_ref.bind(ImageViewDescBuilder::default()),
                         output_ref.bind(ImageViewDescBuilder::default()),
                     ],
                 )
@@ -598,4 +604,63 @@ pub fn normalize_accum(
     });
 
     output
+}
+
+pub fn trace_sun_shadow_mask(
+    rg: &mut RenderGraph,
+    depth_img: &Handle<Image>,
+    tlas: Handle<RayTracingAcceleration>,
+) -> Handle<Image> {
+    let mut pass = rg.add_pass();
+
+    let pipeline = pass.register_ray_tracing_pipeline(
+        &[
+            PipelineShader {
+                code: "/assets/shaders/rt/trace_sun_shadow_mask.rgen.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                    .build()
+                    .unwrap(),
+            },
+            PipelineShader {
+                code: "/assets/shaders/rt/shadow.rmiss.hlsl",
+                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .build()
+                    .unwrap(),
+            },
+        ],
+        slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
+            .max_pipeline_ray_recursion_depth(1),
+    );
+
+    let depth_ref = pass.read(
+        depth_img,
+        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+    );
+
+    let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
+
+    let mut output_img = pass.create(&depth_img.desc().format(vk::Format::R8_UNORM));
+    let output_ref = pass.write(&mut output_img, AccessType::AnyShaderWrite);
+
+    pass.render(move |api| {
+        let pipeline = api.bind_ray_tracing_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(
+                    0,
+                    &[
+                        depth_ref.bind(
+                            ImageViewDescBuilder::default()
+                                .aspect_mask(vk::ImageAspectFlags::DEPTH),
+                        ),
+                        output_ref.bind(ImageViewDescBuilder::default()),
+                    ],
+                )
+                .descriptor_set(3, &[tlas_ref.bind()]),
+        );
+
+        pipeline.trace_rays(output_ref.desc().extent);
+    });
+
+    output_img
 }

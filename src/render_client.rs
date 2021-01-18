@@ -520,6 +520,12 @@ impl VickiRenderClient {
             },
         );
 
+        let tlas = rg.import_ray_tracing_acceleration(
+            self.tlas.as_ref().unwrap().clone(),
+            vk_sync::AccessType::AnyShaderReadOther,
+        );
+        let sun_shadow_mask = crate::render_passes::trace_sun_shadow_mask(rg, &depth_img, tlas);
+
         let mut lit = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(
@@ -532,6 +538,7 @@ impl VickiRenderClient {
             rg,
             &gbuffer,
             &depth_img,
+            &sun_shadow_mask,
             &mut lit,
             self.bindless_descriptor_set,
         );
