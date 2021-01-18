@@ -10,9 +10,8 @@
 #include "../inc/atmosphere.hlsl"
 
 static const uint MAX_PATH_LENGTH = 5;
-static const float3 SUN_DIRECTION = normalize(float3(1, 0.3, 1));
-//static const float3 SUN_COLOR = float3(1.0, 1.0, 1.0) * 10;
-static const float3 SUN_COLOR = float3(1.3, 1, 0.7) * 2.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
+static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
+static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following

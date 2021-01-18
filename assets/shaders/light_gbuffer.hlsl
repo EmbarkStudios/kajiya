@@ -14,8 +14,8 @@ RWTexture2D<float4> output_tex;
 SamplerState sampler_lnc;
 
 static const float3 ambient_light = 0.3;
-static const float3 SUN_DIRECTION = normalize(float3(1, 0.3, 1));
-static const float3 SUN_COLOR = float3(1.3, 1, 0.7) * 2.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
+static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
+static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, float ndotv) {
     float2 uv = float2(ndotv, roughness) * BRDF_FG_LUT_UV_SCALE + BRDF_FG_LUT_UV_BIAS;

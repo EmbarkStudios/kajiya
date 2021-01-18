@@ -57,6 +57,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //col *= 10;
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
+
+    //col = lerp(calculate_luma(col), col, 1.05);
+    //col = pow(col, 1.05);
     
     output_tex[px] = float4(col, 1.0);
 }

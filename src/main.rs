@@ -98,17 +98,17 @@ fn try_main() -> anyhow::Result<()> {
     }
     .into_lazy();*/
 
-    let mesh = LoadGltfScene {
+    /*let mesh = LoadGltfScene {
         path: "assets/meshes3/gas_stations_fixed/scene.gltf".into(),
         scale: 0.03,
     }
-    .into_lazy();
+    .into_lazy();*/
 
-    /*let mesh = LoadGltfScene {
+    let mesh = LoadGltfScene {
         path: "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf".into(),
         scale: 0.003,
     }
-    .into_lazy();*/
+    .into_lazy();
 
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
 
