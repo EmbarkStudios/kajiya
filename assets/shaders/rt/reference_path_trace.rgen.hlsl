@@ -7,9 +7,12 @@
 #include "../inc/gbuffer.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/bindless_textures.hlsl"
+#include "../inc/atmosphere.hlsl"
 
 static const uint MAX_PATH_LENGTH = 5;
-static const float3 SUN_COLOR = float3(1.0, 1.0, 1.0) * 10;
+static const float3 SUN_DIRECTION = normalize(float3(1, 0.3, 1));
+//static const float3 SUN_COLOR = float3(1.0, 1.0, 1.0) * 10;
+static const float3 SUN_COLOR = float3(1.3, 1, 0.7) * 2.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following
@@ -22,6 +25,21 @@ static const bool USE_PIXEL_FILTER = true;
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 [[vk::binding(2, 0)]] SamplerState sampler_lnc;
+
+float3 sample_environment_light(float3 dir) {
+    //return 0.5.xxx;
+
+    if (FURNACE_TEST) {
+        return 0.5.xxx;
+    }
+
+    return atmosphere_default(dir, SUN_DIRECTION);
+
+    float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
+    col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
+    return col;
+}
+
 
 #if 1
 
@@ -72,16 +90,6 @@ float3 sample_metalness_albedo_boost_lut(float metalness, float3 diffuse_albedo)
         sample_metalness_albedo_boost_lut(metalness, diffuse_albedo.y),
         sample_metalness_albedo_boost_lut(metalness, diffuse_albedo.z)
     );
-}
-
-float3 sample_environment_light(float3 dir) {
-    if (FURNACE_TEST) {
-        return 0.5.xxx;
-    }
-
-    float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
-    col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
-    return col;
 }
 
 // Approximate Gaussian remap
@@ -138,7 +146,7 @@ void main() {
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
-            const float3 to_light_norm = normalize(float3(1, 3, 1));
+            const float3 to_light_norm = SUN_DIRECTION;
             
             const bool is_shadowed = rt_is_shadowed(
                 acceleration_structure,
@@ -336,16 +344,6 @@ float3 preintegrated_specular_brdf_energy_preservation_mult(float3 specular_albe
     return corrected / max(1e-5, single_scatter);
 }
 
-float3 sample_environment_light(float3 dir) {
-    if (FURNACE_TEST) {
-        return 0.5.xxx;
-    }
-
-    float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
-    col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
-    return col;
-}
-
 // Approximate Gaussian remap
 // https://www.shadertoy.com/view/MlVSzw
 float inv_error_function(float x, float truncation) {
@@ -400,7 +398,7 @@ void main() {
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
-            const float3 to_light_norm = normalize(float3(1, 3, 1));
+            const float3 to_light_norm = SUN_DIRECTION;
             
             const bool is_shadowed = rt_is_shadowed(
                 acceleration_structure,

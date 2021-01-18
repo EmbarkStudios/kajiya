@@ -128,9 +128,9 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     //res.xyz = brdf_d * 0.1;
 
     //res.xyz = 1.0 - exp(-res.xyz);
-    total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z) * ambient_light;
+    //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z) * ambient_light;
 
     total_radiance = neutral_tonemap(total_radiance);
-    total_radiance = gbuffer.metalness;
+    //total_radiance = gbuffer.metalness;
     output_tex[pix] = float4(total_radiance, 1.0);
 }
