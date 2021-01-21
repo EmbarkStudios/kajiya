@@ -13,7 +13,7 @@ use crate::{
     backend::shader::MAX_COLOR_ATTACHMENTS,
     backend::{
         device::{CommandBuffer, Device},
-        image::{ImageViewDesc, ImageViewDescBuilder},
+        image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
         shader::{ComputePipeline, RasterPipeline},
     },
@@ -351,7 +351,9 @@ impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_pa
 }
 
 pub struct BoundRasterPipeline<'api, 'a, 'exec_params, 'constants> {
+    #[allow(dead_code)]
     api: &'api mut RenderPassApi<'a, 'exec_params, 'constants>,
+    #[allow(dead_code)]
     pipeline: Arc<RasterPipeline>,
 }
 

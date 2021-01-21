@@ -179,7 +179,8 @@ impl Renderer {
                     cb,
                 );
 
-                let (rg_output_img, rg_output_access_type) = retired_rg.get_image(rg_output_img);
+                let (rg_output_img, rg_output_access_type) =
+                    retired_rg.exported_resource(rg_output_img);
                 assert!(
                     rg_output_access_type
                         == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer

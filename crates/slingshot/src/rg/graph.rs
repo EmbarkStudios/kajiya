@@ -251,9 +251,9 @@ impl ImportExportToRenderGraph for RayTracingAcceleration {
     }
 
     fn export(
-        resource: Handle<Self>,
-        rg: &mut RenderGraph,
-        access_type: vk_sync::AccessType,
+        _resource: Handle<Self>,
+        _rg: &mut RenderGraph,
+        _access_type: vk_sync::AccessType,
     ) -> ExportedHandle<Self> {
         todo!()
     }
@@ -318,7 +318,7 @@ struct ResourceLifetime {
 }
 
 struct ResourceInfo {
-    lifetimes: Vec<ResourceLifetime>,
+    _lifetimes: Vec<ResourceLifetime>,
     image_usage_flags: Vec<vk::ImageUsageFlags>,
     buffer_usage_flags: Vec<vk::BufferUsageFlags>,
 }
@@ -435,7 +435,7 @@ impl RenderGraph {
         }
 
         ResourceInfo {
-            lifetimes,
+            _lifetimes: lifetimes,
             image_usage_flags,
             buffer_usage_flags,
         }
@@ -708,10 +708,13 @@ pub struct RetiredRenderGraph {
 }
 
 impl RetiredRenderGraph {
-    pub fn get_image(&self, handle: ExportedHandle<Image>) -> (&Image, vk_sync::AccessType) {
+    pub fn exported_resource<Res: Resource>(
+        &self,
+        handle: ExportedHandle<Res>,
+    ) -> (&Res::Impl, vk_sync::AccessType) {
         let reg_resource = &self.resources[handle.raw.id as usize];
         (
-            Image::borrow_resource(&reg_resource.resource),
+            <Res as Resource>::borrow_resource(&reg_resource.resource),
             reg_resource.access_type,
         )
     }

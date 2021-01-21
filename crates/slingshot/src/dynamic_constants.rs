@@ -1,6 +1,6 @@
 use crate::backend;
 use crate::bytes::as_byte_slice;
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use backend::buffer::Buffer;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -62,7 +62,9 @@ impl DynamicConstants {
                 .offset(self.buffer.allocation.offset() + buffer_start as u64)
                 .size(bytes_to_flush as _);
 
-            device.flush_mapped_memory_ranges(std::slice::from_ref(&memory_range));
+            device
+                .flush_mapped_memory_ranges(std::slice::from_ref(&memory_range))
+                .unwrap();
         }
         //self.buffer.allocation_info.get_mapped_data()
         /*let buffer_start = self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES;

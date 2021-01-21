@@ -8,8 +8,10 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
+    renderers::surfel_gi::{self, SurfelGiRenderer},
     rg,
     rg::RetiredRenderGraph,
+    temporal::*,
     viewport::ViewConstants,
     FrameState,
 };
@@ -30,7 +32,6 @@ use slingshot::{
             RayTracingGeometryPart, RayTracingGeometryType, RayTracingTopAccelerationDesc,
         },
     },
-    rg::{ImportExportToRenderGraph, Resource},
     rspirv_reflect, vk_sync,
 };
 use std::{collections::HashMap, mem::size_of, sync::Arc};
@@ -76,6 +77,8 @@ pub struct VickiRenderClient {
     next_bindless_image_id: usize,
     pub render_mode: RenderMode,
     frame_idx: u32,
+
+    surfel_gi: SurfelGiRenderer,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -290,6 +293,8 @@ impl VickiRenderClient {
             )
             .unwrap();
 
+        let surfel_renderer = SurfelGiRenderer::new(backend.device.as_ref());
+
         Ok(Self {
             raster_simple_render_pass,
 
@@ -309,6 +314,8 @@ impl VickiRenderClient {
             next_bindless_image_id: 0,
             render_mode: RenderMode::Standard,
             frame_idx: 0u32,
+
+            surfel_gi: surfel_renderer,
         })
     }
 
@@ -483,6 +490,7 @@ impl VickiRenderClient {
         self.tlas = Some(Arc::new(tlas));
     }
 
+    #[allow(dead_code)]
     pub fn reset_frame_idx(&mut self) {
         self.frame_idx = 0;
     }
@@ -521,6 +529,9 @@ impl VickiRenderClient {
             },
         );
 
+        let mut surfel_gi = self.surfel_gi.begin(rg);
+        surfel_gi.allocate_surfels(rg, &gbuffer, &depth_img);
+
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
@@ -544,6 +555,7 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
+        self.surfel_gi.end(rg, surfel_gi);
         rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
@@ -647,10 +659,9 @@ impl RenderClient<FrameState> for VickiRenderClient {
         });
     }
 
-    fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph) {
-        if let Some(handle) = self.accum_img.last_rg_handle.take() {
-            self.accum_img.access_type = retired_rg.get_image(handle).1;
-        }
+    fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
+        rg.retire_temporal(&mut self.accum_img);
+        self.surfel_gi.retire(rg);
 
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
@@ -696,52 +707,4 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
             1.0
         },
     ]
-}
-
-#[allow(dead_code)]
-struct Temporal<Res: Resource> {
-    resource: Arc<Res>,
-    access_type: vk_sync::AccessType,
-    last_rg_handle: Option<rg::ExportedHandle<Res>>,
-}
-
-#[allow(dead_code)]
-impl<Res: Resource> Temporal<Res> {
-    pub fn new(resource: Arc<Res>) -> Self {
-        Self {
-            resource,
-            access_type: vk_sync::AccessType::Nothing,
-            last_rg_handle: None,
-        }
-    }
-}
-
-trait RgTemporalExt {
-    fn import_temporal<Res: Resource + ImportExportToRenderGraph>(
-        &mut self,
-        temporal: &Temporal<Res>,
-    ) -> rg::Handle<Res>;
-
-    fn export_temporal<Res: Resource + ImportExportToRenderGraph>(
-        &mut self,
-        handle: rg::Handle<Res>,
-        temporal: &mut Temporal<Res>,
-    );
-}
-
-impl RgTemporalExt for rg::RenderGraph {
-    fn import_temporal<Res: Resource + ImportExportToRenderGraph>(
-        &mut self,
-        temporal: &Temporal<Res>,
-    ) -> rg::Handle<Res> {
-        self.import(temporal.resource.clone(), temporal.access_type)
-    }
-
-    fn export_temporal<Res: Resource + ImportExportToRenderGraph>(
-        &mut self,
-        handle: rg::Handle<Res>,
-        temporal: &mut Temporal<Res>,
-    ) {
-        temporal.last_rg_handle = Some(self.export(handle, vk_sync::AccessType::Nothing));
-    }
 }

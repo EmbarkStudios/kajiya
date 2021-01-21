@@ -1,7 +1,7 @@
 use crate::backend::ray_tracing::RayTracingAcceleration;
 pub use crate::backend::{
     buffer::{Buffer, BufferDesc},
-    image::{Image, ImageDesc, ImageViewDescBuilder},
+    image::*,
 };
 use std::marker::PhantomData;
 

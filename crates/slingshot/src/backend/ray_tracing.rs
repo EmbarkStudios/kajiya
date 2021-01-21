@@ -1,6 +1,4 @@
-use std::{borrow::Cow, ffi::CString};
-
-use crate::{chunky_list::TempList, MAX_DESCRIPTOR_SETS};
+use crate::MAX_DESCRIPTOR_SETS;
 
 use super::{
     device::Device,
@@ -10,9 +8,8 @@ use super::{
     },
 };
 use anyhow::Result;
-use ash::{extensions::khr, version::DeviceV1_0, version::DeviceV1_2, vk};
+use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
 use byte_slice_cast::AsSliceOf;
-use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum RayTracingGeometryType {
@@ -64,7 +61,7 @@ pub struct RayTracingShaderTableDesc {
 
 pub struct RayTracingAcceleration {
     pub(crate) raw: vk::AccelerationStructureKHR,
-    buffer: super::buffer::Buffer,
+    _buffer: super::buffer::Buffer,
 }
 
 impl Device {
@@ -329,7 +326,7 @@ impl Device {
 
             Ok(RayTracingAcceleration {
                 raw: accel_raw,
-                buffer: accel_buffer,
+                _buffer: accel_buffer,
             })
         }
     }

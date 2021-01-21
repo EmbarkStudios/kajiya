@@ -26,6 +26,16 @@ pub struct BufferDesc {
     pub mapped: bool,
 }
 
+impl BufferDesc {
+    pub fn new(size: usize, usage: vk::BufferUsageFlags) -> Self {
+        Self {
+            size,
+            usage,
+            mapped: false,
+        }
+    }
+}
+
 impl Device {
     pub(crate) fn create_buffer_impl(
         &self,
