@@ -44,11 +44,11 @@ impl ImageLut {
     }
 
     pub fn compute(&mut self, rg: &mut rg::RenderGraph) {
-        let mut rg_image = rg.import_image(self.image.clone(), vk_sync::AccessType::Nothing);
+        let mut rg_image = rg.import(self.image.clone(), vk_sync::AccessType::Nothing);
 
         self.computer.compute(rg, &mut rg_image);
 
-        rg.export_image(
+        rg.export(
             rg_image,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );

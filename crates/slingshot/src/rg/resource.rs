@@ -116,8 +116,11 @@ pub struct Handle<ResType: Resource> {
     pub(crate) marker: PhantomData<ResType>,
 }
 
-#[derive(Clone, Debug)]
-pub struct ExportedHandle<ResType: Resource>(pub(crate) Handle<ResType>);
+#[derive(Clone, Copy, Debug)]
+pub struct ExportedHandle<ResType: Resource> {
+    pub(crate) raw: GraphRawResourceHandle,
+    pub(crate) marker: PhantomData<ResType>,
+}
 
 impl<ResType: Resource> PartialEq for Handle<ResType> {
     fn eq(&self, other: &Self) -> bool {

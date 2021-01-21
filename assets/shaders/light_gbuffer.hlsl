@@ -7,6 +7,9 @@
 #include "inc/bindless_textures.hlsl"
 #include "inc/atmosphere.hlsl"
 
+#include "inc/hash.hlsl"
+#include "inc/color.hlsl"
+
 Texture2D<float4> gbuffer_tex;
 Texture2D<float> depth_tex;
 Texture2D<float> sun_shadow_mask_tex;
@@ -131,6 +134,9 @@ void main(in uint2 pix : SV_DispatchThreadID) {
 
     //res.xyz = 1.0 - exp(-res.xyz);
     //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z) * ambient_light;
+
+    uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
+    total_radiance += uint_id_to_color(pt_hash);
 
     total_radiance = neutral_tonemap(total_radiance);
     //total_radiance = gbuffer.metalness;

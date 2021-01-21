@@ -25,6 +25,14 @@ uint hash_combine2(uint x, uint y) {
     return seed;
 }
 
+uint hash2(uint2 v) {
+	return hash_combine2(v.x, hash1(v.y));
+}
+
+uint hash3(uint3 v) {
+	return hash_combine2(v.x, hash2(v.yz));
+}
+
 float uint_to_u01_float(uint h) {
 	static const uint mantissaMask = 0x007FFFFFu;
 	static const uint one = 0x3F800000u;

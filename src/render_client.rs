@@ -30,6 +30,7 @@ use slingshot::{
             RayTracingGeometryPart, RayTracingGeometryType, RayTracingTopAccelerationDesc,
         },
     },
+    rg::{ImportExportToRenderGraph, Resource},
     rspirv_reflect, vk_sync,
 };
 use std::{collections::HashMap, mem::size_of, sync::Arc};
@@ -60,7 +61,7 @@ const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
-    accum_img: TemporalImage,
+    accum_img: Temporal<Image>,
     pub reset_reference_accumulation: bool,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
@@ -292,7 +293,7 @@ impl VickiRenderClient {
         Ok(Self {
             raster_simple_render_pass,
 
-            accum_img: TemporalImage::new(Arc::new(accum_img)),
+            accum_img: Temporal::new(Arc::new(accum_img)),
             reset_reference_accumulation: false,
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
@@ -520,7 +521,7 @@ impl VickiRenderClient {
             },
         );
 
-        let tlas = rg.import_ray_tracing_acceleration(
+        let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
         );
@@ -543,7 +544,7 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
-        rg.export_image(
+        rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
@@ -554,15 +555,14 @@ impl VickiRenderClient {
         rg: &mut crate::rg::RenderGraph,
         _frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        let mut accum_img =
-            rg.import_image(self.accum_img.resource.clone(), self.accum_img.access_type);
+        let mut accum_img = rg.import_temporal(&mut self.accum_img);
 
         if self.reset_reference_accumulation {
             self.reset_reference_accumulation = false;
             crate::render_passes::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
-        let tlas = rg.import_ray_tracing_acceleration(
+        let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
         );
@@ -577,10 +577,8 @@ impl VickiRenderClient {
         let lit =
             crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
 
-        self.accum_img.last_rg_handle =
-            Some(rg.export_image(accum_img, vk_sync::AccessType::Nothing));
-
-        rg.export_image(
+        rg.export_temporal(accum_img, &mut self.accum_img);
+        rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
@@ -701,19 +699,49 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
 }
 
 #[allow(dead_code)]
-struct TemporalImage {
-    resource: Arc<Image>,
+struct Temporal<Res: Resource> {
+    resource: Arc<Res>,
     access_type: vk_sync::AccessType,
-    last_rg_handle: Option<rg::ExportedHandle<Image>>,
+    last_rg_handle: Option<rg::ExportedHandle<Res>>,
 }
 
 #[allow(dead_code)]
-impl TemporalImage {
-    pub fn new(resource: Arc<Image>) -> Self {
+impl<Res: Resource> Temporal<Res> {
+    pub fn new(resource: Arc<Res>) -> Self {
         Self {
             resource,
             access_type: vk_sync::AccessType::Nothing,
             last_rg_handle: None,
         }
+    }
+}
+
+trait RgTemporalExt {
+    fn import_temporal<Res: Resource + ImportExportToRenderGraph>(
+        &mut self,
+        temporal: &Temporal<Res>,
+    ) -> rg::Handle<Res>;
+
+    fn export_temporal<Res: Resource + ImportExportToRenderGraph>(
+        &mut self,
+        handle: rg::Handle<Res>,
+        temporal: &mut Temporal<Res>,
+    );
+}
+
+impl RgTemporalExt for rg::RenderGraph {
+    fn import_temporal<Res: Resource + ImportExportToRenderGraph>(
+        &mut self,
+        temporal: &Temporal<Res>,
+    ) -> rg::Handle<Res> {
+        self.import(temporal.resource.clone(), temporal.access_type)
+    }
+
+    fn export_temporal<Res: Resource + ImportExportToRenderGraph>(
+        &mut self,
+        handle: rg::Handle<Res>,
+        temporal: &mut Temporal<Res>,
+    ) {
+        temporal.last_rg_handle = Some(self.export(handle, vk_sync::AccessType::Nothing));
     }
 }

@@ -64,6 +64,20 @@ pub(crate) enum GraphResourceInfo {
     Imported(GraphResourceImportInfo),
 }
 
+pub(crate) enum GraphResourceExportInfo {
+    Image(Handle<Image>),
+    Buffer(Handle<Buffer>),
+}
+
+impl GraphResourceExportInfo {
+    fn raw(&self) -> GraphRawResourceHandle {
+        match self {
+            GraphResourceExportInfo::Image(h) => h.raw,
+            GraphResourceExportInfo::Buffer(h) => h.raw,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct RgComputePipelineHandle {
     pub(crate) id: usize,
@@ -101,11 +115,148 @@ pub struct PredefinedDescriptorSet {
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceInfo>,
-    exported_images: Vec<(GraphRawResourceHandle, vk_sync::AccessType)>,
+    exported_resources: Vec<(GraphResourceExportInfo, vk_sync::AccessType)>,
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
     pub(crate) raster_pipelines: Vec<RgRasterPipeline>,
     pub(crate) rt_pipelines: Vec<RgRtPipeline>,
     pub predefined_descriptor_set_layouts: HashMap<u32, PredefinedDescriptorSet>,
+}
+
+pub trait ImportExportToRenderGraph
+where
+    Self: Resource + Sized,
+{
+    fn import(
+        self: Arc<Self>,
+        rg: &mut RenderGraph,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<Self>;
+
+    fn export(
+        resource: Handle<Self>,
+        rg: &mut RenderGraph,
+        access_type: vk_sync::AccessType,
+    ) -> ExportedHandle<Self>;
+}
+
+impl ImportExportToRenderGraph for Image {
+    fn import(
+        self: Arc<Self>,
+        rg: &mut RenderGraph,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<Self> {
+        let res = GraphRawResourceHandle {
+            id: rg.resources.len() as u32,
+            version: 0,
+        };
+
+        let desc = self.desc;
+
+        rg.resources.push(GraphResourceInfo::Imported(
+            GraphResourceImportInfo::Image {
+                resource: self,
+                access_type: access_type_at_import_time,
+            },
+        ));
+
+        Handle {
+            raw: res,
+            desc,
+            marker: PhantomData,
+        }
+    }
+
+    fn export(
+        resource: Handle<Self>,
+        rg: &mut RenderGraph,
+        access_type: vk_sync::AccessType,
+    ) -> ExportedHandle<Self> {
+        let res = ExportedHandle {
+            raw: resource.raw,
+            marker: PhantomData,
+        };
+        rg.exported_resources
+            .push((GraphResourceExportInfo::Image(resource), access_type));
+        res
+    }
+}
+
+impl ImportExportToRenderGraph for Buffer {
+    fn import(
+        self: Arc<Self>,
+        rg: &mut RenderGraph,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<Self> {
+        let res = GraphRawResourceHandle {
+            id: rg.resources.len() as u32,
+            version: 0,
+        };
+
+        let desc = self.desc;
+
+        rg.resources.push(GraphResourceInfo::Imported(
+            GraphResourceImportInfo::Buffer {
+                resource: self,
+                access_type: access_type_at_import_time,
+            },
+        ));
+
+        Handle {
+            raw: res,
+            desc,
+            marker: PhantomData,
+        }
+    }
+
+    fn export(
+        resource: Handle<Self>,
+        rg: &mut RenderGraph,
+        access_type: vk_sync::AccessType,
+    ) -> ExportedHandle<Self> {
+        let res = ExportedHandle {
+            raw: resource.raw,
+            marker: PhantomData,
+        };
+        rg.exported_resources
+            .push((GraphResourceExportInfo::Buffer(resource), access_type));
+        res
+    }
+}
+
+impl ImportExportToRenderGraph for RayTracingAcceleration {
+    fn import(
+        self: Arc<Self>,
+        rg: &mut RenderGraph,
+        access_type_at_import_time: vk_sync::AccessType,
+    ) -> Handle<Self> {
+        let res = GraphRawResourceHandle {
+            id: rg.resources.len() as u32,
+            version: 0,
+        };
+
+        let desc = RayTracingAccelerationDesc;
+
+        rg.resources.push(GraphResourceInfo::Imported(
+            GraphResourceImportInfo::RayTracingAcceleration {
+                resource: self,
+                access_type: access_type_at_import_time,
+            },
+        ));
+
+        Handle {
+            raw: res,
+            desc,
+            marker: PhantomData,
+        }
+    }
+
+    fn export(
+        resource: Handle<Self>,
+        rg: &mut RenderGraph,
+        access_type: vk_sync::AccessType,
+    ) -> ExportedHandle<Self> {
+        todo!()
+    }
 }
 
 impl RenderGraph {
@@ -113,7 +264,7 @@ impl RenderGraph {
         Self {
             passes: Vec::new(),
             resources: Vec::new(),
-            exported_images: Vec::new(),
+            exported_resources: Vec::new(),
             compute_pipelines: Vec::new(),
             raster_pipelines: Vec::new(),
             rt_pipelines: Vec::new(),
@@ -134,92 +285,30 @@ impl RenderGraph {
         res
     }
 
-    pub fn import_image(
+    pub fn import<Res: ImportExportToRenderGraph>(
         &mut self,
-        img: Arc<Image>,
+        resource: Arc<Res>,
         access_type_at_import_time: vk_sync::AccessType,
-    ) -> Handle<Image> {
-        let res = GraphRawResourceHandle {
-            id: self.resources.len() as u32,
-            version: 0,
-        };
-
-        let desc = img.desc;
-
-        self.resources.push(GraphResourceInfo::Imported(
-            GraphResourceImportInfo::Image {
-                resource: img,
-                access_type: access_type_at_import_time,
-            },
-        ));
-
-        Handle {
-            raw: res,
-            desc,
-            marker: PhantomData,
-        }
+    ) -> Handle<Res> {
+        ImportExportToRenderGraph::import(resource, self, access_type_at_import_time)
     }
 
-    pub fn import_buffer(
+    pub fn export<Res: ImportExportToRenderGraph>(
         &mut self,
-        buf: Arc<Buffer>,
-        access_type_at_import_time: vk_sync::AccessType,
-    ) -> Handle<Buffer> {
-        let res = GraphRawResourceHandle {
-            id: self.resources.len() as u32,
-            version: 0,
-        };
-
-        let desc = buf.desc;
-
-        self.resources.push(GraphResourceInfo::Imported(
-            GraphResourceImportInfo::Buffer {
-                resource: buf,
-                access_type: access_type_at_import_time,
-            },
-        ));
-
-        Handle {
-            raw: res,
-            desc,
-            marker: PhantomData,
-        }
+        resource: Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> ExportedHandle<Res> {
+        ImportExportToRenderGraph::export(resource, self, access_type)
     }
 
-    pub fn import_ray_tracing_acceleration(
-        &mut self,
-        acc: Arc<RayTracingAcceleration>,
-        access_type_at_import_time: vk_sync::AccessType,
-    ) -> Handle<RayTracingAcceleration> {
-        let res = GraphRawResourceHandle {
-            id: self.resources.len() as u32,
-            version: 0,
-        };
-
-        let desc = RayTracingAccelerationDesc;
-
-        self.resources.push(GraphResourceInfo::Imported(
-            GraphResourceImportInfo::RayTracingAcceleration {
-                resource: acc,
-                access_type: access_type_at_import_time,
-            },
-        ));
-
-        Handle {
-            raw: res,
-            desc,
-            marker: PhantomData,
-        }
-    }
-
-    pub fn export_image(
+    /*pub fn export_image(
         &mut self,
         img: Handle<Image>,
         access_type: vk_sync::AccessType,
     ) -> ExportedHandle<Image> {
         self.exported_images.push((img.raw, access_type));
         ExportedHandle(img)
-    }
+    }*/
 }
 
 #[derive(Debug)]
@@ -326,13 +415,22 @@ impl RenderGraph {
             }
         }
 
-        for (res, access_type) in self.exported_images.iter().copied() {
-            let res = res.id as usize;
-            lifetimes[res].last_access = self.passes.len().saturating_sub(1);
+        for (res, access_type) in &self.exported_resources {
+            let raw_id = res.raw().id as usize;
+            lifetimes[raw_id].last_access = self.passes.len().saturating_sub(1);
 
-            if access_type != vk_sync::AccessType::Nothing {
-                let access_mask = get_access_info(access_type).access_mask;
-                image_usage_flags[res] |= image_access_mask_to_usage_flags(access_mask);
+            if *access_type != vk_sync::AccessType::Nothing {
+                let access_mask = get_access_info(*access_type).access_mask;
+
+                match res {
+                    GraphResourceExportInfo::Image(_) => {
+                        image_usage_flags[raw_id] |= image_access_mask_to_usage_flags(access_mask);
+                    }
+                    GraphResourceExportInfo::Buffer(_) => {
+                        buffer_usage_flags[raw_id] |=
+                            buffer_access_mask_to_usage_flags(access_mask);
+                    }
+                }
             }
         }
 
@@ -528,9 +626,9 @@ impl CompiledRenderGraph {
         }
 
         // Transition exported images to the requested access types
-        for (resource_idx, access_type) in self.rg.exported_images {
+        for (resource_idx, access_type) in self.rg.exported_resources {
             if access_type != vk_sync::AccessType::Nothing {
-                let resource = &mut resource_registry.resources[resource_idx.id as usize];
+                let resource = &mut resource_registry.resources[resource_idx.raw().id as usize];
                 Self::transition_resource(params.device, cb, resource, access_type);
             }
         }
@@ -611,7 +709,7 @@ pub struct RetiredRenderGraph {
 
 impl RetiredRenderGraph {
     pub fn get_image(&self, handle: ExportedHandle<Image>) -> (&Image, vk_sync::AccessType) {
-        let reg_resource = &self.resources[handle.0.raw.id as usize];
+        let reg_resource = &self.resources[handle.raw.id as usize];
         (
             Image::borrow_resource(&reg_resource.resource),
             reg_resource.access_type,

@@ -121,13 +121,13 @@ impl FirstPersonCamera {
 
     pub fn new(position: Vec3) -> FirstPersonCamera {
         FirstPersonCamera {
-            yaw: 0_f32,
-            pitch: 0_f32,
-            roll: 0_f32,
-            fov: 45_f32,
+            yaw: 0.0,
+            pitch: 0.0,
+            roll: 0.0,
+            fov: 45.0,
             position,
-            near_dist: 0.01_f32, // 1mm
-            aspect: 1.6_f32,
+            near_dist: 0.01, // 1mm
+            aspect: 1.6,
             interp_rot: Quat::from_axis_angle(Vec3::unit_y(), -0.0f32.to_radians()),
             interp_pos: position,
             move_smoothness: 1.0,
