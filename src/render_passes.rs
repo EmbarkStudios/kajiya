@@ -413,7 +413,9 @@ pub fn light_gbuffer(
         sun_shadow_mask,
         AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
     );
-    let output_ref = pass.write(output, AccessType::ComputeShaderWrite);
+
+    // TODO: make it not read the contents, and use AccessType::ComputeShaderWrite
+    let output_ref = pass.write(output, AccessType::General);
 
     pass.render(move |api| {
         let pipeline = api.bind_compute_pipeline(
@@ -422,13 +424,13 @@ pub fn light_gbuffer(
                 .descriptor_set(
                     0,
                     &[
-                        gbuffer_ref.bind(ImageViewDescBuilder::default()),
-                        depth_ref.bind(
+                        gbuffer_ref.bind(),
+                        depth_ref.bind_view(
                             ImageViewDescBuilder::default()
                                 .aspect_mask(vk::ImageAspectFlags::DEPTH),
                         ),
-                        sun_shadow_mask_ref.bind(ImageViewDescBuilder::default()),
-                        output_ref.bind(ImageViewDescBuilder::default()),
+                        sun_shadow_mask_ref.bind(),
+                        output_ref.bind(),
                     ],
                 )
                 .raw_descriptor_set(1, bindless_descriptor_set),
@@ -451,13 +453,11 @@ pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
     let output_ref = pass.write(&mut output, AccessType::ComputeShaderWrite);
 
     pass.render(move |api| {
-        let pipeline = api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
-            0,
-            &[
-                input_ref.bind(ImageViewDescBuilder::default()),
-                output_ref.bind(ImageViewDescBuilder::default()),
-            ],
-        ));
+        let pipeline = api.bind_compute_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(0, &[input_ref.bind(), output_ref.bind()]),
+        );
 
         pipeline.dispatch(input_ref.desc().extent);
     });
@@ -511,7 +511,7 @@ pub fn ray_trace_test(
         let pipeline = api.bind_ray_tracing_pipeline(
             pipeline
                 .into_binding()
-                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())])
+                .descriptor_set(0, &[output_ref.bind()])
                 .raw_descriptor_set(1, bindless_descriptor_set)
                 .descriptor_set(3, &[tlas_ref.bind()]),
         );
@@ -566,7 +566,7 @@ pub fn reference_path_trace(
         let pipeline = api.bind_ray_tracing_pipeline(
             pipeline
                 .into_binding()
-                .descriptor_set(0, &[output_ref.bind(ImageViewDescBuilder::default())])
+                .descriptor_set(0, &[output_ref.bind()])
                 .raw_descriptor_set(1, bindless_descriptor_set)
                 .descriptor_set(3, &[tlas_ref.bind()]),
         );
@@ -592,13 +592,11 @@ pub fn normalize_accum(
     let output_ref = pass.write(&mut output, AccessType::ComputeShaderWrite);
 
     pass.render(move |api| {
-        let pipeline = api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
-            0,
-            &[
-                input_ref.bind(ImageViewDescBuilder::default()),
-                output_ref.bind(ImageViewDescBuilder::default()),
-            ],
-        ));
+        let pipeline = api.bind_compute_pipeline(
+            pipeline
+                .into_binding()
+                .descriptor_set(0, &[input_ref.bind(), output_ref.bind()]),
+        );
 
         pipeline.dispatch(input_ref.desc().extent);
     });
@@ -649,11 +647,11 @@ pub fn trace_sun_shadow_mask(
                 .descriptor_set(
                     0,
                     &[
-                        depth_ref.bind(
+                        depth_ref.bind_view(
                             ImageViewDescBuilder::default()
                                 .aspect_mask(vk::ImageAspectFlags::DEPTH),
                         ),
-                        output_ref.bind(ImageViewDescBuilder::default()),
+                        output_ref.bind(),
                     ],
                 )
                 .descriptor_set(3, &[tlas_ref.bind()]),

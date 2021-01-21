@@ -21,7 +21,8 @@ pub struct SurfelGiRenderer {
     surfel_spatial: Temporal<Buffer>,
 }
 
-const MAX_SURFELS: usize = 128 * 1024;
+const MAX_SURFEL_CELLS: usize = 1024 * 1024;
+const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
 
 impl SurfelGiRenderer {
     pub fn new(device: &device::Device) -> Self {
@@ -34,7 +35,10 @@ impl SurfelGiRenderer {
 
         let surfel_hash = device
             .create_buffer(
-                BufferDesc::new(4 * 2 * MAX_SURFELS, vk::BufferUsageFlags::STORAGE_BUFFER),
+                BufferDesc::new(
+                    4 * 2 * MAX_SURFEL_CELLS,
+                    vk::BufferUsageFlags::STORAGE_BUFFER,
+                ),
                 None,
             )
             .unwrap();
@@ -101,7 +105,7 @@ impl SurfelGiRenderInstance {
             AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
-        let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+        let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
         let debug_out_ref = pass.write(&mut debug_out, AccessType::ComputeShaderWrite);
 
         let surfel_meta_ref = pass.write(&mut self.surfel_meta, AccessType::ComputeShaderWrite);
@@ -113,8 +117,8 @@ impl SurfelGiRenderInstance {
             let pipeline = api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
                 0,
                 &[
-                    gbuffer_ref.bind(ImageViewDescBuilder::default()),
-                    depth_ref.bind(
+                    gbuffer_ref.bind(),
+                    depth_ref.bind_view(
                         ImageViewDescBuilder::default().aspect_mask(vk::ImageAspectFlags::DEPTH),
                     ),
                     surfel_meta_ref.bind(),

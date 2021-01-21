@@ -402,22 +402,30 @@ impl<'api, 'a, 'exec_params, 'constants>
 }
 
 impl Ref<Image, GpuSrv> {
-    pub fn bind(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
+    pub fn bind_view(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
         RenderPassBinding::Image(RenderPassImageBinding {
             handle: self.handle,
             view_desc: view_desc.build().unwrap(),
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         })
     }
+
+    pub fn bind(&self) -> RenderPassBinding {
+        self.bind_view(ImageViewDescBuilder::default())
+    }
 }
 
 impl Ref<Image, GpuUav> {
-    pub fn bind(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
+    pub fn bind_view(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
         RenderPassBinding::Image(RenderPassImageBinding {
             handle: self.handle,
             view_desc: view_desc.build().unwrap(),
             image_layout: vk::ImageLayout::GENERAL,
         })
+    }
+
+    pub fn bind(&self) -> RenderPassBinding {
+        self.bind_view(ImageViewDescBuilder::default())
     }
 }
 

@@ -10,11 +10,11 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
-Texture2D<float4> gbuffer_tex;
-Texture2D<float> depth_tex;
-Texture2D<float> sun_shadow_mask_tex;
-RWTexture2D<float4> output_tex;
-SamplerState sampler_lnc;
+[[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(1)]] Texture2D<float> depth_tex;
+[[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
+[[vk::binding(3)]] RWTexture2D<float4> output_tex;
+[[vk::binding(4)]] SamplerState sampler_lnc;
 
 static const float3 ambient_light = 0.3;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
@@ -46,23 +46,23 @@ float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, f
 }
 
 [numthreads(8, 8, 1)]
-void main(in uint2 pix : SV_DispatchThreadID) {
+void main(in uint2 px : SV_DispatchThreadID) {
     float4 output_tex_size = float4(1280.0, 720.0, 1.0 / 1280.0, 1.0 / 720.0);
-    float2 uv = get_uv(pix, output_tex_size);
+    float2 uv = get_uv(px, output_tex_size);
 
     #if 0
         uv *= float2(1280.0 / 720.0, 1);
-        output_tex[pix] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
+        output_tex[px] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
         return;
     #endif
 
-    float4 gbuffer_packed = gbuffer_tex[pix];
+    float4 gbuffer_packed = gbuffer_tex[px];
     if (all(gbuffer_packed == 0.0.xxxx)) {
-        output_tex[pix] = float4(neutral_tonemap(ambient_light), 1.0);
+        output_tex[px] = float4(neutral_tonemap(ambient_light), 1.0);
         return;
     }
 
-    float z_over_w = depth_tex[pix];
+    float z_over_w = depth_tex[px];
     float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
     pt_ws /= pt_ws.w;
@@ -83,7 +83,7 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     static const float3 throughput = 1.0.xxx;
     const float3 to_light_norm = SUN_DIRECTION;
     
-    const float shadow_mask = sun_shadow_mask_tex[pix];
+    const float shadow_mask = sun_shadow_mask_tex[px];
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
             //gbuffer.albedo = float3(1, 0.765557, 0.336057);
@@ -135,10 +135,12 @@ void main(in uint2 pix : SV_DispatchThreadID) {
     //res.xyz = 1.0 - exp(-res.xyz);
     //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z) * ambient_light;
 
-    uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
-    total_radiance += uint_id_to_color(pt_hash);
+    //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
+    //total_radiance += uint_id_to_color(pt_hash);
 
     total_radiance = neutral_tonemap(total_radiance);
     //total_radiance = gbuffer.metalness;
-    output_tex[pix] = float4(total_radiance, 1.0);
+
+    total_radiance += output_tex[px].xyz;
+    output_tex[px] = float4(total_radiance, 1.0);
 }

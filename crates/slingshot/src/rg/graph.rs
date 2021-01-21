@@ -500,6 +500,9 @@ fn image_access_mask_to_usage_flags(access_mask: vk::AccessFlags) -> vk::ImageUs
         }
         vk::AccessFlags::TRANSFER_READ => vk::ImageUsageFlags::TRANSFER_SRC,
         vk::AccessFlags::TRANSFER_WRITE => vk::ImageUsageFlags::TRANSFER_DST,
+        _ if access_mask == vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE => {
+            vk::ImageUsageFlags::STORAGE
+        }
         _ => panic!("Invalid image access mask: {:?}", access_mask),
     }
 }
@@ -514,6 +517,9 @@ fn buffer_access_mask_to_usage_flags(access_mask: vk::AccessFlags) -> vk::Buffer
         vk::AccessFlags::SHADER_WRITE => vk::BufferUsageFlags::STORAGE_BUFFER,
         vk::AccessFlags::TRANSFER_READ => vk::BufferUsageFlags::TRANSFER_SRC,
         vk::AccessFlags::TRANSFER_WRITE => vk::BufferUsageFlags::TRANSFER_DST,
+        _ if access_mask == vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE => {
+            vk::BufferUsageFlags::STORAGE_BUFFER
+        }
         _ => panic!("Invalid buffer access mask: {:?}", access_mask),
     }
 }

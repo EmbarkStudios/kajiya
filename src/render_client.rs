@@ -530,7 +530,7 @@ impl VickiRenderClient {
         );
 
         let mut surfel_gi = self.surfel_gi.begin(rg);
-        surfel_gi.allocate_surfels(rg, &gbuffer, &depth_img);
+        let surfel_gi_debug = surfel_gi.allocate_surfels(rg, &gbuffer, &depth_img);
 
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
@@ -538,14 +538,17 @@ impl VickiRenderClient {
         );
         let sun_shadow_mask = crate::render_passes::trace_sun_shadow_mask(rg, &depth_img, tlas);
 
-        let mut lit = crate::render_passes::create_image(
+        /*let mut lit = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ),
         );
-        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
+        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);*/
+
+        let mut lit = surfel_gi_debug;
+
         crate::render_passes::light_gbuffer(
             rg,
             &gbuffer,
