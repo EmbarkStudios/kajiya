@@ -17,7 +17,8 @@ use crate::temporal::*;
 
 pub struct SurfelGiRenderer {
     surfel_meta: Temporal<Buffer>,
-    surfel_hash: Temporal<Buffer>,
+    surfel_hash_key: Temporal<Buffer>,
+    surfel_hash_value: Temporal<Buffer>,
     surfel_spatial: Temporal<Buffer>,
 }
 
@@ -33,7 +34,14 @@ impl SurfelGiRenderer {
             )
             .unwrap();
 
-        let surfel_hash = device
+        let surfel_hash_key = device
+            .create_buffer(
+                BufferDesc::new(4 * MAX_SURFEL_CELLS, vk::BufferUsageFlags::STORAGE_BUFFER),
+                None,
+            )
+            .unwrap();
+
+        let surfel_hash_value = device
             .create_buffer(
                 BufferDesc::new(
                     4 * 2 * MAX_SURFEL_CELLS,
@@ -52,7 +60,8 @@ impl SurfelGiRenderer {
 
         Self {
             surfel_meta: Temporal::new(Arc::new(surfel_meta)),
-            surfel_hash: Temporal::new(Arc::new(surfel_hash)),
+            surfel_hash_key: Temporal::new(Arc::new(surfel_hash_key)),
+            surfel_hash_value: Temporal::new(Arc::new(surfel_hash_value)),
             surfel_spatial: Temporal::new(Arc::new(surfel_spatial)),
         }
     }
@@ -60,27 +69,31 @@ impl SurfelGiRenderer {
     pub fn begin(&mut self, rg: &mut rg::RenderGraph) -> SurfelGiRenderInstance {
         SurfelGiRenderInstance {
             surfel_meta: rg.import_temporal(&mut self.surfel_meta),
-            surfel_hash: rg.import_temporal(&mut self.surfel_hash),
+            surfel_hash_key: rg.import_temporal(&mut self.surfel_hash_key),
+            surfel_hash_value: rg.import_temporal(&mut self.surfel_hash_value),
             surfel_spatial: rg.import_temporal(&mut self.surfel_spatial),
         }
     }
 
     pub fn end(&mut self, rg: &mut rg::RenderGraph, inst: SurfelGiRenderInstance) {
         rg.export_temporal(inst.surfel_meta, &mut self.surfel_meta);
-        rg.export_temporal(inst.surfel_hash, &mut self.surfel_hash);
+        rg.export_temporal(inst.surfel_hash_key, &mut self.surfel_hash_key);
+        rg.export_temporal(inst.surfel_hash_value, &mut self.surfel_hash_value);
         rg.export_temporal(inst.surfel_spatial, &mut self.surfel_spatial);
     }
 
     pub fn retire(&mut self, rg: &rg::RetiredRenderGraph) {
         rg.retire_temporal(&mut self.surfel_meta);
-        rg.retire_temporal(&mut self.surfel_hash);
+        rg.retire_temporal(&mut self.surfel_hash_key);
+        rg.retire_temporal(&mut self.surfel_hash_value);
         rg.retire_temporal(&mut self.surfel_spatial);
     }
 }
 
 pub struct SurfelGiRenderInstance {
     pub surfel_meta: rg::Handle<Buffer>,
-    pub surfel_hash: rg::Handle<Buffer>,
+    pub surfel_hash_key: rg::Handle<Buffer>,
+    pub surfel_hash_value: rg::Handle<Buffer>,
     pub surfel_spatial: rg::Handle<Buffer>,
 }
 
@@ -109,7 +122,10 @@ impl SurfelGiRenderInstance {
         let debug_out_ref = pass.write(&mut debug_out, AccessType::ComputeShaderWrite);
 
         let surfel_meta_ref = pass.write(&mut self.surfel_meta, AccessType::ComputeShaderWrite);
-        let surfel_hash_ref = pass.write(&mut self.surfel_hash, AccessType::ComputeShaderWrite);
+        let surfel_hash_key_ref =
+            pass.write(&mut self.surfel_hash_key, AccessType::ComputeShaderWrite);
+        let surfel_hash_value_ref =
+            pass.write(&mut self.surfel_hash_value, AccessType::ComputeShaderWrite);
         let surfel_spatial_ref =
             pass.write(&mut self.surfel_spatial, AccessType::ComputeShaderWrite);
 
@@ -122,7 +138,8 @@ impl SurfelGiRenderInstance {
                         ImageViewDescBuilder::default().aspect_mask(vk::ImageAspectFlags::DEPTH),
                     ),
                     surfel_meta_ref.bind(),
-                    surfel_hash_ref.bind(),
+                    surfel_hash_key_ref.bind(),
+                    surfel_hash_value_ref.bind(),
                     surfel_spatial_ref.bind(),
                     debug_out_ref.bind(),
                 ],
