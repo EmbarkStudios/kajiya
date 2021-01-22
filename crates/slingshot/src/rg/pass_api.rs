@@ -399,6 +399,25 @@ impl<'api, 'a, 'exec_params, 'constants>
             );
         }
     }
+
+    pub fn trace_rays_indirect(&self, args_buffer: Ref<Buffer, GpuSrv>) {
+        unsafe {
+            self.api
+                .device()
+                .ray_tracing_pipeline_ext
+                .cmd_trace_rays_indirect(
+                    self.api.cb.raw,
+                    std::slice::from_ref(&self.pipeline.sbt.raygen_shader_binding_table),
+                    std::slice::from_ref(&self.pipeline.sbt.miss_shader_binding_table),
+                    std::slice::from_ref(&self.pipeline.sbt.hit_shader_binding_table),
+                    std::slice::from_ref(&self.pipeline.sbt.callable_shader_binding_table),
+                    self.api
+                        .resources
+                        .buffer(args_buffer)
+                        .device_address(self.api.device()),
+                );
+        }
+    }
 }
 
 pub trait BindRgRef {

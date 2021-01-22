@@ -40,8 +40,11 @@ void main(
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
     pt_ws /= pt_ws.w;
 
+    float4 gbuffer_packed = gbuffer_tex[px];
+    
     VertexPacked surfel;
-    surfel.data0 = float4(pt_ws.xyz, 0);    // TODO
+    // TODO: proper packing
+    surfel.data0 = float4(pt_ws.xyz, gbuffer_packed.y);
 
     uint surfel_idx;
     surfel_meta_buf.InterlockedAdd(1 * sizeof(uint), 1, surfel_idx);

@@ -8,10 +8,13 @@
 #include "../inc/hash.hlsl"
 #include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
+#include "../inc/mesh.hlsl"
+
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
-[[vk::binding(1, 0)]] SamplerState sampler_lnc;
+[[vk::binding(0, 0)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
+[[vk::binding(1, 0)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(3, 0)]] SamplerState sampler_lnc;
 
 static const uint MAX_PATH_LENGTH = 5;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
@@ -64,50 +67,37 @@ struct SpecularBrdfEnergyPreservation {
     }
 };
 
-// Approximate Gaussian remap
-// https://www.shadertoy.com/view/MlVSzw
-float inv_error_function(float x, float truncation) {
-    static const float ALPHA = 0.14;
-    static const float INV_ALPHA = 1.0 / ALPHA;
-    static const float K = 2.0 / (M_PI * ALPHA);
-
-	float y = log(max(truncation, 1.0 - x*x));
-	float z = K + 0.5 * y;
-	return sqrt(max(0.0, sqrt(z*z - y * INV_ALPHA) - z)) * sign(x);
-}
-float remap_unorm_to_gaussian(float x, float truncation) {
-	return inv_error_function(x * 2.0 - 1.0, truncation);
+float3 uniform_sample_sphere(float2 urand) {
+    float z = 1.0 - 2.0 * urand.x;
+    float xy = sqrt(max(0.0, 1.0 - z * z));
+    float sn = sin(M_TAU * urand.y);
+	float cs = cos(M_TAU * urand.y);
+	return float3(sn * xy, cs * xy, z);
 }
 
 [shader("raygeneration")]
 void main() {
-    const uint2 px = DispatchRaysIndex().xy;
-    uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
+    const uint surfel_idx = DispatchRaysIndex().x;
+    uint seed = hash_combine2(hash1(surfel_idx), frame_constants.frame_index);
 
-    float px_off0 = 0.5;
-    float px_off1 = 0.5;
-
-    if (USE_PIXEL_FILTER) {
-        const float psf_scale = 0.85;
-        px_off0 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
-        px_off1 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
-    }
-
-    const float2 pixel_center = px + float2(px_off0, px_off1);
-    const float2 uv = pixel_center / DispatchRaysDimensions().xy;
+    const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
     RayDesc outgoing_ray;
     {
-        const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
-        const float3 ray_dir_ws = view_ray_context.ray_dir_ws();
+        float2 urand = float2(
+            uint_to_u01_float(hash1_mut(seed)),
+            uint_to_u01_float(hash1_mut(seed))
+        );
 
         outgoing_ray = new_ray(
-            view_ray_context.ray_origin_ws(), 
-            normalize(ray_dir_ws.xyz),
-            0.0,
+            surfel.position,
+            normalize(surfel.normal + uniform_sample_sphere(urand)),
+            0.1,
             FLT_MAX
         );
     }
+
+    // ----
 
     float3 throughput = 1.0.xxx;
     float3 total_radiance = 0.0.xxx;
@@ -175,6 +165,9 @@ void main() {
             
             const SpecularBrdfEnergyPreservation energy_preservation =
                 SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
+
+            /*const float3 spec_energy_preservation =
+                preintegrated_specular_brdf_energy_preservation_mult(specular_brdf.albedo, specular_brdf.roughness, wo.z);*/
 
             const BrdfValue spec = specular_brdf.evaluate(wo, wi);
             const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
@@ -251,13 +244,13 @@ void main() {
             }
         } else {
             total_radiance += throughput * sample_environment_light(outgoing_ray.Direction);
-            output_tex[px] += float4(total_radiance, 1.0);
             break;
         }
     }
 
-    //if (frame_constants.frame_index < 100)
-    {
-        output_tex[px] += float4(total_radiance, 1.0);
-    }
+    // ----
+
+    float3 prev_total_radiance = surfel_irradiance_buf[surfel_idx].xyz;
+    float3 blended_radiance = lerp(prev_total_radiance, total_radiance, 0.01);
+    surfel_irradiance_buf[surfel_idx] = float4(blended_radiance, 0);
 }

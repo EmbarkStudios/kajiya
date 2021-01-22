@@ -3,6 +3,7 @@
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/mesh.hlsl" // for VertexPacked
+#include "../inc/gbuffer.hlsl"
 #include "../inc/color.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -13,8 +14,9 @@
 [[vk::binding(5)]] ByteAddressBuffer cell_index_offset_buf;
 [[vk::binding(6)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(8)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(9)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(8)]] StructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(9)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
 
 #include "surfel_grid_hash_mut.hlsl"
 
@@ -52,28 +54,35 @@ void main(
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
     pt_ws /= pt_ws.w;
 
+    // TODO: nuke
+    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+
     SurfelGridHashEntry entry = surfel_hash_lookup(pt_ws.xyz);
 
     const float2 group_center_offset = float2(px_within_group) - 3.5;
 
     float px_score = 1e10 / (1.0 + dot(group_center_offset, group_center_offset));
-    float3 out_color = 0.5.xxx;
 
     uint cell_idx = 0xffffffff;
 
     if (entry.found) {
         cell_idx = surfel_hash_value_buf.Load(entry.idx * 4);
-        out_color = uint_id_to_color(cell_idx) * float(cell_idx) / 100000.0;
+        float3 surfel_color = uint_id_to_color(cell_idx) * 0.3;
 
-        // TODO: calculate px score based on surrounding surfels
+        // Calculate px score based on surrounding surfels
 
-        // hack
+        // hack: this should be the index intointo surfel_index_buf,
+        // which defines a span of surfels
         const uint surfel_idx = cell_index_offset_buf.Load(sizeof(uint) * cell_idx);
         if (surfel_idx != 0) {
-            VertexPacked surfel = surfel_spatial_buf[surfel_idx];
+            Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+            surfel_color = (surfel.normal * 0.5 + 0.5) * 0.3;
+            surfel_color = surfel_irradiance_buf[surfel_idx].xyz;
+            surfel_color *= max(0.0, dot(surfel.normal, gbuffer.normal));
 
-            float dist = length(pt_ws.xyz - surfel.data0.xyz);
-            debug_out_tex[px] = float4(0, saturate((0.1 - dist) * 10), 0, 1);
+            float dist = length(pt_ws.xyz - surfel.position.xyz);
+            //debug_out_tex[px] = float4(surfel_color * (dist < 0.1 ? 1.0 : 0.0), 1);
+            debug_out_tex[px] = float4(surfel_color, 1);
 
             if (dist > 0.5) {
                 px_score = 1.0 / (1.0 + dist);

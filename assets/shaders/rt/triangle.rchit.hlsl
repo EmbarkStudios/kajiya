@@ -4,7 +4,7 @@
 #include "../inc/rt.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(1, 0)]] SamplerState sampler_llr;
+[[vk::binding(2, 0)]] SamplerState sampler_llr;
 
 struct RayHitAttrib {
     float2 bary;

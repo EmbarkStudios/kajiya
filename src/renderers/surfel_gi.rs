@@ -6,6 +6,7 @@ use slingshot::{
         buffer::{Buffer, BufferDesc},
         device,
         image::*,
+        ray_tracing::RayTracingAcceleration,
         shader::*,
         RenderBackend,
     },
@@ -24,6 +25,7 @@ pub struct SurfelGiRenderer {
     surfel_index_buf: Temporal<Buffer>,
 
     surfel_spatial_buf: Temporal<Buffer>,
+    surfel_irradiance_buf: Temporal<Buffer>,
 }
 
 const MAX_SURFEL_CELLS: usize = 1024 * 1024;
@@ -87,6 +89,7 @@ impl SurfelGiRenderer {
                 size_of::<u32>() * MAX_SURFEL_CELLS * MAX_SURFELS_PER_CELL,
             ),
             surfel_spatial_buf: new_temporal_storage_buffer(device, 16 * MAX_SURFELS),
+            surfel_irradiance_buf: new_temporal_storage_buffer(device, 32 * MAX_SURFELS),
         }
     }
 
@@ -97,6 +100,7 @@ impl SurfelGiRenderer {
         cell_index_offset_buf,
         surfel_index_buf,
         surfel_spatial_buf,
+        surfel_irradiance_buf,
     }
 }
 
@@ -109,6 +113,7 @@ pub struct SurfelGiRenderInstance {
     pub surfel_index_buf: rg::Handle<Buffer>,
 
     pub surfel_spatial_buf: rg::Handle<Buffer>,
+    pub surfel_irradiance_buf: rg::Handle<Buffer>,
 }
 
 impl SurfelGiRenderInstance {
@@ -137,6 +142,7 @@ impl SurfelGiRenderInstance {
             .read(&self.cell_index_offset_buf)
             .read(&self.surfel_index_buf)
             .read(&self.surfel_spatial_buf)
+            .read(&self.surfel_irradiance_buf)
             .write(&mut tile_surfel_alloc_tex)
             .write(&mut debug_out)
             .dispatch(gbuffer.desc().extent);
@@ -158,6 +164,86 @@ impl SurfelGiRenderInstance {
         .dispatch(tile_surfel_alloc_tex.desc().extent);
 
         debug_out
+    }
+
+    pub fn trace_irradiance(
+        &mut self,
+        rg: &mut rg::RenderGraph,
+        bindless_descriptor_set: vk::DescriptorSet,
+        tlas: &rg::Handle<RayTracingAcceleration>,
+    ) {
+        let indirect_args_buf = {
+            let mut pass = rg.add_pass();
+            let mut indirect_args_buf = pass.create(&BufferDesc::new(
+                size_of::<u32>() * 4,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+            ));
+
+            SimpleComputePass::new(
+                pass,
+                "/assets/shaders/surfel_gi/prepare_trace_dispatch_args.hlsl",
+            )
+            .read(&mut self.surfel_meta_buf)
+            .write(&mut indirect_args_buf)
+            .dispatch([1, 1, 1]);
+
+            indirect_args_buf
+        };
+
+        let mut pass = rg.add_pass();
+
+        let pipeline = pass.register_ray_tracing_pipeline(
+            &[
+                PipelineShader {
+                    code: "/assets/shaders/surfel_gi/trace_irradiance.rgen.hlsl",
+                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                        .build()
+                        .unwrap(),
+                },
+                PipelineShader {
+                    code: "/assets/shaders/rt/triangle.rmiss.hlsl",
+                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                        .build()
+                        .unwrap(),
+                },
+                PipelineShader {
+                    code: "/assets/shaders/rt/shadow.rmiss.hlsl",
+                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                        .build()
+                        .unwrap(),
+                },
+                PipelineShader {
+                    code: "/assets/shaders/rt/triangle.rchit.hlsl",
+                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+                        .build()
+                        .unwrap(),
+                },
+            ],
+            slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
+                .max_pipeline_ray_recursion_depth(2),
+        );
+
+        let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
+
+        let spatial_ref = pass.read(
+            &self.surfel_spatial_buf,
+            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let output_ref = pass.write(&mut self.surfel_irradiance_buf, AccessType::AnyShaderWrite);
+        let indirect_args_ref = pass.read(&indirect_args_buf, AccessType::IndirectBuffer);
+
+        pass.render(move |api| {
+            let pipeline = api.bind_ray_tracing_pipeline(
+                pipeline
+                    .into_binding()
+                    .descriptor_set(0, &[spatial_ref.bind(), output_ref.bind()])
+                    .raw_descriptor_set(1, bindless_descriptor_set)
+                    .descriptor_set(3, &[tlas_ref.bind()]),
+            );
+
+            pipeline.trace_rays_indirect(indirect_args_ref);
+            //pipeline.trace_rays(indirect_args_ref, [1000, 1, 1]);
+        });
     }
 }
 

@@ -371,6 +371,24 @@ impl RenderGraph {
         let mut buffer_usage_flags: Vec<vk::BufferUsageFlags> =
             vec![Default::default(); self.resources.len()];
 
+        for (res_idx, resource) in self.resources.iter().enumerate() {
+            match resource {
+                GraphResourceInfo::Created(GraphResourceCreateInfo {
+                    desc: GraphResourceDesc::Image(desc),
+                    ..
+                }) => {
+                    image_usage_flags[res_idx] = desc.usage;
+                }
+                GraphResourceInfo::Created(GraphResourceCreateInfo {
+                    desc: GraphResourceDesc::Buffer(desc),
+                    ..
+                }) => {
+                    buffer_usage_flags[res_idx] = desc.usage;
+                }
+                _ => {}
+            }
+        }
+
         for (pass_idx, pass) in self.passes.iter().enumerate() {
             for res_access in pass.read.iter().chain(pass.write.iter()) {
                 let resource_index = res_access.handle.id as usize;
@@ -380,6 +398,7 @@ impl RenderGraph {
                 let access_mask = get_access_info(res_access.access.access_type).access_mask;
 
                 match &self.resources[resource_index] {
+                    // Images
                     GraphResourceInfo::Created(GraphResourceCreateInfo {
                         desc: GraphResourceDesc::Image(_),
                         ..
@@ -390,6 +409,8 @@ impl RenderGraph {
 
                         image_usage_flags[res_access.handle.id as usize] |= image_usage;
                     }
+
+                    // Buffers
                     GraphResourceInfo::Created(GraphResourceCreateInfo {
                         desc: GraphResourceDesc::Buffer(_),
                         ..
@@ -400,6 +421,8 @@ impl RenderGraph {
 
                         buffer_usage_flags[res_access.handle.id as usize] |= buffer_usage;
                     }
+
+                    // Acceleration structures
                     GraphResourceInfo::Created(GraphResourceCreateInfo {
                         desc: GraphResourceDesc::RayTracingAcceleration(_),
                         ..

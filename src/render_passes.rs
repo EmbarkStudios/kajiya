@@ -607,7 +607,7 @@ pub fn normalize_accum(
 pub fn trace_sun_shadow_mask(
     rg: &mut RenderGraph,
     depth_img: &Handle<Image>,
-    tlas: Handle<RayTracingAcceleration>,
+    tlas: &Handle<RayTracingAcceleration>,
 ) -> Handle<Image> {
     let mut pass = rg.add_pass();
 

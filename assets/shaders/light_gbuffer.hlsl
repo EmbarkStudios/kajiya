@@ -16,7 +16,7 @@
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 [[vk::binding(4)]] SamplerState sampler_lnc;
 
-static const float3 ambient_light = 0.3;
+static const float3 ambient_light = 0.0;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
@@ -138,9 +138,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
     //total_radiance += uint_id_to_color(pt_hash);
 
+    total_radiance += output_tex[px].xyz * gbuffer.albedo;
+    
     total_radiance = neutral_tonemap(total_radiance);
     //total_radiance = gbuffer.metalness;
 
-    total_radiance += output_tex[px].xyz;
     output_tex[px] = float4(total_radiance, 1.0);
 }

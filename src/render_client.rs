@@ -6,7 +6,7 @@ use crate::{
     backend::{self, image::*, shader::*, RenderBackend},
     dynamic_constants::DynamicConstants,
     image_lut::{ComputeImageLut, ImageLut},
-    render_passes::{RasterMeshesData, UploadedTriMesh},
+    render_passes::{trace_sun_shadow_mask, RasterMeshesData, UploadedTriMesh},
     renderer::*,
     renderers::surfel_gi::{self, SurfelGiRenderer},
     rg,
@@ -536,7 +536,9 @@ impl VickiRenderClient {
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
         );
-        let sun_shadow_mask = crate::render_passes::trace_sun_shadow_mask(rg, &depth_img, tlas);
+        let sun_shadow_mask = crate::render_passes::trace_sun_shadow_mask(rg, &depth_img, &tlas);
+
+        surfel_gi.trace_irradiance(rg, self.bindless_descriptor_set, &tlas);
 
         /*let mut lit = crate::render_passes::create_image(
             rg,
