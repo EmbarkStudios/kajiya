@@ -109,88 +109,7 @@ pub struct SurfelGiRenderInstance {
     pub surfel_spatial_buf: rg::Handle<Buffer>,
 }
 
-/*macro_rules! rg_simple_compute_pass {
-    (
-        $pass:path,
-        $rg:path,
-        $pipeline_path:literal,
-        [
-            $($bindings:tt),*
-            $(,)?
-        ]
-    ) => {};
-}*/
-
 impl SurfelGiRenderInstance {
-    /*pub fn allocate_surfels(
-        &mut self,
-        rg: &mut rg::RenderGraph,
-        gbuffer: &rg::Handle<Image>,
-        depth: &rg::Handle<Image>,
-    ) -> rg::Handle<Image> {
-        let mut pass = rg.add_pass();
-
-        let pipeline =
-            pass.register_compute_pipeline("/assets/shaders/surfel_gi/allocate_surfels.hlsl");
-
-        let gbuffer_ref = pass.read(
-            gbuffer,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let depth_ref = pass.read(
-            depth,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
-        let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
-        let debug_out_ref = pass.write(&mut debug_out, AccessType::ComputeShaderWrite);
-
-        let surfel_meta_ref = pass.write(&mut self.surfel_meta_buf, AccessType::ComputeShaderWrite);
-        let surfel_hash_key_ref = pass.write(
-            &mut self.surfel_hash_key_buf,
-            AccessType::ComputeShaderWrite,
-        );
-        let surfel_hash_value_ref = pass.write(
-            &mut self.surfel_hash_value_buf,
-            AccessType::ComputeShaderWrite,
-        );
-        let cell_index_offset_ref = pass.read(
-            &self.cell_index_offset_buf,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let surfel_index_ref = pass.read(
-            &self.surfel_index_buf,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let surfel_spatial_ref = pass.read(
-            &self.surfel_spatial_buf,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
-        pass.render(move |api| {
-            let pipeline = api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
-                0,
-                &[
-                    gbuffer_ref.bind(),
-                    depth_ref.bind_view(
-                        ImageViewDescBuilder::default().aspect_mask(vk::ImageAspectFlags::DEPTH),
-                    ),
-                    surfel_meta_ref.bind(),
-                    surfel_hash_key_ref.bind(),
-                    surfel_hash_value_ref.bind(),
-                    cell_index_offset_ref.bind(),
-                    surfel_index_ref.bind(),
-                    surfel_spatial_ref.bind(),
-                    debug_out_ref.bind(),
-                ],
-            ));
-
-            pipeline.dispatch(gbuffer_ref.desc().extent);
-        });
-
-        debug_out
-    }*/
-
     pub fn allocate_surfels(
         &mut self,
         rg: &mut rg::RenderGraph,
@@ -221,10 +140,6 @@ struct SimpleComputePass<'rg> {
     pipeline: rg::RgComputePipelineHandle,
     bindings: Vec<rg::RenderPassBinding>,
 }
-
-/*trait IntoRenderPassBindingObj {
-    fn bind(self: Box<Self>) -> rg::RenderPassBinding;
-}*/
 
 impl<'rg> SimpleComputePass<'rg> {
     pub fn new(mut pass: rg::PassBuilder<'rg>, pipeline_path: &str) -> Self {
