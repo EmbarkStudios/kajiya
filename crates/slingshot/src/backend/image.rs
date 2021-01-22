@@ -93,6 +93,13 @@ impl ImageDesc {
         self.array_elements = array_elements;
         self
     }
+
+    pub fn div_up_extent(mut self, div_extent: [u32; 3]) -> Self {
+        for i in 0..3 {
+            self.extent[i] = (self.extent[i] + div_extent[i] - 1) / div_extent[i];
+        }
+        self
+    }
 }
 
 pub struct ImageSubResourceData<'a> {

@@ -119,7 +119,14 @@ impl SurfelGiRenderInstance {
         let mut pass = rg.add_pass();
         let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
 
-        SimpleComputePass::new(pass, "/assets/shaders/surfel_gi/allocate_surfels.hlsl")
+        let mut tile_surfel_alloc_tex = pass.create(
+            &gbuffer
+                .desc()
+                .div_up_extent([8, 8, 1])
+                .format(vk::Format::R32G32_UINT),
+        );
+
+        SimpleComputePass::new(pass, "/assets/shaders/surfel_gi/find_missing_surfels.hlsl")
             .read(&gbuffer)
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .write(&mut self.surfel_meta_buf)
@@ -128,6 +135,7 @@ impl SurfelGiRenderInstance {
             .read(&self.cell_index_offset_buf)
             .read(&self.surfel_index_buf)
             .read(&self.surfel_spatial_buf)
+            .write(&mut tile_surfel_alloc_tex)
             .write(&mut debug_out)
             .dispatch(gbuffer.desc().extent);
 
@@ -195,7 +203,7 @@ impl<'rg> SimpleComputePass<'rg> {
         self
     }
 
-    pub fn dispatch(mut self, extent: [u32; 3]) {
+    pub fn dispatch(self, extent: [u32; 3]) {
         let pipeline = self.pipeline;
         let bindings = self.bindings;
 

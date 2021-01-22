@@ -13,7 +13,8 @@
 [[vk::binding(5)]] RWByteAddressBuffer cell_index_offset_buf;
 [[vk::binding(6)]] RWByteAddressBuffer surfel_index_buf;
 [[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(8)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(9)]] RWTexture2D<float4> debug_out_tex;
 
 #include "surfel_grid_hash.hlsl"
 
