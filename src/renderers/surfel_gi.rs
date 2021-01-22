@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{mem::size_of, sync::Arc};
 
 use slingshot::{
     ash::vk,
@@ -9,96 +9,120 @@ use slingshot::{
         shader::*,
         RenderBackend,
     },
-    rg,
+    rg::{self, BindRgRef, Resource},
     vk_sync::AccessType,
 };
 
 use crate::temporal::*;
 
 pub struct SurfelGiRenderer {
-    surfel_meta: Temporal<Buffer>,
-    surfel_hash_key: Temporal<Buffer>,
-    surfel_hash_value: Temporal<Buffer>,
-    surfel_spatial: Temporal<Buffer>,
+    surfel_meta_buf: Temporal<Buffer>,
+    surfel_hash_key_buf: Temporal<Buffer>,
+    surfel_hash_value_buf: Temporal<Buffer>,
+
+    cell_index_offset_buf: Temporal<Buffer>,
+    surfel_index_buf: Temporal<Buffer>,
+
+    surfel_spatial_buf: Temporal<Buffer>,
 }
 
 const MAX_SURFEL_CELLS: usize = 1024 * 1024;
 const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
+const MAX_SURFELS_PER_CELL: usize = 8;
+
+macro_rules! impl_renderer_temporal_logic {
+    ($($res_name:ident,)*) => {
+        pub fn begin(&mut self, rg: &mut rg::RenderGraph) -> SurfelGiRenderInstance {
+            SurfelGiRenderInstance {
+                $(
+                    $res_name: rg.import_temporal(&mut self.$res_name),
+                )*
+            }
+        }
+        pub fn end(&mut self, rg: &mut rg::RenderGraph, inst: SurfelGiRenderInstance) {
+            $(
+                rg.export_temporal(inst.$res_name, &mut self.$res_name);
+            )*
+        }
+
+        pub fn retire(&mut self, rg: &rg::RetiredRenderGraph) {
+            $(
+                rg.retire_temporal(&mut self.$res_name);
+            )*
+        }
+    };
+}
+
+fn new_temporal_storage_buffer(device: &device::Device, size_bytes: usize) -> Temporal<Buffer> {
+    Temporal::new(Arc::new(
+        device
+            .create_buffer(
+                BufferDesc::new(size_bytes, vk::BufferUsageFlags::STORAGE_BUFFER),
+                None,
+            )
+            .unwrap(),
+    ))
+}
 
 impl SurfelGiRenderer {
     pub fn new(device: &device::Device) -> Self {
-        let surfel_meta = device
-            .create_buffer(
-                BufferDesc::new(4, vk::BufferUsageFlags::STORAGE_BUFFER),
-                None,
-            )
-            .unwrap();
-
-        let surfel_hash_key = device
-            .create_buffer(
-                BufferDesc::new(4 * MAX_SURFEL_CELLS, vk::BufferUsageFlags::STORAGE_BUFFER),
-                None,
-            )
-            .unwrap();
-
-        let surfel_hash_value = device
-            .create_buffer(
-                BufferDesc::new(
-                    4 * 2 * MAX_SURFEL_CELLS,
-                    vk::BufferUsageFlags::STORAGE_BUFFER,
-                ),
-                None,
-            )
-            .unwrap();
-
-        let surfel_spatial = device
-            .create_buffer(
-                BufferDesc::new(16 * MAX_SURFELS, vk::BufferUsageFlags::STORAGE_BUFFER),
-                None,
-            )
-            .unwrap();
-
         Self {
-            surfel_meta: Temporal::new(Arc::new(surfel_meta)),
-            surfel_hash_key: Temporal::new(Arc::new(surfel_hash_key)),
-            surfel_hash_value: Temporal::new(Arc::new(surfel_hash_value)),
-            surfel_spatial: Temporal::new(Arc::new(surfel_spatial)),
+            surfel_meta_buf: new_temporal_storage_buffer(device, size_of::<u32>()),
+            surfel_hash_key_buf: new_temporal_storage_buffer(
+                device,
+                size_of::<u32>() * MAX_SURFEL_CELLS,
+            ),
+            surfel_hash_value_buf: new_temporal_storage_buffer(
+                device,
+                size_of::<u32>() * MAX_SURFEL_CELLS,
+            ),
+            cell_index_offset_buf: new_temporal_storage_buffer(
+                device,
+                size_of::<u32>() * MAX_SURFEL_CELLS,
+            ),
+            surfel_index_buf: new_temporal_storage_buffer(
+                device,
+                size_of::<u32>() * MAX_SURFEL_CELLS * MAX_SURFELS_PER_CELL,
+            ),
+            surfel_spatial_buf: new_temporal_storage_buffer(device, 16 * MAX_SURFELS),
         }
     }
 
-    pub fn begin(&mut self, rg: &mut rg::RenderGraph) -> SurfelGiRenderInstance {
-        SurfelGiRenderInstance {
-            surfel_meta: rg.import_temporal(&mut self.surfel_meta),
-            surfel_hash_key: rg.import_temporal(&mut self.surfel_hash_key),
-            surfel_hash_value: rg.import_temporal(&mut self.surfel_hash_value),
-            surfel_spatial: rg.import_temporal(&mut self.surfel_spatial),
-        }
-    }
-
-    pub fn end(&mut self, rg: &mut rg::RenderGraph, inst: SurfelGiRenderInstance) {
-        rg.export_temporal(inst.surfel_meta, &mut self.surfel_meta);
-        rg.export_temporal(inst.surfel_hash_key, &mut self.surfel_hash_key);
-        rg.export_temporal(inst.surfel_hash_value, &mut self.surfel_hash_value);
-        rg.export_temporal(inst.surfel_spatial, &mut self.surfel_spatial);
-    }
-
-    pub fn retire(&mut self, rg: &rg::RetiredRenderGraph) {
-        rg.retire_temporal(&mut self.surfel_meta);
-        rg.retire_temporal(&mut self.surfel_hash_key);
-        rg.retire_temporal(&mut self.surfel_hash_value);
-        rg.retire_temporal(&mut self.surfel_spatial);
+    impl_renderer_temporal_logic! {
+        surfel_meta_buf,
+        surfel_hash_key_buf,
+        surfel_hash_value_buf,
+        cell_index_offset_buf,
+        surfel_index_buf,
+        surfel_spatial_buf,
     }
 }
 
 pub struct SurfelGiRenderInstance {
-    pub surfel_meta: rg::Handle<Buffer>,
-    pub surfel_hash_key: rg::Handle<Buffer>,
-    pub surfel_hash_value: rg::Handle<Buffer>,
-    pub surfel_spatial: rg::Handle<Buffer>,
+    pub surfel_meta_buf: rg::Handle<Buffer>,
+    pub surfel_hash_key_buf: rg::Handle<Buffer>,
+    pub surfel_hash_value_buf: rg::Handle<Buffer>,
+
+    pub cell_index_offset_buf: rg::Handle<Buffer>,
+    pub surfel_index_buf: rg::Handle<Buffer>,
+
+    pub surfel_spatial_buf: rg::Handle<Buffer>,
 }
 
+/*macro_rules! rg_simple_compute_pass {
+    (
+        $pass:path,
+        $rg:path,
+        $pipeline_path:literal,
+        [
+            $($bindings:tt),*
+            $(,)?
+        ]
+    ) => {};
+}*/
+
 impl SurfelGiRenderInstance {
-    pub fn allocate_surfels(
+    /*pub fn allocate_surfels(
         &mut self,
         rg: &mut rg::RenderGraph,
         gbuffer: &rg::Handle<Image>,
@@ -121,13 +145,27 @@ impl SurfelGiRenderInstance {
         let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
         let debug_out_ref = pass.write(&mut debug_out, AccessType::ComputeShaderWrite);
 
-        let surfel_meta_ref = pass.write(&mut self.surfel_meta, AccessType::ComputeShaderWrite);
-        let surfel_hash_key_ref =
-            pass.write(&mut self.surfel_hash_key, AccessType::ComputeShaderWrite);
-        let surfel_hash_value_ref =
-            pass.write(&mut self.surfel_hash_value, AccessType::ComputeShaderWrite);
-        let surfel_spatial_ref =
-            pass.write(&mut self.surfel_spatial, AccessType::ComputeShaderWrite);
+        let surfel_meta_ref = pass.write(&mut self.surfel_meta_buf, AccessType::ComputeShaderWrite);
+        let surfel_hash_key_ref = pass.write(
+            &mut self.surfel_hash_key_buf,
+            AccessType::ComputeShaderWrite,
+        );
+        let surfel_hash_value_ref = pass.write(
+            &mut self.surfel_hash_value_buf,
+            AccessType::ComputeShaderWrite,
+        );
+        let cell_index_offset_ref = pass.read(
+            &self.cell_index_offset_buf,
+            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let surfel_index_ref = pass.read(
+            &self.surfel_index_buf,
+            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let surfel_spatial_ref = pass.read(
+            &self.surfel_spatial_buf,
+            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
 
         pass.render(move |api| {
             let pipeline = api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(
@@ -140,6 +178,8 @@ impl SurfelGiRenderInstance {
                     surfel_meta_ref.bind(),
                     surfel_hash_key_ref.bind(),
                     surfel_hash_value_ref.bind(),
+                    cell_index_offset_ref.bind(),
+                    surfel_index_ref.bind(),
                     surfel_spatial_ref.bind(),
                     debug_out_ref.bind(),
                 ],
@@ -149,5 +189,106 @@ impl SurfelGiRenderInstance {
         });
 
         debug_out
+    }*/
+
+    pub fn allocate_surfels(
+        &mut self,
+        rg: &mut rg::RenderGraph,
+        gbuffer: &rg::Handle<Image>,
+        depth: &rg::Handle<Image>,
+    ) -> rg::Handle<Image> {
+        let mut pass = rg.add_pass();
+        let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
+
+        SimpleComputePass::new(pass, "/assets/shaders/surfel_gi/allocate_surfels.hlsl")
+            .read(&gbuffer)
+            .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+            .write(&mut self.surfel_meta_buf)
+            .write(&mut self.surfel_hash_key_buf)
+            .write(&mut self.surfel_hash_value_buf)
+            .read(&self.cell_index_offset_buf)
+            .read(&self.surfel_index_buf)
+            .read(&self.surfel_spatial_buf)
+            .write(&mut debug_out)
+            .dispatch(gbuffer.desc().extent);
+
+        debug_out
+    }
+}
+
+struct SimpleComputePass<'rg> {
+    pass: rg::PassBuilder<'rg>,
+    pipeline: rg::RgComputePipelineHandle,
+    bindings: Vec<rg::RenderPassBinding>,
+}
+
+/*trait IntoRenderPassBindingObj {
+    fn bind(self: Box<Self>) -> rg::RenderPassBinding;
+}*/
+
+impl<'rg> SimpleComputePass<'rg> {
+    pub fn new(mut pass: rg::PassBuilder<'rg>, pipeline_path: &str) -> Self {
+        let pipeline = pass.register_compute_pipeline(pipeline_path);
+
+        Self {
+            pass,
+            pipeline,
+            bindings: Vec::new(),
+        }
+    }
+
+    pub fn read<Res>(mut self, handle: &rg::Handle<Res>) -> Self
+    where
+        Res: Resource + 'static,
+        rg::Ref<Res, rg::GpuSrv>: rg::BindRgRef,
+    {
+        let handle_ref = self.pass.read(
+            handle,
+            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
+        self.bindings.push(rg::BindRgRef::bind(&handle_ref));
+
+        self
+    }
+
+    pub fn read_aspect(
+        mut self,
+        handle: &rg::Handle<Image>,
+        aspect_mask: vk::ImageAspectFlags,
+    ) -> Self {
+        let handle_ref = self.pass.read(
+            handle,
+            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
+        self.bindings
+            .push(handle_ref.bind_view(ImageViewDescBuilder::default().aspect_mask(aspect_mask)));
+
+        self
+    }
+
+    pub fn write<Res>(mut self, handle: &mut rg::Handle<Res>) -> Self
+    where
+        Res: Resource + 'static,
+        rg::Ref<Res, rg::GpuUav>: rg::BindRgRef,
+    {
+        let handle_ref = self.pass.write(handle, AccessType::ComputeShaderWrite);
+
+        self.bindings.push(rg::BindRgRef::bind(&handle_ref));
+
+        self
+    }
+
+    pub fn dispatch(mut self, extent: [u32; 3]) {
+        let pipeline = self.pipeline;
+        let bindings = self.bindings;
+
+        self.pass.render(move |api| {
+            let pipeline =
+                api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
+
+            pipeline.dispatch(extent);
+        });
     }
 }

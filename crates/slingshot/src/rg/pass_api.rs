@@ -401,6 +401,16 @@ impl<'api, 'a, 'exec_params, 'constants>
     }
 }
 
+pub trait BindRgRef {
+    fn bind(&self) -> RenderPassBinding;
+}
+
+impl BindRgRef for Ref<Image, GpuSrv> {
+    fn bind(&self) -> RenderPassBinding {
+        self.bind_view(ImageViewDescBuilder::default())
+    }
+}
+
 impl Ref<Image, GpuSrv> {
     pub fn bind_view(&self, view_desc: ImageViewDescBuilder) -> RenderPassBinding {
         RenderPassBinding::Image(RenderPassImageBinding {
@@ -409,8 +419,10 @@ impl Ref<Image, GpuSrv> {
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         })
     }
+}
 
-    pub fn bind(&self) -> RenderPassBinding {
+impl BindRgRef for Ref<Image, GpuUav> {
+    fn bind(&self) -> RenderPassBinding {
         self.bind_view(ImageViewDescBuilder::default())
     }
 }
@@ -423,30 +435,26 @@ impl Ref<Image, GpuUav> {
             image_layout: vk::ImageLayout::GENERAL,
         })
     }
-
-    pub fn bind(&self) -> RenderPassBinding {
-        self.bind_view(ImageViewDescBuilder::default())
-    }
 }
 
-impl Ref<Buffer, GpuSrv> {
-    pub fn bind(&self) -> RenderPassBinding {
+impl BindRgRef for Ref<Buffer, GpuSrv> {
+    fn bind(&self) -> RenderPassBinding {
         RenderPassBinding::Buffer(RenderPassBufferBinding {
             handle: self.handle,
         })
     }
 }
 
-impl Ref<Buffer, GpuUav> {
-    pub fn bind(&self) -> RenderPassBinding {
+impl BindRgRef for Ref<Buffer, GpuUav> {
+    fn bind(&self) -> RenderPassBinding {
         RenderPassBinding::Buffer(RenderPassBufferBinding {
             handle: self.handle,
         })
     }
 }
 
-impl Ref<RayTracingAcceleration, GpuSrv> {
-    pub fn bind(&self) -> RenderPassBinding {
+impl BindRgRef for Ref<RayTracingAcceleration, GpuSrv> {
+    fn bind(&self) -> RenderPassBinding {
         RenderPassBinding::RayTracingAcceleration(RenderPassRayTracingAccelerationBinding {
             handle: self.handle,
         })

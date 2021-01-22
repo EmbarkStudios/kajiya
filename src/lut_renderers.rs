@@ -1,4 +1,4 @@
-use slingshot::{ash::vk, vk_sync::AccessType, ImageDesc};
+use slingshot::{ash::vk, rg::BindRgRef, vk_sync::AccessType, ImageDesc};
 use slingshot::{ash::vk::ImageUsageFlags, ImageViewDescBuilder};
 
 use crate::image_lut::ComputeImageLut;

@@ -10,13 +10,29 @@
 [[vk::binding(2)]] RWByteAddressBuffer surfel_meta_buf;
 [[vk::binding(3)]] RWByteAddressBuffer surfel_hash_key_buf;
 [[vk::binding(4)]] RWByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(5)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(6)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(5)]] RWByteAddressBuffer cell_index_offset_buf;
+[[vk::binding(6)]] RWByteAddressBuffer surfel_index_buf;
+[[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
+[[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
 
 #include "surfel_grid_hash.hlsl"
 
+groupshared uint gs_px_score_loc_packed;
+
+
 [numthreads(8, 8, 1)]
-void main(in uint2 px: SV_DispatchThreadID) {
+void main(
+    uint2 px: SV_DispatchThreadID,
+    uint thread_index: SV_GroupIndex,
+    uint2 group_id: SV_GroupID,
+    uint2 px_within_group: SV_GroupThreadID
+) {
+    if (0 == thread_index) {
+        gs_px_score_loc_packed = 0;
+    }
+
+    GroupMemoryBarrierWithGroupSync();
+
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 
     float4 output_tex_size = float4(1280.0, 720.0, 1.0 / 1280.0, 1.0 / 720.0);
@@ -35,26 +51,43 @@ void main(in uint2 px: SV_DispatchThreadID) {
 
     SurfelGridHashEntry entry = surfel_hash_lookup(pt_ws.xyz);
 
+    const float2 group_center_offset = float2(px_within_group) - 3.5;
+
+    float px_score = 1e10 / (1.0 + dot(group_center_offset, group_center_offset));
     float3 out_color = 0.5.xxx;
 
     if (entry.found) {
-        const uint value = surfel_hash_value_buf.Load(entry.idx * 4);
-        out_color = uint_id_to_color(value) * float(value) / 100000.0;
+        const uint cell_idx = surfel_hash_value_buf.Load(entry.idx * 4);
+        out_color = uint_id_to_color(cell_idx) * float(cell_idx) / 100000.0;
+
+        // TODO: calculate px score based on surrounding surfels
     } else {
         if (entry.vacant) {
-            if (uint_to_u01_float(hash1_mut(seed)) < 0.001) {
+            //if (uint_to_u01_float(hash1_mut(seed)) < 0.001) {
                 if (entry.acquire()) {
                     uint cell_idx = 0;
                     surfel_meta_buf.InterlockedAdd(0, 1, cell_idx);
 
                     surfel_hash_value_buf.Store(entry.idx * 4, cell_idx);
                 }
-            }
+            //}
         } else {
             // Too many conflicts; cannot insert a new entry.
             debug_out_tex[px] = float4(10, 0, 10, 1);
             return;
         }
+    }
+
+    const uint px_score_loc_packed = (asuint(px_score) & (0xffffffff - 63)) | (px_within_group.y * 8 + px_within_group.x);
+
+    InterlockedMax(gs_px_score_loc_packed, px_score_loc_packed);
+    GroupMemoryBarrierWithGroupSync();
+
+    uint group_id_hash = hash2(group_id);
+    //out_color = uint_id_to_color(group_id_hash) * 0.1;
+
+    if (gs_px_score_loc_packed == px_score_loc_packed) {
+        out_color = float3(10, 0, 0);
     }
 
     debug_out_tex[px] = float4(out_color, 1);
