@@ -9,7 +9,7 @@ struct VkDrawIndexedIndirectCommand {
 [[vk::binding(0)]] RWStructuredBuffer<VkDrawIndexedIndirectCommand> bricks_meta;
 
 [numthreads(1, 1, 1)]
-void main(in uint3 pix: SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
+void main() {
     //bricks_meta.Store(0, 0);
     VkDrawIndexedIndirectCommand cmd;
     cmd.index_count = 36;

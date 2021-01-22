@@ -82,7 +82,7 @@ impl SurfelGiRenderer {
             ),
             cell_index_offset_buf: new_temporal_storage_buffer(
                 device,
-                size_of::<u32>() * MAX_SURFEL_CELLS,
+                size_of::<u32>() * (MAX_SURFEL_CELLS + 1),
             ),
             surfel_index_buf: new_temporal_storage_buffer(
                 device,
@@ -163,7 +163,61 @@ impl SurfelGiRenderInstance {
         .write(&mut debug_out)
         .dispatch(tile_surfel_alloc_tex.desc().extent);
 
+        self.assign_surfels_to_grid_cells(rg);
+
         debug_out
+    }
+
+    fn assign_surfels_to_grid_cells(&mut self, rg: &mut rg::RenderGraph) {
+        let indirect_args_buf = {
+            let mut pass = rg.add_pass();
+            let mut indirect_args_buf = pass.create(&BufferDesc::new(
+                (size_of::<u32>() * 4) * 2,
+                vk::BufferUsageFlags::empty(),
+            ));
+
+            SimpleComputePass::new(
+                pass,
+                "/assets/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
+            )
+            .read(&mut self.surfel_meta_buf)
+            .write(&mut indirect_args_buf)
+            .dispatch([1, 1, 1]);
+
+            indirect_args_buf
+        };
+
+        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/surfel_gi/clear_cells.hlsl")
+            .write(&mut self.cell_index_offset_buf)
+            .dispatch_indirect(&indirect_args_buf, 0);
+
+        SimpleComputePass::new(
+            rg.add_pass(),
+            "/assets/shaders/surfel_gi/count_surfels_per_cell.hlsl",
+        )
+        .read(&self.surfel_meta_buf)
+        .read(&self.surfel_hash_key_buf)
+        .read(&self.surfel_hash_value_buf)
+        .read(&self.surfel_spatial_buf)
+        .write(&mut self.cell_index_offset_buf)
+        // Thread per surfel
+        .dispatch_indirect(&indirect_args_buf, 16);
+
+        inclusive_prefix_scan_u32_1m(rg, &mut self.cell_index_offset_buf);
+        // TODO: prefix-scan
+
+        SimpleComputePass::new(
+            rg.add_pass(),
+            "/assets/shaders/surfel_gi/slot_surfels_into_cells.hlsl",
+        )
+        .read(&self.surfel_meta_buf)
+        .read(&self.surfel_hash_key_buf)
+        .read(&self.surfel_hash_value_buf)
+        .read(&self.surfel_spatial_buf)
+        .read(&self.cell_index_offset_buf)
+        .write(&mut self.surfel_index_buf)
+        // Thread per surfel
+        .dispatch_indirect(&indirect_args_buf, 16);
     }
 
     pub fn trace_irradiance(
@@ -247,6 +301,38 @@ impl SurfelGiRenderInstance {
     }
 }
 
+fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Handle<Buffer>) {
+    const SEGMENT_SIZE: usize = 1024;
+
+    SimpleComputePass::new(
+        rg.add_pass(),
+        "/assets/shaders/surfel_gi/inclusive_prefix_scan.hlsl",
+    )
+    .write(input_buf)
+    .dispatch([(SEGMENT_SIZE * SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
+
+    let mut pass = rg.add_pass();
+    let mut segment_sum_buf = pass.create(&BufferDesc::new(
+        size_of::<u32>() * SEGMENT_SIZE,
+        vk::BufferUsageFlags::empty(),
+    ));
+    SimpleComputePass::new(
+        pass,
+        "/assets/shaders/surfel_gi/inclusive_prefix_scan_segments.hlsl",
+    )
+    .read(input_buf)
+    .write(&mut segment_sum_buf)
+    .dispatch([(SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
+
+    SimpleComputePass::new(
+        rg.add_pass(),
+        "/assets/shaders/surfel_gi/inclusive_prefix_scan_merge.hlsl",
+    )
+    .write(input_buf)
+    .read(&segment_sum_buf)
+    .dispatch([(SEGMENT_SIZE * SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
+}
+
 struct SimpleComputePass<'rg> {
     pass: rg::PassBuilder<'rg>,
     pipeline: rg::RgComputePipelineHandle,
@@ -316,6 +402,20 @@ impl<'rg> SimpleComputePass<'rg> {
                 api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
 
             pipeline.dispatch(extent);
+        });
+    }
+
+    pub fn dispatch_indirect(mut self, args_buffer: &rg::Handle<Buffer>, args_buffer_offset: u64) {
+        let args_buffer_ref = self.pass.read(args_buffer, AccessType::IndirectBuffer);
+
+        let pipeline = self.pipeline;
+        let bindings = self.bindings;
+
+        self.pass.render(move |api| {
+            let pipeline =
+                api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
+
+            pipeline.dispatch_indirect(args_buffer_ref, args_buffer_offset);
         });
     }
 }

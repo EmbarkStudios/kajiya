@@ -348,6 +348,16 @@ impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_pa
             );
         }
     }
+
+    pub fn dispatch_indirect(&self, args_buffer: Ref<Buffer, GpuSrv>, args_buffer_offset: u64) {
+        unsafe {
+            self.api.device().raw.cmd_dispatch_indirect(
+                self.api.cb.raw,
+                self.api.resources.buffer(args_buffer).raw,
+                args_buffer_offset,
+            );
+        }
+    }
 }
 
 pub struct BoundRasterPipeline<'api, 'a, 'exec_params, 'constants> {

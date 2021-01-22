@@ -26,11 +26,11 @@ groupshared uint gs_px_score_loc_packed;
 [numthreads(8, 8, 1)]
 void main(
     uint2 px: SV_DispatchThreadID,
-    uint thread_index: SV_GroupIndex,
+    uint idx_within_group: SV_GroupIndex,
     uint2 group_id: SV_GroupID,
     uint2 px_within_group: SV_GroupThreadID
 ) {
-    if (0 == thread_index) {
+    if (0 == idx_within_group) {
         gs_px_score_loc_packed = 0;
         tile_surfel_alloc_tex[group_id] = uint2(0, 0);
     }
@@ -57,7 +57,7 @@ void main(
     // TODO: nuke
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
 
-    SurfelGridHashEntry entry = surfel_hash_lookup(pt_ws.xyz);
+    SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(surfel_pos_to_grid_coord(pt_ws.xyz));
 
     const float2 group_center_offset = float2(px_within_group) - 3.5;
 

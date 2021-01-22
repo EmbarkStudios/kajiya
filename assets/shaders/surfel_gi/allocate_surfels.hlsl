@@ -19,7 +19,6 @@
 [numthreads(8, 8, 1)]
 void main(
     uint2 tile_px: SV_DispatchThreadID,
-    uint thread_index: SV_GroupIndex,
     uint2 group_id: SV_GroupID,
     uint2 tile_px_within_group: SV_GroupThreadID
 ) {

@@ -5,13 +5,19 @@
 //      0: uint: number of cells allocated
 // surfel_hash_key_buf
 //      4*k: checksum
-// surfel_hash_value_buf
-//      4*k: value
 
 static const uint MAX_SURFEL_GRID_CELLS = 1024 * 1024;
 
+int3 surfel_pos_to_grid_coord(float3 pos) {
+    return int3(floor(pos * 3.0));
+}
+
+uint surfel_grid_coord_to_hash(int3 coord) {
+    return hash3(asuint(coord));
+}
+
 uint surfel_pos_to_hash(float3 pos) {
-    return hash3(asuint(int3(floor(pos * 3.0))));
+    return surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pos));
 }
 
 struct SurfelGridHashEntry {
@@ -32,9 +38,9 @@ struct SurfelGridHashEntry {
     bool acquire();
 };
 
-SurfelGridHashEntry surfel_hash_lookup(float3 pos) {
-    const uint hash = surfel_pos_to_hash(pos);
-    const uint checksum = surfel_pos_to_hash(pos.zyx);
+SurfelGridHashEntry surfel_hash_lookup_by_grid_coord(int3 grid_coord) {
+    const uint hash = surfel_grid_coord_to_hash(grid_coord);
+    const uint checksum = surfel_grid_coord_to_hash(grid_coord.zyx);
 
     uint idx = (hash % MAX_SURFEL_GRID_CELLS);
 
