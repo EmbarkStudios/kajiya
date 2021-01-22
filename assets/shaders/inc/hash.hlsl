@@ -1,3 +1,6 @@
+#ifndef HASH_HLSL
+#define HASH_HLSL
+
 uint hash1(uint x) {
 	x += (x << 10u);
 	x ^= (x >>  6u);
@@ -56,3 +59,5 @@ float radical_inverse_vdc(uint bits) {
 float2 hammersley(uint i, uint n) {
     return float2(float(i + 1) / n, radical_inverse_vdc(i + 1));
 }
+
+#endif 

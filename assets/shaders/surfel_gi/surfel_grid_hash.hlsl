@@ -1,3 +1,5 @@
+#include "../inc/hash.hlsl"
+
 // Assumes the existence of the following globals:
 // surfel_meta_buf
 //      0: uint: number of cells allocated
@@ -27,11 +29,7 @@ struct SurfelGridHashEntry {
     uint checksum;
 
     // Try to acquire a lock on the vacant entry
-    bool acquire() {
-        uint prev_value;
-        surfel_hash_key_buf.InterlockedCompareExchange(idx * 4, 0, checksum, prev_value);
-        return prev_value == 0;
-    }
+    bool acquire();
 };
 
 SurfelGridHashEntry surfel_hash_lookup(float3 pos) {

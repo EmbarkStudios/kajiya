@@ -67,7 +67,9 @@ fn new_temporal_storage_buffer(device: &device::Device, size_bytes: usize) -> Te
 impl SurfelGiRenderer {
     pub fn new(device: &device::Device) -> Self {
         Self {
-            surfel_meta_buf: new_temporal_storage_buffer(device, size_of::<u32>()),
+            // 0: hash grid cell count
+            // 1: surfel count
+            surfel_meta_buf: new_temporal_storage_buffer(device, size_of::<u32>() * 8),
             surfel_hash_key_buf: new_temporal_storage_buffer(
                 device,
                 size_of::<u32>() * MAX_SURFEL_CELLS,
@@ -138,6 +140,22 @@ impl SurfelGiRenderInstance {
             .write(&mut tile_surfel_alloc_tex)
             .write(&mut debug_out)
             .dispatch(gbuffer.desc().extent);
+
+        SimpleComputePass::new(
+            rg.add_pass(),
+            "/assets/shaders/surfel_gi/allocate_surfels.hlsl",
+        )
+        .read(&gbuffer)
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .read(&self.surfel_meta_buf)
+        .read(&self.surfel_hash_key_buf)
+        .read(&self.surfel_hash_value_buf)
+        .write(&mut self.cell_index_offset_buf) // hack: should be &
+        .read(&self.surfel_index_buf)
+        .write(&mut self.surfel_spatial_buf)
+        .read(&tile_surfel_alloc_tex)
+        .write(&mut debug_out)
+        .dispatch(tile_surfel_alloc_tex.desc().extent);
 
         debug_out
     }
