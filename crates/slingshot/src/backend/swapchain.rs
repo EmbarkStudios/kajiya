@@ -15,7 +15,7 @@ pub struct SwapchainDesc {
 pub struct Swapchain {
     pub(crate) fns: khr::Swapchain,
     pub(crate) raw: vk::SwapchainKHR,
-    pub format: vk::SurfaceFormatKHR,
+    pub desc: SwapchainDesc,
     pub images: Vec<vk::Image>,
     pub image_views: Vec<vk::ImageView>,
     pub semaphores: Vec<vk::Semaphore>,
@@ -164,7 +164,7 @@ impl Swapchain {
             fns,
             raw: swapchain,
             device: device.clone(),
-            format: desc.format,
+            desc,
             images,
             image_views,
             semaphores,

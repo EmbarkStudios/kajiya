@@ -11,7 +11,9 @@
 [[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
 [[vk::binding(7)]] Texture2D<uint2> tile_surfel_alloc_tex;
-//[[vk::binding(9)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(8)]] cbuffer _ {
+    float4 gbuffer_tex_size;
+};
 
 #include "surfel_grid_hash.hlsl"
 
@@ -30,8 +32,7 @@ void main(
     const uint cell_idx = tile_surfel_alloc_packed.y;
 
     const uint2 px = tile_px * 8 + uint2(px_score_loc_packed & 7, (px_score_loc_packed >> 3) & 7);
-    const float4 output_tex_size = float4(1280.0, 720.0, 1.0 / 1280.0, 1.0 / 720.0);
-    const float2 uv = get_uv(px, output_tex_size);
+    const float2 uv = get_uv(px, gbuffer_tex_size);
 
     const float z_over_w = depth_tex[px];
     const float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);

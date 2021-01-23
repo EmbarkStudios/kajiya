@@ -280,10 +280,16 @@ impl VickiRenderClient {
             &vertex_buffer,
         );
 
+        let swapchain_dims = backend.swapchain.desc.dims;
+
         let accum_img = backend
             .device
             .create_image(
-                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, [1280, 720]).usage(
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    [swapchain_dims.width, swapchain_dims.height],
+                )
+                .usage(
                     vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_DST,

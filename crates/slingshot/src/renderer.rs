@@ -158,6 +158,7 @@ impl Renderer {
                 render_client.retire_render_graph(&retired_rg);
 
                 blit_image_to_swapchain(
+                    [rg_output_img.desc.extent[0], rg_output_img.desc.extent[1]],
                     &*self.backend.device,
                     cb,
                     &swapchain_image,

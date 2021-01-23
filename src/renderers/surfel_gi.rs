@@ -159,7 +159,7 @@ impl SurfelGiRenderInstance {
         .read(&self.surfel_index_buf)
         .write(&mut self.surfel_spatial_buf)
         .read(&tile_surfel_alloc_tex)
-        .write(&mut debug_out)
+        .constants(gbuffer.desc().extent_inv_extent_2d())
         .dispatch(tile_surfel_alloc_tex.desc().extent);
 
         self.assign_surfels_to_grid_cells(rg);

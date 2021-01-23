@@ -25,6 +25,7 @@ pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
 }
 
 pub fn blit_image_to_swapchain(
+    extent: [u32; 2],
     device: &Device,
     cb: &CommandBuffer,
     swapchain_image: &SwapchainImage,
@@ -93,12 +94,7 @@ pub fn blit_image_to_swapchain(
             ],
         );
 
-        // TODO
-        let output_size_pixels = (1280u32, 720u32); // TODO
-        let push_constants: (f32, f32) = (
-            1.0 / output_size_pixels.0 as f32,
-            1.0 / output_size_pixels.1 as f32,
-        );
+        let push_constants: (f32, f32) = (1.0 / extent[0] as f32, 1.0 / extent[1] as f32);
         device.raw.cmd_push_constants(
             cb.raw,
             present_shader.pipeline_layout,
@@ -106,12 +102,9 @@ pub fn blit_image_to_swapchain(
             0,
             std::slice::from_raw_parts(&push_constants.0 as *const f32 as *const u8, 2 * 4),
         );
-        device.raw.cmd_dispatch(
-            cb.raw,
-            (output_size_pixels.0 + 7) / 8,
-            (output_size_pixels.1 + 7) / 8,
-            1,
-        );
+        device
+            .raw
+            .cmd_dispatch(cb.raw, (extent[0] + 7) / 8, (extent[1] + 7) / 8, 1);
     }
 
     record_image_barrier(
