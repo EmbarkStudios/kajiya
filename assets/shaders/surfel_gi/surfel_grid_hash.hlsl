@@ -10,6 +10,7 @@ static const uint MAX_SURFEL_GRID_CELLS = 1024 * 1024;
 static const float SURFEL_GRID_CELL_DIAMETER = 1.0 / 3.0;
 
 static const float SURFEL_RADIUS = 0.5;
+static const float SURFEL_NORMAL_DIRECTION_SQUISH = 2.0;
 
 int3 surfel_pos_to_grid_coord(float3 pos) {
     return int3(floor(pos / SURFEL_GRID_CELL_DIAMETER));

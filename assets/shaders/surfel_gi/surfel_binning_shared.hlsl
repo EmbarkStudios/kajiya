@@ -31,6 +31,15 @@ bool surfel_intersects_grid_coord(Vertex surfel, int3 grid_coord) {
     const float3 cell_local_closest_point_on_grid_cell =
         clamp(cell_local_surfel_pos, -grid_cell_radius, grid_cell_radius);
 
-    const float3 offset = cell_local_surfel_pos - cell_local_closest_point_on_grid_cell;
-    return dot(offset, offset) < SURFEL_RADIUS * SURFEL_RADIUS;
+    const float3 pos_offset = cell_local_surfel_pos - cell_local_closest_point_on_grid_cell;
+
+    #if 1
+        // Approximate box-ellipsoid culling. Sometimes misses corners,
+        // but greatly improves culling efficiency.
+        // TODO: figure out a precise solution
+        const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
+        return mahalanobis_dist < SURFEL_RADIUS;
+    #else
+        return dot(pos_offset, pos_offset) < SURFEL_RADIUS * SURFEL_RADIUS;
+    #endif
 }

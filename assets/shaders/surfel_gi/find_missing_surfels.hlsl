@@ -95,10 +95,17 @@ void main(
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
             const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
             const float dist = length(pos_offset);
-            const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * 2);
-            const float weight = smoothstep(SURFEL_RADIUS * 1.2, 0.0, mahalanobis_dist) * directional_weight;
+            const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
 
-            useful_surfel_count += weight > 1e-4 ? 1 : 0;
+            // Smoother lighting at the cost of some discontinuities
+            static const float RADIUS_OVERSIZE = 1.1;
+
+            const float weight = smoothstep(
+                SURFEL_RADIUS * RADIUS_OVERSIZE,
+                0.0,
+                mahalanobis_dist) * directional_weight;
+
+            useful_surfel_count += weight > 1e-5 ? 1 : 0;
             total_weight += weight;
             total_color += surfel_color * weight;// * (dist < 0.05 ? 10 : 0);
         }
@@ -111,6 +118,10 @@ void main(
                 cell_surfel_count > 16 ? float3(1, 1, 0):
                 cell_surfel_count > 8 ? float3(0, 1, 0):
                 float3(0, 1, 0);
+        #endif
+
+        #if 0
+            total_color = lerp(float3(1, 0, 0), float3(0, 1, 0), useful_surfel_count / 10.0);
         #endif
 
         debug_out_tex[px] = float4(total_color, 1);
