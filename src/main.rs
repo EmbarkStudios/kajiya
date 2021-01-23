@@ -27,20 +27,40 @@ use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
+use std::path::PathBuf;
+use structopt::StructOpt;
+
 pub struct FrameState {
     pub camera_matrices: CameraMatrices,
     pub window_cfg: WindowConfig,
     pub input: InputState,
 }
 
+#[derive(Debug, StructOpt)]
+#[structopt(name = "vicki", about = "Toy rendering engine.")]
+struct Opt {
+    #[structopt(long, default_value = "1280")]
+    width: u32,
+
+    #[structopt(long, default_value = "720")]
+    height: u32,
+
+    #[structopt(long, parse(from_os_str))]
+    scene: PathBuf,
+
+    #[structopt(long, default_value = "0.1")]
+    scale: f32,
+}
+
 fn try_main() -> anyhow::Result<()> {
     logging::set_up_logging()?;
+    let opt = Opt::from_args();
 
     let mut event_loop = winit::EventsLoop::new();
 
     let window_cfg = WindowConfig {
-        width: 1280,
-        height: 720,
+        width: opt.width,
+        height: opt.height,
     };
 
     let window = Arc::new(
@@ -112,9 +132,15 @@ fn try_main() -> anyhow::Result<()> {
     }
     .into_lazy();*/
 
-    let mesh = LoadGltfScene {
+    /*let mesh = LoadGltfScene {
         path: "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf".into(),
         scale: 0.003,
+    }
+    .into_lazy();*/
+
+    let mesh = LoadGltfScene {
+        path: opt.scene,
+        scale: opt.scale,
     }
     .into_lazy();
 

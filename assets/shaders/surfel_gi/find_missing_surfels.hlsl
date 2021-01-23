@@ -177,7 +177,7 @@ void main(
     // Execution only survives here if we would like to allocate a surfel in this tile
 
     uint px_score_loc_packed = 0;
-    if (uint_to_u01_float(hash1_mut(seed)) < 0.001 * pt_depth / 64.0) {
+    if (uint_to_u01_float(hash1_mut(seed)) < 2000.0 * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
         px_score_loc_packed = (asuint(px_score) & (0xffffffff - 63)) | (px_within_group.y * 8 + px_within_group.x);
     }
     
