@@ -125,7 +125,7 @@ void main(
             total_color += surfel_color * weight;// * (dist < 0.05 ? 10 : 0);
         }
 
-        total_color /= max(1e-8, total_weight);
+        total_color /= max(0.1, total_weight);
 
         #if 0
             total_color =
