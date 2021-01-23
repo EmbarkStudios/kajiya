@@ -8,10 +8,9 @@
 [[vk::binding(2)]] RWByteAddressBuffer surfel_meta_buf;
 [[vk::binding(3)]] ByteAddressBuffer surfel_hash_key_buf;
 [[vk::binding(4)]] ByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(5)]] RWByteAddressBuffer cell_index_offset_buf;
-[[vk::binding(6)]] ByteAddressBuffer surfel_index_buf;
-[[vk::binding(7)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(8)]] Texture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
+[[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
+[[vk::binding(7)]] Texture2D<uint2> tile_surfel_alloc_tex;
 //[[vk::binding(9)]] RWTexture2D<float4> debug_out_tex;
 
 #include "surfel_grid_hash.hlsl"
@@ -49,8 +48,4 @@ void main(
     surfel_meta_buf.InterlockedAdd(1 * sizeof(uint), 1, surfel_idx);
 
     surfel_spatial_buf[surfel_idx] = surfel;
-
-    // HACK
-
-    cell_index_offset_buf.Store(sizeof(uint) * cell_idx, surfel_idx);
 }

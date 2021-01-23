@@ -30,7 +30,7 @@ pub struct SurfelGiRenderer {
 
 const MAX_SURFEL_CELLS: usize = 1024 * 1024;
 const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
-const MAX_SURFELS_PER_CELL: usize = 8;
+const MAX_SURFELS_PER_CELL: usize = 32;
 
 macro_rules! impl_renderer_temporal_logic {
     ($($res_name:ident,)*) => {
@@ -156,7 +156,6 @@ impl SurfelGiRenderInstance {
         .read(&self.surfel_meta_buf)
         .read(&self.surfel_hash_key_buf)
         .read(&self.surfel_hash_value_buf)
-        .write(&mut self.cell_index_offset_buf) // hack: should be &
         .read(&self.surfel_index_buf)
         .write(&mut self.surfel_spatial_buf)
         .read(&tile_surfel_alloc_tex)
@@ -214,7 +213,7 @@ impl SurfelGiRenderInstance {
         .read(&self.surfel_hash_key_buf)
         .read(&self.surfel_hash_value_buf)
         .read(&self.surfel_spatial_buf)
-        .read(&self.cell_index_offset_buf)
+        .write(&mut self.cell_index_offset_buf)
         .write(&mut self.surfel_index_buf)
         // Thread per surfel
         .dispatch_indirect(&indirect_args_buf, 16);

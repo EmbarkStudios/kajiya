@@ -7,22 +7,23 @@
 [[vk::binding(4)]] RWByteAddressBuffer cell_index_offset_buf;
 
 #include "surfel_grid_hash.hlsl"
-
-static const float SURFEL_RADIUS = 0.5;
+#include "surfel_binning_shared.hlsl"
 
 [numthreads(64, 1, 1)]
 void main(uint thread_index: SV_DispatchThreadID) {
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[thread_index]);
 
-    const float3 box_min_pos = surfel.position - SURFEL_RADIUS;
-    const float3 box_max_pos = surfel.position + SURFEL_RADIUS;
-
-    const int3 box_min = surfel_pos_to_grid_coord(box_min_pos);
-    const int3 box_max = surfel_pos_to_grid_coord(box_max_pos);
+    int3 box_min;
+    int3 box_max;
+    get_surfel_grid_box_min_max(surfel, box_min, box_max);
 
     for (int z = box_min.z; z <= box_max.z; ++z) {
         for (int y = box_min.y; y <= box_max.y; ++y) {
             for (int x = box_min.x; x <= box_max.x; ++x) {
+                if (!surfel_intersects_grid_coord(surfel, int3(x, y, z))) {
+                    continue;
+                }
+
                 const SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(int3(x, y, z));
 
                 if (entry.found) {

@@ -7,9 +7,16 @@
 //      4*k: checksum
 
 static const uint MAX_SURFEL_GRID_CELLS = 1024 * 1024;
+static const float SURFEL_GRID_CELL_DIAMETER = 1.0 / 3.0;
+
+static const float SURFEL_RADIUS = 0.5;
 
 int3 surfel_pos_to_grid_coord(float3 pos) {
-    return int3(floor(pos * 3.0));
+    return int3(floor(pos / SURFEL_GRID_CELL_DIAMETER));
+}
+
+float3 surfel_grid_coord_center(int3 coord) {
+    return (coord + 0.5.xxx) * SURFEL_GRID_CELL_DIAMETER;
 }
 
 uint surfel_grid_coord_to_hash(int3 coord) {

@@ -92,7 +92,7 @@ void main() {
         outgoing_ray = new_ray(
             surfel.position,
             normalize(surfel.normal + uniform_sample_sphere(urand)),
-            0.1,
+            1e-3,
             FLT_MAX
         );
     }
@@ -250,7 +250,6 @@ void main() {
 
     // ----
 
-    float3 prev_total_radiance = surfel_irradiance_buf[surfel_idx].xyz;
-    float3 blended_radiance = lerp(prev_total_radiance, total_radiance, 0.01);
-    surfel_irradiance_buf[surfel_idx] = float4(blended_radiance, 0);
+    float4 prev_total_radiance_packed = surfel_irradiance_buf[surfel_idx];
+    surfel_irradiance_buf[surfel_idx] = prev_total_radiance_packed + float4(total_radiance, 1);
 }

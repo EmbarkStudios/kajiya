@@ -66,30 +66,60 @@ void main(
     uint cell_idx = 0xffffffff;
 
     if (entry.found) {
-        cell_idx = surfel_hash_value_buf.Load(entry.idx * 4);
+        px_score = 0.0;
+
+        cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
         float3 surfel_color = uint_id_to_color(cell_idx) * 0.3;
 
         // Calculate px score based on surrounding surfels
 
-        // hack: this should be the index intointo surfel_index_buf,
-        // which defines a span of surfels
-        const uint surfel_idx = cell_index_offset_buf.Load(sizeof(uint) * cell_idx);
-        if (surfel_idx != 0) {
+        uint2 surfel_idx_loc_range = cell_index_offset_buf.Load2(sizeof(uint) * cell_idx);
+        const uint cell_surfel_count = surfel_idx_loc_range.y - surfel_idx_loc_range.x;
+
+        // TEMP HACK: Make sure we're not iterating over tons of surfels out of bounds
+        surfel_idx_loc_range.y = min(surfel_idx_loc_range.y, surfel_idx_loc_range.x + 128);
+
+        float3 total_color = 0.0.xxx;
+        float total_weight = 0.0;
+        uint useful_surfel_count = 0;
+
+        for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
+            const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
+
             Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
-            surfel_color = (surfel.normal * 0.5 + 0.5) * 0.3;
-            surfel_color = surfel_irradiance_buf[surfel_idx].xyz;
-            surfel_color *= max(0.0, dot(surfel.normal, gbuffer.normal));
+            //surfel_color = (surfel.normal * 0.5 + 0.5) * 0.3;
 
-            float dist = length(pt_ws.xyz - surfel.position.xyz);
-            //debug_out_tex[px] = float4(surfel_color * (dist < 0.1 ? 1.0 : 0.0), 1);
-            debug_out_tex[px] = float4(surfel_color, 1);
+            float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
+            surfel_color = surfel_irradiance_packed.xyz / max(1.0, surfel_irradiance_packed.w);
 
-            if (dist > 0.5) {
-                px_score = 1.0 / (1.0 + dist);
-            } else {
-                return;
-            }
+            const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
+            const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
+            const float dist = length(pos_offset);
+            const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * 2);
+            const float weight = smoothstep(SURFEL_RADIUS * 1.2, 0.0, mahalanobis_dist) * directional_weight;
+
+            useful_surfel_count += weight > 1e-4 ? 1 : 0;
+            total_weight += weight;
+            total_color += surfel_color * weight;// * (dist < 0.05 ? 10 : 0);
         }
+
+        total_color /= max(1e-8, total_weight);
+
+        #if 0
+            total_color =
+                cell_surfel_count > 32 ? float3(1, 0, 0):
+                cell_surfel_count > 16 ? float3(1, 1, 0):
+                cell_surfel_count > 8 ? float3(0, 1, 0):
+                float3(0, 1, 0);
+        #endif
+
+        debug_out_tex[px] = float4(total_color, 1);
+
+        if (cell_surfel_count >= 32 || useful_surfel_count > 2 || total_weight > 0.2) {
+            return;
+        }
+
+        px_score = 1.0 / (1.0 + total_weight);
     } else {
         if (entry.vacant) {
             //if (uint_to_u01_float(hash1_mut(seed)) < 0.001) {
@@ -97,6 +127,8 @@ void main(
                     surfel_meta_buf.InterlockedAdd(0 * sizeof(uint), 1, cell_idx);
                     surfel_hash_value_buf.Store(entry.idx * 4, cell_idx);
                 } else {
+                    // Allocating the cell
+                    //debug_out_tex[px] = float4(10, 0, 0, 1);
                     return;
                 }
             //}
@@ -123,5 +155,7 @@ void main(
     if (gs_px_score_loc_packed == px_score_loc_packed && px_score_loc_packed != 0) {
         debug_out_tex[px] = float4(10, 0, 0, 1);
         tile_surfel_alloc_tex[group_id] = uint2(px_score_loc_packed, cell_idx);
+    } else {
+        //debug_out_tex[px] = float4(0, 0, 10, 1);
     }
 }

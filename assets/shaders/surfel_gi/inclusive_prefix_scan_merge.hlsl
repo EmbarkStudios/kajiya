@@ -5,7 +5,7 @@
 [[vk::binding(1)]] ByteAddressBuffer segment_sum_buf;
 
 uint2 load_input2(uint idx, uint segment) {
-    const uint internal_sum = inout_buf.Load(sizeof(uint) * (idx + segment * SEGMENT_SIZE));
+    const uint2 internal_sum = inout_buf.Load2(sizeof(uint) * (idx + segment * SEGMENT_SIZE));
     const uint prev_segment_sum = segment == 0 ? 0 : segment_sum_buf.Load(sizeof(uint) * (segment - 1));
 
     return internal_sum + prev_segment_sum;
