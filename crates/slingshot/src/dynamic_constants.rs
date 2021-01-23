@@ -33,7 +33,7 @@ impl DynamicConstants {
         (self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES + self.frame_offset_bytes) as u32
     }
 
-    pub fn push<T: Copy>(&mut self, t: T) -> u32 {
+    pub fn push<T: Copy>(&mut self, t: &T) -> u32 {
         let t_size = size_of::<T>();
         assert!(self.frame_offset_bytes + t_size < DYNAMIC_CONSTANTS_SIZE_BYTES);
 
@@ -43,7 +43,7 @@ impl DynamicConstants {
         let dst = &mut self.buffer.allocation.mapped_slice_mut().unwrap()
             [buffer_offset..buffer_offset + t_size];
 
-        dst.copy_from_slice(as_byte_slice(&t));
+        dst.copy_from_slice(as_byte_slice(t));
 
         let t_size_aligned =
             (t_size + DYNAMIC_CONSTANTS_ALIGNMENT - 1) & !(DYNAMIC_CONSTANTS_ALIGNMENT - 1);

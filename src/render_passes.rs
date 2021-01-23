@@ -394,6 +394,7 @@ pub fn light_gbuffer(
     gbuffer: &Handle<Image>,
     depth: &Handle<Image>,
     sun_shadow_mask: &Handle<Image>,
+    ssgi: &Handle<Image>,
     output: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
@@ -401,6 +402,7 @@ pub fn light_gbuffer(
         .read(gbuffer)
         .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
         .read(sun_shadow_mask)
+        .read(ssgi)
         .write(output)
         .constants(gbuffer.desc().extent_inv_extent_2d())
         .raw_descriptor_set(1, bindless_descriptor_set)

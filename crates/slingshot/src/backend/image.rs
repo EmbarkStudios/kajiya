@@ -101,6 +101,10 @@ impl ImageDesc {
         self
     }
 
+    pub fn half_res(self) -> Self {
+        self.div_up_extent([2, 2, 2])
+    }
+
     pub fn extent_inv_extent_2d(&self) -> [f32; 4] {
         [
             self.extent[0] as f32,

@@ -8,7 +8,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{trace_sun_shadow_mask, RasterMeshesData, UploadedTriMesh},
     renderer::*,
-    renderers::surfel_gi::{self, SurfelGiRenderer},
+    renderers::{ssgi::*, surfel_gi::*},
     rg::{self, RetiredRenderGraph, SimpleComputePass},
     temporal::*,
     viewport::ViewConstants,
@@ -78,6 +78,7 @@ pub struct VickiRenderClient {
     frame_idx: u32,
 
     surfel_gi: SurfelGiRenderer,
+    ssgi: SsgiRenderer,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -299,6 +300,7 @@ impl VickiRenderClient {
             .unwrap();
 
         let surfel_renderer = SurfelGiRenderer::new(backend.device.as_ref());
+        let ssgi_renderer = SsgiRenderer::new();
 
         Ok(Self {
             raster_simple_render_pass,
@@ -321,6 +323,7 @@ impl VickiRenderClient {
             frame_idx: 0u32,
 
             surfel_gi: surfel_renderer,
+            ssgi: ssgi_renderer,
         })
     }
 
@@ -556,11 +559,14 @@ impl VickiRenderClient {
 
         let mut lit = surfel_gi_debug;
 
+        let ssgi = self.ssgi.render(rg, &gbuffer, &depth_img);
+
         crate::render_passes::light_gbuffer(
             rg,
             &gbuffer,
             &depth_img,
             &sun_shadow_mask,
+            &ssgi,
             &mut lit,
             self.bindless_descriptor_set,
         );
@@ -661,7 +667,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
         let width = frame_state.window_cfg.width;
         let height = frame_state.window_cfg.height;
 
-        dynamic_constants.push(FrameConstants {
+        dynamic_constants.push(&FrameConstants {
             view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
                 .build(),
             mouse: gen_shader_mouse_state(&frame_state),

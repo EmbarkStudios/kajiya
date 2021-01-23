@@ -13,11 +13,13 @@
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
-[[vk::binding(4)]] SamplerState sampler_lnc;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float4> ssgi_tex;
+[[vk::binding(4)]] RWTexture2D<float4> output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
 };
+
+SamplerState sampler_lnc;
 
 static const float3 ambient_light = 0.0;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
@@ -50,10 +52,12 @@ float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, f
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
+    const float4 ssgi = ssgi_tex[px / 2];
+
     float2 uv = get_uv(px, output_tex_size);
 
     #if 0
-        uv.x *= output_tex_size.x / output_tex_size.y;
+        ruv.x *= output_tex_size.x / output_tex_size.y;
         output_tex[px] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
         return;
     #endif
@@ -140,7 +144,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
     //total_radiance += uint_id_to_color(pt_hash);
 
-    total_radiance += output_tex[px].xyz * gbuffer.albedo;
+    #if 1
+        total_radiance += (output_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
+    #else
+        total_radiance += output_tex[px].xyz * gbuffer.albedo;
+    #endif
     
     total_radiance = neutral_tonemap(total_radiance);
     //total_radiance = gbuffer.metalness;

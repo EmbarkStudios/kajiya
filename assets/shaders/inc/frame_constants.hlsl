@@ -31,6 +31,10 @@ struct ViewRayContext {
     float4 ray_origin_vs_h;
     float4 ray_origin_ws_h;
 
+    float4 ray_hit_cs;
+    float4 ray_hit_vs_h;
+    float4 ray_hit_ws_h;
+
     float3 ray_dir_vs() {
         return ray_dir_vs_h.xyz;
     }
@@ -47,6 +51,14 @@ struct ViewRayContext {
         return ray_origin_ws_h.xyz / ray_origin_ws_h.w;
     }
 
+    float3 ray_hit_vs() {
+        return ray_hit_vs_h.xyz / ray_hit_vs_h.w;
+    }
+
+    float3 ray_hit_ws() {
+        return ray_hit_ws_h.xyz / ray_hit_ws_h.w;
+    }
+
     static ViewRayContext from_uv(float2 uv) {
         ViewConstants view_constants = frame_constants.view_constants;
 
@@ -58,6 +70,25 @@ struct ViewRayContext {
         res.ray_origin_cs = float4(uv_to_cs(uv), 1.0, 1.0);
         res.ray_origin_vs_h = mul(view_constants.sample_to_view, res.ray_origin_cs);
         res.ray_origin_ws_h = mul(view_constants.view_to_world, res.ray_origin_vs_h);
+
+        return res;
+    }
+
+    static ViewRayContext from_uv_and_depth(float2 uv, float depth) {
+        ViewConstants view_constants = frame_constants.view_constants;
+
+        ViewRayContext res;
+        res.ray_dir_cs = float4(uv_to_cs(uv), 0.0, 1.0);
+        res.ray_dir_vs_h = mul(view_constants.sample_to_view, res.ray_dir_cs);
+        res.ray_dir_ws_h = mul(view_constants.view_to_world, res.ray_dir_vs_h);
+
+        res.ray_origin_cs = float4(uv_to_cs(uv), 1.0, 1.0);
+        res.ray_origin_vs_h = mul(view_constants.sample_to_view, res.ray_origin_cs);
+        res.ray_origin_ws_h = mul(view_constants.view_to_world, res.ray_origin_vs_h);
+
+        res.ray_hit_cs = float4(uv_to_cs(uv), depth, 1.0);
+        res.ray_hit_vs_h = mul(view_constants.sample_to_view, res.ray_hit_cs);
+        res.ray_hit_ws_h = mul(view_constants.view_to_world, res.ray_hit_vs_h);
 
         return res;
     }

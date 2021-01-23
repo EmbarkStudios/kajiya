@@ -23,7 +23,7 @@ where
         self: Box<Self>,
         dynamic_constants: &mut crate::dynamic_constants::DynamicConstants,
     ) -> u32 {
-        dynamic_constants.push(*self)
+        dynamic_constants.push(self.as_ref())
     }
 }
 
