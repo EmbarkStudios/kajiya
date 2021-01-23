@@ -76,7 +76,7 @@ void main(
         px_score = 0.0;
 
         cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
-        float3 surfel_color = uint_id_to_color(cell_idx) * 0.3;
+        float3 surfel_color = 0;//uint_id_to_color(cell_idx) * 0.3;
 
         // Calculate px score based on surrounding surfels
 
@@ -88,6 +88,7 @@ void main(
 
         float3 total_color = 0.0.xxx;
         float total_weight = 0.0;
+        float scoring_total_weight = 0.0;
         uint useful_surfel_count = 0;
 
         for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
@@ -100,22 +101,27 @@ void main(
             surfel_color = surfel_irradiance_packed.xyz / max(1.0, surfel_irradiance_packed.w);
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-            const float ndotl = max(0.0, dot(surfel.normal, gbuffer.normal));
-            const float directional_weight = pow(ndotl, 2);
+            const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
             const float dist = length(pos_offset);
             const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
 
-            static const float RADIUS_OVERSCALE = 1.0;
+            static const float RADIUS_OVERSCALE = 1.25;
 
             float weight = smoothstep(
                 SURFEL_RADIUS * RADIUS_OVERSCALE,
                 0.0,
                 mahalanobis_dist) * directional_weight;
 
-            useful_surfel_count += weight > 1e-5 ? 1 : 0;
+            const float scoring_weight = smoothstep(
+                SURFEL_RADIUS,
+                0.0,
+                mahalanobis_dist) * directional_weight;
+
+            useful_surfel_count += scoring_weight > 1e-5 ? 1 : 0;
 
             weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
             total_weight += weight;
+            scoring_total_weight += scoring_weight;
             total_color += surfel_color * weight;// * (dist < 0.05 ? 10 : 0);
         }
 
@@ -133,9 +139,16 @@ void main(
             total_color = lerp(float3(1, 0, 0), float3(0, 1, 0), useful_surfel_count / 10.0);
         #endif
 
+        if (cell_surfel_count > 128) {
+            total_color = float3(1, 0, 1);
+        }
+
+        //total_color = uint_id_to_color(cell_idx) * 0.3;
+        //total_color = saturate(1.0 - length(pt_ws.xyz));
+
         debug_out_tex[px] = float4(total_color, 1);
 
-        if (cell_surfel_count >= 32 || useful_surfel_count > 2 || total_weight > 0.2) {
+        if (cell_surfel_count >= 32 || useful_surfel_count > 2 || scoring_total_weight > 0.2) {
             return;
         }
 
@@ -162,7 +175,7 @@ void main(
     // Execution only survives here if we would like to allocate a surfel in this tile
 
     uint px_score_loc_packed = 0;
-    if (uint_to_u01_float(hash1_mut(seed)) < 0.0005 * pt_depth / 64.0) {
+    if (uint_to_u01_float(hash1_mut(seed)) < 0.001 * pt_depth / 64.0) {
         px_score_loc_packed = (asuint(px_score) & (0xffffffff - 63)) | (px_within_group.y * 8 + px_within_group.x);
     }
     

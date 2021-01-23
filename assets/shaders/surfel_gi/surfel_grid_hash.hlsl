@@ -52,7 +52,7 @@ SurfelGridHashEntry surfel_hash_lookup_by_grid_coord(int3 grid_coord) {
 
     uint idx = (hash % MAX_SURFEL_GRID_CELLS);
 
-    static const uint MAX_PROBE_COUNT = 4;
+    static const uint MAX_PROBE_COUNT = 8;
     for (uint i = 0; i < MAX_PROBE_COUNT; ++i, ++idx) {
         const uint entry_checksum = surfel_hash_key_buf.Load(idx * 4);
 

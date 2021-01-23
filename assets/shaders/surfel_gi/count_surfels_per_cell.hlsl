@@ -10,8 +10,13 @@
 #include "surfel_binning_shared.hlsl"
 
 [numthreads(64, 1, 1)]
-void main(uint thread_index: SV_DispatchThreadID) {
-    const Vertex surfel = unpack_vertex(surfel_spatial_buf[thread_index]);
+void main(uint surfel_idx: SV_DispatchThreadID) {
+    const uint total_surfel_count = surfel_meta_buf.Load(1 * sizeof(uint));
+    if (surfel_idx >= total_surfel_count) {
+        return;
+    }
+
+    const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
     int3 box_min;
     int3 box_max;

@@ -108,7 +108,7 @@ fn try_main() -> anyhow::Result<()> {
 
     /*let mesh = LoadGltfScene {
         path: "assets/meshes3/gas_stations_fixed/scene.gltf".into(),
-        scale: 0.03,
+        scale: 0.02,
     }
     .into_lazy();*/
 
