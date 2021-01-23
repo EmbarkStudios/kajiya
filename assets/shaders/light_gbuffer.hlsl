@@ -15,6 +15,9 @@
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 [[vk::binding(4)]] SamplerState sampler_lnc;
+[[vk::binding(4)]] cbuffer _ {
+    float4 output_tex_size;
+};
 
 static const float3 ambient_light = 0.0;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
@@ -47,11 +50,10 @@ float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, f
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
-    float4 output_tex_size = float4(1280.0, 720.0, 1.0 / 1280.0, 1.0 / 720.0);
     float2 uv = get_uv(px, output_tex_size);
 
     #if 0
-        uv *= float2(1280.0 / 720.0, 1);
+        uv.x *= output_tex_size.x / output_tex_size.y;
         output_tex[px] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
         return;
     #endif

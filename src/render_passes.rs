@@ -397,47 +397,14 @@ pub fn light_gbuffer(
     output: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
-    let mut pass = rg.add_pass();
-
-    let pipeline = pass.register_compute_pipeline("/assets/shaders/light_gbuffer.hlsl");
-
-    let gbuffer_ref = pass.read(
-        gbuffer,
-        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-    );
-    let depth_ref = pass.read(
-        depth,
-        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-    );
-    let sun_shadow_mask_ref = pass.read(
-        sun_shadow_mask,
-        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-    );
-
-    // TODO: make it not read the contents, and use AccessType::ComputeShaderWrite
-    let output_ref = pass.write(output, AccessType::General);
-
-    pass.render(move |api| {
-        let pipeline = api.bind_compute_pipeline(
-            pipeline
-                .into_binding()
-                .descriptor_set(
-                    0,
-                    &[
-                        gbuffer_ref.bind(),
-                        depth_ref.bind_view(
-                            ImageViewDescBuilder::default()
-                                .aspect_mask(vk::ImageAspectFlags::DEPTH),
-                        ),
-                        sun_shadow_mask_ref.bind(),
-                        output_ref.bind(),
-                    ],
-                )
-                .raw_descriptor_set(1, bindless_descriptor_set),
-        );
-
-        pipeline.dispatch(gbuffer_ref.desc().extent);
-    });
+    SimpleComputePass::new(rg.add_pass(), "/assets/shaders/light_gbuffer.hlsl")
+        .read(gbuffer)
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .read(sun_shadow_mask)
+        .write(output)
+        .constants(gbuffer.desc().extent_inv_extent_2d())
+        .raw_descriptor_set(1, bindless_descriptor_set)
+        .dispatch(gbuffer.desc().extent);
 }
 
 pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {

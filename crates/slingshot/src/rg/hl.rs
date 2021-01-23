@@ -27,11 +27,42 @@ where
     }
 }
 
-pub struct SimpleComputePass<'rg> {
-    pass: PassBuilder<'rg>,
+pub struct SimpleComputePassState {
     pipeline: RgComputePipelineHandle,
     bindings: Vec<RenderPassBinding>,
     const_blobs: Vec<(usize, Box<dyn ConstBlob>)>,
+    raw_descriptor_sets: Vec<(u32, vk::DescriptorSet)>,
+}
+
+impl SimpleComputePassState {
+    pub fn new(pipeline: RgComputePipelineHandle) -> Self {
+        Self {
+            pipeline,
+            bindings: Vec::new(),
+            const_blobs: Vec::new(),
+            raw_descriptor_sets: Vec::new(),
+        }
+    }
+
+    fn patch_const_blobs(&mut self, api: &mut RenderPassApi) {
+        let dynamic_constants = api.dynamic_constants();
+
+        let const_blobs = std::mem::take(&mut self.const_blobs);
+        for (binding_idx, blob) in const_blobs {
+            let dynamic_constants_offset = ConstBlob::push_self(blob, dynamic_constants);
+            match &mut self.bindings[binding_idx] {
+                RenderPassBinding::DynamicConstants(offset) => {
+                    *offset = dynamic_constants_offset;
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+
+pub struct SimpleComputePass<'rg> {
+    pass: PassBuilder<'rg>,
+    state: SimpleComputePassState,
 }
 
 impl<'rg> SimpleComputePass<'rg> {
@@ -40,9 +71,7 @@ impl<'rg> SimpleComputePass<'rg> {
 
         Self {
             pass,
-            pipeline,
-            bindings: Vec::new(),
-            const_blobs: Vec::new(),
+            state: SimpleComputePassState::new(pipeline),
         }
     }
 
@@ -56,7 +85,7 @@ impl<'rg> SimpleComputePass<'rg> {
             AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
-        self.bindings.push(BindRgRef::bind(&handle_ref));
+        self.state.bindings.push(BindRgRef::bind(&handle_ref));
 
         self
     }
@@ -71,7 +100,8 @@ impl<'rg> SimpleComputePass<'rg> {
             AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
-        self.bindings
+        self.state
+            .bindings
             .push(handle_ref.bind_view(ImageViewDescBuilder::default().aspect_mask(aspect_mask)));
 
         self
@@ -84,48 +114,39 @@ impl<'rg> SimpleComputePass<'rg> {
     {
         let handle_ref = self.pass.write(handle, AccessType::ComputeShaderWrite);
 
-        self.bindings.push(BindRgRef::bind(&handle_ref));
+        self.state.bindings.push(BindRgRef::bind(&handle_ref));
 
         self
     }
 
     pub fn constants<T: Copy + 'static>(mut self, consts: T) -> Self {
-        let binding_idx = self.bindings.len();
+        let binding_idx = self.state.bindings.len();
 
-        self.bindings.push(RenderPassBinding::DynamicConstants(0));
-        self.const_blobs.push((binding_idx, Box::new(consts)));
+        self.state
+            .bindings
+            .push(RenderPassBinding::DynamicConstants(0));
+        self.state.const_blobs.push((binding_idx, Box::new(consts)));
 
         self
     }
 
-    fn patch_const_blobs(
-        api: &mut RenderPassApi,
-        bindings: &mut Vec<RenderPassBinding>,
-        const_blobs: Vec<(usize, Box<dyn ConstBlob>)>,
-    ) {
-        let dynamic_constants = api.dynamic_constants();
-
-        for (binding_idx, blob) in const_blobs {
-            let dynamic_constants_offset = ConstBlob::push_self(blob, dynamic_constants);
-            match &mut bindings[binding_idx] {
-                RenderPassBinding::DynamicConstants(offset) => {
-                    *offset = dynamic_constants_offset;
-                }
-                _ => unreachable!(),
-            }
-        }
+    pub fn raw_descriptor_set(mut self, set_idx: u32, set: vk::DescriptorSet) -> Self {
+        self.state.raw_descriptor_sets.push((set_idx, set));
+        self
     }
 
     pub fn dispatch(self, extent: [u32; 3]) {
-        let pipeline = self.pipeline;
-        let mut bindings = self.bindings;
-        let const_blobs = self.const_blobs;
+        let mut state = self.state;
 
         self.pass.render(move |api| {
-            Self::patch_const_blobs(api, &mut bindings, const_blobs);
+            state.patch_const_blobs(api);
 
-            let pipeline =
-                api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
+            let pipeline = api.bind_compute_pipeline(
+                state
+                    .pipeline
+                    .into_binding()
+                    .descriptor_set(0, &state.bindings),
+            );
 
             pipeline.dispatch(extent);
         });
@@ -133,16 +154,17 @@ impl<'rg> SimpleComputePass<'rg> {
 
     pub fn dispatch_indirect(mut self, args_buffer: &Handle<Buffer>, args_buffer_offset: u64) {
         let args_buffer_ref = self.pass.read(args_buffer, AccessType::IndirectBuffer);
-
-        let pipeline = self.pipeline;
-        let mut bindings = self.bindings;
-        let const_blobs = self.const_blobs;
+        let mut state = self.state;
 
         self.pass.render(move |api| {
-            Self::patch_const_blobs(api, &mut bindings, const_blobs);
+            state.patch_const_blobs(api);
 
-            let pipeline =
-                api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
+            let pipeline = api.bind_compute_pipeline(
+                state
+                    .pipeline
+                    .into_binding()
+                    .descriptor_set(0, &state.bindings),
+            );
 
             pipeline.dispatch_indirect(args_buffer_ref, args_buffer_offset);
         });
