@@ -36,7 +36,7 @@ bool surfel_intersects_grid_coord(Vertex surfel, int3 grid_coord) {
     #if 1
         // Approximate box-ellipsoid culling. Sometimes misses corners,
         // but greatly improves culling efficiency.
-        // TODO: figure out a precise solution
+        // TODO: figure out a precise solution. Warp space before finding the closest point?
         const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
         return mahalanobis_dist < SURFEL_RADIUS;
     #else

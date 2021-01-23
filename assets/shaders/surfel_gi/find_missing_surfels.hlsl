@@ -49,10 +49,13 @@ void main(
         return;
     }
 
-    float z_over_w = depth_tex[px];
-    float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
-    float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
+    const float z_over_w = depth_tex[px];
+    const float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
+    const float4 pt_vs = mul(frame_constants.view_constants.sample_to_view, pt_cs);
+    float4 pt_ws = mul(frame_constants.view_constants.view_to_world, pt_vs);
     pt_ws /= pt_ws.w;
+
+    const float pt_depth = -pt_vs.z / pt_vs.w;
 
     // TODO: nuke
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
@@ -93,15 +96,15 @@ void main(
             surfel_color = surfel_irradiance_packed.xyz / max(1.0, surfel_irradiance_packed.w);
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-            const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
+            const float ndotl = max(0.0, dot(surfel.normal, gbuffer.normal));
+            const float directional_weight = pow(ndotl, 2);
             const float dist = length(pos_offset);
             const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
 
-            // Smoother lighting at the cost of some discontinuities
-            static const float RADIUS_OVERSIZE = 1.1;
+            static const float RADIUS_OVERSCALE = 1.0;
 
             const float weight = smoothstep(
-                SURFEL_RADIUS * RADIUS_OVERSIZE,
+                SURFEL_RADIUS * RADIUS_OVERSCALE,
                 0.0,
                 mahalanobis_dist) * directional_weight;
 
@@ -153,7 +156,7 @@ void main(
     // Execution only survives here if we would like to allocate a surfel in this tile
 
     uint px_score_loc_packed = 0;
-    if (uint_to_u01_float(hash1_mut(seed)) < 0.0001) {
+    if (uint_to_u01_float(hash1_mut(seed)) < 0.0005 * pt_depth / 64.0) {
         px_score_loc_packed = (asuint(px_score) & (0xffffffff - 63)) | (px_within_group.y * 8 + px_within_group.x);
     }
     
