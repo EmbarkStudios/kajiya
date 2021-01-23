@@ -22,6 +22,10 @@
 
 groupshared uint gs_px_score_loc_packed;
 
+float inverse_lerp(float minv, float maxv, float v) {
+    return (v - minv) / (maxv - minv);
+}
+
 
 [numthreads(8, 8, 1)]
 void main(
@@ -103,12 +107,14 @@ void main(
 
             static const float RADIUS_OVERSCALE = 1.0;
 
-            const float weight = smoothstep(
+            float weight = smoothstep(
                 SURFEL_RADIUS * RADIUS_OVERSCALE,
                 0.0,
                 mahalanobis_dist) * directional_weight;
 
             useful_surfel_count += weight > 1e-5 ? 1 : 0;
+
+            weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
             total_weight += weight;
             total_color += surfel_color * weight;// * (dist < 0.05 ? 10 : 0);
         }
