@@ -153,7 +153,7 @@ impl Camera for FirstPersonCamera {
         let rot_interp = 1.0 - (-input.dt * 30.0 / self.look_smoothness.max(1e-5)).exp();
         let pos_interp = 1.0 - (-input.dt * 16.0 / self.move_smoothness.max(1e-5)).exp();
         self.interp_rot = self.interp_rot.slerp(target_quat, rot_interp);
-        self.interp_rot.normalize();
+        self.interp_rot = self.interp_rot.normalize();
         self.interp_pos = self.interp_pos.lerp(self.position, pos_interp).into();
     }
 

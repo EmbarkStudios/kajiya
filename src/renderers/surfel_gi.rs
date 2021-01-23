@@ -8,9 +8,8 @@ use slingshot::{
         image::*,
         ray_tracing::RayTracingAcceleration,
         shader::*,
-        RenderBackend,
     },
-    rg::{self, BindRgRef, Resource},
+    rg::{self, BindRgRef, SimpleComputePass},
     vk_sync::AccessType,
 };
 
@@ -330,91 +329,4 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
     .write(input_buf)
     .read(&segment_sum_buf)
     .dispatch([(SEGMENT_SIZE * SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
-}
-
-struct SimpleComputePass<'rg> {
-    pass: rg::PassBuilder<'rg>,
-    pipeline: rg::RgComputePipelineHandle,
-    bindings: Vec<rg::RenderPassBinding>,
-}
-
-impl<'rg> SimpleComputePass<'rg> {
-    pub fn new(mut pass: rg::PassBuilder<'rg>, pipeline_path: &str) -> Self {
-        let pipeline = pass.register_compute_pipeline(pipeline_path);
-
-        Self {
-            pass,
-            pipeline,
-            bindings: Vec::new(),
-        }
-    }
-
-    pub fn read<Res>(mut self, handle: &rg::Handle<Res>) -> Self
-    where
-        Res: Resource + 'static,
-        rg::Ref<Res, rg::GpuSrv>: rg::BindRgRef,
-    {
-        let handle_ref = self.pass.read(
-            handle,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
-        self.bindings.push(rg::BindRgRef::bind(&handle_ref));
-
-        self
-    }
-
-    pub fn read_aspect(
-        mut self,
-        handle: &rg::Handle<Image>,
-        aspect_mask: vk::ImageAspectFlags,
-    ) -> Self {
-        let handle_ref = self.pass.read(
-            handle,
-            AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
-        self.bindings
-            .push(handle_ref.bind_view(ImageViewDescBuilder::default().aspect_mask(aspect_mask)));
-
-        self
-    }
-
-    pub fn write<Res>(mut self, handle: &mut rg::Handle<Res>) -> Self
-    where
-        Res: Resource + 'static,
-        rg::Ref<Res, rg::GpuUav>: rg::BindRgRef,
-    {
-        let handle_ref = self.pass.write(handle, AccessType::ComputeShaderWrite);
-
-        self.bindings.push(rg::BindRgRef::bind(&handle_ref));
-
-        self
-    }
-
-    pub fn dispatch(self, extent: [u32; 3]) {
-        let pipeline = self.pipeline;
-        let bindings = self.bindings;
-
-        self.pass.render(move |api| {
-            let pipeline =
-                api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
-
-            pipeline.dispatch(extent);
-        });
-    }
-
-    pub fn dispatch_indirect(mut self, args_buffer: &rg::Handle<Buffer>, args_buffer_offset: u64) {
-        let args_buffer_ref = self.pass.read(args_buffer, AccessType::IndirectBuffer);
-
-        let pipeline = self.pipeline;
-        let bindings = self.bindings;
-
-        self.pass.render(move |api| {
-            let pipeline =
-                api.bind_compute_pipeline(pipeline.into_binding().descriptor_set(0, &bindings));
-
-            pipeline.dispatch_indirect(args_buffer_ref, args_buffer_offset);
-        });
-    }
 }

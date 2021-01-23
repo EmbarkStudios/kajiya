@@ -70,14 +70,6 @@ impl Renderer {
         let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
 
         let dynamic_constants = DynamicConstants::new({
-            /*let buffer_info = vk::BufferCreateInfo {
-                // Allocate twice the size for even and odd frames
-                size: (DYNAMIC_CONSTANTS_SIZE_BYTES * 2) as u64,
-                usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
-                sharing_mode: vk::SharingMode::EXCLUSIVE,
-                ..Default::default()
-            };*/
-
             backend
                 .device
                 .create_buffer_impl(
@@ -90,28 +82,6 @@ impl Renderer {
                     MemoryLocation::CpuToGpu,
                 )
                 .expect("a buffer for dynamic constants")
-            /*let buffer_mem_info = vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::CpuToGpu,
-                flags: vk_mem::AllocationCreateFlags::MAPPED,
-                ..Default::default()
-            };
-
-            let (buffer, allocation, allocation_info) = backend
-                .device
-                .global_allocator
-                .create_buffer(&buffer_info, &buffer_mem_info)
-                .expect("vma::create_buffer");
-
-            Buffer {
-                raw: buffer,
-                desc: BufferDesc {
-                    size: buffer_info.size as _,
-                    usage: buffer_info.usage,
-                    mapped: true,
-                },
-                allocation,
-                allocation_info,
-            }*/
         });
 
         let frame_descriptor_set =
@@ -137,7 +107,6 @@ impl Renderer {
     ) {
         self.dynamic_constants.advance_frame();
         let frame_constants_offset = self.dynamic_constants.current_offset();
-
         render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
 
         // Note: this can be done at the end of the frame, not at the start.
