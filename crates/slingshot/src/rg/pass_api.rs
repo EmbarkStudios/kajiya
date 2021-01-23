@@ -18,17 +18,22 @@ use crate::{
         shader::{ComputePipeline, RasterPipeline},
     },
     chunky_list::TempList,
+    dynamic_constants::DynamicConstants,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
     pub cb: &'a CommandBuffer,
-    pub resources: &'a ResourceRegistry<'exec_params, 'constants>,
+    pub resources: &'a mut ResourceRegistry<'exec_params, 'constants>,
 }
 
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
     Buffer(vk::DescriptorBufferInfo),
     RayTracingAcceleration(vk::AccelerationStructureKHR),
+    DynamicBuffer {
+        buffer: vk::DescriptorBufferInfo,
+        offset: u32,
+    },
 }
 
 #[derive(Default)]
@@ -83,6 +88,10 @@ impl RgRtPipelineHandle {
 impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
     pub fn device(&self) -> &Device {
         self.resources.execution_params.device
+    }
+
+    pub fn dynamic_constants(&mut self) -> &mut DynamicConstants {
+        &mut self.resources.dynamic_constants
     }
 
     pub fn bind_compute_pipeline<'s>(
@@ -194,6 +203,15 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                                 .rt_acceleration_from_raw_handle::<GpuSrv>(acc.handle)
                                 .raw,
                         )
+                    }
+                    RenderPassBinding::DynamicConstants(offset) => {
+                        DescriptorSetBinding::DynamicBuffer {
+                            buffer: vk::DescriptorBufferInfo::builder()
+                                .buffer(self.resources.dynamic_constants.buffer.raw)
+                                .range(16384)
+                                .build(),
+                            offset: *offset,
+                        }
                     }
                 })
                 .collect::<Vec<_>>();
@@ -385,6 +403,7 @@ pub enum RenderPassBinding {
     Image(RenderPassImageBinding),
     Buffer(RenderPassBufferBinding),
     RayTracingAcceleration(RenderPassRayTracingAccelerationBinding),
+    DynamicConstants(u32),
 }
 
 pub struct BoundRayTracingPipeline<'api, 'a, 'exec_params, 'constants> {
@@ -533,6 +552,7 @@ fn bind_descriptor_set(
     };
 
     unsafe {
+        let mut dynamic_offsets: Vec<u32> = Vec::new();
         let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
             .iter()
             .enumerate()
@@ -558,6 +578,13 @@ fn bind_descriptor_set(
                         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                         .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
                         .build(),
+                    DescriptorSetBinding::DynamicBuffer { buffer, offset } => {
+                        dynamic_offsets.push(*offset);
+                        write
+                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                            .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
+                            .build()
+                    }
                     DescriptorSetBinding::RayTracingAcceleration(acc) => {
                         let mut write = write
                             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
@@ -588,7 +615,7 @@ fn bind_descriptor_set(
             pipeline.pipeline_layout,
             set_index,
             &[descriptor_set],
-            &[],
+            dynamic_offsets.as_slice(),
         );
     }
 }

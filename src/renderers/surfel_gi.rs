@@ -144,6 +144,7 @@ impl SurfelGiRenderInstance {
             .read(&self.surfel_irradiance_buf)
             .write(&mut tile_surfel_alloc_tex)
             .write(&mut debug_out)
+            .constants(gbuffer.desc().extent_inv_extent_2d())
             .dispatch(gbuffer.desc().extent);
 
         SimpleComputePass::new(

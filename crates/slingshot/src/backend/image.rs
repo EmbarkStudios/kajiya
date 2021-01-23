@@ -100,6 +100,15 @@ impl ImageDesc {
         }
         self
     }
+
+    pub fn extent_inv_extent_2d(&self) -> [f32; 4] {
+        [
+            self.extent[0] as f32,
+            self.extent[1] as f32,
+            1.0 / self.extent[0] as f32,
+            1.0 / self.extent[1] as f32,
+        ]
+    }
 }
 
 pub struct ImageSubResourceData<'a> {

@@ -18,6 +18,10 @@
 [[vk::binding(9)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
 [[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
 
+[[vk::binding(11)]] cbuffer _ {
+    float4 gbuffer_tex_size;
+};
+
 #include "surfel_grid_hash_mut.hlsl"
 
 groupshared uint gs_px_score_loc_packed;
@@ -43,8 +47,8 @@ void main(
 
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 
-    const float4 output_tex_size = float4(1280.0, 720.0, 1.0 / 1280.0, 1.0 / 720.0);
-    const float2 uv = get_uv(px, output_tex_size);
+    //const float4 output_tex_size = float4(1280.0, 720.0, 1.0 / 1280.0, 1.0 / 720.0);
+    const float2 uv = get_uv(px, gbuffer_tex_size);
 
     debug_out_tex[px] = 0.0.xxxx;
 
