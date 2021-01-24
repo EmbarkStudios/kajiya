@@ -29,6 +29,10 @@ impl<Res: Resource> Temporal<Res> {
             state: TemporalResourceState::Default,
         }
     }
+
+    pub fn last_rg_handle(&self) -> Option<rg::ExportedHandle<Res>> {
+        self.last_rg_handle
+    }
 }
 
 pub trait RgTemporalExt {
@@ -41,7 +45,8 @@ pub trait RgTemporalExt {
         &mut self,
         handle: rg::Handle<Res>,
         temporal: &mut Temporal<Res>,
-    );
+        access_type: vk_sync::AccessType,
+    ) -> rg::ExportedHandle<Res>;
 }
 
 pub trait RetiredRgTemporalExt {
@@ -64,10 +69,13 @@ impl RgTemporalExt for rg::RenderGraph {
         &mut self,
         handle: rg::Handle<Res>,
         temporal: &mut Temporal<Res>,
-    ) {
+        access_type: vk_sync::AccessType,
+    ) -> rg::ExportedHandle<Res> {
         assert_eq!(temporal.state, TemporalResourceState::Imported);
-        temporal.last_rg_handle = Some(self.export(handle, vk_sync::AccessType::Nothing));
+        let exported_handle = self.export(handle, access_type);
+        temporal.last_rg_handle = Some(exported_handle);
         temporal.state = TemporalResourceState::Exported;
+        exported_handle
     }
 }
 

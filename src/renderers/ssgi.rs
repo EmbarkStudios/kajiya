@@ -130,6 +130,7 @@ impl SsgiRenderInstance {
         gbuffer: &rg::Handle<Image>,
         depth: &rg::Handle<Image>,
         reprojection_map: &rg::Handle<Image>,
+        prev_radiance: &rg::Handle<Image>,
     ) -> &rg::Handle<Image> {
         let half_view_normal_tex = Self::extract_half_res_gbuffer_view_normal_rgba8(rg, gbuffer);
         let half_depth_tex = Self::extract_half_res_depth(rg, depth);
@@ -146,6 +147,8 @@ impl SsgiRenderInstance {
             .read(gbuffer)
             .read(&half_depth_tex)
             .read(&half_view_normal_tex)
+            .read(prev_radiance)
+            .read(reprojection_map)
             .write(&mut raw_ssgi_tex)
             .constants((
                 gbuffer.desc().extent_inv_extent_2d(),

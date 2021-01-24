@@ -15,7 +15,7 @@ macro_rules! impl_renderer_temporal_logic {
         }
         pub fn end(&mut self, rg: &mut rg::RenderGraph, inst: $inst_type) {
             $(
-                rg.export_temporal(inst.$res_name, &mut self.$res_name);
+                rg.export_temporal(inst.$res_name, &mut self.$res_name, $crate::vk_sync::AccessType::Nothing);
             )*
         }
 

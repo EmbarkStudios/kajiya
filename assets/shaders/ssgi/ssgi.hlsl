@@ -7,12 +7,13 @@
 #include "../inc/gbuffer.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
-//[[vk::binding(1)]] Texture2D<float4> reprojectedLightingTex;
 [[vk::binding(1)]] Texture2D<float> half_depth_tex;
 [[vk::binding(2)]] Texture2D<float4> view_normal_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
+[[vk::binding(3)]] Texture2D<float4> prev_radiance_tex;
+[[vk::binding(4)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(5)]] RWTexture2D<float4> output_tex;
 
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(6)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
 };
@@ -43,8 +44,11 @@ struct Ray {
 };
 
 float3 fetch_lighting(float2 uv) {
-    return 0.0.xxx;
-    //return texelFetch(reprojectedLightingTex, int2(input_tex_size.xy * uv), 0).xyz;
+    //return 0.0.xxx;
+    int2 px = int2(input_tex_size.xy * uv);
+    //return prev_radiance_tex[px].xyz;
+    float4 reproj = reprojection_tex[px];
+    return lerp(0.0, prev_radiance_tex[int2(input_tex_size.xy * (uv + reproj.xy))].xyz, reproj.z);
 }
 
 float3 fetch_normal_vs(float2 uv) {

@@ -14,8 +14,9 @@
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
-[[vk::binding(4)]] RWTexture2D<float4> output_tex;
-[[vk::binding(5)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float4> base_light_tex;
+[[vk::binding(5)]] RWTexture2D<float4> output_tex;
+[[vk::binding(6)]] cbuffer _ {
     float4 output_tex_size;
 };
 
@@ -144,13 +145,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if 1
         const float4 ssgi = ssgi_tex[px];
-        total_radiance += (output_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
+        total_radiance += (base_light_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
         // total_radiance = ssgi.a;
     #else
-        total_radiance += output_tex[px].xyz * gbuffer.albedo;
+        total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
     #endif
     
-    total_radiance = neutral_tonemap(total_radiance);
+    //total_radiance = neutral_tonemap(total_radiance);
     //total_radiance = gbuffer.metalness;
 
     output_tex[px] = float4(total_radiance, 1.0);

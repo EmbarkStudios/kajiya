@@ -516,6 +516,8 @@ impl VickiRenderClient {
         rg: &mut crate::rg::RenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
+        let mut accum_img = rg.import_temporal(&mut self.accum_img);
+
         let mut depth_img = crate::render_passes::create_image(
             rg,
             ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
@@ -565,10 +567,11 @@ impl VickiRenderClient {
         );
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);*/
 
-        let mut lit = surfel_gi_debug;
+        let lit = surfel_gi_debug;
 
         let mut ssgi_renderer_inst = self.ssgi.begin(rg);
-        let ssgi = ssgi_renderer_inst.render(rg, &gbuffer, &depth_img, &reprojection_map);
+        let ssgi =
+            ssgi_renderer_inst.render(rg, &gbuffer, &depth_img, &reprojection_map, &accum_img);
 
         crate::render_passes::light_gbuffer(
             rg,
@@ -576,17 +579,26 @@ impl VickiRenderClient {
             &depth_img,
             &sun_shadow_mask,
             ssgi,
-            &mut lit,
+            &lit,
+            &mut accum_img,
             self.bindless_descriptor_set,
         );
 
         self.surfel_gi.end(rg, surfel_gi);
         self.ssgi.end(rg, ssgi_renderer_inst);
 
+        let post =
+            crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
+
+        rg.export_temporal(accum_img, &mut self.accum_img, vk_sync::AccessType::Nothing);
         rg.export(
-            lit,
+            post,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
+        /*rg.export(
+            lit,
+            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        )*/
     }
 
     fn prepare_render_graph_reference(
@@ -616,7 +628,7 @@ impl VickiRenderClient {
         let lit =
             crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
 
-        rg.export_temporal(accum_img, &mut self.accum_img);
+        rg.export_temporal(accum_img, &mut self.accum_img, vk_sync::AccessType::Nothing);
         rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
