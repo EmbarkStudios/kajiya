@@ -8,7 +8,7 @@
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 //[[vk::binding(1)]] Texture2D<float4> reprojectedLightingTex;
-[[vk::binding(1)]] Texture2D<float> depth_tex;
+[[vk::binding(1)]] Texture2D<float> half_depth_tex;
 [[vk::binding(2)]] Texture2D<float4> view_normal_tex;
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 
@@ -42,12 +42,8 @@ struct Ray {
 	float3 d;
 };
 
-float fetch_depth(float2 uv) {
-    return depth_tex[int2(input_tex_size.xy * uv)].x;
-}
-
 float3 fetch_lighting(float2 uv) {
-    return 0.1.xxx;
+    return 0.0.xxx;
     //return texelFetch(reprojectedLightingTex, int2(input_tex_size.xy * uv), 0).xyz;
 }
 
@@ -106,7 +102,7 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
                 float theta_cos_prev_trunc = theta_cos_prev;
 
 #if 1
-                {
+                if (i > 0) {
                     float3 p1 = prev_sample_vs * min(
                         intersect_dir_plane_onesided(prev_sample_vs, sample_normal_vs, sample_vs),
                         intersect_dir_plane_onesided(prev_sample_vs, normal_vs, center_vs)
@@ -149,11 +145,13 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
 void main(in uint2 px : SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
 
-    float4 gbuffer_packed = gbuffer_tex[px * 2];
-    if (all(gbuffer_packed == 0.0.xxxx)) {
-        output_tex[px] = 1.0.xxxx;
+    const float depth = half_depth_tex[px];
+    if (0.0 == depth) {
+        output_tex[px] = float4(0, 0, 0, 1);
         return;
     }
+
+    float4 gbuffer_packed = gbuffer_tex[px * 2];
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
@@ -161,7 +159,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float4 col = 0.0.xxxx;
     float ao_radius = 0.3;
 
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, fetch_depth(uv));
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     float3 v_vs = -normalize(view_ray_context.ray_dir_vs());
 
     float4 ray_hit_cs = view_ray_context.ray_hit_cs;
@@ -173,7 +171,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float temporal_offset_noise = temporal_offsets[frame_constants.frame_index / 6 % 4];
 
     uint seed0 = hash3(uint3(frame_constants.frame_index, px.x, px.y));
-    spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
+    //spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
 
     float ss_angle = frac(spatial_direction_noise + temporal_direction_noise) * M_PI;
     float rand_offset = frac(spatial_offset_noise + temporal_offset_noise);
@@ -217,23 +215,36 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 prev_sample0_vs = v_vs;
     float3 prev_sample1_vs = v_vs;
 
-    for (uint i = 1; i <= ssgi_half_sample_count; ++i) {
+    int2 prev_sample_coord0 = px;
+    int2 prev_sample_coord1 = px;
+
+    for (uint i = 0; i < ssgi_half_sample_count; ++i) {
         {
             float t = float(i) + rand_offset;
 
             float4 sample_cs = float4(ray_hit_cs.xy - cs_slice_dir * t, 0, 1);
-            sample_cs.z = fetch_depth(cs_to_uv(sample_cs.xy));
+            int2 sample_px = int2(output_tex_size.xy * cs_to_uv(sample_cs.xy));
 
-            theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, ao_radius, theta_cos_max1, color_accum);
+            // TODO: check if this is beneficial, or needs to be flattened
+            if (any(sample_px != prev_sample_coord0)) {
+                prev_sample_coord0 = sample_px;
+                sample_cs.z = half_depth_tex[sample_px];
+                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, ao_radius, theta_cos_max1, color_accum);
+            }
         }
 
         {
             float t = float(i) + (1.0 - rand_offset);
 
             float4 sample_cs = float4(ray_hit_cs.xy + cs_slice_dir * t, 0, 1);
-            sample_cs.z = fetch_depth(cs_to_uv(sample_cs.xy));
+            int2 sample_px = int2(output_tex_size.xy * cs_to_uv(sample_cs.xy));
 
-            theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, ao_radius, theta_cos_max2, color_accum);
+            // TODO: check if this is beneficial, or needs to be flattened
+            if (any(sample_px != prev_sample_coord1)) {
+                prev_sample_coord1 = sample_px;
+                sample_cs.z = half_depth_tex[sample_px];
+                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, ao_radius, theta_cos_max2, color_accum);
+            }
         }
     }
 

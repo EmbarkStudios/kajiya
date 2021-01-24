@@ -43,7 +43,7 @@ float4 process_sample(float4 ssgi, float depth, float3 normal, float center_dept
 }*/
 
 [numthreads(8, 8, 1)]
-void main(in uint2 px : SV_DispatchThreadID) {
+void main(uint2 px : SV_DispatchThreadID) {
     float4 result = 0.0.xxxx;
     float w_sum = 0.0;
 

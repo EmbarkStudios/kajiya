@@ -52,8 +52,6 @@ float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, f
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
-    const float4 ssgi = ssgi_tex[px / 2];
-
     float2 uv = get_uv(px, output_tex_size);
 
     #if 0
@@ -145,7 +143,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //total_radiance += uint_id_to_color(pt_hash);
 
     #if 1
-        total_radiance += (output_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
+        const float4 ssgi = ssgi_tex[px];
+        total_radiance = (output_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
     #else
         total_radiance += output_tex[px].xyz * gbuffer.albedo;
     #endif

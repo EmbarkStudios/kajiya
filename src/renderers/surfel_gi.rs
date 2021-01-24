@@ -31,29 +31,6 @@ const MAX_SURFEL_CELLS: usize = 1024 * 1024;
 const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
 const MAX_SURFELS_PER_CELL: usize = 32;
 
-macro_rules! impl_renderer_temporal_logic {
-    ($($res_name:ident,)*) => {
-        pub fn begin(&mut self, rg: &mut rg::RenderGraph) -> SurfelGiRenderInstance {
-            SurfelGiRenderInstance {
-                $(
-                    $res_name: rg.import_temporal(&mut self.$res_name),
-                )*
-            }
-        }
-        pub fn end(&mut self, rg: &mut rg::RenderGraph, inst: SurfelGiRenderInstance) {
-            $(
-                rg.export_temporal(inst.$res_name, &mut self.$res_name);
-            )*
-        }
-
-        pub fn retire(&mut self, rg: &rg::RetiredRenderGraph) {
-            $(
-                rg.retire_temporal(&mut self.$res_name);
-            )*
-        }
-    };
-}
-
 fn new_temporal_storage_buffer(device: &device::Device, size_bytes: usize) -> Temporal<Buffer> {
     Temporal::new(Arc::new(
         device
@@ -92,7 +69,9 @@ impl SurfelGiRenderer {
         }
     }
 
-    impl_renderer_temporal_logic! {
+    fn on_begin(&mut self) {}
+    crate::impl_renderer_temporal_logic! {
+        SurfelGiRenderInstance,
         surfel_meta_buf,
         surfel_hash_key_buf,
         surfel_hash_value_buf,

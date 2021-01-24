@@ -300,7 +300,10 @@ impl VickiRenderClient {
             .unwrap();
 
         let surfel_renderer = SurfelGiRenderer::new(backend.device.as_ref());
-        let ssgi_renderer = SsgiRenderer::new();
+        let ssgi_renderer = SsgiRenderer::new(
+            backend.device.as_ref(),
+            [swapchain_dims.width, swapchain_dims.height],
+        );
 
         Ok(Self {
             raster_simple_render_pass,
@@ -559,19 +562,22 @@ impl VickiRenderClient {
 
         let mut lit = surfel_gi_debug;
 
-        let ssgi = self.ssgi.render(rg, &gbuffer, &depth_img);
+        let mut ssgi_renderer_inst = self.ssgi.begin(rg);
+        let ssgi = ssgi_renderer_inst.render(rg, &gbuffer, &depth_img);
 
         crate::render_passes::light_gbuffer(
             rg,
             &gbuffer,
             &depth_img,
             &sun_shadow_mask,
-            &ssgi,
+            ssgi,
             &mut lit,
             self.bindless_descriptor_set,
         );
 
         self.surfel_gi.end(rg, surfel_gi);
+        self.ssgi.end(rg, ssgi_renderer_inst);
+
         rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
@@ -677,7 +683,9 @@ impl RenderClient<FrameState> for VickiRenderClient {
 
     fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
         rg.retire_temporal(&mut self.accum_img);
+
         self.surfel_gi.retire(rg);
+        self.ssgi.retire(rg);
 
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
