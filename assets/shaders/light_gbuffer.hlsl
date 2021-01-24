@@ -144,7 +144,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if 1
         const float4 ssgi = ssgi_tex[px];
-        total_radiance = (output_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
+        total_radiance += (output_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
+        // total_radiance = ssgi.a;
     #else
         total_radiance += output_tex[px].xyz * gbuffer.albedo;
     #endif

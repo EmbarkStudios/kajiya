@@ -10,6 +10,14 @@ struct ViewConstants {
     float4x4 sample_to_view;
     float4x4 world_to_view;
     float4x4 view_to_world;
+
+    float4x4 clip_to_prev_clip;
+
+    float4x4 prev_view_to_prev_clip;
+    float4x4 prev_clip_to_prev_view;
+    float4x4 prev_world_to_prev_view;
+    float4x4 prev_view_to_prev_world;
+
     float2 sample_offset_pixels;
     float2 sample_offset_clip;
 };

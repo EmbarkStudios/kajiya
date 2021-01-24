@@ -631,3 +631,16 @@ pub fn trace_sun_shadow_mask(
 
     output_img
 }
+
+pub fn calculate_reprojection_map(rg: &mut RenderGraph, depth: &Handle<Image>) -> Handle<Image> {
+    let mut pass = rg.add_pass();
+    let mut output_tex = pass.create(&depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+
+    SimpleComputePass::new(pass, "/assets/shaders/calculate_reprojection_map.hlsl")
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .write(&mut output_tex)
+        .constants(output_tex.desc().extent_inv_extent_2d())
+        .dispatch(output_tex.desc().extent);
+
+    output_tex
+}

@@ -12,6 +12,14 @@ pub struct ViewConstants {
     pub sample_to_view: Mat4,
     pub world_to_view: Mat4,
     pub view_to_world: Mat4,
+
+    pub clip_to_prev_clip: Mat4,
+
+    pub prev_view_to_prev_clip: Mat4,
+    pub prev_clip_to_prev_view: Mat4,
+    pub prev_world_to_prev_view: Mat4,
+    pub prev_view_to_prev_world: Mat4,
+
     pub sample_offset_pixels: Vec2,
     pub sample_offset_clip: Vec2,
 }
@@ -19,6 +27,7 @@ pub struct ViewConstants {
 impl ViewConstants {
     pub fn builder<CamMat: Into<CameraMatrices>>(
         camera_matrices: CamMat,
+        prev_camera_matrices: CamMat,
         width: u32,
         height: u32,
     ) -> VieportConstantBuilder {
@@ -26,6 +35,7 @@ impl ViewConstants {
             width,
             height,
             camera_matrices: camera_matrices.into(),
+            prev_camera_matrices: prev_camera_matrices.into(),
             pixel_offset: Vec2::zero(),
         }
     }
@@ -59,6 +69,7 @@ pub struct VieportConstantBuilder {
     width: u32,
     height: u32,
     camera_matrices: CameraMatrices,
+    prev_camera_matrices: CameraMatrices,
     pixel_offset: Vec2,
 }
 
@@ -70,16 +81,26 @@ impl VieportConstantBuilder {
     }
 
     pub fn build(self) -> ViewConstants {
-        let view_to_clip = self.camera_matrices.view_to_clip;
-        let clip_to_view = self.camera_matrices.clip_to_view;
+        let clip_to_prev_clip = self.prev_camera_matrices.view_to_clip
+            * self.prev_camera_matrices.world_to_view
+            * self.camera_matrices.view_to_world
+            * self.camera_matrices.clip_to_view;
 
         let mut res = ViewConstants {
-            view_to_clip,
-            clip_to_view,
+            view_to_clip: self.camera_matrices.view_to_clip,
+            clip_to_view: self.camera_matrices.clip_to_view,
             view_to_sample: Mat4::zero(),
             sample_to_view: Mat4::zero(),
             world_to_view: self.camera_matrices.world_to_view,
             view_to_world: self.camera_matrices.view_to_world,
+
+            clip_to_prev_clip,
+
+            prev_view_to_prev_clip: self.prev_camera_matrices.view_to_clip,
+            prev_clip_to_prev_view: self.prev_camera_matrices.clip_to_view,
+            prev_world_to_prev_view: self.prev_camera_matrices.world_to_view,
+            prev_view_to_prev_world: self.prev_camera_matrices.view_to_world,
+
             sample_offset_pixels: Vec2::zero(),
             sample_offset_clip: Vec2::zero(),
         };

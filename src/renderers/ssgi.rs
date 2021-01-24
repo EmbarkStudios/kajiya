@@ -129,6 +129,7 @@ impl SsgiRenderInstance {
         rg: &mut rg::RenderGraph,
         gbuffer: &rg::Handle<Image>,
         depth: &rg::Handle<Image>,
+        reprojection_map: &rg::Handle<Image>,
     ) -> &rg::Handle<Image> {
         let half_view_normal_tex = Self::extract_half_res_gbuffer_view_normal_rgba8(rg, gbuffer);
         let half_depth_tex = Self::extract_half_res_depth(rg, depth);
@@ -175,6 +176,7 @@ impl SsgiRenderInstance {
         SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/temporal_filter.hlsl")
             .read(&ssgi_tex)
             .read(history_tex)
+            .read(reprojection_map)
             .write(filtered_output_tex)
             .constants(filtered_output_tex.desc().extent_inv_extent_2d())
             .dispatch(ssgi_tex.desc().extent);

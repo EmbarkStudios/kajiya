@@ -4,6 +4,7 @@ use crate::{
         mesh::{PackedTriangleMesh, PackedVertex, TexParams},
     },
     backend::{self, image::*, shader::*, RenderBackend},
+    camera::CameraMatrices,
     dynamic_constants::DynamicConstants,
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{trace_sun_shadow_mask, RasterMeshesData, UploadedTriMesh},
@@ -76,6 +77,7 @@ pub struct VickiRenderClient {
     next_bindless_image_id: usize,
     pub render_mode: RenderMode,
     frame_idx: u32,
+    prev_camera_matrices: Option<CameraMatrices>,
 
     surfel_gi: SurfelGiRenderer,
     ssgi: SsgiRenderer,
@@ -324,6 +326,7 @@ impl VickiRenderClient {
             next_bindless_image_id: 0,
             render_mode: RenderMode::Standard,
             frame_idx: 0u32,
+            prev_camera_matrices: None,
 
             surfel_gi: surfel_renderer,
             ssgi: ssgi_renderer,
@@ -540,6 +543,8 @@ impl VickiRenderClient {
             },
         );
 
+        let reprojection_map = crate::render_passes::calculate_reprojection_map(rg, &depth_img);
+
         let mut surfel_gi = self.surfel_gi.begin(rg);
         let surfel_gi_debug = surfel_gi.allocate_surfels(rg, &gbuffer, &depth_img);
 
@@ -563,7 +568,7 @@ impl VickiRenderClient {
         let mut lit = surfel_gi_debug;
 
         let mut ssgi_renderer_inst = self.ssgi.begin(rg);
-        let ssgi = ssgi_renderer_inst.render(rg, &gbuffer, &depth_img);
+        let ssgi = ssgi_renderer_inst.render(rg, &gbuffer, &depth_img, &reprojection_map);
 
         crate::render_passes::light_gbuffer(
             rg,
@@ -674,11 +679,19 @@ impl RenderClient<FrameState> for VickiRenderClient {
         let height = frame_state.window_cfg.height;
 
         dynamic_constants.push(&FrameConstants {
-            view_constants: ViewConstants::builder(frame_state.camera_matrices, width, height)
-                .build(),
+            view_constants: ViewConstants::builder(
+                frame_state.camera_matrices,
+                self.prev_camera_matrices
+                    .unwrap_or(frame_state.camera_matrices),
+                width,
+                height,
+            )
+            .build(),
             mouse: gen_shader_mouse_state(&frame_state),
             frame_idx: self.frame_idx,
         });
+
+        self.prev_camera_matrices = Some(frame_state.camera_matrices);
     }
 
     fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
