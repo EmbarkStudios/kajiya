@@ -395,7 +395,7 @@ pub fn light_gbuffer(
     debug_output: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
-    SimpleComputePass::new(rg.add_pass(), "/assets/shaders/light_gbuffer.hlsl")
+    SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/light_gbuffer.hlsl")
         .read(gbuffer)
         .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
         .read(sun_shadow_mask)
@@ -469,7 +469,7 @@ pub fn ray_trace_test(
             },
         ],
         slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
-            .max_pipeline_ray_recursion_depth(2),
+            .max_pipeline_ray_recursion_depth(1),
     );
 
     let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
@@ -492,55 +492,20 @@ pub fn reference_path_trace(
     rg: &mut RenderGraph,
     output_img: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
-    tlas: Handle<RayTracingAcceleration>,
+    tlas: &Handle<RayTracingAcceleration>,
 ) {
-    let mut pass = rg.add_pass();
-
-    let pipeline = pass.register_ray_tracing_pipeline(
+    SimpleRenderPass::new_rt(
+        rg.add_pass(),
+        "/assets/shaders/rt/reference_path_trace.rgen.hlsl",
         &[
-            PipelineShader {
-                code: "/assets/shaders/rt/reference_path_trace.rgen.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/triangle.rmiss.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/shadow.rmiss.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/triangle.rchit.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
-                    .build()
-                    .unwrap(),
-            },
+            "/assets/shaders/rt/triangle.rmiss.hlsl",
+            "/assets/shaders/rt/shadow.rmiss.hlsl",
         ],
-        slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
-            .max_pipeline_ray_recursion_depth(2),
-    );
-
-    let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
-    let output_ref = pass.write(output_img, AccessType::AnyShaderWrite);
-
-    pass.render(move |api| {
-        let pipeline = api.bind_ray_tracing_pipeline(
-            pipeline
-                .into_binding()
-                .descriptor_set(0, &[output_ref.bind()])
-                .raw_descriptor_set(1, bindless_descriptor_set)
-                .descriptor_set(3, &[tlas_ref.bind()]),
-        );
-
-        pipeline.trace_rays(output_ref.desc().extent);
-    });
+        &["/assets/shaders/rt/triangle.rchit.hlsl"],
+    )
+    .write(output_img)
+    .raw_descriptor_set(1, bindless_descriptor_set)
+    .trace_rays(tlas, output_img.desc().extent);
 }
 
 pub fn normalize_accum(
@@ -577,56 +542,17 @@ pub fn trace_sun_shadow_mask(
     depth_img: &Handle<Image>,
     tlas: &Handle<RayTracingAcceleration>,
 ) -> Handle<Image> {
-    let mut pass = rg.add_pass();
+    let mut output_img = rg.create(depth_img.desc().format(vk::Format::R8_UNORM));
 
-    let pipeline = pass.register_ray_tracing_pipeline(
-        &[
-            PipelineShader {
-                code: "/assets/shaders/rt/trace_sun_shadow_mask.rgen.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/shadow.rmiss.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                    .build()
-                    .unwrap(),
-            },
-        ],
-        slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
-            .max_pipeline_ray_recursion_depth(1),
-    );
-
-    let depth_ref = pass.read(
-        depth_img,
-        AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-    );
-
-    let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
-
-    let mut output_img = pass.create(depth_img.desc().format(vk::Format::R8_UNORM));
-    let output_ref = pass.write(&mut output_img, AccessType::AnyShaderWrite);
-
-    pass.render(move |api| {
-        let pipeline = api.bind_ray_tracing_pipeline(
-            pipeline
-                .into_binding()
-                .descriptor_set(
-                    0,
-                    &[
-                        depth_ref.bind_view(
-                            ImageViewDescBuilder::default()
-                                .aspect_mask(vk::ImageAspectFlags::DEPTH),
-                        ),
-                        output_ref.bind(),
-                    ],
-                )
-                .descriptor_set(3, &[tlas_ref.bind()]),
-        );
-
-        pipeline.trace_rays(output_ref.desc().extent);
-    });
+    SimpleRenderPass::new_rt(
+        rg.add_pass(),
+        "/assets/shaders/rt/trace_sun_shadow_mask.rgen.hlsl",
+        &["/assets/shaders/rt/shadow.rmiss.hlsl"],
+        &[],
+    )
+    .read_aspect(&depth_img, vk::ImageAspectFlags::DEPTH)
+    .write(&mut output_img)
+    .trace_rays(tlas, output_img.desc().extent);
 
     output_img
 }
@@ -634,7 +560,7 @@ pub fn trace_sun_shadow_mask(
 pub fn calculate_reprojection_map(rg: &mut RenderGraph, depth: &Handle<Image>) -> Handle<Image> {
     let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
-    SimpleComputePass::new(
+    SimpleRenderPass::new_compute(
         rg.add_pass(),
         "/assets/shaders/calculate_reprojection_map.hlsl",
     )

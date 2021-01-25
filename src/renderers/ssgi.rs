@@ -9,7 +9,7 @@ use slingshot::{
         ray_tracing::RayTracingAcceleration,
         shader::*,
     },
-    rg::{self, BindRgRef, SimpleComputePass},
+    rg::{self, BindRgRef, SimpleRenderPass},
     vk_sync::AccessType,
 };
 
@@ -68,7 +68,7 @@ impl SsgiRenderInstance {
                 .usage(vk::ImageUsageFlags::empty())
                 .format(vk::Format::R8G8B8A8_SNORM),
         );
-        SimpleComputePass::new(
+        SimpleRenderPass::new_compute(
             rg.add_pass(),
             "/assets/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
         )
@@ -93,7 +93,7 @@ impl SsgiRenderInstance {
                 .usage(vk::ImageUsageFlags::empty())
                 .format(vk::Format::R32_SFLOAT),
         );
-        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/downscale_r.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/downscale_r.hlsl")
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .write(&mut output_tex)
             .constants((
@@ -112,7 +112,7 @@ impl SsgiRenderInstance {
     ) -> rg::Handle<Image> {
         let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
-        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/upsample.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/upsample.hlsl")
             .read(ssgi)
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .read(gbuffer)
@@ -139,7 +139,7 @@ impl SsgiRenderInstance {
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
-        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
             .read(gbuffer)
             .read(&half_depth_tex)
             .read(&half_view_normal_tex)
@@ -159,7 +159,7 @@ impl SsgiRenderInstance {
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
-        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/spatial_filter.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/spatial_filter.hlsl")
             .read(&raw_ssgi_tex)
             .read(&half_depth_tex)
             .read(&half_view_normal_tex)
@@ -171,7 +171,7 @@ impl SsgiRenderInstance {
         let filtered_output_tex = &mut self.temporal0;
         let history_tex = &self.temporal1;
 
-        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/temporal_filter.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/temporal_filter.hlsl")
             .read(&ssgi_tex)
             .read(history_tex)
             .read(reprojection_map)

@@ -67,20 +67,24 @@ impl<'a, HandleType> RenderPassPipelineBinding<'a, HandleType> {
     }
 }
 
-impl RgComputePipelineHandle {
-    pub fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
+pub trait IntoRenderPassPipelineBinding: Sized {
+    fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self>;
+}
+
+impl IntoRenderPassPipelineBinding for RgComputePipelineHandle {
+    fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
         RenderPassPipelineBinding::new(self)
     }
 }
 
-impl RgRasterPipelineHandle {
-    pub fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
+impl IntoRenderPassPipelineBinding for RgRasterPipelineHandle {
+    fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
         RenderPassPipelineBinding::new(self)
     }
 }
 
-impl RgRtPipelineHandle {
-    pub fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
+impl IntoRenderPassPipelineBinding for RgRtPipelineHandle {
+    fn into_binding<'a>(self) -> RenderPassPipelineBinding<'a, Self> {
         RenderPassPipelineBinding::new(self)
     }
 }
@@ -429,7 +433,7 @@ impl<'api, 'a, 'exec_params, 'constants>
         }
     }
 
-    pub fn trace_rays_indirect(&self, args_buffer: Ref<Buffer, GpuSrv>) {
+    pub fn trace_rays_indirect(&self, args_buffer: Ref<Buffer, GpuSrv>, args_buffer_offset: u64) {
         unsafe {
             self.api
                 .device()
@@ -443,7 +447,8 @@ impl<'api, 'a, 'exec_params, 'constants>
                     self.api
                         .resources
                         .buffer(args_buffer)
-                        .device_address(self.api.device()),
+                        .device_address(self.api.device())
+                        + args_buffer_offset,
                 );
         }
     }

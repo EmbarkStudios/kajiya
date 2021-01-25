@@ -9,7 +9,7 @@ use slingshot::{
         ray_tracing::RayTracingAcceleration,
         shader::*,
     },
-    rg::{self, BindRgRef, SimpleComputePass},
+    rg::{self, BindRgRef, IntoRenderPassPipelineBinding, SimpleRenderPass},
     vk_sync::AccessType,
 };
 
@@ -111,7 +111,7 @@ impl SurfelGiRenderInstance {
                 .format(vk::Format::R32G32_UINT),
         );
 
-        SimpleComputePass::new(pass, "/assets/shaders/surfel_gi/find_missing_surfels.hlsl")
+        SimpleRenderPass::new_compute(pass, "/assets/shaders/surfel_gi/find_missing_surfels.hlsl")
             .read(&gbuffer)
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .write(&mut self.surfel_meta_buf)
@@ -126,7 +126,7 @@ impl SurfelGiRenderInstance {
             .constants(gbuffer.desc().extent_inv_extent_2d())
             .dispatch(gbuffer.desc().extent);
 
-        SimpleComputePass::new(
+        SimpleRenderPass::new_compute(
             rg.add_pass(),
             "/assets/shaders/surfel_gi/allocate_surfels.hlsl",
         )
@@ -153,7 +153,7 @@ impl SurfelGiRenderInstance {
                 vk::BufferUsageFlags::empty(),
             ));
 
-            SimpleComputePass::new(
+            SimpleRenderPass::new_compute(
                 rg.add_pass(),
                 "/assets/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
             )
@@ -164,11 +164,11 @@ impl SurfelGiRenderInstance {
             indirect_args_buf
         };
 
-        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/surfel_gi/clear_cells.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/surfel_gi/clear_cells.hlsl")
             .write(&mut self.cell_index_offset_buf)
             .dispatch_indirect(&indirect_args_buf, 0);
 
-        SimpleComputePass::new(
+        SimpleRenderPass::new_compute(
             rg.add_pass(),
             "/assets/shaders/surfel_gi/count_surfels_per_cell.hlsl",
         )
@@ -183,7 +183,7 @@ impl SurfelGiRenderInstance {
         inclusive_prefix_scan_u32_1m(rg, &mut self.cell_index_offset_buf);
         // TODO: prefix-scan
 
-        SimpleComputePass::new(
+        SimpleRenderPass::new_compute(
             rg.add_pass(),
             "/assets/shaders/surfel_gi/slot_surfels_into_cells.hlsl",
         )
@@ -204,14 +204,13 @@ impl SurfelGiRenderInstance {
         tlas: &rg::Handle<RayTracingAcceleration>,
     ) {
         let indirect_args_buf = {
-            let mut pass = rg.add_pass();
-            let mut indirect_args_buf = pass.create(BufferDesc::new(
+            let mut indirect_args_buf = rg.create(BufferDesc::new(
                 size_of::<u32>() * 4,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ));
 
-            SimpleComputePass::new(
-                pass,
+            SimpleRenderPass::new_compute(
+                rg.add_pass(),
                 "/assets/shaders/surfel_gi/prepare_trace_dispatch_args.hlsl",
             )
             .read(&mut self.surfel_meta_buf)
@@ -221,67 +220,26 @@ impl SurfelGiRenderInstance {
             indirect_args_buf
         };
 
-        let mut pass = rg.add_pass();
-
-        let pipeline = pass.register_ray_tracing_pipeline(
+        SimpleRenderPass::new_rt(
+            rg.add_pass(),
+            "/assets/shaders/surfel_gi/trace_irradiance.rgen.hlsl",
             &[
-                PipelineShader {
-                    code: "/assets/shaders/surfel_gi/trace_irradiance.rgen.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
-                        .build()
-                        .unwrap(),
-                },
-                PipelineShader {
-                    code: "/assets/shaders/rt/triangle.rmiss.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                        .build()
-                        .unwrap(),
-                },
-                PipelineShader {
-                    code: "/assets/shaders/rt/shadow.rmiss.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                        .build()
-                        .unwrap(),
-                },
-                PipelineShader {
-                    code: "/assets/shaders/rt/triangle.rchit.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
-                        .build()
-                        .unwrap(),
-                },
+                "/assets/shaders/rt/triangle.rmiss.hlsl",
+                "/assets/shaders/rt/shadow.rmiss.hlsl",
             ],
-            slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
-                .max_pipeline_ray_recursion_depth(2),
-        );
-
-        let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
-
-        let spatial_ref = pass.read(
-            &self.surfel_spatial_buf,
-            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let output_ref = pass.write(&mut self.surfel_irradiance_buf, AccessType::AnyShaderWrite);
-        let indirect_args_ref = pass.read(&indirect_args_buf, AccessType::IndirectBuffer);
-
-        pass.render(move |api| {
-            let pipeline = api.bind_ray_tracing_pipeline(
-                pipeline
-                    .into_binding()
-                    .descriptor_set(0, &[spatial_ref.bind(), output_ref.bind()])
-                    .raw_descriptor_set(1, bindless_descriptor_set)
-                    .descriptor_set(3, &[tlas_ref.bind()]),
-            );
-
-            pipeline.trace_rays_indirect(indirect_args_ref);
-            //pipeline.trace_rays(indirect_args_ref, [1000, 1, 1]);
-        });
+            &["/assets/shaders/rt/triangle.rchit.hlsl"],
+        )
+        .read(&self.surfel_spatial_buf)
+        .write(&mut self.surfel_irradiance_buf)
+        .raw_descriptor_set(1, bindless_descriptor_set)
+        .trace_rays_indirect(tlas, &indirect_args_buf, 0);
     }
 }
 
 fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Handle<Buffer>) {
     const SEGMENT_SIZE: usize = 1024;
 
-    SimpleComputePass::new(
+    SimpleRenderPass::new_compute(
         rg.add_pass(),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan.hlsl",
     )
@@ -292,7 +250,7 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
         size_of::<u32>() * SEGMENT_SIZE,
         vk::BufferUsageFlags::empty(),
     ));
-    SimpleComputePass::new(
+    SimpleRenderPass::new_compute(
         rg.add_pass(),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan_segments.hlsl",
     )
@@ -300,7 +258,7 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
     .write(&mut segment_sum_buf)
     .dispatch([(SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
 
-    SimpleComputePass::new(
+    SimpleRenderPass::new_compute(
         rg.add_pass(),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan_merge.hlsl",
     )

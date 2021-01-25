@@ -10,7 +10,7 @@ use crate::{
     render_passes::{trace_sun_shadow_mask, RasterMeshesData, UploadedTriMesh},
     renderer::*,
     renderers::{ssgi::*, surfel_gi::*},
-    rg::{self, RetiredRenderGraph, SimpleComputePass},
+    rg::{self, RetiredRenderGraph, SimpleRenderPass},
     temporal::*,
     viewport::ViewConstants,
     FrameState,
@@ -628,7 +628,7 @@ impl VickiRenderClient {
             rg,
             &mut accum_img,
             self.bindless_descriptor_set,
-            tlas,
+            &tlas,
         );
 
         let lit =
