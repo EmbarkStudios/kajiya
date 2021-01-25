@@ -26,12 +26,16 @@ struct BrdfValue {
 struct BrdfSample: BrdfValue {
     float3 wi;
 
+    // For filtering / firefly suppression
+    float approx_roughness;
+
     static BrdfSample invalid() {
         BrdfSample res;
         res.value_over_pdf = 0.0;
         res.pdf = 0.0;
         res.wi = float3(0.0, 0.0, -1.0);
         res.transmission_fraction = 0.0;
+        res.approx_roughness = 0;
         return res;
     }
 
@@ -57,6 +61,7 @@ struct DiffuseBrdf {
         res.pdf = M_FRAC_1_PI;
         res.value_over_pdf = albedo;
         res.transmission_fraction = 0.0;
+        res.approx_roughness = 1.0;
 
         return res;
 	}
@@ -124,6 +129,7 @@ struct SpecularBrdf {
             / (4 * wo.z);
 		res.wi = wi;
         res.transmission_fraction = 1.0.xxx - fresnel;
+        res.approx_roughness = roughness;
 
 		return res;
 	}
@@ -180,4 +186,15 @@ float3 metalness_albedo_boost(float metalness, float3 diffuse_albedo) {
     const float3 y3 = y * y * y;
 
     return 1.0 + (0.25-(x-0.5)*(x-0.5)) * (a0+a1*abs(x-0.5)) * (e1*y + e3*y3);
+}
+
+void apply_metalness_to_brdfs(inout SpecularBrdf specular_brdf, inout DiffuseBrdf diffuse_brdf, float metalness) {
+    const float3 albedo = diffuse_brdf.albedo;
+
+    specular_brdf.albedo = lerp(specular_brdf.albedo, albedo, metalness);
+    diffuse_brdf.albedo = max(0.0, 1.0 - metalness) * albedo;
+
+    const float3 albedo_boost = metalness_albedo_boost(metalness, albedo);
+    specular_brdf.albedo = min(1.0, specular_brdf.albedo * albedo_boost);
+    diffuse_brdf.albedo = min(1.0, diffuse_brdf.albedo * albedo_boost);
 }

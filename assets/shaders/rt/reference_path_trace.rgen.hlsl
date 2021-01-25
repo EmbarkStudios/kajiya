@@ -7,11 +7,12 @@
 #include "../inc/gbuffer.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/bindless_textures.hlsl"
+#include "../inc/brdf_lut.hlsl"
+#include "../inc/layered_brdf.hlsl"
 #include "../inc/atmosphere.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
-[[vk::binding(1, 0)]] SamplerState sampler_lnc;
 
 static const uint MAX_PATH_LENGTH = 5;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
@@ -23,7 +24,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
-static const bool USE_PIXEL_FILTER = true;
+static const bool USE_PIXEL_FILTER = false;
 static const bool INDIRECT_ONLY = false;
 
 float3 sample_environment_light(float3 dir) {
@@ -41,30 +42,6 @@ float3 sample_environment_light(float3 dir) {
 }
 
 
-struct SpecularBrdfEnergyPreservation {
-    float3 reflection_mult;
-    float3 transmission_fraction;
-
-    static SpecularBrdfEnergyPreservation from_brdf_ndotv(SpecularBrdf brdf, float ndotv) {
-        const float roughness = brdf.roughness;
-        const float3 specular_albedo = brdf.albedo;
-
-        float2 uv = float2(ndotv, roughness) * BRDF_FG_LUT_UV_SCALE + BRDF_FG_LUT_UV_BIAS;
-        float2 fg = bindless_textures[0].SampleLevel(sampler_lnc, uv, 0).xy;
-
-        float3 single_scatter = specular_albedo * fg.x + fg.y;
-        float energy_loss_per_bounce = 1.0 - (fg.x + fg.y);
-        float3 bounce_radiance = energy_loss_per_bounce * specular_albedo;
-        float3 albedo_inf_series = energy_loss_per_bounce * single_scatter / (1.0 - bounce_radiance);
-        float3 corrected = single_scatter + albedo_inf_series;
-
-        SpecularBrdfEnergyPreservation res;
-        res.reflection_mult = corrected / max(1e-5, single_scatter);
-        res.transmission_fraction = 1 - corrected;
-        return res;
-    }
-};
-
 // Approximate Gaussian remap
 // https://www.shadertoy.com/view/MlVSzw
 float inv_error_function(float x, float truncation) {
@@ -79,6 +56,7 @@ float inv_error_function(float x, float truncation) {
 float remap_unorm_to_gaussian(float x, float truncation) {
 	return inv_error_function(x * 2.0 - 1.0, truncation);
 }
+
 
 [shader("raygeneration")]
 void main() {
@@ -162,94 +140,36 @@ void main() {
                 wo = normalize(wo);
             }
 
-            SpecularBrdf specular_brdf;            
-            specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
+            LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
 
             if (FIREFLY_SUPPRESSION) {
-                specular_brdf.roughness = lerp(gbuffer.roughness, 1.0, roughness_bias);
-            } else {
-                specular_brdf.roughness = gbuffer.roughness;
+                brdf.specular_brdf.roughness = lerp(brdf.specular_brdf.roughness, 1.0, roughness_bias);
             }
-
-            DiffuseBrdf diffuse_brdf;
-            diffuse_brdf.albedo = max(0.0, 1.0 - gbuffer.metalness) * gbuffer.albedo;
-
-            const float3 albedo_boost = metalness_albedo_boost(gbuffer.metalness, gbuffer.albedo);
-            specular_brdf.albedo = min(1.0, specular_brdf.albedo * albedo_boost);
-            diffuse_brdf.albedo = min(1.0, diffuse_brdf.albedo * albedo_boost);
 
             if (FURNACE_TEST && FURNACE_TEST_EXCLUDE_DIFFUSE) {
-                diffuse_brdf.albedo = 0.0.xxx;
+                brdf.diffuse_brdf.albedo = 0.0.xxx;
             }
-            
-            const SpecularBrdfEnergyPreservation energy_preservation =
-                SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
 
-            const BrdfValue spec = specular_brdf.evaluate(wo, wi);
-            const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
-
-            //if (path_length > 0)
             if (!FURNACE_TEST) {
-                const float3 radiance = (
-                    spec.value() * energy_preservation.reflection_mult +
-                    diff.value() * spec.transmission_fraction
-                ) * max(0.0, wi.z);
-                
+                const float3 radiance = brdf.evaluate(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
 
                 total_radiance += throughput * radiance * light_radiance;
             }
 
-            BrdfSample brdf_sample;
-            float lobe_pdf;
+            const float3 urand = float3(
+                uint_to_u01_float(hash1_mut(seed)),
+                uint_to_u01_float(hash1_mut(seed)),
+                uint_to_u01_float(hash1_mut(seed))
+            );
+            BrdfSample brdf_sample = brdf.sample(wo, urand);
 
-            {
-                // Sample top level (specular)
-                const float u0 = uint_to_u01_float(hash1_mut(seed));
-                const float u1 = uint_to_u01_float(hash1_mut(seed));
-                brdf_sample = specular_brdf.sample(wo, float2(u0, u1));
-
-                // We should transmit with throughput equal to `brdf_sample.transmission_fraction`,
-                // and reflect with the complement of that. However since we use a single ray,
-                // we toss a coin, and choose between reflection and transmission.
-                const float spec_wt = calculate_luma(brdf_sample.value_over_pdf);
-                const float diffuse_wt = calculate_luma(diffuse_brdf.albedo);
-                const float transmission_p = diffuse_wt / (spec_wt + diffuse_wt);
-
-                const float lobe_xi = uint_to_u01_float(hash1_mut(seed));
-                if (lobe_xi < transmission_p) {
-                    // Transmission wins! Now sample the bottom layer (diffuse)
-
-                    lobe_pdf = transmission_p;
-                    roughness_bias = lerp(roughness_bias, 1.0, 0.5);
-
-                    // Now account for the masking that the top level exerts on the bottom.
-                    // Even though we used `brdf_sample.transmission_fraction` in lobe selection,
-                    // that factor cancelled out with division by the lobe selection PDF.
-                    //throughput *= brdf_sample.transmission_fraction;
-                    //throughput *= 1 - (1 - brdf_sample.transmission_fraction) * spec_energy_preservation;
-
-                    const float u0 = uint_to_u01_float(hash1_mut(seed));
-                    const float u1 = uint_to_u01_float(hash1_mut(seed));
-
-                    brdf_sample = diffuse_brdf.sample(wo, float2(u0, u1));
-                    throughput *= energy_preservation.transmission_fraction;
-
-                    //throughput *= spec_energy_preservation;
-                } else {
-                    // Reflection wins!
-
-                    lobe_pdf = (1.0 - transmission_p);
-                    roughness_bias = lerp(roughness_bias, 1.0, gbuffer.roughness * 0.5);
-                    throughput *= energy_preservation.reflection_mult;
-                }
-            }
-
-            if (lobe_pdf > 1e-9 && brdf_sample.is_valid()) {
+            if (brdf_sample.is_valid()) {
+                roughness_bias = lerp(roughness_bias, 1.0, 0.5 * brdf_sample.approx_roughness);
                 outgoing_ray.Origin = primary_hit.position;
                 outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
                 outgoing_ray.TMin = 1e-4;
-                throughput *= brdf_sample.value_over_pdf / lobe_pdf;
+                throughput *= brdf_sample.value_over_pdf;
             } else {
                 break;
             }
@@ -260,13 +180,13 @@ void main() {
             }
         } else {
             total_radiance += throughput * sample_environment_light(outgoing_ray.Direction);
-            output_tex[px] += float4(total_radiance, 1.0);
             break;
         }
     }
 
-    //if (frame_constants.frame_index < 100)
+    float4 prev_radiance = output_tex[px];
+    //if (prev_radiance.w < 100)
     {
-        output_tex[px] += float4(total_radiance, 1.0);
+        output_tex[px] = float4(total_radiance, 1.0) + prev_radiance;
     }
 }
