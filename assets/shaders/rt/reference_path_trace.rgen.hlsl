@@ -24,6 +24,7 @@ static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
 static const bool USE_PIXEL_FILTER = true;
+static const bool INDIRECT_ONLY = false;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
@@ -120,18 +121,26 @@ void main() {
         if (primary_hit.is_hit) {
             const float3 to_light_norm = SUN_DIRECTION;
             
-            const bool is_shadowed = path_length+1 >= MAX_PATH_LENGTH || rt_is_shadowed(
-                acceleration_structure,
-                new_ray(
-                    primary_hit.position,
-                    to_light_norm,
-                    1e-4,
-                    FLT_MAX
-            ));
+            const bool is_shadowed =
+                (INDIRECT_ONLY && path_length == 0) ||
+                path_length+1 >= MAX_PATH_LENGTH ||
+                rt_is_shadowed(
+                    acceleration_structure,
+                    new_ray(
+                        primary_hit.position,
+                        to_light_norm,
+                        1e-4,
+                        FLT_MAX
+                ));
 
             GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
             if (FURNACE_TEST && !FURNACE_TEST_EXCLUDE_DIFFUSE) {
                 gbuffer.albedo = 1.0;
+            }
+
+            if (INDIRECT_ONLY && path_length == 0) {
+                gbuffer.albedo = 1.0;
+                gbuffer.metalness = 0.0;
             }
             //gbuffer.roughness = lerp(gbuffer.roughness, 1.0, 0.5);
             //gbuffer.metalness = 1.0;

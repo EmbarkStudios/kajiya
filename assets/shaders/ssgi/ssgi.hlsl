@@ -175,7 +175,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float temporal_offset_noise = temporal_offsets[frame_constants.frame_index / 6 % 4];
 
     uint seed0 = hash3(uint3(frame_constants.frame_index, px.x, px.y));
-    //spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
+    spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
 
     float ss_angle = frac(spatial_direction_noise + temporal_direction_noise) * M_PI;
     float rand_offset = frac(spatial_offset_noise + temporal_offset_noise);

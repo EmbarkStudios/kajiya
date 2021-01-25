@@ -16,13 +16,13 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> base_light_tex;
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
-[[vk::binding(6)]] cbuffer _ {
+[[vk::binding(6)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(7)]] cbuffer _ {
     float4 output_tex_size;
 };
 
 SamplerState sampler_lnc;
 
-static const float3 ambient_light = 0.0;
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
@@ -55,23 +55,6 @@ float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, f
 void main(in uint2 px : SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
 
-    #if 0
-        ruv.x *= output_tex_size.x / output_tex_size.y;
-        output_tex[px] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
-        return;
-    #endif
-
-    float4 gbuffer_packed = gbuffer_tex[px];
-    if (all(gbuffer_packed == 0.0.xxxx)) {
-        output_tex[px] = float4(neutral_tonemap(ambient_light), 1.0);
-        return;
-    }
-
-    float z_over_w = depth_tex[px];
-    float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
-    float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
-    pt_ws /= pt_ws.w;
-
     RayDesc outgoing_ray;
     {
         const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
@@ -85,7 +68,26 @@ void main(in uint2 px : SV_DispatchThreadID) {
         );
     }
 
-    static const float3 throughput = 1.0.xxx;
+    #if 0
+        ruv.x *= output_tex_size.x / output_tex_size.y;
+        output_tex[px] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
+        return;
+    #endif
+
+    float4 gbuffer_packed = gbuffer_tex[px];
+    if (all(gbuffer_packed == 0.0.xxxx)) {
+        float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
+        output_tex[px] = float4(output, 1);
+        debug_out_tex[px] = float4(output, 1);
+        //output_tex[px] = float4(0.1.xxx, 1.0);
+        return;
+    }
+
+    float z_over_w = depth_tex[px];
+    float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
+    float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
+    pt_ws /= pt_ws.w;
+
     const float3 to_light_norm = SUN_DIRECTION;
     
     const float shadow_mask = sun_shadow_mask_tex[px];
@@ -96,7 +98,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             //gbuffer.roughness = clamp((int(pt_ws.x * 0.2) % 5) / 5.0, 1e-4, 1.0);
     //gbuffer.roughness = 0.9;
     //gbuffer.metalness = 1;
-    //gbuffer.albedo = 0.8;
+    //gbuffer.albedo = 0.7;
     //gbuffer.metalness = 1;
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
@@ -126,8 +128,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 light_radiance = shadow_mask * SUN_COLOR;
 
     float3 total_radiance = 0.0.xxx;
-    total_radiance += throughput * radiance * light_radiance;
-    total_radiance += ambient_light * gbuffer.albedo;
+    total_radiance += radiance * light_radiance;
 
     //res.xyz += radiance * SUN_COLOR + ambient;
     //res.xyz += albedo;
@@ -138,13 +139,20 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //res.xyz = brdf_d * 0.1;
 
     //res.xyz = 1.0 - exp(-res.xyz);
-    //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z) * ambient_light;
+    //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z);
 
     //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
     //total_radiance += uint_id_to_color(pt_hash);
 
     #if 1
-        const float4 ssgi = ssgi_tex[px];
+        float4 ssgi = ssgi_tex[px];
+
+        // HACK: need directionality in GI so that it can be properly masked.
+        // If simply masking with the AO term, it tends to over-darken.
+        // Reduce some of the occlusion, but for energy conservation, also reduce
+        // the light added.
+        ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
+
         total_radiance += (base_light_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
         // total_radiance = ssgi.a;
     #else
@@ -155,4 +163,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //total_radiance = gbuffer.metalness;
 
     output_tex[px] = float4(total_radiance, 1.0);
+    debug_out_tex[px] = float4(
+        total_radiance,
+        //base_light_tex[px].xyz * ssgi.a + ssgi.rgb,
+        //base_light_tex[px].xyz,
+        //ssgi.rgb,
+        //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
+        1.0
+    );
 }

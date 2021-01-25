@@ -3,7 +3,7 @@ use super::{
     resource::*,
     PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
     RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle, RgRtPipeline,
-    RgRtPipelineHandle,
+    RgRtPipelineHandle, TypeEquals,
 };
 
 use crate::backend::{
@@ -28,37 +28,16 @@ impl<'s> Drop for PassBuilder<'s> {
     }
 }
 
-pub trait TypeEquals {
-    type Other;
-    fn same(value: Self) -> Self::Other;
-}
-
-impl<T: Sized> TypeEquals for T {
-    type Other = Self;
-    fn same(value: Self) -> Self::Other {
-        value
-    }
-}
-
 #[allow(dead_code)]
 impl<'rg> PassBuilder<'rg> {
     pub fn create<Desc: ResourceDesc>(
         &mut self,
-        desc: &Desc,
+        desc: Desc,
     ) -> Handle<<Desc as ResourceDesc>::Resource>
     where
         Desc: TypeEquals<Other = <<Desc as ResourceDesc>::Resource as Resource>::Desc>,
     {
-        let handle: Handle<<Desc as ResourceDesc>::Resource> = Handle {
-            raw: self.rg.create_raw_resource(GraphResourceCreateInfo {
-                desc: desc.clone().into(),
-                create_pass_idx: self.pass_idx,
-            }),
-            desc: TypeEquals::same(desc.clone()),
-            marker: PhantomData,
-        };
-
-        handle
+        self.rg.create(desc)
     }
 
     pub fn write_impl<Res: Resource, ViewType: GpuViewType>(

@@ -41,7 +41,6 @@ use std::{
 
 pub(crate) struct GraphResourceCreateInfo {
     pub desc: GraphResourceDesc,
-    pub create_pass_idx: usize,
 }
 
 pub(crate) enum GraphResourceImportInfo {
@@ -259,6 +258,18 @@ impl ImportExportToRenderGraph for RayTracingAcceleration {
     }
 }
 
+pub trait TypeEquals {
+    type Other;
+    fn same(value: Self) -> Self::Other;
+}
+
+impl<T: Sized> TypeEquals for T {
+    type Other = Self;
+    fn same(value: Self) -> Self::Other {
+        value
+    }
+}
+
 impl RenderGraph {
     pub fn new() -> Self {
         Self {
@@ -270,6 +281,24 @@ impl RenderGraph {
             rt_pipelines: Vec::new(),
             predefined_descriptor_set_layouts: HashMap::new(),
         }
+    }
+
+    pub fn create<Desc: ResourceDesc>(
+        &mut self,
+        desc: Desc,
+    ) -> Handle<<Desc as ResourceDesc>::Resource>
+    where
+        Desc: TypeEquals<Other = <<Desc as ResourceDesc>::Resource as Resource>::Desc>,
+    {
+        let handle: Handle<<Desc as ResourceDesc>::Resource> = Handle {
+            raw: self.create_raw_resource(GraphResourceCreateInfo {
+                desc: desc.clone().into(),
+            }),
+            desc: TypeEquals::same(desc.clone()),
+            marker: PhantomData,
+        };
+
+        handle
     }
 
     pub(crate) fn create_raw_resource(
@@ -313,8 +342,8 @@ impl RenderGraph {
 
 #[derive(Debug)]
 struct ResourceLifetime {
-    first_access: usize,
-    last_access: usize,
+    first_access: Option<usize>,
+    last_access: Option<usize>,
 }
 
 struct ResourceInfo {
@@ -355,12 +384,12 @@ impl RenderGraph {
             .iter()
             .map(|res| match res {
                 GraphResourceInfo::Created(res) => ResourceLifetime {
-                    first_access: res.create_pass_idx,
-                    last_access: res.create_pass_idx,
+                    first_access: None,
+                    last_access: None,
                 },
                 GraphResourceInfo::Imported(_) => ResourceLifetime {
-                    first_access: 0,
-                    last_access: 0,
+                    first_access: Some(0),
+                    last_access: Some(0),
                 },
             })
             .collect();
@@ -393,7 +422,11 @@ impl RenderGraph {
             for res_access in pass.read.iter().chain(pass.write.iter()) {
                 let resource_index = res_access.handle.id as usize;
                 let res = &mut lifetimes[resource_index];
-                res.last_access = res.last_access.max(pass_idx);
+                res.last_access = Some(
+                    res.last_access
+                        .map(|last_access| last_access.max(pass_idx))
+                        .unwrap_or(pass_idx),
+                );
 
                 let access_mask = get_access_info(res_access.access.access_type).access_mask;
 
@@ -440,7 +473,7 @@ impl RenderGraph {
 
         for (res, access_type) in &self.exported_resources {
             let raw_id = res.raw().id as usize;
-            lifetimes[raw_id].last_access = self.passes.len().saturating_sub(1);
+            lifetimes[raw_id].last_access = Some(self.passes.len().saturating_sub(1));
 
             if *access_type != vk_sync::AccessType::Nothing {
                 let access_mask = get_access_info(*access_type).access_mask;

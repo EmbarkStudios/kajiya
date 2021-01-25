@@ -7,11 +7,6 @@ use slingshot::{
 
 use crate::{backend::image::ImageViewDesc, backend::shader::*, rg::*};
 
-pub fn create_image(rg: &mut RenderGraph, desc: ImageDesc) -> Handle<Image> {
-    let mut pass = rg.add_pass();
-    pass.create(&desc)
-}
-
 pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
     let mut pass = rg.add_pass();
     let output_ref = pass.write(img, AccessType::TransferWrite);
@@ -397,6 +392,7 @@ pub fn light_gbuffer(
     ssgi: &Handle<Image>,
     base_light: &Handle<Image>,
     output: &mut Handle<Image>,
+    debug_output: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
     SimpleComputePass::new(rg.add_pass(), "/assets/shaders/light_gbuffer.hlsl")
@@ -406,6 +402,7 @@ pub fn light_gbuffer(
         .read(ssgi)
         .read(base_light)
         .write(output)
+        .write(debug_output)
         .constants(gbuffer.desc().extent_inv_extent_2d())
         .raw_descriptor_set(1, bindless_descriptor_set)
         .dispatch(gbuffer.desc().extent);
@@ -420,7 +417,7 @@ pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
         input,
         AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
     );
-    let mut output = pass.create(input.desc());
+    let mut output = pass.create(input.desc().clone());
     let output_ref = pass.write(&mut output, AccessType::ComputeShaderWrite);
 
     pass.render(move |api| {
@@ -559,7 +556,7 @@ pub fn normalize_accum(
         input,
         AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
     );
-    let mut output = pass.create(&(*input.desc()).format(fmt));
+    let mut output = pass.create((*input.desc()).format(fmt));
     let output_ref = pass.write(&mut output, AccessType::ComputeShaderWrite);
 
     pass.render(move |api| {
@@ -608,7 +605,7 @@ pub fn trace_sun_shadow_mask(
 
     let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
 
-    let mut output_img = pass.create(&depth_img.desc().format(vk::Format::R8_UNORM));
+    let mut output_img = pass.create(depth_img.desc().format(vk::Format::R8_UNORM));
     let output_ref = pass.write(&mut output_img, AccessType::AnyShaderWrite);
 
     pass.render(move |api| {
@@ -635,14 +632,16 @@ pub fn trace_sun_shadow_mask(
 }
 
 pub fn calculate_reprojection_map(rg: &mut RenderGraph, depth: &Handle<Image>) -> Handle<Image> {
-    let mut pass = rg.add_pass();
-    let mut output_tex = pass.create(&depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+    let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
-    SimpleComputePass::new(pass, "/assets/shaders/calculate_reprojection_map.hlsl")
-        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-        .write(&mut output_tex)
-        .constants(output_tex.desc().extent_inv_extent_2d())
-        .dispatch(output_tex.desc().extent);
+    SimpleComputePass::new(
+        rg.add_pass(),
+        "/assets/shaders/calculate_reprojection_map.hlsl",
+    )
+    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+    .write(&mut output_tex)
+    .constants(output_tex.desc().extent_inv_extent_2d())
+    .dispatch(output_tex.desc().extent);
 
     output_tex
 }

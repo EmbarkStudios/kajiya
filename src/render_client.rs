@@ -518,19 +518,16 @@ impl VickiRenderClient {
     ) -> rg::ExportedHandle<Image> {
         let mut accum_img = rg.import_temporal(&mut self.accum_img);
 
-        let mut depth_img = crate::render_passes::create_image(
-            rg,
-            ImageDesc::new_2d(vk::Format::D24_UNORM_S8_UINT, frame_state.window_cfg.dims()),
-        );
+        let mut depth_img = rg.create(ImageDesc::new_2d(
+            vk::Format::D24_UNORM_S8_UINT,
+            frame_state.window_cfg.dims(),
+        ));
         crate::render_passes::clear_depth(rg, &mut depth_img);
 
-        let mut gbuffer = crate::render_passes::create_image(
-            rg,
-            ImageDesc::new_2d(
-                vk::Format::R32G32B32A32_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ),
-        );
+        let mut gbuffer = rg.create(ImageDesc::new_2d(
+            vk::Format::R32G32B32A32_SFLOAT,
+            frame_state.window_cfg.dims(),
+        ));
         crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
         crate::render_passes::raster_meshes(
@@ -573,6 +570,11 @@ impl VickiRenderClient {
         let ssgi =
             ssgi_renderer_inst.render(rg, &gbuffer, &depth_img, &reprojection_map, &accum_img);
 
+        let mut debug_out_tex = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            gbuffer.desc().extent_2d(),
+        ));
+
         crate::render_passes::light_gbuffer(
             rg,
             &gbuffer,
@@ -581,14 +583,18 @@ impl VickiRenderClient {
             ssgi,
             &lit,
             &mut accum_img,
+            &mut debug_out_tex,
             self.bindless_descriptor_set,
         );
 
         self.surfel_gi.end(rg, surfel_gi);
         self.ssgi.end(rg, ssgi_renderer_inst);
 
-        let post =
-            crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
+        let post = crate::render_passes::normalize_accum(
+            rg,
+            &debug_out_tex,
+            vk::Format::R16G16B16A16_SFLOAT,
+        );
 
         rg.export_temporal(accum_img, &mut self.accum_img, vk_sync::AccessType::Nothing);
         rg.export(

@@ -102,10 +102,10 @@ impl SurfelGiRenderInstance {
         depth: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
         let mut pass = rg.add_pass();
-        let mut debug_out = pass.create(&gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
+        let mut debug_out = pass.create(gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT));
 
         let mut tile_surfel_alloc_tex = pass.create(
-            &gbuffer
+            gbuffer
                 .desc()
                 .div_up_extent([8, 8, 1])
                 .format(vk::Format::R32G32_UINT),
@@ -148,14 +148,13 @@ impl SurfelGiRenderInstance {
 
     fn assign_surfels_to_grid_cells(&mut self, rg: &mut rg::RenderGraph) {
         let indirect_args_buf = {
-            let mut pass = rg.add_pass();
-            let mut indirect_args_buf = pass.create(&BufferDesc::new(
+            let mut indirect_args_buf = rg.create(BufferDesc::new(
                 (size_of::<u32>() * 4) * 2,
                 vk::BufferUsageFlags::empty(),
             ));
 
             SimpleComputePass::new(
-                pass,
+                rg.add_pass(),
                 "/assets/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
             )
             .read(&mut self.surfel_meta_buf)
@@ -206,7 +205,7 @@ impl SurfelGiRenderInstance {
     ) {
         let indirect_args_buf = {
             let mut pass = rg.add_pass();
-            let mut indirect_args_buf = pass.create(&BufferDesc::new(
+            let mut indirect_args_buf = pass.create(BufferDesc::new(
                 size_of::<u32>() * 4,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ));
@@ -289,13 +288,12 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
     .write(input_buf)
     .dispatch([(SEGMENT_SIZE * SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
 
-    let mut pass = rg.add_pass();
-    let mut segment_sum_buf = pass.create(&BufferDesc::new(
+    let mut segment_sum_buf = rg.create(BufferDesc::new(
         size_of::<u32>() * SEGMENT_SIZE,
         vk::BufferUsageFlags::empty(),
     ));
     SimpleComputePass::new(
-        pass,
+        rg.add_pass(),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan_segments.hlsl",
     )
     .read(input_buf)

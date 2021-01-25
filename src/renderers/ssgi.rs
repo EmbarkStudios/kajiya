@@ -61,16 +61,15 @@ impl SsgiRenderInstance {
         rg: &mut rg::RenderGraph,
         gbuffer: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let mut pass = rg.add_pass();
-        let mut output_tex = pass.create(
-            &gbuffer
+        let mut output_tex = rg.create(
+            gbuffer
                 .desc()
                 .half_res()
                 .usage(vk::ImageUsageFlags::empty())
                 .format(vk::Format::R8G8B8A8_SNORM),
         );
         SimpleComputePass::new(
-            pass,
+            rg.add_pass(),
             "/assets/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
         )
         .read(gbuffer)
@@ -87,15 +86,14 @@ impl SsgiRenderInstance {
         rg: &mut rg::RenderGraph,
         depth: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let mut pass = rg.add_pass();
-        let mut output_tex = pass.create(
-            &depth
+        let mut output_tex = rg.create(
+            depth
                 .desc()
                 .half_res()
                 .usage(vk::ImageUsageFlags::empty())
                 .format(vk::Format::R32_SFLOAT),
         );
-        SimpleComputePass::new(pass, "/assets/shaders/downscale_r.hlsl")
+        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/downscale_r.hlsl")
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .write(&mut output_tex)
             .constants((
@@ -112,10 +110,9 @@ impl SsgiRenderInstance {
         depth: &rg::Handle<Image>,
         gbuffer: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let mut pass = rg.add_pass();
-        let mut output_tex = pass.create(&gbuffer.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+        let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
-        SimpleComputePass::new(pass, "/assets/shaders/ssgi/upsample.hlsl")
+        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/upsample.hlsl")
             .read(ssgi)
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .read(gbuffer)
@@ -135,15 +132,14 @@ impl SsgiRenderInstance {
         let half_view_normal_tex = Self::extract_half_res_gbuffer_view_normal_rgba8(rg, gbuffer);
         let half_depth_tex = Self::extract_half_res_depth(rg, depth);
 
-        let mut pass = rg.add_pass();
-        let mut raw_ssgi_tex = pass.create(
-            &gbuffer
+        let mut raw_ssgi_tex = rg.create(
+            gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
-        SimpleComputePass::new(pass, "/assets/shaders/ssgi/ssgi.hlsl")
+        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
             .read(gbuffer)
             .read(&half_depth_tex)
             .read(&half_view_normal_tex)
@@ -156,15 +152,14 @@ impl SsgiRenderInstance {
             ))
             .dispatch(raw_ssgi_tex.desc().extent);
 
-        let mut pass = rg.add_pass();
-        let mut ssgi_tex = pass.create(
-            &gbuffer
+        let mut ssgi_tex = rg.create(
+            gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
-        SimpleComputePass::new(pass, "/assets/shaders/ssgi/spatial_filter.hlsl")
+        SimpleComputePass::new(rg.add_pass(), "/assets/shaders/ssgi/spatial_filter.hlsl")
             .read(&raw_ssgi_tex)
             .read(&half_depth_tex)
             .read(&half_view_normal_tex)
