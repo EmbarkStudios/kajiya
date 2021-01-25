@@ -2,10 +2,11 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/tonemap.hlsl"
+#include "../inc/gbuffer.hlsl"
 #include "../inc/brdf.hlsl"
 #include "../inc/brdf_lut.hlsl"
+#include "../inc/layered_brdf.hlsl"
 #include "../inc/rt.hlsl"
-#include "../inc/gbuffer.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
@@ -24,17 +25,9 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
 static const bool FIREFLY_SUPPRESSION = true;
-static const bool FURNACE_TEST = false;
-static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
-static const bool USE_PIXEL_FILTER = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
-
-    if (FURNACE_TEST) {
-        return 0.5.xxx;
-    }
-
     return atmosphere_default(dir, SUN_DIRECTION);
 
     float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
@@ -84,7 +77,6 @@ void main() {
         // ----
 
         float3 throughput = 1.0.xxx;
-
         float roughness_bias = 0.0;
 
         [loop]
@@ -103,15 +95,6 @@ void main() {
                 ));
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-                if (FURNACE_TEST && !FURNACE_TEST_EXCLUDE_DIFFUSE) {
-                    gbuffer.albedo = 1.0;
-                }
-                //gbuffer.roughness = lerp(gbuffer.roughness, 1.0, 0.5);
-                //gbuffer.metalness = 1.0;
-                //gbuffer.albedo = max(gbuffer.albedo, 1e-3);
-                //gbuffer.albedo = float3(1, 0.765557, 0.336057);
-                //gbuffer.roughness = 0.001;
-                //gbuffer.roughness = clamp((int(primary_hit.position.x * 0.2) % 5) / 5.0, 1e-4, 1.0);
 
                 const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
                 const float3 wi = mul(to_light_norm, shading_basis);
@@ -126,94 +109,30 @@ void main() {
                     wo = normalize(wo);
                 }
 
-                SpecularBrdf specular_brdf;
-                specular_brdf.albedo = 0.04;
-
-                DiffuseBrdf diffuse_brdf;
-                diffuse_brdf.albedo = gbuffer.albedo;
-
-                apply_metalness_to_brdfs(specular_brdf, diffuse_brdf, gbuffer.metalness);
+                LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
 
                 if (FIREFLY_SUPPRESSION) {
-                    specular_brdf.roughness = lerp(gbuffer.roughness, 1.0, roughness_bias);
-                } else {
-                    specular_brdf.roughness = gbuffer.roughness;
+                    brdf.specular_brdf.roughness = lerp(brdf.specular_brdf.roughness, 1.0, roughness_bias);
                 }
 
-                if (FURNACE_TEST && FURNACE_TEST_EXCLUDE_DIFFUSE) {
-                    diffuse_brdf.albedo = 0.0.xxx;
-                }
-                
-                const SpecularBrdfEnergyPreservation energy_preservation =
-                    SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
+                const float3 brdf_value = brdf.evaluate(wo, wi);
+                const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                total_radiance.xyz += throughput * brdf_value * light_radiance;
 
-                /*const float3 spec_energy_preservation =
-                    preintegrated_specular_brdf_energy_preservation_mult(specular_brdf.albedo, specular_brdf.roughness, wo.z);*/
-
-                const BrdfValue spec = specular_brdf.evaluate(wo, wi);
-                const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
-
-                //if (path_length > 0)
-                if (!FURNACE_TEST) {
-                    const float3 radiance = (
-                        spec.value() * energy_preservation.preintegrated_reflection_mult +
-                        diff.value() * spec.transmission_fraction
-                    ) * max(0.0, wi.z);
-                    
-                    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-
-                    total_radiance.xyz += throughput * radiance * light_radiance;
-                }
-
-                BrdfSample brdf_sample;
-
-                {
-                    const float u0 = uint_to_u01_float(hash1_mut(seed));
-                    const float u1 = uint_to_u01_float(hash1_mut(seed));
-
-                    // We should transmit with throughput equal to `brdf_sample.transmission_fraction`,
-                    // and reflect with the complement of that. However since we use a single ray,
-                    // we toss a coin, and choose between reflection and transmission.
-
-                    const float spec_wt = calculate_luma(energy_preservation.preintegrated_reflection);
-                    const float diffuse_wt = calculate_luma(energy_preservation.preintegrated_transmission_fraction * diffuse_brdf.albedo);
-                    const float transmission_p = diffuse_wt / (spec_wt + diffuse_wt);
-
-                    const float lobe_xi = uint_to_u01_float(hash1_mut(seed));
-                    if (lobe_xi < transmission_p) {
-                        // Transmission wins! Now sample the bottom layer (diffuse)
-
-                        brdf_sample = diffuse_brdf.sample(wo, float2(u0, u1));
-
-                        const float lobe_pdf = transmission_p;
-                        throughput *= brdf_sample.value_over_pdf / lobe_pdf;
-
-                        // Account for the masking that the top level exerts on the bottom.
-                        throughput *= energy_preservation.preintegrated_transmission_fraction;
-                    } else {
-                        // Reflection wins!
-
-                        brdf_sample = specular_brdf.sample(wo, float2(u0, u1));
-
-                        const float lobe_pdf = (1.0 - transmission_p);
-                        throughput *= brdf_sample.value_over_pdf / lobe_pdf;
-
-                        // Apply approximate multi-scatter energy preservation
-                        throughput *= energy_preservation.preintegrated_reflection_mult;
-                    }
-                }
+                const float3 urand = float3(
+                    uint_to_u01_float(hash1_mut(seed)),
+                    uint_to_u01_float(hash1_mut(seed)),
+                    uint_to_u01_float(hash1_mut(seed))
+                );
+                BrdfSample brdf_sample = brdf.sample(wo, urand);
 
                 if (brdf_sample.is_valid()) {
                     roughness_bias = lerp(roughness_bias, 1.0, 0.5 * brdf_sample.approx_roughness);
                     outgoing_ray.Origin = primary_hit.position;
                     outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
                     outgoing_ray.TMin = 1e-4;
+                    throughput *= brdf_sample.value_over_pdf;
                 } else {
-                    break;
-                }
-
-                if (FURNACE_TEST) {
-                    total_radiance.xyz += throughput * sample_environment_light(outgoing_ray.Direction);
                     break;
                 }
             } else {
@@ -222,8 +141,6 @@ void main() {
             }
         }
     }
-
-    // ----
 
     surfel_irradiance_buf[surfel_idx] = prev_total_radiance_packed + total_radiance;
 }

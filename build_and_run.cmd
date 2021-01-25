@@ -1,6 +1,6 @@
-@cargo run --release -- --scene "assets/meshes2/rm_342/scene.gltf" --scale 0.03
+rem @cargo run --release -- --scene "assets/meshes2/rm_342/scene.gltf" --scale 0.03
 
-rem @cargo run --release -- --scene "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf" --scale 0.003
+@cargo run --release -- --scene "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf" --scale 0.003
 
 rem @cargo run --release -- --scene "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf" --scale 0.003 --width 1920 --height 1080
 

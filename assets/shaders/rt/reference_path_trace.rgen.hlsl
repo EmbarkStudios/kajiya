@@ -2,13 +2,13 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/tonemap.hlsl"
-#include "../inc/brdf.hlsl"
-#include "../inc/rt.hlsl"
 #include "../inc/gbuffer.hlsl"
-#include "../inc/hash.hlsl"
-#include "../inc/bindless_textures.hlsl"
+#include "../inc/brdf.hlsl"
 #include "../inc/brdf_lut.hlsl"
 #include "../inc/layered_brdf.hlsl"
+#include "../inc/rt.hlsl"
+#include "../inc/hash.hlsl"
+#include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
@@ -151,10 +151,9 @@ void main() {
             }
 
             if (!FURNACE_TEST) {
-                const float3 radiance = brdf.evaluate(wo, wi);
+                const float3 brdf_value = brdf.evaluate(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-
-                total_radiance += throughput * radiance * light_radiance;
+                total_radiance += throughput * brdf_value * light_radiance;
             }
 
             const float3 urand = float3(
