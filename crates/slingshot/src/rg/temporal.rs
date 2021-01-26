@@ -12,6 +12,22 @@ use super::{
     ResourceDesc, RetiredRenderGraph, TypeEquals,
 };
 
+pub struct ReadOnlyHandle<ResType: Resource>(Handle<ResType>);
+
+impl<ResType: Resource> std::ops::Deref for ReadOnlyHandle<ResType> {
+    type Target = Handle<ResType>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<ResType: Resource> From<Handle<ResType>> for ReadOnlyHandle<ResType> {
+    fn from(h: Handle<ResType>) -> Self {
+        Self(h)
+    }
+}
+
 #[derive(Hash, PartialEq, Eq, Debug, Clone)]
 pub struct TemporalResourceKey(String);
 

@@ -17,15 +17,15 @@ const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
 const MAX_SURFELS_PER_CELL: usize = 32;
 
 pub struct SurfelGiRenderState {
-    pub surfel_meta_buf: rg::Handle<Buffer>,
-    pub surfel_hash_key_buf: rg::Handle<Buffer>,
-    pub surfel_hash_value_buf: rg::Handle<Buffer>,
+    surfel_meta_buf: rg::Handle<Buffer>,
+    surfel_hash_key_buf: rg::Handle<Buffer>,
+    surfel_hash_value_buf: rg::Handle<Buffer>,
 
-    pub cell_index_offset_buf: rg::Handle<Buffer>,
-    pub surfel_index_buf: rg::Handle<Buffer>,
+    cell_index_offset_buf: rg::Handle<Buffer>,
+    surfel_index_buf: rg::Handle<Buffer>,
 
-    pub surfel_spatial_buf: rg::Handle<Buffer>,
-    pub surfel_irradiance_buf: rg::Handle<Buffer>,
+    surfel_spatial_buf: rg::Handle<Buffer>,
+    surfel_irradiance_buf: rg::Handle<Buffer>,
 
     pub debug_out: rg::Handle<Image>,
 }

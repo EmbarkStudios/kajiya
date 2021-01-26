@@ -33,7 +33,7 @@ impl RtrRenderer {
         reprojection_map: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-    ) -> rg::Handle<Image> {
+    ) -> rg::ReadOnlyHandle<Image> {
         let mut refl0_tex = rg.create(
             gbuffer
                 .desc()
@@ -107,6 +107,6 @@ impl RtrRenderer {
             .constants(filtered_output_tex.desc().extent_inv_extent_2d())
             .dispatch(resolved_tex.desc().extent);
 
-        filtered_output_tex
+        filtered_output_tex.into()
     }
 }

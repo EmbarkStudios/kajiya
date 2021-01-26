@@ -26,7 +26,7 @@ impl SsgiRenderer {
         depth: &rg::Handle<Image>,
         reprojection_map: &rg::Handle<Image>,
         prev_radiance: &rg::Handle<Image>,
-    ) -> rg::Handle<Image> {
+    ) -> rg::ReadOnlyHandle<Image> {
         let half_view_normal_tex = Self::extract_half_res_gbuffer_view_normal_rgba8(rg, gbuffer);
         let half_depth_tex = Self::extract_half_res_depth(rg, depth);
 
@@ -90,7 +90,7 @@ impl SsgiRenderer {
             .constants(filtered_output_tex.desc().extent_inv_extent_2d())
             .dispatch(ssgi_tex.desc().extent);
 
-        filtered_output_tex
+        filtered_output_tex.into()
     }
 
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
