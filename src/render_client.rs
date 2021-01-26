@@ -9,7 +9,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
-    renderers::{rtr::*, ssgi::*, surfel_gi::*},
+    renderers::{rtr::*, ssgi::*},
     rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
     FrameState,
@@ -78,7 +78,6 @@ pub struct VickiRenderClient {
     frame_idx: u32,
     prev_camera_matrices: Option<CameraMatrices>,
 
-    surfel_gi: SurfelGiRenderer,
     ssgi: SsgiRenderer,
     rtr: RtrRenderer,
 }
@@ -285,7 +284,6 @@ impl VickiRenderClient {
 
         let swapchain_dims = backend.swapchain.desc.dims;
 
-        let surfel_renderer = SurfelGiRenderer::new(backend.device.as_ref());
         let ssgi_renderer = SsgiRenderer::new(
             backend.device.as_ref(),
             [swapchain_dims.width, swapchain_dims.height],
@@ -311,7 +309,6 @@ impl VickiRenderClient {
             frame_idx: 0u32,
             prev_camera_matrices: None,
 
-            surfel_gi: surfel_renderer,
             ssgi: ssgi_renderer,
             rtr: Default::default(),
         })
@@ -541,8 +538,7 @@ impl VickiRenderClient {
 
         let reprojection_map = crate::render_passes::calculate_reprojection_map(rg, &depth_img);
 
-        let mut surfel_gi = self.surfel_gi.begin(rg);
-        let surfel_gi_debug = surfel_gi.allocate_surfels(rg, &gbuffer, &depth_img);
+        let mut surfel_gi = crate::renderers::surfel_gi::allocate_surfels(rg, &gbuffer, &depth_img);
 
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
@@ -561,7 +557,7 @@ impl VickiRenderClient {
         );
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);*/
 
-        let lit = surfel_gi_debug;
+        let lit = surfel_gi.debug_out;
 
         let mut ssgi_renderer_inst = self.ssgi.begin(rg);
         let ssgi =
@@ -594,7 +590,6 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
-        self.surfel_gi.end(rg, surfel_gi);
         self.ssgi.end(rg, ssgi_renderer_inst);
 
         let post = crate::render_passes::normalize_accum(
@@ -731,7 +726,6 @@ impl RenderClient<FrameState> for VickiRenderClient {
     }
 
     fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
-        self.surfel_gi.retire(rg);
         self.ssgi.retire(rg);
 
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
