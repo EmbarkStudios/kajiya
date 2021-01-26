@@ -55,15 +55,24 @@ impl RtrRenderInstance {
         rg: &mut rg::RenderGraph,
         gbuffer: &rg::Handle<Image>,
         depth: &rg::Handle<Image>,
+        reprojection_map: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-    ) -> rg::Handle<Image> {
+    ) -> &rg::Handle<Image> {
         let mut refl0_tex = rg.create(
             gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+
+        let mut refl1_tex = rg.create(
+            gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .half_res()
+                .format(vk::Format::R32G32B32A32_SFLOAT),
         );
 
         SimpleRenderPass::new_rt(
@@ -78,10 +87,38 @@ impl RtrRenderInstance {
         .read(gbuffer)
         .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
         .write(&mut refl0_tex)
+        .write(&mut refl1_tex)
         .constants(gbuffer.desc().extent_inv_extent_2d())
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);
 
-        refl0_tex
+        let mut resolved_tex = rg.create(
+            gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/resolve.hlsl")
+            .read(gbuffer)
+            .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+            .read(&refl0_tex)
+            .read(&refl1_tex)
+            .write(&mut resolved_tex)
+            .constants(resolved_tex.desc().extent_inv_extent_2d())
+            .dispatch(resolved_tex.desc().extent);
+
+        let filtered_output_tex = &mut self.temporal0;
+        let history_tex = &self.temporal1;
+
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/temporal_filter.hlsl")
+            .read(&resolved_tex)
+            .read(history_tex)
+            .read(reprojection_map)
+            .write(filtered_output_tex)
+            .constants(filtered_output_tex.desc().extent_inv_extent_2d())
+            .dispatch(resolved_tex.desc().extent);
+
+        filtered_output_tex
     }
 }

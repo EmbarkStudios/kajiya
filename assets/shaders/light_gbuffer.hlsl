@@ -28,31 +28,6 @@
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
-float3 preintegrated_specular_brdf_fg(float3 specular_albedo, float roughness, float ndotv) {
-    float2 uv = float2(ndotv, roughness) * BRDF_FG_LUT_UV_SCALE + BRDF_FG_LUT_UV_BIAS;
-    float2 fg = bindless_textures[0].SampleLevel(sampler_lnc, uv, 0).xy;
-    #if 0
-        return (specular_albedo * fg.x + fg.y);
-    #else
-        float3 single_scatter = specular_albedo * fg.x + fg.y;
-        float energy_loss_per_bounce = 1.0 - (fg.x + fg.y);
-
-        // Lost energy accounted for by an infinite geometric series:
-        /*return single_scatter
-            + energy_loss_per_bounce * single_scatter
-            + energy_loss_per_bounce * specular_albedo * energy_loss_per_bounce * single_scatter
-            + energy_loss_per_bounce * specular_albedo * energy_loss_per_bounce * specular_albedo * energy_loss_per_bounce * single_scatter
-            + energy_loss_per_bounce * specular_albedo * energy_loss_per_bounce * specular_albedo * energy_loss_per_bounce * specular_albedo * energy_loss_per_bounce * single_scatter
-            + ...
-            ;*/
-
-        // Closed-form solution:
-        float3 bounce_radiance = energy_loss_per_bounce * specular_albedo;
-        float3 albedo_inf_series = energy_loss_per_bounce * single_scatter / (1.0 - bounce_radiance);
-        return single_scatter + albedo_inf_series;
-    #endif
-}
-
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
@@ -147,7 +122,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // the light added.
         ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
 
-        total_radiance += (base_light_tex[px].xyz * ssgi.a + ssgi.rgb) * gbuffer.albedo;
+        total_radiance += (base_light_tex[px].xyz * ssgi.a + ssgi.rgb) * brdf.diffuse_brdf.albedo;
         // total_radiance = ssgi.a;
     #else
         total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
@@ -163,7 +138,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         //ssgi.rgb,
         //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
 
-    debug_out = rtr_tex[px / 2].xyz;
+    debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

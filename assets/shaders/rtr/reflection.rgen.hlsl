@@ -17,8 +17,9 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] RWTexture2D<float4> output_tex;
-[[vk::binding(3)]] cbuffer _ {
+[[vk::binding(2)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(3)]] RWTexture2D<float4> out1_tex;
+[[vk::binding(4)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -30,7 +31,7 @@ void main() {
     float depth = depth_tex[hi_px];
 
     if (0.0 == depth) {
-        output_tex[px] = 0.0.xxxx;
+        out0_tex[px] = 0.0.xxxx;
         return;
     }
 
@@ -55,9 +56,11 @@ void main() {
     specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
     specular_brdf.roughness = gbuffer.roughness;
 
+    const float sampling_bias = 0.3;
+
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
     const float2 urand = float2(
-        uint_to_u01_float(hash1_mut(seed)),
+        lerp(uint_to_u01_float(hash1_mut(seed)), 0.0, sampling_bias),
         uint_to_u01_float(hash1_mut(seed))
     );
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
@@ -69,34 +72,39 @@ void main() {
         outgoing_ray.TMin = 1e-3;
         outgoing_ray.TMax = FLT_MAX;
 
+        out1_tex[px] = float4(outgoing_ray.Direction, brdf_sample.pdf);
+
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
-            const float3 to_light_norm = SUN_DIRECTION;
-            const bool is_shadowed =
-                rt_is_shadowed(
-                    acceleration_structure,
-                    new_ray(
-                        primary_hit.position,
-                        to_light_norm,
-                        1e-4,
-                        FLT_MAX
-                ));
+            float3 total_radiance = 0.0.xxx;
+            {
+                const float3 to_light_norm = SUN_DIRECTION;
+                const bool is_shadowed =
+                    rt_is_shadowed(
+                        acceleration_structure,
+                        new_ray(
+                            primary_hit.position,
+                            to_light_norm,
+                            1e-4,
+                            FLT_MAX
+                    ));
 
-            GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-            const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-            const float3 wi = mul(to_light_norm, shading_basis);
-            float3 wo = mul(-outgoing_ray.Direction, shading_basis);
+                GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+                const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
+                const float3 wi = mul(to_light_norm, shading_basis);
+                float3 wo = mul(-outgoing_ray.Direction, shading_basis);
 
-            const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-            const float3 brdf_value = brdf.evaluate(wo, wi);
-            const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-            float3 total_radiance = brdf_value * light_radiance;
+                const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+                const float3 brdf_value = brdf.evaluate(wo, wi);
+                const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                total_radiance += brdf_value * light_radiance;
+            }
 
-            output_tex[px] = float4(total_radiance, 1);
+            out0_tex[px] = float4(total_radiance, 1);
         } else {
-            output_tex[px] = 0.0.xxxx;
+            out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), 1);
         }
     } else {
-        output_tex[px] = 0.0.xxxx;
+        out0_tex[px] = 0.0.xxxx;
     }
 }

@@ -581,6 +581,7 @@ impl VickiRenderClient {
             rg,
             &gbuffer,
             &depth_img,
+            &reprojection_map,
             self.bindless_descriptor_set,
             &tlas,
         );
@@ -596,7 +597,7 @@ impl VickiRenderClient {
             &depth_img,
             &sun_shadow_mask,
             ssgi,
-            &rtr,
+            rtr,
             &lit,
             &mut accum_img,
             &mut debug_out_tex,

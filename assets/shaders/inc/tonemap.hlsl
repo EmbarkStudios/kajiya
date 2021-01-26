@@ -1,7 +1,4 @@
-// Rec. 709
-float calculate_luma(float3 col) {
-	return dot(float3(0.2126, 0.7152, 0.0722), col);
-}
+#include "color.hlsl"
 
 float tonemap_curve(float v) {
     float c = v + v*v + 0.5*v*v*v;
