@@ -1,64 +1,39 @@
-use std::sync::Arc;
-
+use rg::GetOrCreateTemporal;
 use slingshot::{
     ash::vk,
-    backend::{device, image::*, ray_tracing::RayTracingAcceleration},
+    backend::{image::*, ray_tracing::RayTracingAcceleration},
     rg::{self, SimpleRenderPass},
 };
 
-use crate::temporal::*;
-
 pub struct RtrRenderer {
-    pub temporal0: Temporal<Image>,
-    pub temporal1: Temporal<Image>,
+    filtered_output_tex: rg::TemporalResourceKey,
+    history_tex: rg::TemporalResourceKey,
 }
 
-pub struct RtrRenderInstance {
-    pub temporal0: rg::Handle<Image>,
-    pub temporal1: rg::Handle<Image>,
+impl Default for RtrRenderer {
+    fn default() -> Self {
+        Self {
+            filtered_output_tex: "rtr.0".into(),
+            history_tex: "rtr.1".into(),
+        }
+    }
 }
 
 impl RtrRenderer {
-    fn make_temporal_tex(device: &device::Device, extent: [u32; 2]) -> Temporal<Image> {
-        Temporal::new(Arc::new(
-            device
-                .create_image(
-                    ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, extent)
-                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                    None,
-                )
-                .unwrap(),
-        ))
+    fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
+        ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, extent)
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
-    pub fn new(device: &device::Device, extent: [u32; 2]) -> Self {
-        RtrRenderer {
-            temporal0: Self::make_temporal_tex(device, extent),
-            temporal1: Self::make_temporal_tex(device, extent),
-        }
-    }
-
-    fn on_begin(&mut self) {
-        std::mem::swap(&mut self.temporal0, &mut self.temporal1);
-    }
-
-    crate::impl_renderer_temporal_logic! {
-        RtrRenderInstance,
-        temporal0,
-        temporal1,
-    }
-}
-
-impl RtrRenderInstance {
     pub fn render(
         &mut self,
-        rg: &mut rg::RenderGraph,
+        rg: &mut rg::TemporalRenderGraph,
         gbuffer: &rg::Handle<Image>,
         depth: &rg::Handle<Image>,
         reprojection_map: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-    ) -> &rg::Handle<Image> {
+    ) -> rg::Handle<Image> {
         let mut refl0_tex = rg.create(
             gbuffer
                 .desc()
@@ -108,14 +83,27 @@ impl RtrRenderInstance {
             .constants(resolved_tex.desc().extent_inv_extent_2d())
             .dispatch(resolved_tex.desc().extent);
 
-        let filtered_output_tex = &mut self.temporal0;
-        let history_tex = &self.temporal1;
+        let history_tex = rg
+            .get_or_create_temporal(
+                self.history_tex.clone(),
+                Self::temporal_tex_desc(gbuffer.desc().extent_2d()),
+            )
+            .unwrap();
+
+        let mut filtered_output_tex = rg
+            .get_or_create_temporal(
+                self.filtered_output_tex.clone(),
+                Self::temporal_tex_desc(gbuffer.desc().extent_2d()),
+            )
+            .unwrap();
+
+        std::mem::swap(&mut self.filtered_output_tex, &mut self.history_tex);
 
         SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/temporal_filter.hlsl")
             .read(&resolved_tex)
-            .read(history_tex)
+            .read(&history_tex)
             .read(reprojection_map)
-            .write(filtered_output_tex)
+            .write(&mut filtered_output_tex)
             .constants(filtered_output_tex.desc().extent_inv_extent_2d())
             .dispatch(resolved_tex.desc().extent);
 

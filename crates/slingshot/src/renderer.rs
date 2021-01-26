@@ -2,8 +2,10 @@ use crate::{
     backend::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
     rg,
     rg::CompiledRenderGraph,
-    rg::RenderGraph,
-    rg::{RenderGraphExecutionParams, RetiredRenderGraph},
+    rg::{
+        ExportedTemporalRenderGraphState, RenderGraphExecutionParams, RetiredRenderGraph,
+        TemporalRenderGraph, TemporalRenderGraphState,
+    },
     transient_resource_cache::TransientResourceCache,
     Device,
 };
@@ -16,6 +18,17 @@ use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 
+enum TemporalRg {
+    Inert(TemporalRenderGraphState),
+    Exported(ExportedTemporalRenderGraphState),
+}
+
+impl Default for TemporalRg {
+    fn default() -> Self {
+        Self::Inert(Default::default())
+    }
+}
+
 pub struct Renderer {
     backend: RenderBackend,
     pipeline_cache: PipelineCache,
@@ -27,6 +40,7 @@ pub struct Renderer {
 
     compiled_rg: Option<CompiledRenderGraph>,
     rg_output_tex: Option<rg::ExportedHandle<Image>>,
+    temporal_rg_state: TemporalRg,
 }
 
 lazy_static::lazy_static! {
@@ -52,7 +66,7 @@ lazy_static::lazy_static! {
 pub trait RenderClient<FrameState: 'static> {
     fn prepare_render_graph(
         &mut self,
-        rg: &mut RenderGraph,
+        rg: &mut TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image>;
 
@@ -97,6 +111,8 @@ impl Renderer {
 
             compiled_rg: None,
             rg_output_tex: None,
+
+            temporal_rg_state: Default::default(),
         })
     }
 
@@ -156,6 +172,13 @@ impl Renderer {
                 );
 
                 render_client.retire_render_graph(&retired_rg);
+
+                self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
+                    TemporalRg::Inert(_) => {
+                        panic!("Trying to retire the render graph, but it's inert. Was prepare_frame not caled?");
+                    }
+                    TemporalRg::Exported(rg) => TemporalRg::Inert(rg.retire_temporal(&retired_rg)),
+                };
 
                 blit_image_to_swapchain(
                     [rg_output_img.desc.extent[0], rg_output_img.desc.extent[1]],
@@ -279,7 +302,16 @@ impl Renderer {
         render_client: &mut dyn RenderClient<FrameState>,
         frame_state: &FrameState,
     ) -> anyhow::Result<()> {
-        let mut rg = RenderGraph::new();
+        let mut rg = TemporalRenderGraph::new(
+            match &self.temporal_rg_state {
+                TemporalRg::Inert(state) => state.clone_assuming_inert(),
+                TemporalRg::Exported(_) => {
+                    panic!("Trying to prepare_frame but render graph is still active")
+                }
+            },
+            self.backend.device.clone(),
+        );
+
         rg.predefined_descriptor_set_layouts.insert(
             2,
             rg::PredefinedDescriptorSet {
@@ -289,8 +321,12 @@ impl Renderer {
 
         self.rg_output_tex = Some(render_client.prepare_render_graph(&mut rg, frame_state));
 
+        let (rg, temporal_rg_state) = rg.export_temporal();
+
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
         self.pipeline_cache.prepare_frame(&self.backend.device)?;
+
+        self.temporal_rg_state = TemporalRg::Exported(temporal_rg_state);
 
         Ok(())
     }

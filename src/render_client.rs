@@ -11,7 +11,6 @@ use crate::{
     renderer::*,
     renderers::{rtr::*, ssgi::*, surfel_gi::*},
     rg::{self, RetiredRenderGraph},
-    temporal::*,
     viewport::ViewConstants,
     FrameState,
 };
@@ -20,6 +19,7 @@ use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
+use rg::GetOrCreateTemporal;
 use slingshot::{
     ash::{
         version::DeviceV1_0,
@@ -62,7 +62,6 @@ const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
-    accum_img: Temporal<Image>,
     pub reset_reference_accumulation: bool,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
@@ -286,28 +285,8 @@ impl VickiRenderClient {
 
         let swapchain_dims = backend.swapchain.desc.dims;
 
-        let accum_img = backend
-            .device
-            .create_image(
-                ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                    [swapchain_dims.width, swapchain_dims.height],
-                )
-                .usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
-                None,
-            )
-            .unwrap();
-
         let surfel_renderer = SurfelGiRenderer::new(backend.device.as_ref());
         let ssgi_renderer = SsgiRenderer::new(
-            backend.device.as_ref(),
-            [swapchain_dims.width, swapchain_dims.height],
-        );
-        let rtr_renderer = RtrRenderer::new(
             backend.device.as_ref(),
             [swapchain_dims.width, swapchain_dims.height],
         );
@@ -315,7 +294,6 @@ impl VickiRenderClient {
         Ok(Self {
             raster_simple_render_pass,
 
-            accum_img: Temporal::new(Arc::new(accum_img)),
             reset_reference_accumulation: false,
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
@@ -335,7 +313,7 @@ impl VickiRenderClient {
 
             surfel_gi: surfel_renderer,
             ssgi: ssgi_renderer,
-            rtr: rtr_renderer,
+            rtr: Default::default(),
         })
     }
 
@@ -519,10 +497,23 @@ impl VickiRenderClient {
 impl VickiRenderClient {
     fn prepare_render_graph_standard(
         &mut self,
-        rg: &mut crate::rg::RenderGraph,
+        rg: &mut crate::rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        let mut accum_img = rg.import_temporal(&mut self.accum_img);
+        let mut accum_img = rg
+            .get_or_create_temporal(
+                "root.accum",
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    [frame_state.window_cfg.width, frame_state.window_cfg.height],
+                )
+                .usage(
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ),
+            )
+            .unwrap();
 
         let mut depth_img = rg.create(ImageDesc::new_2d(
             vk::Format::D24_UNORM_S8_UINT,
@@ -576,8 +567,7 @@ impl VickiRenderClient {
         let ssgi =
             ssgi_renderer_inst.render(rg, &gbuffer, &depth_img, &reprojection_map, &accum_img);
 
-        let mut rtr_renderer_inst = self.rtr.begin(rg);
-        let rtr = rtr_renderer_inst.render(
+        let rtr = self.rtr.render(
             rg,
             &gbuffer,
             &depth_img,
@@ -597,7 +587,7 @@ impl VickiRenderClient {
             &depth_img,
             &sun_shadow_mask,
             ssgi,
-            rtr,
+            &rtr,
             &lit,
             &mut accum_img,
             &mut debug_out_tex,
@@ -606,7 +596,6 @@ impl VickiRenderClient {
 
         self.surfel_gi.end(rg, surfel_gi);
         self.ssgi.end(rg, ssgi_renderer_inst);
-        self.rtr.end(rg, rtr_renderer_inst);
 
         let post = crate::render_passes::normalize_accum(
             rg,
@@ -614,7 +603,6 @@ impl VickiRenderClient {
             vk::Format::R16G16B16A16_SFLOAT,
         );
 
-        rg.export_temporal(accum_img, &mut self.accum_img, vk_sync::AccessType::Nothing);
         rg.export(
             post,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
@@ -627,10 +615,23 @@ impl VickiRenderClient {
 
     fn prepare_render_graph_reference(
         &mut self,
-        rg: &mut crate::rg::RenderGraph,
-        _frame_state: &FrameState,
+        rg: &mut crate::rg::TemporalRenderGraph,
+        frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        let mut accum_img = rg.import_temporal(&mut self.accum_img);
+        let mut accum_img = rg
+            .get_or_create_temporal(
+                "refpt.accum",
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    [frame_state.window_cfg.width, frame_state.window_cfg.height],
+                )
+                .usage(
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ),
+            )
+            .unwrap();
 
         if self.reset_reference_accumulation {
             self.reset_reference_accumulation = false;
@@ -652,7 +653,6 @@ impl VickiRenderClient {
         let lit =
             crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
 
-        rg.export_temporal(accum_img, &mut self.accum_img, vk_sync::AccessType::Nothing);
         rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
@@ -686,7 +686,7 @@ lazy_static::lazy_static! {
 impl RenderClient<FrameState> for VickiRenderClient {
     fn prepare_render_graph(
         &mut self,
-        rg: &mut crate::rg::RenderGraph,
+        rg: &mut crate::rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
         rg.predefined_descriptor_set_layouts.insert(
@@ -731,11 +731,8 @@ impl RenderClient<FrameState> for VickiRenderClient {
     }
 
     fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
-        rg.retire_temporal(&mut self.accum_img);
-
         self.surfel_gi.retire(rg);
         self.ssgi.retire(rg);
-        self.rtr.retire(rg);
 
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }

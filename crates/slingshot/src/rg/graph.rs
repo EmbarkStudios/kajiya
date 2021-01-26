@@ -63,16 +63,16 @@ pub(crate) enum GraphResourceInfo {
     Imported(GraphResourceImportInfo),
 }
 
-pub(crate) enum GraphResourceExportInfo {
+pub(crate) enum ExportableGraphResource {
     Image(Handle<Image>),
     Buffer(Handle<Buffer>),
 }
 
-impl GraphResourceExportInfo {
+impl ExportableGraphResource {
     fn raw(&self) -> GraphRawResourceHandle {
         match self {
-            GraphResourceExportInfo::Image(h) => h.raw,
-            GraphResourceExportInfo::Buffer(h) => h.raw,
+            ExportableGraphResource::Image(h) => h.raw,
+            ExportableGraphResource::Buffer(h) => h.raw,
         }
     }
 }
@@ -114,7 +114,7 @@ pub struct PredefinedDescriptorSet {
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceInfo>,
-    exported_resources: Vec<(GraphResourceExportInfo, vk_sync::AccessType)>,
+    exported_resources: Vec<(ExportableGraphResource, vk_sync::AccessType)>,
     pub(crate) compute_pipelines: Vec<RgComputePipeline>,
     pub(crate) raster_pipelines: Vec<RgRasterPipeline>,
     pub(crate) rt_pipelines: Vec<RgRtPipeline>,
@@ -175,7 +175,7 @@ impl ImportExportToRenderGraph for Image {
             marker: PhantomData,
         };
         rg.exported_resources
-            .push((GraphResourceExportInfo::Image(resource), access_type));
+            .push((ExportableGraphResource::Image(resource), access_type));
         res
     }
 }
@@ -217,7 +217,7 @@ impl ImportExportToRenderGraph for Buffer {
             marker: PhantomData,
         };
         rg.exported_resources
-            .push((GraphResourceExportInfo::Buffer(resource), access_type));
+            .push((ExportableGraphResource::Buffer(resource), access_type));
         res
     }
 }
@@ -479,10 +479,10 @@ impl RenderGraph {
                 let access_mask = get_access_info(*access_type).access_mask;
 
                 match res {
-                    GraphResourceExportInfo::Image(_) => {
+                    ExportableGraphResource::Image(_) => {
                         image_usage_flags[raw_id] |= image_access_mask_to_usage_flags(access_mask);
                     }
-                    GraphResourceExportInfo::Buffer(_) => {
+                    ExportableGraphResource::Buffer(_) => {
                         buffer_usage_flags[raw_id] |=
                             buffer_access_mask_to_usage_flags(access_mask);
                     }

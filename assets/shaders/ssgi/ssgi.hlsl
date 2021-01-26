@@ -69,9 +69,12 @@ float integrate_arc(float h1, float h2, float n) {
 }
 
 float update_horizion_angle(float prev, float cur) {
+#if 1
     float t = min(1.0, 0.5 / float(ssgi_half_sample_count));
-    return cur > prev ? max(cur, prev) : lerp(prev, cur, t);
-    //return cur > prev ? max(cur, prev) : prev;
+    return cur > prev ? cur : lerp(prev, cur, t);
+#else
+    return cur > prev ? cur : prev;
+#endif
 }
 
 float intersect_dir_plane_onesided(float3 dir, float3 normal, float3 pt) {

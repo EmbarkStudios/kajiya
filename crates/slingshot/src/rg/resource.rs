@@ -109,7 +109,7 @@ impl GraphRawResourceHandle {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Handle<ResType: Resource> {
     pub(crate) raw: GraphRawResourceHandle,
     pub(crate) desc: <ResType as Resource>::Desc,
@@ -143,6 +143,14 @@ impl<ResType: Resource> Handle<ResType> {
     #[allow(dead_code)]
     pub fn desc(&self) -> &<ResType as Resource>::Desc {
         &self.desc
+    }
+
+    pub(crate) fn clone_unchecked(&self) -> Self {
+        Self {
+            raw: self.raw.clone(),
+            desc: self.desc.clone(),
+            marker: PhantomData,
+        }
     }
 }
 

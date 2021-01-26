@@ -139,6 +139,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
 
     debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+    //debug_out = ssgi.a;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }
