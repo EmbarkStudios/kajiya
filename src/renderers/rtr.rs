@@ -47,7 +47,7 @@ impl RtrRenderer {
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
-                .format(vk::Format::R32G32B32A32_SFLOAT),
+                .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
         SimpleRenderPass::new_rt(
