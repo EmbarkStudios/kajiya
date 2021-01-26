@@ -69,12 +69,22 @@ void main(in uint2 px : SV_DispatchThreadID) {
         if (packed0.w != 0) {
             float4 packed1 = hit1_tex[sample_px];
 
+            // TODO: use packed gb
+            GbufferData sample_gbuffer =
+                GbufferDataPacked::from_uint4(asuint(gbuffer_tex[sample_px * 2])).unpack();
+
             const float3 wi = mul(packed1.xyz, shading_basis);
             BrdfValue spec = specular_brdf.evaluate(wo, wi);
+
+            const float rejection_bias =
+                max(0.0, 3.0 * dot(gbuffer.normal, sample_gbuffer.normal));
+
+            // TODO: approx shadowing
 
             contrib_sum +=
                 float4(packed0.rgb, 1)
                 * spec.value().x
+                * rejection_bias
                 / clamp(packed1.w, 1e-5, 1e5)
                 //* max(0.0, wi.z)
                 * step(0.0, wi.z)

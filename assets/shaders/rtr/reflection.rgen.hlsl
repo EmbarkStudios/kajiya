@@ -67,8 +67,8 @@ void main() {
 
     if (brdf_sample.is_valid()) {
         RayDesc outgoing_ray;
-        outgoing_ray.Origin = view_ray_context.ray_hit_ws();
         outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
+        outgoing_ray.Origin = view_ray_context.ray_hit_ws();
         outgoing_ray.TMin = 1e-3;
         outgoing_ray.TMax = FLT_MAX;
 
