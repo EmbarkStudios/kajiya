@@ -9,7 +9,6 @@ mod math;
 mod render_client;
 mod render_passes;
 mod renderers;
-mod temporal;
 mod viewport;
 
 use asset::mesh::*;

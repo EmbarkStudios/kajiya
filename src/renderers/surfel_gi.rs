@@ -1,11 +1,10 @@
-use std::{mem::size_of, sync::Arc};
+use std::mem::size_of;
 
 use rg::GetOrCreateTemporal;
 use slingshot::{
     ash::vk,
     backend::{
         buffer::{Buffer, BufferDesc},
-        device,
         image::*,
         ray_tracing::RayTracingAcceleration,
     },

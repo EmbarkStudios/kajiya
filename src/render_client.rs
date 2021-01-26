@@ -282,13 +282,6 @@ impl VickiRenderClient {
             &vertex_buffer,
         );
 
-        let swapchain_dims = backend.swapchain.desc.dims;
-
-        let ssgi_renderer = SsgiRenderer::new(
-            backend.device.as_ref(),
-            [swapchain_dims.width, swapchain_dims.height],
-        );
-
         Ok(Self {
             raster_simple_render_pass,
 
@@ -309,7 +302,7 @@ impl VickiRenderClient {
             frame_idx: 0u32,
             prev_camera_matrices: None,
 
-            ssgi: ssgi_renderer,
+            ssgi: Default::default(),
             rtr: Default::default(),
         })
     }
@@ -559,9 +552,9 @@ impl VickiRenderClient {
 
         let lit = surfel_gi.debug_out;
 
-        let mut ssgi_renderer_inst = self.ssgi.begin(rg);
-        let ssgi =
-            ssgi_renderer_inst.render(rg, &gbuffer, &depth_img, &reprojection_map, &accum_img);
+        let ssgi = self
+            .ssgi
+            .render(rg, &gbuffer, &depth_img, &reprojection_map, &accum_img);
 
         let rtr = self.rtr.render(
             rg,
@@ -582,15 +575,13 @@ impl VickiRenderClient {
             &gbuffer,
             &depth_img,
             &sun_shadow_mask,
-            ssgi,
+            &ssgi,
             &rtr,
             &lit,
             &mut accum_img,
             &mut debug_out_tex,
             self.bindless_descriptor_set,
         );
-
-        self.ssgi.end(rg, ssgi_renderer_inst);
 
         let post = crate::render_passes::normalize_accum(
             rg,
@@ -725,9 +716,7 @@ impl RenderClient<FrameState> for VickiRenderClient {
         self.prev_camera_matrices = Some(frame_state.camera_matrices);
     }
 
-    fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
-        self.ssgi.retire(rg);
-
+    fn retire_render_graph(&mut self, _rg: &RetiredRenderGraph) {
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
 }
