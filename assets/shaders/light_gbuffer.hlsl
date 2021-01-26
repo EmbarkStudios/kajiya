@@ -70,11 +70,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float shadow_mask = sun_shadow_mask_tex[px];
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
-            //gbuffer.albedo = float3(1, 0.765557, 0.336057);
-            //gbuffer.metalness = 1.0;
-            //gbuffer.roughness = clamp((int(pt_ws.x * 0.2) % 5) / 5.0, 1e-4, 1.0);
     //gbuffer.roughness = 0.9;
-    //gbuffer.metalness = 1;
+    //gbuffer.metalness = 0;
     //gbuffer.albedo = 0.7;
     //gbuffer.metalness = 1;
 
@@ -122,7 +119,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // the light added.
         ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
 
-        total_radiance += (base_light_tex[px].xyz * ssgi.a + ssgi.rgb) * brdf.diffuse_brdf.albedo;
+        total_radiance +=
+            (base_light_tex[px].xyz * ssgi.a + ssgi.rgb)
+            * brdf.diffuse_brdf.albedo
+            * brdf.energy_preservation.preintegrated_transmission_fraction;
         // total_radiance = ssgi.a;
     #else
         total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
