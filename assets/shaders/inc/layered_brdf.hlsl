@@ -1,3 +1,31 @@
+// Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo
+// is spread between the specular and diffuse layers. Scaling both the specular
+// and diffuse albedo by a constant can recover this energy.
+// This is a reasonably accurate fit (RMSE: 0.0007691) to the scaling function.
+float3 metalness_albedo_boost(float metalness, float3 diffuse_albedo) {
+    static const float a0 = 1.749;
+    static const float a1 = -1.61;
+    static const float e1 = 0.5555;
+    static const float e3 = 0.8244;
+
+    const float x = metalness;
+    const float3 y = diffuse_albedo;
+    const float3 y3 = y * y * y;
+
+    return 1.0 + (0.25-(x-0.5)*(x-0.5)) * (a0+a1*abs(x-0.5)) * (e1*y + e3*y3);
+}
+
+void apply_metalness_to_brdfs(inout SpecularBrdf specular_brdf, inout DiffuseBrdf diffuse_brdf, float metalness) {
+    const float3 albedo = diffuse_brdf.albedo;
+
+    specular_brdf.albedo = lerp(specular_brdf.albedo, albedo, metalness);
+    diffuse_brdf.albedo = max(0.0, 1.0 - metalness) * albedo;
+
+    const float3 albedo_boost = metalness_albedo_boost(metalness, albedo);
+    specular_brdf.albedo = min(1.0, specular_brdf.albedo * albedo_boost);
+    diffuse_brdf.albedo = min(1.0, diffuse_brdf.albedo * albedo_boost);
+}
+
 struct LayeredBrdf {
     SpecularBrdf specular_brdf;
     DiffuseBrdf diffuse_brdf;
@@ -30,7 +58,7 @@ struct LayeredBrdf {
         const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
 
         return (
-            spec.value() * energy_preservation.preintegrated_reflection_mult +
+            spec.value() +// * energy_preservation.preintegrated_reflection_mult +
             diff.value() * spec.transmission_fraction
         ) * max(0.0, wi.z);
     }

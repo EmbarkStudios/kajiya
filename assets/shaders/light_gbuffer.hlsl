@@ -1,9 +1,12 @@
+#include "inc/samplers.hlsl"
 #include "inc/frame_constants.hlsl"
 #include "inc/pack_unpack.hlsl"
-#include "inc/brdf.hlsl"
-#include "inc/uv.hlsl"
-#include "inc/rt.hlsl"
 #include "inc/tonemap.hlsl"
+#include "inc/rt.hlsl"
+#include "inc/brdf.hlsl"
+#include "inc/brdf_lut.hlsl"
+#include "inc/layered_brdf.hlsl"
+#include "inc/uv.hlsl"
 #include "inc/bindless_textures.hlsl"
 #include "inc/atmosphere.hlsl"
 
@@ -14,14 +17,13 @@
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
-[[vk::binding(4)]] Texture2D<float4> base_light_tex;
-[[vk::binding(5)]] RWTexture2D<float4> output_tex;
-[[vk::binding(6)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(7)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float4> rtr_tex;
+[[vk::binding(5)]] Texture2D<float4> base_light_tex;
+[[vk::binding(6)]] RWTexture2D<float4> output_tex;
+[[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(8)]] cbuffer _ {
     float4 output_tex_size;
 };
-
-SamplerState sampler_lnc;
 
 static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
@@ -103,7 +105,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
     const float3 wi = mul(to_light_norm, shading_basis);
-
     float3 wo = mul(-outgoing_ray.Direction, shading_basis);
 
     // Hack for shading normals facing away from the outgoing ray's direction:
@@ -114,21 +115,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
         wo = normalize(wo);
     }
 
-    SpecularBrdf specular_brdf;
-    specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
-    specular_brdf.roughness = gbuffer.roughness;
-
-    DiffuseBrdf diffuse_brdf;
-    diffuse_brdf.albedo = max(0.0, 1.0 - gbuffer.metalness) * gbuffer.albedo;
-
-    const BrdfValue spec = specular_brdf.evaluate(wo, wi);
-    const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
-
-    const float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
+    const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+    const float3 brdf_value = brdf.evaluate(wo, wi);
     const float3 light_radiance = shadow_mask * SUN_COLOR;
+    float3 total_radiance = brdf_value * light_radiance;
 
-    float3 total_radiance = 0.0.xxx;
-    total_radiance += radiance * light_radiance;
+    //const float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
+    //const float3 light_radiance = shadow_mask * SUN_COLOR;
+    //total_radiance += radiance * light_radiance;
 
     //res.xyz += radiance * SUN_COLOR + ambient;
     //res.xyz += albedo;
@@ -163,12 +157,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //total_radiance = gbuffer.metalness;
 
     output_tex[px] = float4(total_radiance, 1.0);
-    debug_out_tex[px] = float4(
-        total_radiance,
+    float3 debug_out = total_radiance;
         //base_light_tex[px].xyz * ssgi.a + ssgi.rgb,
         //base_light_tex[px].xyz,
         //ssgi.rgb,
         //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
-        1.0
-    );
+
+    debug_out = rtr_tex[px / 2].xyz;
+
+    debug_out_tex[px] = float4(debug_out, 1.0);
 }

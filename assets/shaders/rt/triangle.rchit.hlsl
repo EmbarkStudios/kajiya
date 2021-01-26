@@ -1,10 +1,10 @@
+#include "../inc/samplers.hlsl"
 #include "../inc/mesh.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/bindless.hlsl"
 #include "../inc/rt.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(2, 0)]] SamplerState sampler_llr;
 
 struct RayHitAttrib {
     float2 bary;

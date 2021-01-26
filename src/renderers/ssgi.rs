@@ -1,16 +1,9 @@
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 
 use slingshot::{
     ash::vk,
-    backend::{
-        buffer::{Buffer, BufferDesc},
-        device,
-        image::*,
-        ray_tracing::RayTracingAcceleration,
-        shader::*,
-    },
-    rg::{self, BindRgRef, SimpleRenderPass},
-    vk_sync::AccessType,
+    backend::{device, image::*},
+    rg::{self, SimpleRenderPass},
 };
 
 use crate::temporal::*;

@@ -1,23 +1,19 @@
 use super::{
-    graph::{GraphResourceCreateInfo, RecordedPass, RenderGraph},
+    graph::{RecordedPass, RenderGraph},
     resource::*,
     PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
     RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle, RgRtPipeline,
     RgRtPipelineHandle, TypeEquals,
 };
 
-use crate::backend::{
-    ray_tracing::RayTracingPipelineDesc,
-    shader::{
-        ComputePipelineDesc, DescriptorSetLayoutOpts, PipelineShader, RasterPipelineDescBuilder,
-    },
-};
+use crate::backend::{ray_tracing::RayTracingPipelineDesc, shader::*};
 use std::{marker::PhantomData, path::Path};
 
 pub use vk_sync::AccessType;
 
 pub struct PassBuilder<'rg> {
     pub(crate) rg: &'rg mut RenderGraph,
+    #[allow(dead_code)]
     pub(crate) pass_idx: usize,
     pub(crate) pass: Option<RecordedPass>,
 }

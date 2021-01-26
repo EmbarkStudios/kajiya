@@ -4,7 +4,8 @@ use slingshot::{
     vk_sync::AccessType,
     ImageDesc,
 };
-use slingshot::{ash::vk::ImageUsageFlags, ImageViewDescBuilder};
+#[allow(unused_imports)]
+use slingshot::{ash::vk::ImageUsageFlags, backend::image::*};
 
 use crate::image_lut::ComputeImageLut;
 

@@ -390,6 +390,7 @@ pub fn light_gbuffer(
     depth: &Handle<Image>,
     sun_shadow_mask: &Handle<Image>,
     ssgi: &Handle<Image>,
+    rtr: &Handle<Image>,
     base_light: &Handle<Image>,
     output: &mut Handle<Image>,
     debug_output: &mut Handle<Image>,
@@ -400,6 +401,7 @@ pub fn light_gbuffer(
         .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
         .read(sun_shadow_mask)
         .read(ssgi)
+        .read(rtr)
         .read(base_light)
         .write(output)
         .write(debug_output)
@@ -408,7 +410,7 @@ pub fn light_gbuffer(
         .dispatch(gbuffer.desc().extent);
 }
 
-pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
+/*pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
     let mut pass = rg.add_pass();
 
     let pipeline = pass.register_compute_pipeline("/assets/shaders/blur.hlsl");
@@ -431,62 +433,7 @@ pub fn blur(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
     });
 
     output
-}
-
-pub fn ray_trace_test(
-    rg: &mut RenderGraph,
-    output_img: &mut Handle<Image>,
-    bindless_descriptor_set: vk::DescriptorSet,
-    tlas: Handle<RayTracingAcceleration>,
-) {
-    let mut pass = rg.add_pass();
-
-    let pipeline = pass.register_ray_tracing_pipeline(
-        &[
-            PipelineShader {
-                code: "/assets/shaders/rt/triangle.rgen.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/triangle.rmiss.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/shadow.rmiss.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                    .build()
-                    .unwrap(),
-            },
-            PipelineShader {
-                code: "/assets/shaders/rt/triangle.rchit.hlsl",
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
-                    .build()
-                    .unwrap(),
-            },
-        ],
-        slingshot::backend::ray_tracing::RayTracingPipelineDesc::default()
-            .max_pipeline_ray_recursion_depth(1),
-    );
-
-    let tlas_ref = pass.read(&tlas, AccessType::AnyShaderReadOther);
-    let output_ref = pass.write(output_img, AccessType::AnyShaderWrite);
-
-    pass.render(move |api| {
-        let pipeline = api.bind_ray_tracing_pipeline(
-            pipeline
-                .into_binding()
-                .descriptor_set(0, &[output_ref.bind()])
-                .raw_descriptor_set(1, bindless_descriptor_set)
-                .descriptor_set(3, &[tlas_ref.bind()]),
-        );
-
-        pipeline.trace_rays(output_ref.desc().extent);
-    });
-}
+}*/
 
 pub fn reference_path_trace(
     rg: &mut RenderGraph,

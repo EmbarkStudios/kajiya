@@ -7,10 +7,8 @@ use slingshot::{
         device,
         image::*,
         ray_tracing::RayTracingAcceleration,
-        shader::*,
     },
-    rg::{self, BindRgRef, IntoRenderPassPipelineBinding, SimpleRenderPass},
-    vk_sync::AccessType,
+    rg::{self, SimpleRenderPass},
 };
 
 use crate::temporal::*;

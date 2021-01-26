@@ -1,16 +1,9 @@
-use std::{mem::size_of, sync::Arc};
+use std::sync::Arc;
 
 use slingshot::{
     ash::vk,
-    backend::{
-        buffer::{Buffer, BufferDesc},
-        device,
-        image::*,
-        ray_tracing::RayTracingAcceleration,
-        shader::*,
-    },
-    rg::{self, BindRgRef, SimpleRenderPass},
-    vk_sync::AccessType,
+    backend::{device, image::*, ray_tracing::RayTracingAcceleration},
+    rg::{self, SimpleRenderPass},
 };
 
 use crate::temporal::*;
@@ -75,7 +68,7 @@ impl RtrRenderInstance {
 
         SimpleRenderPass::new_rt(
             rg.add_pass(),
-            "/assets/shaders/rt/reflection.rgen.hlsl",
+            "/assets/shaders/rtr/reflection.rgen.hlsl",
             &[
                 "/assets/shaders/rt/triangle.rmiss.hlsl",
                 "/assets/shaders/rt/shadow.rmiss.hlsl",
@@ -85,6 +78,7 @@ impl RtrRenderInstance {
         .read(gbuffer)
         .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
         .write(&mut refl0_tex)
+        .constants(gbuffer.desc().extent_inv_extent_2d())
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);
 

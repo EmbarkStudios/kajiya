@@ -3,7 +3,7 @@ use vk_sync::AccessType;
 
 use crate::{
     backend::{
-        image::ImageViewDescBuilder,
+        image::*,
         shader::{PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
     },
     Image,

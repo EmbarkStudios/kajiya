@@ -383,7 +383,7 @@ impl RenderGraph {
             .resources
             .iter()
             .map(|res| match res {
-                GraphResourceInfo::Created(res) => ResourceLifetime {
+                GraphResourceInfo::Created(_) => ResourceLifetime {
                     first_access: None,
                     last_access: None,
                 },
