@@ -55,14 +55,18 @@ void main() {
     SpecularBrdf specular_brdf;
     specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
     specular_brdf.roughness = gbuffer.roughness;
+    const float roughness_bias = 0.25 * gbuffer.roughness;
+
+    const uint urand_idx = frame_constants.frame_index;
+
+    // 256x256 blue noise
+    float2 urand = bindless_textures[1][
+        (px + int2(urand_idx * 59, urand_idx * 37)) & 255
+    ].xy;
 
     const float sampling_bias = 0.3;
+    urand.x = lerp(urand.x, 0.0, sampling_bias);
 
-    uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
-    const float2 urand = float2(
-        lerp(uint_to_u01_float(hash1_mut(seed)), 0.0, sampling_bias),
-        uint_to_u01_float(hash1_mut(seed))
-    );
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
 
     if (brdf_sample.is_valid()) {
@@ -72,7 +76,7 @@ void main() {
         outgoing_ray.TMin = 1e-3;
         outgoing_ray.TMax = FLT_MAX;
 
-        out1_tex[px] = float4(outgoing_ray.Direction, brdf_sample.pdf);
+        out1_tex[px] = float4(outgoing_ray.Direction, clamp(brdf_sample.pdf, 1e-5, 1e5));
 
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
@@ -90,6 +94,7 @@ void main() {
                     ));
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+                gbuffer.roughness = lerp(gbuffer.roughness, 1.0, roughness_bias);
                 const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
                 const float3 wi = mul(to_light_norm, shading_basis);
                 float3 wo = mul(-outgoing_ray.Direction, shading_basis);

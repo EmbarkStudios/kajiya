@@ -89,7 +89,7 @@ struct SpecularBrdf {
 		return a2 / (M_PI * denom_sqrt * denom_sqrt);
 	}
 
-    float g_smith_ggx_correlated(float ndotv, float ndotl, float ag) {
+    static float g_smith_ggx_correlated(float ndotv, float ndotl, float ag) {
     	float ag2 = ag * ag;
 
     	float lambda_v = ndotl * sqrt((-ndotv * ag2 + ndotv) * ndotv + ag2);

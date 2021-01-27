@@ -11,7 +11,7 @@ mod render_passes;
 mod renderers;
 mod viewport;
 
-use asset::mesh::*;
+use asset::{image::LoadImage, mesh::*};
 use camera::*;
 use image_cache::*;
 use input::*;
@@ -79,19 +79,20 @@ fn try_main() -> anyhow::Result<()> {
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
-    /*let metalness_albedo_boost_lut = LoadImage {
-        path: "assets/images/metalness_albedo_boost_lut.png".into(),
-    }
-    .into_lazy();
-    let metalness_albedo_boost_lut =
-        smol::block_on(metalness_albedo_boost_lut.eval(&lazy_cache)).unwrap();
+    {
+        let blue_noise_img = LoadImage {
+            path: "assets/images/bluenoise/256_256/LDR_RGBA_0.png".into(),
+        }
+        .into_lazy();
+        let blue_noise_img = smol::block_on(blue_noise_img.eval(&lazy_cache)).unwrap();
 
-    render_client.add_image(
-        metalness_albedo_boost_lut.as_ref(),
-        TexParams {
-            gamma: TexGamma::Linear,
-        },
-    );*/
+        render_client.add_image(
+            blue_noise_img.as_ref(),
+            TexParams {
+                gamma: TexGamma::Linear,
+            },
+        );
+    }
 
     let mut renderer = renderer::Renderer::new(render_backend)?;
 
