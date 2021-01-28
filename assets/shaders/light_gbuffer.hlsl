@@ -54,6 +54,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float4 gbuffer_packed = gbuffer_tex[px];
     if (all(gbuffer_packed == 0.0.xxxx)) {
         float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
+        //float3 output = 0.5;
         output_tex[px] = float4(output, 1);
         debug_out_tex[px] = float4(output, 1);
         //output_tex[px] = float4(0.1.xxx, 1.0);
@@ -72,7 +73,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     //gbuffer.roughness = 0.9;
     //gbuffer.metalness = 0;
-    //gbuffer.albedo = 0.7;
+    //gbuffer.albedo = 1.0;
     //gbuffer.metalness = 1;
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
@@ -87,7 +88,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         wo = normalize(wo);
     }
 
-    const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+    LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
     const float3 brdf_value = brdf.evaluate(wo, wi);
     const float3 light_radiance = shadow_mask * SUN_COLOR;
     float3 total_radiance = brdf_value * light_radiance;
@@ -128,9 +129,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
         total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
     #endif
     
-    //total_radiance = neutral_tonemap(total_radiance);
-    //total_radiance = gbuffer.metalness;
-
     output_tex[px] = float4(total_radiance, 1.0);
     float3 debug_out = total_radiance;
         //base_light_tex[px].xyz * ssgi.a + ssgi.rgb,

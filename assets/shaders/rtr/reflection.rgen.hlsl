@@ -23,6 +23,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
     float4 gbuffer_tex_size;
 };
 
+static const float SKY_DIST = 1e5;
 
 [shader("raygeneration")]
 void main() {
@@ -31,7 +32,7 @@ void main() {
     float depth = depth_tex[hi_px];
 
     if (0.0 == depth) {
-        out0_tex[px] = 0.0.xxxx;
+        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
         return;
     }
 
@@ -57,24 +58,44 @@ void main() {
     specular_brdf.roughness = gbuffer.roughness;
     const float roughness_bias = 0.25 * gbuffer.roughness;
 
-    const uint urand_idx = frame_constants.frame_index;
+    uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 
+#if 1
     // 256x256 blue noise
-    float2 urand = bindless_textures[1][
-        (px + int2(urand_idx * 59, urand_idx * 37)) & 255
-    ].xy;
 
-    const float sampling_bias = 0.3;
+    const uint noise_offset = frame_constants.frame_index;
+    float2 urand = bindless_textures[1][
+        (px + int2(noise_offset * 59, noise_offset * 37)) & 255
+    ].xy;
+#else
+    float2 urand = float2(
+        uint_to_u01_float(hash1_mut(seed)),
+        uint_to_u01_float(hash1_mut(seed))
+    );
+#endif
+
+    const float sampling_bias = 0.0;
     urand.x = lerp(urand.x, 0.0, sampling_bias);
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
+    
+    [loop]
+    for (uint retry_count = 0; !brdf_sample.is_valid() && retry_count < 4; ++retry_count) {
+        urand = float2(
+            uint_to_u01_float(hash1_mut(seed)),
+            uint_to_u01_float(hash1_mut(seed))
+        );
+        urand.x = lerp(urand.x, 0.0, sampling_bias);
+
+        brdf_sample = specular_brdf.sample(wo, urand);
+    }
 
     if (brdf_sample.is_valid()) {
         RayDesc outgoing_ray;
         outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
         outgoing_ray.Origin = view_ray_context.ray_hit_ws();
         outgoing_ray.TMin = 1e-3;
-        outgoing_ray.TMax = FLT_MAX;
+        outgoing_ray.TMax = SKY_DIST;
 
         out1_tex[px] = float4(outgoing_ray.Direction, clamp(brdf_sample.pdf, 1e-5, 1e5));
 
@@ -90,7 +111,7 @@ void main() {
                             primary_hit.position,
                             to_light_norm,
                             1e-4,
-                            FLT_MAX
+                            SKY_DIST
                     ));
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
@@ -99,17 +120,19 @@ void main() {
                 const float3 wi = mul(to_light_norm, shading_basis);
                 float3 wo = mul(-outgoing_ray.Direction, shading_basis);
 
-                const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+                LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+
                 const float3 brdf_value = brdf.evaluate(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 total_radiance += brdf_value * light_radiance;
             }
 
-            out0_tex[px] = float4(total_radiance, 1);
+            out0_tex[px] = float4(total_radiance, primary_hit.ray_t);
         } else {
-            out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), 1);
+            //out0_tex[px] = float4(0.5.xxx, SKY_DIST);
+            out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
         }
     } else {
-        out0_tex[px] = 0.0.xxxx;
+        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
     }
 }

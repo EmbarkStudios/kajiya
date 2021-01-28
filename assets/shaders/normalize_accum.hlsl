@@ -1,4 +1,6 @@
+#include "inc/frame_constants.hlsl"
 #include "inc/tonemap.hlsl"
+#include "inc/bindless_textures.hlsl"
 
 Texture2D<float4> input_tex;
 RWTexture2D<float4> output_tex;
@@ -14,6 +16,14 @@ float sharpen_remap(float l) {
 
 float sharpen_inv_remap(float l) {
     return l * l;
+}
+
+float triangle_remap(float n) {
+    float origin = n * 2.0 - 1.0;
+    float v = origin * rsqrt(abs(origin));
+    v = max(-1.0, v);
+    v -= sign(origin);
+    return v;
 }
 
 [numthreads(8, 8, 1)]
@@ -61,5 +71,16 @@ void main(in uint2 px : SV_DispatchThreadID) {
     col = lerp(calculate_luma(col), col, 1.05);
     col = pow(col, 1.02);
     
+    // Dither
+#if 1
+    const uint urand_idx = frame_constants.frame_index;
+    // 256x256 blue noise
+    float dither = triangle_remap(bindless_textures[1][
+        (px + int2(urand_idx * 59, urand_idx * 37)) & 255
+    ].x);
+
+    col += dither / 256.0;
+#endif
+
     output_tex[px] = float4(col, 1.0);
 }

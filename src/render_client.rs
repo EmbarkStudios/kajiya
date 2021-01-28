@@ -587,6 +587,7 @@ impl VickiRenderClient {
             rg,
             &debug_out_tex,
             vk::Format::R16G16B16A16_SFLOAT,
+            self.bindless_descriptor_set,
         );
 
         rg.export(
@@ -636,8 +637,12 @@ impl VickiRenderClient {
             &tlas,
         );
 
-        let lit =
-            crate::render_passes::normalize_accum(rg, &accum_img, vk::Format::R16G16B16A16_SFLOAT);
+        let lit = crate::render_passes::normalize_accum(
+            rg,
+            &accum_img,
+            vk::Format::R16G16B16A16_SFLOAT,
+            self.bindless_descriptor_set,
+        );
 
         rg.export(
             lit,

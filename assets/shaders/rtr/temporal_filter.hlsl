@@ -11,8 +11,6 @@
 };
 SamplerState sampler_lnc;
 
-#include "spatial_samples.hlsl"
-
 //#define LINEAR_TO_WORKING(x) sqrt(x)
 //#define WORKING_TO_LINEAR(x) ((x)*(x))
 
@@ -21,6 +19,9 @@ SamplerState sampler_lnc;
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
+    //output_tex[px] = input_tex[px];
+    //return;
+
     float2 uv = get_uv(px, output_tex_size);
     
     float4 center = WORKING_TO_LINEAR(max(0.0.xxxx, input_tex[px]));
@@ -53,7 +54,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
     
 	float4 clamped_history = clamp(history, nmin, nmax);
-    float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / 12.0, reproj.z));
+    //float4 clamped_history = history;
+    float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / 16.0, reproj.z));
     
     output_tex[px] = LINEAR_TO_WORKING(res);
     //output_tex[px] = reproj.w;

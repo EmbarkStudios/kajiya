@@ -68,6 +68,7 @@ struct GbufferPathVertex {
     bool is_hit;
     GbufferDataPacked gbuffer_packed;
     float3 position;
+    float ray_t;
 };
 
 GbufferPathVertex rt_trace_gbuffer(
@@ -82,10 +83,12 @@ GbufferPathVertex rt_trace_gbuffer(
         res.is_hit = true;
         res.position = ray.Origin + ray.Direction * payload.t;
         res.gbuffer_packed = payload.gbuffer_packed;
+        res.ray_t = payload.t;
         return res;
     } else {
         GbufferPathVertex res;
         res.is_hit = false;
+        res.ray_t = FLT_MAX;
         return res;
     }
 }

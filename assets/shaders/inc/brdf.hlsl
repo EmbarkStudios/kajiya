@@ -4,6 +4,7 @@ static const uint2 BRDF_FG_LUT_DIMS = uint2(64, 64);
 static const float2 BRDF_FG_LUT_UV_SCALE = (BRDF_FG_LUT_DIMS - 1.0) / BRDF_FG_LUT_DIMS;
 static const float2 BRDF_FG_LUT_UV_BIAS = 0.5.xx / BRDF_FG_LUT_DIMS;
 
+// Defined wrt the projected solid angle metric
 struct BrdfValue {
     float3 value_over_pdf;
     float pdf;
@@ -23,6 +24,7 @@ struct BrdfValue {
     }
 };
 
+// Defined wrt the projected solid angle metric
 struct BrdfSample: BrdfValue {
     float3 wi;
 
@@ -144,7 +146,6 @@ struct SpecularBrdf {
         const float3 m = normalize(wo + wi);
 
         const float cos_theta = m.z;
-        const float pdf_h_denom_sqrt = 1.0 + (-1.0 + a2) * cos_theta * cos_theta;
         const float pdf_h = ggx_ndf(a2, cos_theta) * cos_theta;
         const float jacobian = 1.0 / (4.0 * dot(wi, m));
 
@@ -155,7 +156,7 @@ struct SpecularBrdf {
         res.value_over_pdf =
            fresnel
             / (cos_theta * jacobian)
-            *	g_smith_ggx_correlated(wo.z, wi.z, roughness)
+            * g_smith_ggx_correlated(wo.z, wi.z, roughness)
             / (4 * wo.z);
         res.transmission_fraction = 1.0.xxx - fresnel;
 

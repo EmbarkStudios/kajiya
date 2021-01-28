@@ -20,10 +20,13 @@ float2 integrate_brdf(float roughness, float ndotv) {
     for (uint i = 0; i < num_samples; ++i) {
         float2 urand = hammersley(i, num_samples);
         BrdfSample v_a = brdf_a.sample(wo, urand);
-        BrdfValue v_b = brdf_b.evaluate(wo, v_a.wi);
 
-        a += (v_a.value_over_pdf.x - v_b.value_over_pdf.x);
-        b += v_b.value_over_pdf.x;
+        if (v_a.is_valid()) {
+            BrdfValue v_b = brdf_b.evaluate(wo, v_a.wi);
+
+            a += (v_a.value_over_pdf.x - v_b.value_over_pdf.x);
+            b += v_b.value_over_pdf.x;
+        }
     }
 
     return float2(a, b) / num_samples;

@@ -434,12 +434,14 @@ pub fn normalize_accum(
     rg: &mut RenderGraph,
     input: &Handle<Image>,
     fmt: vk::Format,
+    bindless_descriptor_set: vk::DescriptorSet,
 ) -> Handle<Image> {
     let mut output = rg.create((*input.desc()).format(fmt));
 
     SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/normalize_accum.hlsl")
         .read(input)
         .write(&mut output)
+        .raw_descriptor_set(1, bindless_descriptor_set)
         .dispatch(input.desc().extent);
 
     output
