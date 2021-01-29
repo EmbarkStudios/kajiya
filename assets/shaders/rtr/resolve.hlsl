@@ -23,6 +23,7 @@
 };
 
 #define USE_APPROX_BRDF 1
+#define SHUFFLE_SUBPIXELS 1
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -72,7 +73,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     // Index used to calculate a sample set disjoint for all four pixels in the quad
     // Offsetting by frame index reduces small structured artifacts
-    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
     
     const float a2 = gbuffer.roughness * gbuffer.roughness;
 
@@ -91,12 +92,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
         reprojection_params.z
     );
 
-    history_error = WaveActiveMax(history_error);
-    /*history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 1));
-    history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 2));
-    history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 8));
-    history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 16));*/
-
     const uint wave_mask = WaveActiveBallot(true).x;
     if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 2)) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 2));
@@ -105,7 +100,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
     }
 
-    const uint sample_count = clamp(history_error * 0.5 * 16, 6, 16);
+    const uint sample_count = clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16);
+    //sample_count = WaveActiveMax(sample_count);
     //const uint sample_count = 16;
 
     // Choose one of a few pre-baked sample sets based on the footprint
@@ -172,9 +168,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 out_color = contrib_sum.rgb / max(1e-5, contrib_sum.w);
     ex /= max(1e-5, contrib_sum.w);
     ex2 /= max(1e-5, contrib_sum.w);
-    float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / ex;
+    float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex);
+    
+    relative_error = relative_error * 0.5 + 0.5 * WaveActiveMax(relative_error);
+    //relative_error = WaveActiveMax(relative_error);
 
     //out_color = sample_count / 16.0;
+    //out_color = saturate(filter_idx / 7.0);
+    //out_color = history_error;
 
     output_tex[px] = float4(out_color, relative_error);
 }

@@ -13,6 +13,8 @@
 #include "../inc/atmosphere.hlsl"
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
+#define TEMPORAL_JITTER 1
+
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -43,7 +45,12 @@ void main() {
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-    float3 wo = mul(-normalize(view_ray_context.ray_dir_ws()), shading_basis);
+    const float3 ray_dir_ws = normalize(view_ray_context.ray_dir_ws_h.xyz);
+    float3 wo = mul(-ray_dir_ws, shading_basis);
+
+    const float3 ray_hit_ws = view_ray_context.ray_hit_ws();
+    const float3 ray_hit_vs = view_ray_context.ray_hit_vs();
+    const float3 refl_ray_origin = ray_hit_ws - ray_dir_ws * (length(ray_hit_vs) + length(ray_hit_ws)) * 1e-4;
 
     // Hack for shading normals facing away from the outgoing ray's direction:
     // We flip the outgoing ray along the shading normal, so that the reflection's curvature
@@ -58,19 +65,21 @@ void main() {
     specular_brdf.roughness = gbuffer.roughness;
     const float roughness_bias = 0.5 * gbuffer.roughness;
 
-    uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
+    const uint seed = TEMPORAL_JITTER ? frame_constants.frame_index : 0;
+    uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), seed);
 
 #if 1
     // 256x256 blue noise
 
-    const uint noise_offset = frame_constants.frame_index;
+    const uint noise_offset = frame_constants.frame_index * (TEMPORAL_JITTER ? 1 : 0);
+
     float2 urand = bindless_textures[1][
         (px + int2(noise_offset * 59, noise_offset * 37)) & 255
     ].xy;
 #else
     float2 urand = float2(
-        uint_to_u01_float(hash1_mut(seed)),
-        uint_to_u01_float(hash1_mut(seed))
+        uint_to_u01_float(hash1_mut(rng)),
+        uint_to_u01_float(hash1_mut(rng))
     );
 #endif
 
@@ -79,22 +88,24 @@ void main() {
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
     
+#if TEMPORAL_JITTER
     [loop]
     for (uint retry_count = 0; !brdf_sample.is_valid() && retry_count < 4; ++retry_count) {
         urand = float2(
-            uint_to_u01_float(hash1_mut(seed)),
-            uint_to_u01_float(hash1_mut(seed))
+            uint_to_u01_float(hash1_mut(rng)),
+            uint_to_u01_float(hash1_mut(rng))
         );
         urand.x = lerp(urand.x, 0.0, sampling_bias);
 
         brdf_sample = specular_brdf.sample(wo, urand);
     }
+#endif
 
     if (brdf_sample.is_valid()) {
         RayDesc outgoing_ray;
         outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
-        outgoing_ray.Origin = view_ray_context.ray_hit_ws();
-        outgoing_ray.TMin = 1e-3;
+        outgoing_ray.Origin = refl_ray_origin;
+        outgoing_ray.TMin = 0;
         outgoing_ray.TMax = SKY_DIST;
 
         out1_tex[px] = float4(outgoing_ray.Direction, clamp(brdf_sample.pdf, 1e-5, 1e5));
