@@ -56,7 +56,7 @@ void main() {
     SpecularBrdf specular_brdf;
     specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
     specular_brdf.roughness = gbuffer.roughness;
-    const float roughness_bias = 0.25 * gbuffer.roughness;
+    const float roughness_bias = 0.5 * gbuffer.roughness;
 
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 

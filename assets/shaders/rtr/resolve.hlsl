@@ -106,7 +106,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     const uint sample_count = clamp(history_error * 0.5 * 16, 6, 16);
-    //const uint sample_count = 8;
+    //const uint sample_count = 16;
 
     // Choose one of a few pre-baked sample sets based on the footprint
     const uint filter_idx = uint(clamp(filter_size * 8, 0, 7));

@@ -24,7 +24,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
-static const bool USE_PIXEL_FILTER = false;
+static const bool USE_PIXEL_FILTER = true;
 static const bool INDIRECT_ONLY = false;
 
 float3 sample_environment_light(float3 dir) {
