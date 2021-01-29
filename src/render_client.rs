@@ -9,7 +9,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
-    renderers::{rtr::*, ssgi::*},
+    renderers::{rtr::*, ssgi::*, GbufferDepth},
     rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
     FrameState,
@@ -505,39 +505,45 @@ impl VickiRenderClient {
             )
             .unwrap();
 
-        let mut depth_img = rg.create(ImageDesc::new_2d(
-            vk::Format::D24_UNORM_S8_UINT,
-            frame_state.window_cfg.dims(),
-        ));
-        crate::render_passes::clear_depth(rg, &mut depth_img);
+        let gbuffer_depth = {
+            let mut depth_img = rg.create(ImageDesc::new_2d(
+                vk::Format::D24_UNORM_S8_UINT,
+                frame_state.window_cfg.dims(),
+            ));
+            crate::render_passes::clear_depth(rg, &mut depth_img);
 
-        let mut gbuffer = rg.create(ImageDesc::new_2d(
-            vk::Format::R32G32B32A32_SFLOAT,
-            frame_state.window_cfg.dims(),
-        ));
-        crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
+            let mut gbuffer = rg.create(ImageDesc::new_2d(
+                vk::Format::R32G32B32A32_SFLOAT,
+                frame_state.window_cfg.dims(),
+            ));
+            crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
-        crate::render_passes::raster_meshes(
-            rg,
-            self.raster_simple_render_pass.clone(),
-            &mut depth_img,
-            &mut gbuffer,
-            RasterMeshesData {
-                meshes: self.meshes.as_slice(),
-                vertex_buffer: self.vertex_buffer.lock().clone(),
-                bindless_descriptor_set: self.bindless_descriptor_set,
-            },
-        );
+            crate::render_passes::raster_meshes(
+                rg,
+                self.raster_simple_render_pass.clone(),
+                &mut depth_img,
+                &mut gbuffer,
+                RasterMeshesData {
+                    meshes: self.meshes.as_slice(),
+                    vertex_buffer: self.vertex_buffer.lock().clone(),
+                    bindless_descriptor_set: self.bindless_descriptor_set,
+                },
+            );
 
-        let reprojection_map = crate::render_passes::calculate_reprojection_map(rg, &depth_img);
+            GbufferDepth::new(gbuffer, depth_img)
+        };
 
-        let mut surfel_gi = crate::renderers::surfel_gi::allocate_surfels(rg, &gbuffer, &depth_img);
+        let reprojection_map =
+            crate::render_passes::calculate_reprojection_map(rg, &gbuffer_depth.depth);
+
+        let mut surfel_gi = crate::renderers::surfel_gi::allocate_surfels(rg, &gbuffer_depth);
 
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
         );
-        let sun_shadow_mask = crate::render_passes::trace_sun_shadow_mask(rg, &depth_img, &tlas);
+        let sun_shadow_mask =
+            crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
 
         surfel_gi.trace_irradiance(rg, self.bindless_descriptor_set, &tlas);
 
@@ -554,12 +560,11 @@ impl VickiRenderClient {
 
         let ssgi = self
             .ssgi
-            .render(rg, &gbuffer, &depth_img, &reprojection_map, &accum_img);
+            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
 
         let rtr = self.rtr.render(
             rg,
-            &gbuffer,
-            &depth_img,
+            &gbuffer_depth,
             &reprojection_map,
             self.bindless_descriptor_set,
             &tlas,
@@ -567,13 +572,13 @@ impl VickiRenderClient {
 
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(
             vk::Format::R16G16B16A16_SFLOAT,
-            gbuffer.desc().extent_2d(),
+            gbuffer_depth.gbuffer.desc().extent_2d(),
         ));
 
         crate::render_passes::light_gbuffer(
             rg,
-            &gbuffer,
-            &depth_img,
+            &gbuffer_depth.gbuffer,
+            &gbuffer_depth.depth,
             &sun_shadow_mask,
             &ssgi,
             &rtr,

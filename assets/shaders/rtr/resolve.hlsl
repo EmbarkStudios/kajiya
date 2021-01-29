@@ -12,8 +12,12 @@
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> hit0_tex;
 [[vk::binding(3)]] Texture2D<float4> hit1_tex;
-[[vk::binding(4)]] RWTexture2D<float4> output_tex;
-[[vk::binding(5)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float4> history_tex;
+[[vk::binding(5)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(6)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(7)]] Texture2D<float> half_depth_tex;
+[[vk::binding(8)]] RWTexture2D<float4> output_tex;
+[[vk::binding(9)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
@@ -66,9 +70,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
     const float f0_grey = calculate_luma(specular_brdf.albedo);
 
-    const uint px_idx_in_quad = (px.x & 1) | (px.y & 1) * 2;
-    const uint sample_count = 16;
-
+    // Index used to calculate a sample set disjoint for all four pixels in the quad
+    // Offsetting by frame index reduces small structured artifacts
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
+    
     const float a2 = gbuffer.roughness * gbuffer.roughness;
 
     // Project lobe footprint onto the reflector, and find the desired convolution size
@@ -79,6 +84,19 @@ void main(in uint2 px : SV_DispatchThreadID) {
     // Reduce size estimate variance by shrinking it across neighbors
     float filter_size = filter_spread * gbuffer.roughness * 16;
 
+    const float4 reprojection_params = reprojection_tex[px];
+    float history_error = lerp(
+        2.0,
+        history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).w,
+        reprojection_params.z
+    );
+
+    history_error = WaveActiveMax(history_error);
+    /*history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 1));
+    history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 2));
+    history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 8));
+    history_error = max(history_error, WaveReadLaneAt(history_error, WaveGetLaneIndex() ^ 16));*/
+
     const uint wave_mask = WaveActiveBallot(true).x;
     if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 2)) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 2));
@@ -87,6 +105,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
     }
 
+    const uint sample_count = clamp(history_error * 0.5 * 16, 6, 16);
+    //const uint sample_count = 8;
+
     // Choose one of a few pre-baked sample sets based on the footprint
     const uint filter_idx = uint(clamp(filter_size * 8, 0, 7));
     //output_tex[px] = float4((filter_idx / 7.0).xxx, 0);
@@ -94,18 +115,17 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float4 contrib_sum = 0.0;
 
+    float ex = 0.0;
+    float ex2 = 0.0;
+
+    const float3 normal_vs = mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz;
+
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
         const int2 sample_px = px / 2 + spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
-
-        float sample_depth = depth_tex[sample_px * 2];
 
         float4 packed0 = hit0_tex[sample_px];
         if (packed0.w > 0) {
             float4 packed1 = hit1_tex[sample_px];
-
-            // TODO: use packed gb
-            GbufferData sample_gbuffer =
-                GbufferDataPacked::from_uint4(asuint(gbuffer_tex[sample_px * 2])).unpack();
 
             const float3 wi = mul(packed1.xyz, shading_basis);
             if (wi.z > 1e-5) {
@@ -126,18 +146,35 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 }
     #endif
 
+            #if 0
+                float rejection_bias = 1;
+            #else
+                float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
+                float sample_depth = half_depth_tex[sample_px];
                 float rejection_bias =
-                    saturate(inverse_lerp(0.2, 0.6, dot(gbuffer.normal, sample_gbuffer.normal)));
-
-                rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
+                    saturate(inverse_lerp(0.2, 0.6, dot(normal_vs, sample_normal_vs)));
+                //rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
+                rejection_bias *= exp2(-10.0 * abs(depth / sample_depth - 1.0));
+            #endif
 
                 // TODO: approx shadowing
 
                 const float contrib_wt = spec_weight * rejection_bias / packed1.w;
                 contrib_sum += float4(packed0.rgb, 1) * contrib_wt;
+
+                float luma = calculate_luma(packed0.rgb);
+                ex += luma * contrib_wt;
+                ex2 += luma * luma * contrib_wt;
             }
         }
-    }    
+    }
 
-    output_tex[px] = contrib_sum / max(1e-5, contrib_sum.w);
+    float3 out_color = contrib_sum.rgb / max(1e-5, contrib_sum.w);
+    ex /= max(1e-5, contrib_sum.w);
+    ex2 /= max(1e-5, contrib_sum.w);
+    float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / ex;
+
+    //out_color = sample_count / 16.0;
+
+    output_tex[px] = float4(out_color, relative_error);
 }

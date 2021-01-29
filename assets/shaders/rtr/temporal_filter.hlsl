@@ -55,6 +55,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     
 	float4 clamped_history = clamp(history, nmin, nmax);
     //float4 clamped_history = history;
+    //clamped_history.w = history.w;
     float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / 16.0, reproj.z));
     
     output_tex[px] = LINEAR_TO_WORKING(res);

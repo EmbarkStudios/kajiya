@@ -8,7 +8,7 @@ struct VsOut {
     [[vk::location(1)]] float2 uv: TEXCOORD1;
     [[vk::location(2)]] float3 normal: TEXCOORD2;
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
-    [[vk::location(4)]] float3 pos: TEXCOORD4;
+    //[[vk::location(4)]] float3 pos: TEXCOORD4;
 };
 
 VsOut main(uint vid: SV_VertexID) {
@@ -37,7 +37,7 @@ VsOut main(uint vid: SV_VertexID) {
     vsout.uv = uv;
     vsout.normal = v.normal;
     vsout.material_id = material_id;
-    vsout.pos = vs_pos.xyz / vs_pos.w;
+    //vsout.pos = vs_pos.xyz / vs_pos.w;
 
     return vsout;
 }

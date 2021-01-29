@@ -12,6 +12,8 @@ use slingshot::{
 };
 use vk::BufferUsageFlags;
 
+use super::GbufferDepth;
+
 const MAX_SURFEL_CELLS: usize = 1024 * 1024;
 const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
 const MAX_SURFELS_PER_CELL: usize = 32;
@@ -44,9 +46,10 @@ fn temporal_storage_buffer(
 
 pub fn allocate_surfels(
     rg: &mut rg::TemporalRenderGraph,
-    gbuffer: &rg::Handle<Image>,
-    depth: &rg::Handle<Image>,
+    gbuffer_depth: &GbufferDepth,
 ) -> SurfelGiRenderState {
+    let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+
     let mut state = SurfelGiRenderState {
         // 0: hash grid cell count
         // 1: surfel count
@@ -85,12 +88,11 @@ pub fn allocate_surfels(
             "surfel_gi.surfel_irradiance_buf",
             32 * MAX_SURFELS,
         ),
-        debug_out: rg.create(gbuffer.desc().format(vk::Format::R32G32B32A32_SFLOAT)),
+        debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
     };
 
     let mut tile_surfel_alloc_tex = rg.create(
-        gbuffer
-            .desc()
+        gbuffer_desc
             .div_up_extent([8, 8, 1])
             .format(vk::Format::R32G32_UINT),
     );
@@ -99,8 +101,8 @@ pub fn allocate_surfels(
         rg.add_pass(),
         "/assets/shaders/surfel_gi/find_missing_surfels.hlsl",
     )
-    .read(&gbuffer)
-    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+    .read(&gbuffer_depth.gbuffer)
+    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
     .write(&mut state.surfel_meta_buf)
     .write(&mut state.surfel_hash_key_buf)
     .write(&mut state.surfel_hash_value_buf)
@@ -110,22 +112,22 @@ pub fn allocate_surfels(
     .read(&state.surfel_irradiance_buf)
     .write(&mut tile_surfel_alloc_tex)
     .write(&mut state.debug_out)
-    .constants(gbuffer.desc().extent_inv_extent_2d())
-    .dispatch(gbuffer.desc().extent);
+    .constants(gbuffer_desc.extent_inv_extent_2d())
+    .dispatch(gbuffer_desc.extent);
 
     SimpleRenderPass::new_compute(
         rg.add_pass(),
         "/assets/shaders/surfel_gi/allocate_surfels.hlsl",
     )
-    .read(&gbuffer)
-    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+    .read(&gbuffer_depth.gbuffer)
+    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
     .read(&state.surfel_meta_buf)
     .read(&state.surfel_hash_key_buf)
     .read(&state.surfel_hash_value_buf)
     .read(&state.surfel_index_buf)
     .write(&mut state.surfel_spatial_buf)
     .read(&tile_surfel_alloc_tex)
-    .constants(gbuffer.desc().extent_inv_extent_2d())
+    .constants(gbuffer_desc.extent_inv_extent_2d())
     .dispatch(tile_surfel_alloc_tex.desc().extent);
 
     state.assign_surfels_to_grid_cells(rg);

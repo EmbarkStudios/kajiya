@@ -4,6 +4,11 @@ use slingshot::{
     rg::{self, GetOrCreateTemporal, SimpleRenderPass},
 };
 
+use super::{
+    half_res::{extract_half_res_depth, extract_half_res_gbuffer_view_normal_rgba8},
+    GbufferDepth,
+};
+
 pub struct SsgiRenderer {
     filtered_output_tex: rg::TemporalResourceKey,
     history_tex: rg::TemporalResourceKey,
@@ -22,37 +27,35 @@ impl SsgiRenderer {
     pub fn render(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        gbuffer: &rg::Handle<Image>,
-        depth: &rg::Handle<Image>,
+        gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         prev_radiance: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
-        let half_view_normal_tex = Self::extract_half_res_gbuffer_view_normal_rgba8(rg, gbuffer);
-        let half_depth_tex = Self::extract_half_res_depth(rg, depth);
+        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+        let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
+        let half_depth_tex = gbuffer_depth.half_depth(rg);
 
         let mut raw_ssgi_tex = rg.create(
-            gbuffer
-                .desc()
+            gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
         SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
-            .read(gbuffer)
-            .read(&half_depth_tex)
-            .read(&half_view_normal_tex)
+            .read(&gbuffer_depth.gbuffer)
+            .read(&*half_depth_tex)
+            .read(&*half_view_normal_tex)
             .read(prev_radiance)
             .read(reprojection_map)
             .write(&mut raw_ssgi_tex)
             .constants((
-                gbuffer.desc().extent_inv_extent_2d(),
+                gbuffer_desc.extent_inv_extent_2d(),
                 raw_ssgi_tex.desc().extent_inv_extent_2d(),
             ))
             .dispatch(raw_ssgi_tex.desc().extent);
 
         let mut ssgi_tex = rg.create(
-            gbuffer
-                .desc()
+            gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
@@ -64,19 +67,20 @@ impl SsgiRenderer {
             .write(&mut ssgi_tex)
             .dispatch(ssgi_tex.desc().extent);
 
-        let ssgi_tex = Self::upsample_ssgi(rg, &ssgi_tex, depth, gbuffer);
+        let ssgi_tex =
+            Self::upsample_ssgi(rg, &ssgi_tex, &gbuffer_depth.depth, &gbuffer_depth.gbuffer);
 
         let history_tex = rg
             .get_or_create_temporal(
                 self.history_tex.clone(),
-                Self::temporal_tex_desc(gbuffer.desc().extent_2d()),
+                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
             )
             .unwrap();
 
         let mut filtered_output_tex = rg
             .get_or_create_temporal(
                 self.filtered_output_tex.clone(),
-                Self::temporal_tex_desc(gbuffer.desc().extent_2d()),
+                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
             )
             .unwrap();
 
@@ -96,53 +100,6 @@ impl SsgiRenderer {
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
         ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
-    }
-
-    fn extract_half_res_gbuffer_view_normal_rgba8(
-        rg: &mut rg::RenderGraph,
-        gbuffer: &rg::Handle<Image>,
-    ) -> rg::Handle<Image> {
-        let mut output_tex = rg.create(
-            gbuffer
-                .desc()
-                .half_res()
-                .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R8G8B8A8_SNORM),
-        );
-        SimpleRenderPass::new_compute(
-            rg.add_pass(),
-            "/assets/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
-        )
-        .read(gbuffer)
-        .write(&mut output_tex)
-        .constants((
-            gbuffer.desc().extent_inv_extent_2d(),
-            output_tex.desc().extent_inv_extent_2d(),
-        ))
-        .dispatch(output_tex.desc().extent);
-        output_tex
-    }
-
-    fn extract_half_res_depth(
-        rg: &mut rg::RenderGraph,
-        depth: &rg::Handle<Image>,
-    ) -> rg::Handle<Image> {
-        let mut output_tex = rg.create(
-            depth
-                .desc()
-                .half_res()
-                .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R32_SFLOAT),
-        );
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/downscale_r.hlsl")
-            .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-            .write(&mut output_tex)
-            .constants((
-                depth.desc().extent_inv_extent_2d(),
-                output_tex.desc().extent_inv_extent_2d(),
-            ))
-            .dispatch(output_tex.desc().extent);
-        output_tex
     }
 
     fn upsample_ssgi(

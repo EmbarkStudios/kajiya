@@ -10,7 +10,7 @@ struct PsIn {
     [[vk::location(1)]] float2 uv: TEXCOORD1;
     [[vk::location(2)]] float3 normal: TEXCOORD2;
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
-    [[vk::location(4)]] float3 pos: TEXCOORD4;
+    //[[vk::location(4)]] float3 pos: TEXCOORD4;
 };
 
 float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
@@ -24,9 +24,9 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     }*/
     normal = normalize(normal);
 
-    float3 d1 = ddx(ps.pos);
-    float3 d2 = ddy(ps.pos);
-    normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
+    //float3 d1 = ddx(ps.pos);
+    //float3 d2 = ddy(ps.pos);
+    //normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
 
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float3 albedo = albedo_tex.Sample(sampler_llr, ps.uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;

@@ -138,6 +138,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
     //debug_out = ssgi.a;
+    //debug_out = rtr_tex[px].www * 0.2;
     //debug_out = rtr_tex[px].xyz;
 
     debug_out_tex[px] = float4(debug_out, 1.0);

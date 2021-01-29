@@ -5,6 +5,8 @@ use slingshot::{
     rg::{self, SimpleRenderPass},
 };
 
+use super::GbufferDepth;
+
 pub struct RtrRenderer {
     filtered_output_tex: rg::TemporalResourceKey,
     history_tex: rg::TemporalResourceKey,
@@ -28,23 +30,22 @@ impl RtrRenderer {
     pub fn render(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        gbuffer: &rg::Handle<Image>,
-        depth: &rg::Handle<Image>,
+        gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
     ) -> rg::ReadOnlyHandle<Image> {
+        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+
         let mut refl0_tex = rg.create(
-            gbuffer
-                .desc()
+            gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
         let mut refl1_tex = rg.create(
-            gbuffer
-                .desc()
+            gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
@@ -59,46 +60,54 @@ impl RtrRenderer {
             ],
             &["/assets/shaders/rt/triangle.rchit.hlsl"],
         )
-        .read(gbuffer)
-        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .read(&gbuffer_depth.gbuffer)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)
-        .constants(gbuffer.desc().extent_inv_extent_2d())
+        .constants(gbuffer_desc.extent_inv_extent_2d())
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);
 
         let mut resolved_tex = rg.create(
-            gbuffer
+            gbuffer_depth
+                .gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/resolve.hlsl")
-            .read(gbuffer)
-            .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-            .read(&refl0_tex)
-            .read(&refl1_tex)
-            .write(&mut resolved_tex)
-            .constants((
-                resolved_tex.desc().extent_inv_extent_2d(),
-                SPATIAL_RESOLVE_SAMPLES,
-            ))
-            .dispatch(resolved_tex.desc().extent);
+        let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
+        let half_depth_tex = gbuffer_depth.half_depth(rg);
 
         let history_tex = rg
             .get_or_create_temporal(
                 self.history_tex.clone(),
-                Self::temporal_tex_desc(gbuffer.desc().extent_2d()),
+                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
             )
             .unwrap();
 
         let mut filtered_output_tex = rg
             .get_or_create_temporal(
                 self.filtered_output_tex.clone(),
-                Self::temporal_tex_desc(gbuffer.desc().extent_2d()),
+                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
             )
             .unwrap();
+
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/resolve.hlsl")
+            .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&refl0_tex)
+            .read(&refl1_tex)
+            .read(&history_tex)
+            .read(&reprojection_map)
+            .read(&*half_view_normal_tex)
+            .read(&*half_depth_tex)
+            .write(&mut resolved_tex)
+            .constants((
+                resolved_tex.desc().extent_inv_extent_2d(),
+                SPATIAL_RESOLVE_SAMPLES,
+            ))
+            .dispatch(resolved_tex.desc().extent);
 
         std::mem::swap(&mut self.filtered_output_tex, &mut self.history_tex);
 
