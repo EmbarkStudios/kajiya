@@ -6,9 +6,11 @@
 #include "../inc/gbuffer.hlsl"
 #include "../inc/color.hlsl"
 #include "../inc/sh.hlsl"
+#include "directional_basis.hlsl"
 
 #define VISUALIZE_SURFELS 0
 #define VISUALIZE_CELL_SURFEL_COUNT 0
+#define USE_DIRECTIONAL_IRRADIANCE 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -172,21 +174,40 @@ void main(
             float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
             surfel_color = surfel_irradiance_packed.xyz;
 
-        #if 0
-            const float4 diffuse_lobe_sh = float4(1, 0, 0, 0);
-            //const float4 diffuse_lobe_sh = sh_eval_cosine_lobe(gbuffer.normal);
-            surfel_color = max(0.0, float3(
-                eval_surfel_sh(surfel_sh_buf[surfel_idx * 3 + 0], gbuffer.normal),
-                eval_surfel_sh(surfel_sh_buf[surfel_idx * 3 + 1], gbuffer.normal),
-                eval_surfel_sh(surfel_sh_buf[surfel_idx * 3 + 2], gbuffer.normal)
-            )) / 2;
+        #if USE_DIRECTIONAL_IRRADIANCE
+            const float3 surfel_tet_basis[4] = calc_surfel_tet_basis(surfel.normal);
+            float b_weights[4];
+            float b_weight_sum = 0;
+
+            {[unroll]
+            for (int b = 0; b < 4; ++b) {
+                b_weights[b] = pow(max(0.0, dot(surfel_tet_basis[b], gbuffer.normal)), 2);
+                b_weight_sum += b_weights[b];
+            }}
+
+            float3 c_sum = 0.0;
+
+            [unroll]
+            for (int b = 0; b < 4; ++b) {
+                c_sum += max(0.0, b_weights[b] / b_weight_sum * float3(
+                    surfel_sh_buf[surfel_idx * 3 + 0][b],
+                    surfel_sh_buf[surfel_idx * 3 + 1][b],
+                    surfel_sh_buf[surfel_idx * 3 + 2][b]
+                )) * ((b == 0) ? 1.0 : 1.8);    // HACK
+            }
+
+            surfel_color = c_sum * 2;
         #else
-            surfel_color /= 2;
+            surfel_color = max(0.0, float3(
+                surfel_sh_buf[surfel_idx * 3 + 0].r,
+                surfel_sh_buf[surfel_idx * 3 + 1].r,
+                surfel_sh_buf[surfel_idx * 3 + 2].r
+            )) * 2;
         #endif
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-            //const float directional_weight = max(0.0, dot(surfel.normal, gbuffer.normal));
-            const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
+            const float directional_weight = max(0.0, dot(surfel.normal, gbuffer.normal));
+            //const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
             //const float directional_weight = 1;
             //const float directional_weight = pow(max(0.0, 0.5 + 0.5 * dot(surfel.normal, gbuffer.normal)), 2);
             const float dist = length(pos_offset);

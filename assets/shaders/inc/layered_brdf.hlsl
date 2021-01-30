@@ -72,7 +72,7 @@ struct LayeredBrdf {
         // and reflect with the complement of that. However since we use a single ray,
         // we toss a coin, and choose between reflection and transmission.
 
-        const float spec_wt = 0*calculate_luma(energy_preservation.preintegrated_reflection);
+        const float spec_wt = calculate_luma(energy_preservation.preintegrated_reflection);
         const float diffuse_wt = calculate_luma(energy_preservation.preintegrated_transmission_fraction * diffuse_brdf.albedo);
         const float transmission_p = diffuse_wt / (spec_wt + diffuse_wt);
 

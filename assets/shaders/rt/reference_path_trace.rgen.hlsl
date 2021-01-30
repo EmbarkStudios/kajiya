@@ -15,7 +15,7 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
-static const uint MAX_PATH_LENGTH = 2;
+static const uint MAX_PATH_LENGTH = 5;
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
@@ -25,7 +25,7 @@ static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
 static const bool USE_PIXEL_FILTER = false;
-static const bool INDIRECT_ONLY = true;
+static const bool INDIRECT_ONLY = false;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
@@ -203,7 +203,7 @@ void main() {
     }
 
     float4 prev_radiance = output_tex[px];
-    if (prev_radiance.w < 100)
+    //if (prev_radiance.w < 100)
     {
         output_tex[px] = float4(total_radiance, 1.0) + prev_radiance;
     }
