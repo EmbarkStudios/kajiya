@@ -5,6 +5,10 @@
 #include "../inc/mesh.hlsl" // for VertexPacked
 #include "../inc/gbuffer.hlsl"
 #include "../inc/color.hlsl"
+#include "../inc/sh.hlsl"
+
+#define VISUALIZE_SURFELS 0
+#define VISUALIZE_CELL_SURFEL_COUNT 0
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -15,10 +19,11 @@
 [[vk::binding(6)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
 [[vk::binding(8)]] StructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(9)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(9)]] StructuredBuffer<float4> surfel_sh_buf;
+[[vk::binding(10)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(11)]] RWTexture2D<float4> debug_out_tex;
 
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -30,6 +35,71 @@ float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
 }
 
+float3 tricolor_ramp(float3 a, float3 b, float3 c, float x) {
+    x = saturate(x);
+
+    #if 0
+        float x2 = x * x;
+        float x3 = x * x * x;
+        float x4 = x2 * x2;
+
+        float cw = 3*x2 - 2*x3;
+        float aw = 1 - cw;
+        float bw = 16*x4 - 32*x3 + 16*x2;
+        float ws = aw + bw + cw;
+        aw /= ws;
+        bw /= ws;
+        cw /= ws;
+    #else
+        const float lobe = pow(smoothstep(1, 0, 2 * abs(x - 0.5)), 2.5254);
+        float aw = x < 0.5 ? 1 - lobe : 0;
+        float bw = lobe;
+        float cw = x > 0.5 ? 1 - lobe : 0;
+    #endif
+
+    return aw * a + bw * b + cw * c;
+}
+
+float3 cost_color_map(float x) {
+    return tricolor_ramp(
+        float3(0.05, 0.2, 1),
+        float3(0.02, 1, 0.2),
+        float3(1, 0.01, 0.1),
+        x
+    );
+}
+
+float eval_sh_simplified(float4 sh, float3 normal) {
+    //return (0.5 + dot(sh.xyz, normal)) * sh.w * 2;
+    //return sh.w;
+
+    float4 lobe_sh = float4(0.8862, 1.0233 * normal);
+    return dot(sh * float4(1, sh.xxx), lobe_sh) * M_PI;
+    //return sh.x * 4;
+}
+
+float eval_sh_geometrics(float4 sh, float3 normal)
+{
+	// http://www.geomerics.com/wp-content/uploads/2015/08/CEDEC_Geomerics_ReconstructingDiffuseLighting1.pdf
+
+	float R0 = sh.x;
+
+	float3 R1 = 0.5f * float3(sh.y, sh.z, sh.w) * sh.x;
+	float lenR1 = length(R1);
+
+	float q = 0.5f * (1.0f + dot(R1 / lenR1, normal));
+
+	float p = 1.0f + 2.0f * lenR1 / R0;
+	float a = (1.0f - lenR1 / R0) / (1.0f + lenR1 / R0);
+
+	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p)) * M_PI;
+}
+
+#if 1
+    #define eval_surfel_sh eval_sh_simplified
+#else
+    #define eval_surfel_sh eval_sh_geometrics
+#endif
 
 [numthreads(8, 8, 1)]
 void main(
@@ -100,10 +170,25 @@ void main(
             //surfel_color = (surfel.normal * 0.5 + 0.5) * 0.3;
 
             float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
-            surfel_color = surfel_irradiance_packed.xyz / max(1.0, surfel_irradiance_packed.w);
+            surfel_color = surfel_irradiance_packed.xyz;
+
+        #if 0
+            const float4 diffuse_lobe_sh = float4(1, 0, 0, 0);
+            //const float4 diffuse_lobe_sh = sh_eval_cosine_lobe(gbuffer.normal);
+            surfel_color = max(0.0, float3(
+                eval_surfel_sh(surfel_sh_buf[surfel_idx * 3 + 0], gbuffer.normal),
+                eval_surfel_sh(surfel_sh_buf[surfel_idx * 3 + 1], gbuffer.normal),
+                eval_surfel_sh(surfel_sh_buf[surfel_idx * 3 + 2], gbuffer.normal)
+            )) / 2;
+        #else
+            surfel_color /= 2;
+        #endif
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
+            //const float directional_weight = max(0.0, dot(surfel.normal, gbuffer.normal));
             const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
+            //const float directional_weight = 1;
+            //const float directional_weight = pow(max(0.0, 0.5 + 0.5 * dot(surfel.normal, gbuffer.normal)), 2);
             const float dist = length(pos_offset);
             const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
 
@@ -121,20 +206,16 @@ void main(
 
             useful_surfel_count += scoring_weight > 1e-5 ? 1 : 0;
 
-            weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
+            //weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
             total_weight += weight;
             scoring_total_weight += scoring_weight;
-            total_color += surfel_color * weight;// * (dist < 0.05 ? 10 : 0);
+            total_color += surfel_color * weight * (VISUALIZE_SURFELS ? (dist < 0.05 ? 1 : 0.1) : 1);
         }
 
         total_color /= max(0.1, total_weight);
 
-        #if 0
-            total_color =
-                cell_surfel_count > 32 ? float3(1, 0, 0):
-                cell_surfel_count > 16 ? float3(1, 1, 0):
-                cell_surfel_count > 8 ? float3(0, 1, 0):
-                float3(0, 1, 0);
+        #if VISUALIZE_CELL_SURFEL_COUNT
+            total_color = cost_color_map(cell_surfel_count / 32.0);
         #endif
 
         #if 0

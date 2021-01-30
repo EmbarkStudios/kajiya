@@ -15,7 +15,7 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
-static const uint MAX_PATH_LENGTH = 5;
+static const uint MAX_PATH_LENGTH = 2;
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
@@ -24,8 +24,8 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
-static const bool USE_PIXEL_FILTER = true;
-static const bool INDIRECT_ONLY = false;
+static const bool USE_PIXEL_FILTER = false;
+static const bool INDIRECT_ONLY = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
@@ -61,15 +61,15 @@ float remap_unorm_to_gaussian(float x, float truncation) {
 [shader("raygeneration")]
 void main() {
     const uint2 px = DispatchRaysIndex().xy;
-    uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
+    uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
 
     float px_off0 = 0.5;
     float px_off1 = 0.5;
 
     if (USE_PIXEL_FILTER) {
         const float psf_scale = 0.85;
-        px_off0 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
-        px_off1 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(seed)), 1e-8);
+        px_off0 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(rng)), 1e-8);
+        px_off1 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(rng)), 1e-8);
     }
 
     const float2 pixel_center = px + float2(px_off0, px_off1);
@@ -156,11 +156,30 @@ void main() {
                 total_radiance += throughput * brdf_value * light_radiance;
             }
 
-            const float3 urand = float3(
-                uint_to_u01_float(hash1_mut(seed)),
-                uint_to_u01_float(hash1_mut(seed)),
-                uint_to_u01_float(hash1_mut(seed))
-            );
+            float3 urand;
+
+            #if 0
+            if (path_length == 0) {
+                const uint noise_offset = frame_constants.frame_index;
+
+                urand = bindless_textures[1][
+                    (px + int2(noise_offset * 59, noise_offset * 37)) & 255
+                ].xyz * 255.0 / 256.0 + 0.5 / 256.0;
+
+                urand.x += uint_to_u01_float(hash1(frame_constants.frame_index));
+                urand.y += uint_to_u01_float(hash1(frame_constants.frame_index + 103770841));
+                urand.z += uint_to_u01_float(hash1(frame_constants.frame_index + 828315679));
+
+                urand = frac(urand);
+            } else
+            #endif
+            {
+                urand = float3(
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng)));
+            }
+
             BrdfSample brdf_sample = brdf.sample(wo, urand);
 
             if (brdf_sample.is_valid()) {
@@ -184,7 +203,7 @@ void main() {
     }
 
     float4 prev_radiance = output_tex[px];
-    //if (prev_radiance.w < 100)
+    if (prev_radiance.w < 100)
     {
         output_tex[px] = float4(total_radiance, 1.0) + prev_radiance;
     }

@@ -230,6 +230,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "blue-noise-sampler"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af927b0484dfa38eea63f00b86bd446ddff6352f70f9708eaf036e27ae45ad21"
+
+[[package]]
 name = "byte-slice-cast"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1939,6 +1945,7 @@ dependencies = [
  "anyhow",
  "arrayvec",
  "bincode",
+ "blue-noise-sampler",
  "byte-slice-cast",
  "chrono",
  "derive_builder",

@@ -17,13 +17,15 @@
 [[vk::binding(6)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(7)]] Texture2D<float> half_depth_tex;
 [[vk::binding(8)]] RWTexture2D<float4> output_tex;
-[[vk::binding(9)]] cbuffer _ {
+[[vk::binding(9)]] RWTexture2D<float> ray_len_out_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
 #define USE_APPROX_BRDF 1
 #define SHUFFLE_SUBPIXELS 1
+#define BORROW_SAMPLES 1
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -100,7 +102,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
     }
 
-    const uint sample_count = clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16);
+    const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
     //sample_count = WaveActiveMax(sample_count);
     //const uint sample_count = 16;
 
@@ -109,7 +111,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output_tex[px] = float4((filter_idx / 7.0).xxx, 0);
     //return;
 
-    float4 contrib_sum = 0.0;
+    float4 contrib_accum = 0.0;
+    float ray_len_accum = 0;
 
     float ex = 0.0;
     float ex2 = 0.0;
@@ -156,18 +159,26 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 // TODO: approx shadowing
 
                 const float contrib_wt = spec_weight * rejection_bias / packed1.w;
-                contrib_sum += float4(packed0.rgb, 1) * contrib_wt;
+                contrib_accum += float4(packed0.rgb, 1) * contrib_wt;
 
                 float luma = calculate_luma(packed0.rgb);
                 ex += luma * contrib_wt;
                 ex2 += luma * luma * contrib_wt;
+
+                // Aggressively bias towards closer hits
+                ray_len_accum += exp2(-clamp(0.1 * packed0.w, 0, 100)) * contrib_wt;
             }
         }
     }
 
-    float3 out_color = contrib_sum.rgb / max(1e-5, contrib_sum.w);
-    ex /= max(1e-5, contrib_sum.w);
-    ex2 /= max(1e-5, contrib_sum.w);
+    contrib_accum.rgb /= max(1e-5, contrib_accum.w);
+    ex /= max(1e-5, contrib_accum.w);
+    ex2 /= max(1e-5, contrib_accum.w);
+    ray_len_accum /= max(1e-5, contrib_accum.w);
+
+    ray_len_accum = max(0.0, -10 * log2(ray_len_accum));
+
+    float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex);
     
     relative_error = relative_error * 0.5 + 0.5 * WaveActiveMax(relative_error);
@@ -178,4 +189,5 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //out_color = history_error;
 
     output_tex[px] = float4(out_color, relative_error);
+    ray_len_out_tex[px] = ray_len_accum;
 }

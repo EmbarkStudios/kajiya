@@ -10,6 +10,7 @@ edition = "2018"
 anyhow = "1.0"
 arrayvec = "0.5"
 bincode = "1.3"
+blue-noise-sampler = "0.1"
 byte-slice-cast = "0.3"
 chrono = "0.4"
 #derive_builder = { git = "https://github.com/colin-kiegel/rust-derive-builder.git", rev = "44f629c", features = ["logging"] }   # dyn Error instead of String

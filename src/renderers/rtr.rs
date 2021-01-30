@@ -1,22 +1,54 @@
+use std::sync::Arc;
+
 use rg::GetOrCreateTemporal;
 use slingshot::{
     ash::vk,
-    backend::{image::*, ray_tracing::RayTracingAcceleration},
+    backend::{buffer::*, image::*, ray_tracing::RayTracingAcceleration},
     rg::{self, SimpleRenderPass},
+    vk_sync, Device,
 };
 
 use super::GbufferDepth;
 
+use blue_noise_sampler::spp16::*;
+
 pub struct RtrRenderer {
     filtered_output_tex: rg::TemporalResourceKey,
     history_tex: rg::TemporalResourceKey,
+
+    ranking_tile_buf: Arc<Buffer>,
+    scambling_tile_buf: Arc<Buffer>,
+    sobol_buf: Arc<Buffer>,
 }
 
-impl Default for RtrRenderer {
-    fn default() -> Self {
+fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
+    unsafe {
+        std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * std::mem::size_of::<T>())
+    }
+}
+
+fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
+    Arc::new(
+        device
+            .create_buffer(
+                BufferDesc::new(
+                    v.len() * std::mem::size_of::<T>(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER,
+                ),
+                Some(as_byte_slice_unchecked(v)),
+            )
+            .unwrap(),
+    )
+}
+
+impl RtrRenderer {
+    pub fn new(device: &Device) -> Self {
         Self {
             filtered_output_tex: "rtr.0".into(),
             history_tex: "rtr.1".into(),
+            ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
+            scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
+            sobol_buf: make_lut_buffer(device, SOBOL),
         }
     }
 }
@@ -51,6 +83,19 @@ impl RtrRenderer {
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
+        let ranking_tile_buf = rg.import(
+            self.ranking_tile_buf.clone(),
+            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let scambling_tile_buf = rg.import(
+            self.scambling_tile_buf.clone(),
+            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let sobol_buf = rg.import(
+            self.sobol_buf.clone(),
+            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
         SimpleRenderPass::new_rt(
             rg.add_pass(),
             "/assets/shaders/rtr/reflection.rgen.hlsl",
@@ -62,6 +107,9 @@ impl RtrRenderer {
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&ranking_tile_buf)
+        .read(&scambling_tile_buf)
+        .read(&sobol_buf)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)
         .constants(gbuffer_desc.extent_inv_extent_2d())
@@ -93,6 +141,12 @@ impl RtrRenderer {
             )
             .unwrap();
 
+        let mut ray_len_tex = rg.create(
+            gbuffer_desc
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R16_SFLOAT),
+        );
+
         SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/resolve.hlsl")
             .read(&gbuffer_depth.gbuffer)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
@@ -103,6 +157,7 @@ impl RtrRenderer {
             .read(&*half_view_normal_tex)
             .read(&*half_depth_tex)
             .write(&mut resolved_tex)
+            .write(&mut ray_len_tex)
             .constants((
                 resolved_tex.desc().extent_inv_extent_2d(),
                 SPATIAL_RESOLVE_SAMPLES,
@@ -114,6 +169,8 @@ impl RtrRenderer {
         SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/temporal_filter.hlsl")
             .read(&resolved_tex)
             .read(&history_tex)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&ray_len_tex)
             .read(reprojection_map)
             .write(&mut filtered_output_tex)
             .constants(filtered_output_tex.desc().extent_inv_extent_2d())

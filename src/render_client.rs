@@ -303,7 +303,7 @@ impl VickiRenderClient {
             prev_camera_matrices: None,
 
             ssgi: Default::default(),
-            rtr: Default::default(),
+            rtr: RtrRenderer::new(backend.device.as_ref()),
         })
     }
 

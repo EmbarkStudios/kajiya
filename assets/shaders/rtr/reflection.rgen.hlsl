@@ -19,11 +19,37 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(3)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(2)]] StructuredBuffer<uint> ranking_tile_buf;
+[[vk::binding(3)]] StructuredBuffer<uint> scambling_tile_buf;
+[[vk::binding(4)]] StructuredBuffer<uint> sobol_buf;
+[[vk::binding(5)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(6)]] RWTexture2D<float4> out1_tex;
+[[vk::binding(7)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
+
+float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDimension)
+{
+	// wrap arguments
+	pixel_i = pixel_i & 127;
+	pixel_j = pixel_j & 127;
+	sampleIndex = sampleIndex & 255;
+	sampleDimension = sampleDimension & 255;
+
+	// xor index based on optimized ranking
+	// jb: 1spp blue noise has all 0 in ranking_tile_buf so we can skip the load
+	int rankedSampleIndex = sampleIndex ^ ranking_tile_buf[sampleDimension + (pixel_i + pixel_j*128)*8];
+
+	// fetch value in sequence
+	int value = sobol_buf[sampleDimension + rankedSampleIndex*256];
+
+	// If the dimension is optimized, xor sequence value based on optimized scrambling
+	value = value ^ scambling_tile_buf[(sampleDimension%8) + (pixel_i + pixel_j*128)*8];
+
+	// convert to float and return
+	float v = (0.5f+value)/256.0f;
+	return v;
+}
 
 static const float SKY_DIST = 1e5;
 
@@ -69,13 +95,20 @@ void main() {
     uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), seed);
 
 #if 1
+    const uint noise_offset = frame_constants.frame_index * (TEMPORAL_JITTER ? 1 : 0);
+
+    float2 urand = float2(
+        blue_noise_sampler(px.x, px.y, noise_offset, 0),
+        blue_noise_sampler(px.x, px.y, noise_offset, 1)
+    );
+#elif 0
     // 256x256 blue noise
 
     const uint noise_offset = frame_constants.frame_index * (TEMPORAL_JITTER ? 1 : 0);
 
     float2 urand = bindless_textures[1][
         (px + int2(noise_offset * 59, noise_offset * 37)) & 255
-    ].xy;
+    ].xy * 255.0 / 256.0 + 0.5 / 256.0;
 #else
     float2 urand = float2(
         uint_to_u01_float(hash1_mut(rng)),

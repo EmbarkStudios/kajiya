@@ -118,10 +118,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // If simply masking with the AO term, it tends to over-darken.
         // Reduce some of the occlusion, but for energy conservation, also reduce
         // the light added.
-        ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
+        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
 
         total_radiance +=
-            (base_light_tex[px].xyz * ssgi.a + ssgi.rgb)
+            (base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb)
             * brdf.diffuse_brdf.albedo
             * brdf.energy_preservation.preintegrated_transmission_fraction;
         // total_radiance = ssgi.a;
@@ -137,9 +137,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
         //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
 
     debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
-    //debug_out = ssgi.a;
     //debug_out = rtr_tex[px].www * 0.2;
     //debug_out = rtr_tex[px].xyz;
+
+    //debug_out = base_light_tex[px].xyz;
+    //debug_out = (base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb);
+    //debug_out = ssgi.a;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }
