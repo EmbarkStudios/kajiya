@@ -12,8 +12,9 @@
 [[vk::binding(3)]] Texture2D<float4> prev_radiance_tex;
 [[vk::binding(4)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
+[[vk::binding(6)]] RWTexture2D<float4> bent_normal_out_tex;
 
-[[vk::binding(6)]] cbuffer _ {
+[[vk::binding(7)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
 };
@@ -69,7 +70,7 @@ float integrate_arc(float h1, float h2, float n) {
 }
 
 float update_horizion_angle(float prev, float cur) {
-#if 1
+#if 0
     float t = min(1.0, 0.5 / float(ssgi_half_sample_count));
     return cur > prev ? cur : lerp(prev, cur, t);
 #else
@@ -164,7 +165,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
 
     float4 col = 0.0.xxxx;
-    float ao_radius = 0.3;
+    float ao_radius = 0.2;
 
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     float3 v_vs = -normalize(view_ray_context.ray_dir_vs());
@@ -266,5 +267,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     col.rgb = color_accum.rgb;
     col *= slice_contrib_weight;
 
+    //float bent_normal_angle = M_PI / 2;//h1 * 0.5 + h2 * 0.5;
+    float bent_normal_angle = h1p + h2p - n_angle * 2;
+    float3 bent_normal_dir = sin(bent_normal_angle) * cross(slice_normal_vs, normal_vs) + cos(bent_normal_angle) * normal_vs;
+    bent_normal_dir = bent_normal_dir;
+
     output_tex[px] = col;
+    bent_normal_out_tex[px] = float4(bent_normal_dir, 0);// / slice_contrib_weight;
 }

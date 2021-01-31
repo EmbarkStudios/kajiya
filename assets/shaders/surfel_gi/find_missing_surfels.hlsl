@@ -11,21 +11,23 @@
 #define VISUALIZE_SURFELS 0
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define USE_DIRECTIONAL_IRRADIANCE 1
+#define USE_BENT_NORMALS 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] RWByteAddressBuffer surfel_meta_buf;
-[[vk::binding(3)]] RWByteAddressBuffer surfel_hash_key_buf;
-[[vk::binding(4)]] RWByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(5)]] ByteAddressBuffer cell_index_offset_buf;
-[[vk::binding(6)]] ByteAddressBuffer surfel_index_buf;
-[[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(8)]] StructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(9)]] StructuredBuffer<float4> surfel_sh_buf;
-[[vk::binding(10)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(11)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(2)]] Texture2D<float4> bent_normals_tex;
+[[vk::binding(3)]] RWByteAddressBuffer surfel_meta_buf;
+[[vk::binding(4)]] RWByteAddressBuffer surfel_hash_key_buf;
+[[vk::binding(5)]] RWByteAddressBuffer surfel_hash_value_buf;
+[[vk::binding(6)]] ByteAddressBuffer cell_index_offset_buf;
+[[vk::binding(7)]] ByteAddressBuffer surfel_index_buf;
+[[vk::binding(8)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
+[[vk::binding(9)]] StructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(10)]] StructuredBuffer<float4> surfel_sh_buf;
+[[vk::binding(11)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(12)]] RWTexture2D<float4> debug_out_tex;
 
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -127,6 +129,8 @@ void main(
         return;
     }
 
+    const float3 bent_normal_ws = mul(frame_constants.view_constants.view_to_world, float4(bent_normals_tex[px].xyz, 0)).xyz;
+
     const float z_over_w = depth_tex[px];
     const float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
     const float4 pt_vs = mul(frame_constants.view_constants.sample_to_view, pt_cs);
@@ -174,6 +178,12 @@ void main(
             float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
             surfel_color = surfel_irradiance_packed.xyz;
 
+        #if USE_BENT_NORMALS
+            float3 shading_normal = bent_normal_ws;
+        #else
+            float3 shading_normal = gbuffer.normal;
+        #endif
+
         #if USE_DIRECTIONAL_IRRADIANCE
             const float3 surfel_tet_basis[4] = calc_surfel_tet_basis(surfel.normal);
             float b_weights[4];
@@ -181,10 +191,12 @@ void main(
 
             {[unroll]
             for (int b = 0; b < 4; ++b) {
-                b_weights[b] = pow(max(0.0, dot(surfel_tet_basis[b], gbuffer.normal)), 2);
+                b_weights[b] = pow(max(0.0, dot(surfel_tet_basis[b], shading_normal)), 2);
                 b_weight_sum += b_weights[b];
             }}
 
+            // HACK
+            float spoke_mult = lerp(1.3, 1.8, saturate(dot(shading_normal, gbuffer.normal)));
             float3 c_sum = 0.0;
 
             [unroll]
@@ -193,8 +205,10 @@ void main(
                     surfel_sh_buf[surfel_idx * 3 + 0][b],
                     surfel_sh_buf[surfel_idx * 3 + 1][b],
                     surfel_sh_buf[surfel_idx * 3 + 2][b]
-                )) * ((b == 0) ? 1.0 : 1.8);    // HACK
+                )) * ((b == 0) ? 1.0 : spoke_mult);
             }
+
+            //c_sum *= saturate(dot(normalize(shading_normal), gbuffer.normal));
 
             surfel_color = c_sum * 2;
         #else

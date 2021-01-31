@@ -30,20 +30,13 @@ float4 process_sample(float4 ssgi, float depth, float3 normal, float center_dept
     }
 }
 
-/*float2 process_four_samples(float2 uv, float center_depth, float3 center_normal) {
-    float4 ao = textureGather(ssgi_tex, uv, 0);
-    float4 depth = textureGather(depth_tex, uv, 0);
-    float4 normal = textureGather(normal_tex, uv, 0);
-
-    return 
-        process_sample(ao.x, depth.x, normal.x, center_depth, center_normal) +
-        process_sample(ao.y, depth.y, normal.y, center_depth, center_normal) +
-        process_sample(ao.z, depth.z, normal.z, center_depth, center_normal) +
-        process_sample(ao.w, depth.w, normal.w, center_depth, center_normal);
-}*/
-
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
+    #if 0
+        output_tex[px] = ssgi_tex[px];
+        return;
+    #endif
+
     float4 result = 0.0.xxxx;
     float w_sum = 0.0;
 
@@ -51,7 +44,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     if (center_depth != 0.0) {
         float3 center_normal = normal_tex[px].xyz;
 
-#if 1
     	float4 center_ssgi = ssgi_tex[px];
         w_sum = 1.0;
         result = center_ssgi;
@@ -68,13 +60,6 @@ void main(uint2 px : SV_DispatchThreadID) {
                 }
             }
         }
-#else
-        float2 uv = get_uv(outputTex_size);
-        result += process_four_samples(uv + outputTex_size.zw * float2(-1, -1), center_depth, center_normal);
-        result += process_four_samples(uv + outputTex_size.zw * float2(-1, +1), center_depth, center_normal);
-        result += process_four_samples(uv + outputTex_size.zw * float2(+1, -1), center_depth, center_normal);
-        result += process_four_samples(uv + outputTex_size.zw * float2(+1, +1), center_depth, center_normal);
-#endif
     } else {
         result = 0.0.xxxx;
     }

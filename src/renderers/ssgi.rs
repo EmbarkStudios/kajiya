@@ -1,3 +1,4 @@
+use rg::TemporalRenderGraph;
 use slingshot::{
     ash::vk,
     backend::image::*,
@@ -9,16 +10,48 @@ use super::{
     GbufferDepth,
 };
 
-pub struct SsgiRenderer {
-    filtered_output_tex: rg::TemporalResourceKey,
+struct PingPongTemporalResource {
+    output_tex: rg::TemporalResourceKey,
     history_tex: rg::TemporalResourceKey,
+}
+
+impl PingPongTemporalResource {
+    fn new(name: &str) -> Self {
+        Self {
+            output_tex: format!("{}:0", name).as_str().into(),
+            history_tex: format!("{}:1", name).as_str().into(),
+        }
+    }
+
+    fn get_output_and_history(
+        &mut self,
+        rg: &mut TemporalRenderGraph,
+        desc: ImageDesc,
+    ) -> (rg::Handle<Image>, rg::Handle<Image>) {
+        let output_tex = rg
+            .get_or_create_temporal(self.output_tex.clone(), desc.clone())
+            .unwrap();
+
+        let history_tex = rg
+            .get_or_create_temporal(self.history_tex.clone(), desc.clone())
+            .unwrap();
+
+        std::mem::swap(&mut self.output_tex, &mut self.history_tex);
+
+        (output_tex, history_tex)
+    }
+}
+
+pub struct SsgiRenderer {
+    ssgi_tex: PingPongTemporalResource,
+    bent_normal_tex: PingPongTemporalResource,
 }
 
 impl Default for SsgiRenderer {
     fn default() -> Self {
         Self {
-            filtered_output_tex: "ssgi.0".into(),
-            history_tex: "ssgi.1".into(),
+            ssgi_tex: PingPongTemporalResource::new("ssgi"),
+            bent_normal_tex: PingPongTemporalResource::new("bent_normal"),
         }
     }
 }
@@ -30,29 +63,10 @@ impl SsgiRenderer {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         prev_radiance: &rg::Handle<Image>,
-    ) -> rg::ReadOnlyHandle<Image> {
+    ) -> (rg::ReadOnlyHandle<Image>, rg::ReadOnlyHandle<Image>) {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
-
-        let mut raw_ssgi_tex = rg.create(
-            gbuffer_desc
-                .usage(vk::ImageUsageFlags::empty())
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
-            .read(&gbuffer_depth.gbuffer)
-            .read(&*half_depth_tex)
-            .read(&*half_view_normal_tex)
-            .read(prev_radiance)
-            .read(reprojection_map)
-            .write(&mut raw_ssgi_tex)
-            .constants((
-                gbuffer_desc.extent_inv_extent_2d(),
-                raw_ssgi_tex.desc().extent_inv_extent_2d(),
-            ))
-            .dispatch(raw_ssgi_tex.desc().extent);
 
         let mut ssgi_tex = rg.create(
             gbuffer_desc
@@ -60,39 +74,94 @@ impl SsgiRenderer {
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/spatial_filter.hlsl")
-            .read(&raw_ssgi_tex)
-            .read(&half_depth_tex)
-            .read(&half_view_normal_tex)
+
+        let mut bent_normal_tex = rg.create(
+            gbuffer_desc
+                .usage(vk::ImageUsageFlags::empty())
+                .half_res()
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+
+        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
+            .read(&gbuffer_depth.gbuffer)
+            .read(&*half_depth_tex)
+            .read(&*half_view_normal_tex)
+            .read(prev_radiance)
+            .read(reprojection_map)
             .write(&mut ssgi_tex)
+            .write(&mut bent_normal_tex)
+            .constants((
+                gbuffer_desc.extent_inv_extent_2d(),
+                ssgi_tex.desc().extent_inv_extent_2d(),
+            ))
             .dispatch(ssgi_tex.desc().extent);
 
-        let ssgi_tex =
-            Self::upsample_ssgi(rg, &ssgi_tex, &gbuffer_depth.depth, &gbuffer_depth.gbuffer);
+        let ssgi_tex = Self::filter_ssgi(
+            rg,
+            &ssgi_tex,
+            gbuffer_depth,
+            reprojection_map,
+            &mut self.bent_normal_tex,
+        );
 
-        let history_tex = rg
-            .get_or_create_temporal(
-                self.history_tex.clone(),
-                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
+        let bent_normal_tex = Self::filter_ssgi(
+            rg,
+            &bent_normal_tex,
+            gbuffer_depth,
+            reprojection_map,
+            &mut self.ssgi_tex,
+        );
+
+        (ssgi_tex, bent_normal_tex)
+    }
+
+    fn filter_ssgi(
+        rg: &mut TemporalRenderGraph,
+        input: &rg::Handle<Image>,
+        gbuffer_depth: &GbufferDepth,
+        reprojection_map: &rg::Handle<Image>,
+        temporal_tex: &mut PingPongTemporalResource,
+    ) -> rg::ReadOnlyHandle<Image> {
+        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+        let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
+        let half_depth_tex = gbuffer_depth.half_depth(rg);
+
+        let upsampled_tex = {
+            let mut spatially_filtered_tex = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::empty())
+                    .half_res()
+                    .format(vk::Format::R16G16B16A16_SFLOAT),
+            );
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass(),
+                "/assets/shaders/ssgi/spatial_filter.hlsl",
             )
-            .unwrap();
+            .read(input)
+            .read(&half_depth_tex)
+            .read(&half_view_normal_tex)
+            .write(&mut spatially_filtered_tex)
+            .dispatch(spatially_filtered_tex.desc().extent);
 
-        let mut filtered_output_tex = rg
-            .get_or_create_temporal(
-                self.filtered_output_tex.clone(),
-                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
+            Self::upsample_ssgi(
+                rg,
+                &spatially_filtered_tex,
+                &gbuffer_depth.depth,
+                &gbuffer_depth.gbuffer,
             )
-            .unwrap();
+        };
 
-        std::mem::swap(&mut self.filtered_output_tex, &mut self.history_tex);
+        let (mut filtered_output_tex, history_tex) = temporal_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
         SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/temporal_filter.hlsl")
-            .read(&ssgi_tex)
+            .read(&upsampled_tex)
             .read(&history_tex)
             .read(reprojection_map)
             .write(&mut filtered_output_tex)
             .constants(filtered_output_tex.desc().extent_inv_extent_2d())
-            .dispatch(ssgi_tex.desc().extent);
+            .dispatch(filtered_output_tex.desc().extent);
 
         filtered_output_tex.into()
     }

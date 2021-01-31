@@ -19,9 +19,9 @@ SamplerState sampler_lnc;
 void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
     
-    float4 center = WORKING_TO_LINEAR(max(0.0.xxxx, input_tex[px]));
+    float4 center = WORKING_TO_LINEAR(input_tex[px]);
     float4 reproj = reprojection_tex[px];
-    float4 history = WORKING_TO_LINEAR(max(0.0.xxxx, history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0)));
+    float4 history = WORKING_TO_LINEAR(history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0));
     
 	float4 vsum = 0.0.xxxx;
 	float4 vsum2 = 0.0.xxxx;
@@ -30,7 +30,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = WORKING_TO_LINEAR(max(0.0.xxxx, input_tex[px + int2(x, y) * 2]));
+            float4 neigh = WORKING_TO_LINEAR(input_tex[px + int2(x, y) * 2]);
 			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;

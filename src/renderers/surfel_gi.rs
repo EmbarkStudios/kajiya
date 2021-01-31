@@ -47,6 +47,7 @@ fn temporal_storage_buffer(
 
 pub fn allocate_surfels(
     rg: &mut rg::TemporalRenderGraph,
+    bent_normals: &rg::Handle<Image>,
     gbuffer_depth: &GbufferDepth,
 ) -> SurfelGiRenderState {
     let gbuffer_desc = gbuffer_depth.gbuffer.desc();
@@ -110,6 +111,7 @@ pub fn allocate_surfels(
     )
     .read(&gbuffer_depth.gbuffer)
     .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+    .read(bent_normals)
     .write(&mut state.surfel_meta_buf)
     .write(&mut state.surfel_hash_key_buf)
     .write(&mut state.surfel_hash_value_buf)

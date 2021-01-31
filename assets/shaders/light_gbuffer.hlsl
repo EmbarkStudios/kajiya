@@ -112,7 +112,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //total_radiance += uint_id_to_color(pt_hash);
 
     #if 1
-        float4 ssgi = ssgi_tex[px];
+        const float4 ssgi = ssgi_tex[px];
 
         // HACK: need directionality in GI so that it can be properly masked.
         // If simply masking with the AO term, it tends to over-darken.
@@ -141,8 +141,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = rtr_tex[px].xyz;
 
     //debug_out = base_light_tex[px].xyz;
-    //debug_out = (base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb);
-    //debug_out = ssgi.a;
+    //debug_out = base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb;
+    
+    //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
+    //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
+    //debug_out = bent_normal_dir * 0.5 + 0.5;
+    //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
+    //debug_out = base_light_tex[px].xyz;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

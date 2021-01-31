@@ -536,7 +536,12 @@ impl VickiRenderClient {
         let reprojection_map =
             crate::render_passes::calculate_reprojection_map(rg, &gbuffer_depth.depth);
 
-        let mut surfel_gi = crate::renderers::surfel_gi::allocate_surfels(rg, &gbuffer_depth);
+        let (ssgi_tex, bent_normal_tex) =
+            self.ssgi
+                .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
+
+        let mut surfel_gi =
+            crate::renderers::surfel_gi::allocate_surfels(rg, &*bent_normal_tex, &gbuffer_depth);
 
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
@@ -558,10 +563,6 @@ impl VickiRenderClient {
 
         let lit = surfel_gi.debug_out;
 
-        let ssgi = self
-            .ssgi
-            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
-
         let rtr = self.rtr.render(
             rg,
             &gbuffer_depth,
@@ -580,7 +581,7 @@ impl VickiRenderClient {
             &gbuffer_depth.gbuffer,
             &gbuffer_depth.depth,
             &sun_shadow_mask,
-            &ssgi,
+            &ssgi_tex,
             &rtr,
             &lit,
             &mut accum_img,
