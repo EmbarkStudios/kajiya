@@ -1,6 +1,6 @@
 #include "../inc/math.hlsl"
 
-static const float SURFEL_TET_BASIS_SPOKE_H = 0.2;
+static const float SURFEL_TET_BASIS_SPOKE_H = 0.5;
 static const float3 SURFEL_TET_BASIS[4] = {
     float3(0, 0, 1),
     float3(float2(cos(0 * M_TAU / 3), sin(0 * M_TAU / 3)) * sqrt(1 - pow(SURFEL_TET_BASIS_SPOKE_H, 2)), SURFEL_TET_BASIS_SPOKE_H),

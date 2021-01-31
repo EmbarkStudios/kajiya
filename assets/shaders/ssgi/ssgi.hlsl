@@ -70,7 +70,7 @@ float integrate_arc(float h1, float h2, float n) {
 }
 
 float update_horizion_angle(float prev, float cur) {
-#if 0
+#if 1
     float t = min(1.0, 0.5 / float(ssgi_half_sample_count));
     return cur > prev ? cur : lerp(prev, cur, t);
 #else

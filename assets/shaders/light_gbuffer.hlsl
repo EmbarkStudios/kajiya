@@ -141,7 +141,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = rtr_tex[px].xyz;
 
     //debug_out = base_light_tex[px].xyz;
-    //debug_out = base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb;
     
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
     //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);

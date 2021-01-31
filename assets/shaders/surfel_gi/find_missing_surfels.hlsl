@@ -11,7 +11,7 @@
 #define VISUALIZE_SURFELS 0
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define USE_DIRECTIONAL_IRRADIANCE 1
-#define USE_BENT_NORMALS 1
+#define USE_BENT_NORMALS 0
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -191,7 +191,7 @@ void main(
 
             {[unroll]
             for (int b = 0; b < 4; ++b) {
-                b_weights[b] = pow(max(0.0, dot(surfel_tet_basis[b], shading_normal)), 2);
+                b_weights[b] = pow(max(0.0, dot(surfel_tet_basis[b], shading_normal)), 4);
                 b_weight_sum += b_weights[b];
             }}
 
