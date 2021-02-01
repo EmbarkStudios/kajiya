@@ -82,7 +82,7 @@ impl SsgiRenderer {
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/ssgi.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/assets/shaders/ssgi/ssgi.hlsl")
             .read(&gbuffer_depth.gbuffer)
             .read(&*half_depth_tex)
             .read(&*half_view_normal_tex)
@@ -135,7 +135,7 @@ impl SsgiRenderer {
             );
 
             SimpleRenderPass::new_compute(
-                rg.add_pass(),
+                rg.add_pass("ssgi spatial"),
                 "/assets/shaders/ssgi/spatial_filter.hlsl",
             )
             .read(input)
@@ -155,13 +155,16 @@ impl SsgiRenderer {
         let (mut filtered_output_tex, history_tex) = temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/temporal_filter.hlsl")
-            .read(&upsampled_tex)
-            .read(&history_tex)
-            .read(reprojection_map)
-            .write(&mut filtered_output_tex)
-            .constants(filtered_output_tex.desc().extent_inv_extent_2d())
-            .dispatch(filtered_output_tex.desc().extent);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("ssgi temporal"),
+            "/assets/shaders/ssgi/temporal_filter.hlsl",
+        )
+        .read(&upsampled_tex)
+        .read(&history_tex)
+        .read(reprojection_map)
+        .write(&mut filtered_output_tex)
+        .constants(filtered_output_tex.desc().extent_inv_extent_2d())
+        .dispatch(filtered_output_tex.desc().extent);
 
         filtered_output_tex.into()
     }
@@ -179,12 +182,15 @@ impl SsgiRenderer {
     ) -> rg::Handle<Image> {
         let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/ssgi/upsample.hlsl")
-            .read(ssgi)
-            .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-            .read(gbuffer)
-            .write(&mut output_tex)
-            .dispatch(output_tex.desc().extent);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("ssgi upsample"),
+            "/assets/shaders/ssgi/upsample.hlsl",
+        )
+        .read(ssgi)
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .read(gbuffer)
+        .write(&mut output_tex)
+        .dispatch(output_tex.desc().extent);
         output_tex
     }
 }

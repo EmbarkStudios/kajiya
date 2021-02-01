@@ -8,7 +8,7 @@ use slingshot::{
 use crate::{backend::image::ImageViewDesc, backend::shader::*, rg::*};
 
 pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
-    let mut pass = rg.add_pass();
+    let mut pass = rg.add_pass("clear depth");
     let output_ref = pass.write(img, AccessType::TransferWrite);
 
     pass.render(move |api| {
@@ -38,7 +38,7 @@ pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
 }
 
 pub fn clear_color(rg: &mut RenderGraph, img: &mut Handle<Image>, clear_color: [f32; 4]) {
-    let mut pass = rg.add_pass();
+    let mut pass = rg.add_pass("clear color");
     let output_ref = pass.write(img, AccessType::TransferWrite);
 
     pass.render(move |api| {
@@ -309,7 +309,7 @@ pub fn raster_meshes(
     color_img: &mut Handle<Image>,
     mesh_data: RasterMeshesData<'_>,
 ) {
-    let mut pass = rg.add_pass();
+    let mut pass = rg.add_pass("raster simple");
 
     let pipeline = pass.register_raster_pipeline(
         &[
@@ -396,18 +396,21 @@ pub fn light_gbuffer(
     debug_output: &mut Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
-    SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/light_gbuffer.hlsl")
-        .read(gbuffer)
-        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-        .read(sun_shadow_mask)
-        .read(ssgi)
-        .read(rtr)
-        .read(base_light)
-        .write(output)
-        .write(debug_output)
-        .constants(gbuffer.desc().extent_inv_extent_2d())
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .dispatch(gbuffer.desc().extent);
+    SimpleRenderPass::new_compute(
+        rg.add_pass("light gbuffer"),
+        "/assets/shaders/light_gbuffer.hlsl",
+    )
+    .read(gbuffer)
+    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+    .read(sun_shadow_mask)
+    .read(ssgi)
+    .read(rtr)
+    .read(base_light)
+    .write(output)
+    .write(debug_output)
+    .constants(gbuffer.desc().extent_inv_extent_2d())
+    .raw_descriptor_set(1, bindless_descriptor_set)
+    .dispatch(gbuffer.desc().extent);
 }
 
 pub fn reference_path_trace(
@@ -417,7 +420,7 @@ pub fn reference_path_trace(
     tlas: &Handle<RayTracingAcceleration>,
 ) {
     SimpleRenderPass::new_rt(
-        rg.add_pass(),
+        rg.add_pass("reference pt"),
         "/assets/shaders/rt/reference_path_trace.rgen.hlsl",
         &[
             "/assets/shaders/rt/triangle.rmiss.hlsl",
@@ -438,11 +441,14 @@ pub fn normalize_accum(
 ) -> Handle<Image> {
     let mut output = rg.create((*input.desc()).format(fmt));
 
-    SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/normalize_accum.hlsl")
-        .read(input)
-        .write(&mut output)
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .dispatch(input.desc().extent);
+    SimpleRenderPass::new_compute(
+        rg.add_pass("normalize accum"),
+        "/assets/shaders/normalize_accum.hlsl",
+    )
+    .read(input)
+    .write(&mut output)
+    .raw_descriptor_set(1, bindless_descriptor_set)
+    .dispatch(input.desc().extent);
 
     output
 }
@@ -455,7 +461,7 @@ pub fn trace_sun_shadow_mask(
     let mut output_img = rg.create(depth_img.desc().format(vk::Format::R8_UNORM));
 
     SimpleRenderPass::new_rt(
-        rg.add_pass(),
+        rg.add_pass("trace shadow mask"),
         "/assets/shaders/rt/trace_sun_shadow_mask.rgen.hlsl",
         &["/assets/shaders/rt/shadow.rmiss.hlsl"],
         &[],
@@ -471,7 +477,7 @@ pub fn calculate_reprojection_map(rg: &mut RenderGraph, depth: &Handle<Image>) -
     let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
     SimpleRenderPass::new_compute(
-        rg.add_pass(),
+        rg.add_pass("reprojection map"),
         "/assets/shaders/calculate_reprojection_map.hlsl",
     )
     .read_aspect(depth, vk::ImageAspectFlags::DEPTH)

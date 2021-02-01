@@ -149,6 +149,8 @@ impl Renderer {
                 )
                 .unwrap();
 
+            current_frame.profiler_data.begin_frame(device, cb.raw);
+
             if let Some((rg, rg_output_img)) =
                 self.compiled_rg.take().zip(self.rg_output_tex.take())
             {
@@ -158,6 +160,7 @@ impl Renderer {
                         pipeline_cache: &mut self.pipeline_cache,
                         frame_descriptor_set: self.frame_descriptor_set,
                         frame_constants_offset,
+                        profiler_data: &current_frame.profiler_data,
                     },
                     &mut self.transient_resource_cache,
                     &mut self.dynamic_constants,
@@ -192,6 +195,7 @@ impl Renderer {
                 retired_rg.release_resources(&mut self.transient_resource_cache);
             }
 
+            current_frame.profiler_data.finish_frame(device, cb.raw);
             raw_device.end_command_buffer(cb.raw).unwrap();
         }
 

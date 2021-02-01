@@ -5,6 +5,7 @@ pub mod image;
 pub mod instance;
 pub mod physical_device;
 pub mod presentation;
+pub mod profiler;
 pub mod ray_tracing;
 pub mod resource_storage;
 pub mod shader;
@@ -37,10 +38,14 @@ pub struct RenderBackend {
 }
 
 impl RenderBackend {
-    pub fn new(window: &winit::Window, window_cfg: &crate::WindowConfig) -> anyhow::Result<Self> {
+    pub fn new(
+        window: &winit::Window,
+        window_cfg: &crate::WindowConfig,
+        graphics_debugging: bool,
+    ) -> anyhow::Result<Self> {
         let instance = instance::Instance::builder()
             .required_extensions(ash_window::enumerate_required_extensions(&*window).unwrap())
-            .graphics_debugging(true)
+            .graphics_debugging(graphics_debugging)
             .build()?;
         let surface = surface::Surface::create(&instance, &*window)?;
 
@@ -71,7 +76,7 @@ impl RenderBackend {
                     width: window_cfg.width,
                     height: window_cfg.height,
                 },
-                vsync: true,
+                vsync: window_cfg.vsync,
             },
         )?;
 

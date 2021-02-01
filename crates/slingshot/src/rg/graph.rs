@@ -19,6 +19,7 @@ use crate::{
     backend::shader::ComputePipelineDesc,
     backend::shader::PipelineShader,
     backend::{
+        profiler::VkProfilerData,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
         shader::RasterPipelineDesc,
     },
@@ -357,6 +358,7 @@ pub struct RenderGraphExecutionParams<'a> {
     pub pipeline_cache: &'a mut PipelineCache,
     pub frame_descriptor_set: vk::DescriptorSet,
     pub frame_constants_offset: u32,
+    pub profiler_data: &'a VkProfilerData,
 }
 
 pub struct CompiledRenderGraph {
@@ -368,13 +370,13 @@ pub struct CompiledRenderGraph {
 }
 
 impl RenderGraph {
-    pub fn add_pass<'s>(&'s mut self) -> PassBuilder<'s> {
+    pub fn add_pass<'s>(&'s mut self, name: &str) -> PassBuilder<'s> {
         let pass_idx = self.passes.len();
 
         PassBuilder {
             rg: self,
             pass_idx,
-            pass: Some(Default::default()),
+            pass: Some(RecordedPass::new(name)),
         }
     }
 
@@ -663,6 +665,22 @@ impl CompiledRenderGraph {
         };
 
         for pass in self.rg.passes.into_iter() {
+            let vk_query_idx = {
+                let query_id = crate::gpu_profiler::create_gpu_query(pass.name.as_str());
+                let vk_query_idx = params.profiler_data.get_query_id(query_id);
+
+                unsafe {
+                    params.device.raw.cmd_write_timestamp(
+                        cb.raw,
+                        vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                        params.profiler_data.query_pool,
+                        vk_query_idx * 2 + 0,
+                    );
+                }
+
+                vk_query_idx
+            };
+
             {
                 let mut transitions: Vec<(usize, PassResourceAccessType)> = Vec::new();
                 for resource_ref in pass.read.iter().chain(pass.write.iter()) {
@@ -684,6 +702,15 @@ impl CompiledRenderGraph {
 
             if let Some(render_fn) = pass.render_fn {
                 render_fn(&mut api);
+            }
+
+            unsafe {
+                params.device.raw.cmd_write_timestamp(
+                    cb.raw,
+                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                    params.profiler_data.query_pool,
+                    vk_query_idx * 2 + 1,
+                );
             }
         }
 
@@ -817,9 +844,20 @@ pub(crate) struct PassResourceRef {
     pub access: PassResourceAccessType,
 }
 
-#[derive(Default)]
 pub(crate) struct RecordedPass {
     pub read: Vec<PassResourceRef>,
     pub write: Vec<PassResourceRef>,
     pub render_fn: Option<Box<DynRenderFn>>,
+    pub name: String,
+}
+
+impl RecordedPass {
+    fn new(name: &str) -> Self {
+        Self {
+            read: Default::default(),
+            write: Default::default(),
+            render_fn: Default::default(),
+            name: name.to_owned(),
+        }
+    }
 }

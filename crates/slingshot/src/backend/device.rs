@@ -1,4 +1,7 @@
-use super::physical_device::{PhysicalDevice, QueueFamily};
+use super::{
+    physical_device::{PhysicalDevice, QueueFamily},
+    profiler::VkProfilerData,
+};
 use anyhow::Result;
 use ash::{
     extensions::khr,
@@ -48,6 +51,7 @@ pub struct DeviceFrame {
     pub rendering_complete_semaphore: Option<vk::Semaphore>,
     pub command_buffer: CommandBuffer,
     pub pending_resource_releases: Mutex<PendingResourceReleases>,
+    pub profiler_data: VkProfilerData,
 }
 
 pub struct CommandBuffer {
@@ -95,7 +99,7 @@ impl CommandBuffer {
 impl DeviceFrame {
     pub fn new(
         device: &ash::Device,
-        //global_allocator: &vk_mem::Allocator,
+        global_allocator: &mut VulkanAllocator,
         queue_family: &QueueFamily,
     ) -> Self {
         Self {
@@ -110,6 +114,7 @@ impl DeviceFrame {
             rendering_complete_semaphore: None,
             command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
             pending_resource_releases: Default::default(),
+            profiler_data: VkProfilerData::new(device, global_allocator),
         }
     }
 }
@@ -291,7 +296,7 @@ impl Device {
 
             info!("Created a Vulkan device");
 
-            let global_allocator = VulkanAllocator::new(&VulkanAllocatorCreateDesc {
+            let mut global_allocator = VulkanAllocator::new(&VulkanAllocatorCreateDesc {
                 instance: instance.clone(),
                 device: device.clone(),
                 physical_device: pdevice.raw,
@@ -306,8 +311,8 @@ impl Device {
                 family: universal_queue,
             };
 
-            let frame0 = DeviceFrame::new(&device, &universal_queue.family);
-            let frame1 = DeviceFrame::new(&device, &universal_queue.family);
+            let frame0 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
+            let frame1 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
 
             let immutable_samplers = Self::create_samplers(&device);
             let cmd_ext = CmdExt {
@@ -466,6 +471,22 @@ impl Device {
                     vk::CommandBufferResetFlags::RELEASE_RESOURCES,
                 )
                 .unwrap();
+        }
+
+        // Report GPU timings
+        {
+            let (query_ids, timing_pairs) = frame0.profiler_data.retrieve_previous_result();
+
+            let ns_per_tick = self.pdevice.properties.limits.timestamp_period;
+
+            crate::gpu_profiler::report_durations_ticks(
+                ns_per_tick,
+                timing_pairs.chunks_exact(2).enumerate().map(
+                    |(pair_idx, chunk)| -> (crate::gpu_profiler::GpuProfilerQueryId, u64) {
+                        (query_ids[pair_idx], chunk[1] - chunk[0])
+                    },
+                ),
+            );
         }
 
         frame0

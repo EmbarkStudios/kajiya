@@ -49,6 +49,12 @@ struct Opt {
 
     #[structopt(long, default_value = "0.1")]
     scale: f32,
+
+    #[structopt(long)]
+    no_vsync: bool,
+
+    #[structopt(long)]
+    no_debug: bool,
 }
 
 fn try_main() -> anyhow::Result<()> {
@@ -60,6 +66,7 @@ fn try_main() -> anyhow::Result<()> {
     let window_cfg = WindowConfig {
         width: opt.width,
         height: opt.height,
+        vsync: !opt.no_vsync,
     };
 
     let window = Arc::new(
@@ -75,7 +82,7 @@ fn try_main() -> anyhow::Result<()> {
 
     let lazy_cache = LazyCache::create();
 
-    let render_backend = RenderBackend::new(&*window, &window_cfg)?;
+    let render_backend = RenderBackend::new(&*window, &window_cfg, !opt.no_debug)?;
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
@@ -177,6 +184,8 @@ fn try_main() -> anyhow::Result<()> {
     render_client.add_mesh(mesh);
     render_client.build_ray_tracing_top_level_acceleration();
 
+    let mut stats_spam = 0;
+
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
     while running {
@@ -253,6 +262,16 @@ fn try_main() -> anyhow::Result<()> {
             Ok(()) => {
                 renderer.draw_frame(&mut render_client, &frame_state);
                 last_error_text = None;
+
+                let gpu_stats = gpu_profiler::get_stats();
+
+                if stats_spam % 60 == 0 {
+                    println!("CPU frame time: {:.3}ms", dt * 1000.0);
+                    for (_scope_id, scope) in gpu_stats.scopes.iter() {
+                        println!("{}: {:.3}ms", scope.name, scope.average_duration_millis());
+                    }
+                }
+                stats_spam += 1;
             }
             Err(e) => {
                 let error_text = Some(format!("{:?}", e));

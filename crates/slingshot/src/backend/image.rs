@@ -36,7 +36,7 @@ impl ImageDesc {
         Self {
             image_type,
             usage: vk::ImageUsageFlags::default(),
-            flags: vk::ImageCreateFlags::MUTABLE_FORMAT, //TODO: CUBE_COMPATIBLE
+            flags: vk::ImageCreateFlags::empty(), //vk::ImageCreateFlags::MUTABLE_FORMAT, //TODO: CUBE_COMPATIBLE
             format,
             extent,
             tiling: vk::ImageTiling::OPTIMAL,

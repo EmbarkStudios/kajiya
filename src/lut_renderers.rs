@@ -27,7 +27,7 @@ impl ComputeImageLut for BrdfFgLutComputer {
         rg: &mut slingshot::rg::RenderGraph,
         img: &mut slingshot::rg::Handle<slingshot::Image>,
     ) {
-        let mut pass = rg.add_pass();
+        let mut pass = rg.add_pass("brdf_fg lut");
 
         let pipeline = pass.register_compute_pipeline("/assets/shaders/lut/brdf_fg.hlsl");
         let img_ref = pass.write(img, AccessType::ComputeShaderWrite);

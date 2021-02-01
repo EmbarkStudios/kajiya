@@ -106,7 +106,7 @@ pub fn allocate_surfels(
     );
 
     SimpleRenderPass::new_compute(
-        rg.add_pass(),
+        rg.add_pass("find missing surfels"),
         "/assets/shaders/surfel_gi/find_missing_surfels.hlsl",
     )
     .read(&gbuffer_depth.gbuffer)
@@ -126,7 +126,7 @@ pub fn allocate_surfels(
     .dispatch(gbuffer_desc.extent);
 
     SimpleRenderPass::new_compute(
-        rg.add_pass(),
+        rg.add_pass("allocate surfels"),
         "/assets/shaders/surfel_gi/allocate_surfels.hlsl",
     )
     .read(&gbuffer_depth.gbuffer)
@@ -154,7 +154,7 @@ impl SurfelGiRenderState {
             ));
 
             SimpleRenderPass::new_compute(
-                rg.add_pass(),
+                rg.add_pass("surfel dispatch args"),
                 "/assets/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
             )
             .read(&mut self.surfel_meta_buf)
@@ -164,12 +164,15 @@ impl SurfelGiRenderState {
             indirect_args_buf
         };
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/surfel_gi/clear_cells.hlsl")
-            .write(&mut self.cell_index_offset_buf)
-            .dispatch_indirect(&indirect_args_buf, 0);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("clear surfel cells"),
+            "/assets/shaders/surfel_gi/clear_cells.hlsl",
+        )
+        .write(&mut self.cell_index_offset_buf)
+        .dispatch_indirect(&indirect_args_buf, 0);
 
         SimpleRenderPass::new_compute(
-            rg.add_pass(),
+            rg.add_pass("count surfels per cell"),
             "/assets/shaders/surfel_gi/count_surfels_per_cell.hlsl",
         )
         .read(&self.surfel_meta_buf)
@@ -184,7 +187,7 @@ impl SurfelGiRenderState {
         // TODO: prefix-scan
 
         SimpleRenderPass::new_compute(
-            rg.add_pass(),
+            rg.add_pass("slot surfels into cells"),
             "/assets/shaders/surfel_gi/slot_surfels_into_cells.hlsl",
         )
         .read(&self.surfel_meta_buf)
@@ -210,7 +213,7 @@ impl SurfelGiRenderState {
             ));
 
             SimpleRenderPass::new_compute(
-                rg.add_pass(),
+                rg.add_pass("surfel gi dispatch args"),
                 "/assets/shaders/surfel_gi/prepare_trace_dispatch_args.hlsl",
             )
             .read(&mut self.surfel_meta_buf)
@@ -221,7 +224,7 @@ impl SurfelGiRenderState {
         };
 
         SimpleRenderPass::new_rt(
-            rg.add_pass(),
+            rg.add_pass("surfel gi trace"),
             "/assets/shaders/surfel_gi/trace_irradiance.rgen.hlsl",
             &[
                 "/assets/shaders/rt/triangle.rmiss.hlsl",
@@ -241,7 +244,7 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
     const SEGMENT_SIZE: usize = 1024;
 
     SimpleRenderPass::new_compute(
-        rg.add_pass(),
+        rg.add_pass("prefix scan 1"),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan.hlsl",
     )
     .write(input_buf)
@@ -252,7 +255,7 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
         vk::BufferUsageFlags::empty(),
     ));
     SimpleRenderPass::new_compute(
-        rg.add_pass(),
+        rg.add_pass("prefix scan 2"),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan_segments.hlsl",
     )
     .read(input_buf)
@@ -260,7 +263,7 @@ fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Ha
     .dispatch([(SEGMENT_SIZE / 2) as u32, 1, 1]); // TODO: indirect
 
     SimpleRenderPass::new_compute(
-        rg.add_pass(),
+        rg.add_pass("prefix scan merge"),
         "/assets/shaders/surfel_gi/inclusive_prefix_scan_merge.hlsl",
     )
     .write(input_buf)

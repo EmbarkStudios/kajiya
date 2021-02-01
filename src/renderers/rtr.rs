@@ -97,7 +97,7 @@ impl RtrRenderer {
         );
 
         SimpleRenderPass::new_rt(
-            rg.add_pass(),
+            rg.add_pass("reflection trace"),
             "/assets/shaders/rtr/reflection.rgen.hlsl",
             &[
                 "/assets/shaders/rt/triangle.rmiss.hlsl",
@@ -147,34 +147,40 @@ impl RtrRenderer {
                 .format(vk::Format::R16_SFLOAT),
         );
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/resolve.hlsl")
-            .read(&gbuffer_depth.gbuffer)
-            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(&refl0_tex)
-            .read(&refl1_tex)
-            .read(&history_tex)
-            .read(&reprojection_map)
-            .read(&*half_view_normal_tex)
-            .read(&*half_depth_tex)
-            .write(&mut resolved_tex)
-            .write(&mut ray_len_tex)
-            .constants((
-                resolved_tex.desc().extent_inv_extent_2d(),
-                SPATIAL_RESOLVE_SAMPLES,
-            ))
-            .dispatch(resolved_tex.desc().extent);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("reflection resolve"),
+            "/assets/shaders/rtr/resolve.hlsl",
+        )
+        .read(&gbuffer_depth.gbuffer)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&refl0_tex)
+        .read(&refl1_tex)
+        .read(&history_tex)
+        .read(&reprojection_map)
+        .read(&*half_view_normal_tex)
+        .read(&*half_depth_tex)
+        .write(&mut resolved_tex)
+        .write(&mut ray_len_tex)
+        .constants((
+            resolved_tex.desc().extent_inv_extent_2d(),
+            SPATIAL_RESOLVE_SAMPLES,
+        ))
+        .dispatch(resolved_tex.desc().extent);
 
         std::mem::swap(&mut self.filtered_output_tex, &mut self.history_tex);
 
-        SimpleRenderPass::new_compute(rg.add_pass(), "/assets/shaders/rtr/temporal_filter.hlsl")
-            .read(&resolved_tex)
-            .read(&history_tex)
-            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(&ray_len_tex)
-            .read(reprojection_map)
-            .write(&mut filtered_output_tex)
-            .constants(filtered_output_tex.desc().extent_inv_extent_2d())
-            .dispatch(resolved_tex.desc().extent);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("reflection temporal"),
+            "/assets/shaders/rtr/temporal_filter.hlsl",
+        )
+        .read(&resolved_tex)
+        .read(&history_tex)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&ray_len_tex)
+        .read(reprojection_map)
+        .write(&mut filtered_output_tex)
+        .constants(filtered_output_tex.desc().extent_inv_extent_2d())
+        .dispatch(resolved_tex.desc().extent);
 
         filtered_output_tex.into()
     }

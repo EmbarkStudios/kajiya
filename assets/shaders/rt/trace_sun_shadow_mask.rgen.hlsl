@@ -17,6 +17,11 @@ void main() {
     const float2 uv = pixel_center / DispatchRaysDimensions().xy;
 
     float z_over_w = depth_tex[px];
+    if (0.0 == z_over_w) {
+        output_tex[px] = 1.0;
+        return;
+    }
+
     float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
     float4 pt_vs = mul(frame_constants.view_constants.sample_to_view, pt_cs);
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, pt_vs);
