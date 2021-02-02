@@ -600,21 +600,7 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
-        if let Some((ui_renderer, image)) = self.ui_frame.take() {
-            let mut ui_tex = rg.import(image, AccessType::Nothing);
-            let mut pass = rg.add_pass("render ui");
-
-            pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
-            pass.render(move |api| ui_renderer(api.cb.raw));
-
-            rg::SimpleRenderPass::new_compute(
-                rg.add_pass("blit ui"),
-                "/assets/shaders/blit_ui.hlsl",
-            )
-            .read(&ui_tex)
-            .write(&mut post)
-            .dispatch(post.desc().extent);
-        }
+        self.render_ui(rg, &mut post);
 
         rg.export(
             post,
@@ -663,17 +649,37 @@ impl VickiRenderClient {
             &tlas,
         );
 
-        let lit = crate::render_passes::normalize_accum(
+        let mut lit = crate::render_passes::normalize_accum(
             rg,
             &accum_img,
             vk::Format::R16G16B16A16_SFLOAT,
             self.bindless_descriptor_set,
         );
 
+        self.render_ui(rg, &mut lit);
+
         rg.export(
             lit,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
+    }
+
+    fn render_ui(&mut self, rg: &mut crate::rg::RenderGraph, target_img: &mut rg::Handle<Image>) {
+        if let Some((ui_renderer, image)) = self.ui_frame.take() {
+            let mut ui_tex = rg.import(image, AccessType::Nothing);
+            let mut pass = rg.add_pass("render ui");
+
+            pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
+            pass.render(move |api| ui_renderer(api.cb.raw));
+
+            rg::SimpleRenderPass::new_compute(
+                rg.add_pass("blit ui"),
+                "/assets/shaders/blit_ui.hlsl",
+            )
+            .read(&ui_tex)
+            .write(target_img)
+            .dispatch(target_img.desc().extent);
+        }
     }
 }
 
