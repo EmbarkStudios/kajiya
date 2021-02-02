@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 arrayvec = "0.5"
+ash-imgui = { path = "ash-imgui" }
 bincode = "1.3"
 blue-noise-sampler = "0.1"
 byte-slice-cast = "0.3"
@@ -23,6 +24,8 @@ gltf = "0.15"
 hassle-rs = "0.4"
 hotwatch = "0.4"
 image = { version = "0.23", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
+imgui = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d" }
+imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d", features = ["winit-19"] }
 lazy_static = "1.4"
 log = "0.4"
 # once_cell = "1.4"

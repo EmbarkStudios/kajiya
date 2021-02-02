@@ -11,15 +11,44 @@ float3 uint_id_to_color(uint id) {
     return float3(id % 11, id % 29, id % 7) / float3(10, 28, 6);
 }
 
+float linear_to_srgb(float v) {
+    if (v <= 0.0031308) {
+        return v * 12.92;
+    } else {
+        return pow(v, (1.0/2.4)) * (1.055) - 0.055;
+    }
+}
+
+float3 linear_to_srgb(float3 v) {
+    return float3(
+        linear_to_srgb(v.x), 
+        linear_to_srgb(v.y), 
+        linear_to_srgb(v.z));
+}
+
+float srgb_to_linear(float v) {
+    if (v <= 0.04045)
+        return v / 12.92;
+    else
+        return pow((v + 0.055) / 1.055, 2.4);
+}
+
+float3 srgb_to_linear(float3 v) {
+    return float3(
+        srgb_to_linear(v.x),
+        srgb_to_linear(v.y),
+        srgb_to_linear(v.z));
+}
+
 // Rec. 709
 float calculate_luma(float3 col) {
-	return dot(float3(0.2126, 0.7152, 0.0722), col);
+    return dot(float3(0.2126, 0.7152, 0.0722), col);
 }
 
 float3 linear_srgb_to_oklab(float3 c) {
     float l = 0.4122214708f * c.r + 0.5363325363f * c.g + 0.0514459929f * c.b;
-	float m = 0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b;
-	float s = 0.0883024619f * c.r + 0.2817188376f * c.g + 0.6299787005f * c.b;
+    float m = 0.2119034982f * c.r + 0.6806995451f * c.g + 0.1073969566f * c.b;
+    float s = 0.0883024619f * c.r + 0.2817188376f * c.g + 0.6299787005f * c.b;
 
     float l_ = pow(l, 1.0 / 3.0);
     float m_ = pow(m, 1.0 / 3.0);
@@ -42,9 +71,9 @@ float3 oklab_to_linear_srgb(float3 c) {
     float s = s_*s_*s_;
 
     return float3(
-		+4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s,
-		-1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s,
-		-0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s
+        +4.0767416621f * l - 3.3077115913f * m + 0.2309699292f * s,
+        -1.2684380046f * l + 2.6097574011f * m - 0.3413193965f * s,
+        -0.0041960863f * l - 0.7034186147f * m + 1.7076147010f * s
     );
 }
 

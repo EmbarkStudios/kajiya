@@ -32,7 +32,8 @@ use slingshot::{
             RayTracingGeometryPart, RayTracingGeometryType, RayTracingTopAccelerationDesc,
         },
     },
-    rspirv_reflect, vk_sync,
+    rspirv_reflect,
+    vk_sync::{self, AccessType},
 };
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use winit::VirtualKeyCode;
@@ -80,6 +81,8 @@ pub struct VickiRenderClient {
 
     ssgi: SsgiRenderer,
     rtr: RtrRenderer,
+
+    pub ui_frame: Option<(Box<dyn FnOnce(vk::CommandBuffer) + 'static>, Arc<Image>)>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -304,6 +307,7 @@ impl VickiRenderClient {
 
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
+            ui_frame: Default::default(),
         })
     }
 
@@ -589,12 +593,28 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
-        let post = crate::render_passes::normalize_accum(
+        let mut post = crate::render_passes::normalize_accum(
             rg,
             &debug_out_tex,
             vk::Format::R16G16B16A16_SFLOAT,
             self.bindless_descriptor_set,
         );
+
+        if let Some((ui_renderer, image)) = self.ui_frame.take() {
+            let mut ui_tex = rg.import(image, AccessType::Nothing);
+            let mut pass = rg.add_pass("render ui");
+
+            pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
+            pass.render(move |api| ui_renderer(api.cb.raw));
+
+            rg::SimpleRenderPass::new_compute(
+                rg.add_pass("blit ui"),
+                "/assets/shaders/blit_ui.hlsl",
+            )
+            .read(&ui_tex)
+            .write(&mut post)
+            .dispatch(post.desc().extent);
+        }
 
         rg.export(
             post,

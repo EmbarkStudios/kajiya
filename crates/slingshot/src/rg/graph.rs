@@ -664,9 +664,9 @@ impl CompiledRenderGraph {
             rt_pipelines: self.rt_pipelines,
         };
 
-        for pass in self.rg.passes.into_iter() {
+        for (pass_idx, pass) in self.rg.passes.into_iter().enumerate() {
             let vk_query_idx = {
-                let query_id = crate::gpu_profiler::create_gpu_query(pass.name.as_str());
+                let query_id = crate::gpu_profiler::create_gpu_query(pass.name.as_str(), pass_idx);
                 let vk_query_idx = params.profiler_data.get_query_id(query_id);
 
                 unsafe {

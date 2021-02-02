@@ -80,6 +80,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ash-imgui"
+version = "0.1.0"
+dependencies = [
+ "arrayvec",
+ "ash",
+ "imgui",
+ "memoffset",
+]
+
+[[package]]
 name = "ash-window"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -913,6 +923,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "imgui"
+version = "0.3.0-pre"
+source = "git+https://github.com/Gekkio/imgui-rs.git?rev=ffff82d#ffff82d5e44c316fad65b6ae5aa9a900a6fad806"
+dependencies = [
+ "bitflags",
+ "imgui-sys",
+ "lazy_static",
+ "parking_lot 0.10.2",
+]
+
+[[package]]
+name = "imgui-sys"
+version = "0.3.0-pre"
+source = "git+https://github.com/Gekkio/imgui-rs.git?rev=ffff82d#ffff82d5e44c316fad65b6ae5aa9a900a6fad806"
+dependencies = [
+ "cc",
+]
+
+[[package]]
+name = "imgui-winit-support"
+version = "0.3.0-pre"
+source = "git+https://github.com/Gekkio/imgui-rs.git?rev=ffff82d#ffff82d5e44c316fad65b6ae5aa9a900a6fad806"
+dependencies = [
+ "imgui",
+ "winit",
+]
+
+[[package]]
 name = "inflections"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1076,6 +1114,15 @@ checksum = "6585fd95e7bb50d6cc31e20d4cf9afb4e2ba16c5846fc76793f11218da9c475b"
 dependencies = [
  "libc",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "memoffset"
+version = "0.5.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "043175f069eda7b85febe4a74abbaeff828d9f8b448515d3151a14a3542811aa"
+dependencies = [
+ "autocfg",
 ]
 
 [[package]]
@@ -1298,6 +1345,16 @@ dependencies = [
 
 [[package]]
 name = "parking_lot"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3a704eb390aafdc107b0e392f56a82b668e3a71366993b5340f5833fd62505e"
+dependencies = [
+ "lock_api 0.3.4",
+ "parking_lot_core 0.7.2",
+]
+
+[[package]]
+name = "parking_lot"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a4893845fa2ca272e647da5d0e46660a314ead9c2fdd9a883aabc32e481a8733"
@@ -1319,6 +1376,20 @@ dependencies = [
  "redox_syscall",
  "rustc_version",
  "smallvec 0.6.14",
+ "winapi 0.3.9",
+]
+
+[[package]]
+name = "parking_lot_core"
+version = "0.7.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d58c7c768d4ba344e3e8d72518ac13e259d7c7ade24167003b8488e10b6740a3"
+dependencies = [
+ "cfg-if",
+ "cloudabi 0.0.3",
+ "libc",
+ "redox_syscall",
+ "smallvec 1.4.1",
  "winapi 0.3.9",
 ]
 
@@ -1944,6 +2015,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrayvec",
+ "ash-imgui",
  "bincode",
  "blue-noise-sampler",
  "byte-slice-cast",
@@ -1957,6 +2029,8 @@ dependencies = [
  "hassle-rs",
  "hotwatch",
  "image",
+ "imgui",
+ "imgui-winit-support",
  "lazy_static",
  "log",
  "parking_lot 0.11.0",

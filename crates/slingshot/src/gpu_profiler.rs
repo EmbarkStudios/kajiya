@@ -15,8 +15,8 @@ impl Default for GpuProfilerQueryId {
     }
 }
 
-pub fn create_gpu_query(name: &str) -> GpuProfilerQueryId {
-    GPU_PROFILER.lock().create_gpu_query(name)
+pub fn create_gpu_query(name: &str, user_id: usize) -> GpuProfilerQueryId {
+    GPU_PROFILER.lock().create_gpu_query(name, user_id)
 }
 
 pub fn report_durations_ticks(
@@ -32,11 +32,6 @@ pub fn forget_queries(queries: impl Iterator<Item = GpuProfilerQueryId>) {
     prof.forget_queries(queries);
 }
 
-pub fn end_frame() {
-    let mut prof = GPU_PROFILER.lock();
-    prof.end_frame();
-}
-
 pub fn with_stats<F: FnOnce(&GpuProfilerStats)>(f: F) {
     f(&GPU_PROFILER.lock().stats);
 }
@@ -46,11 +41,11 @@ pub fn get_stats() -> GpuProfilerStats {
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct GpuProfilerScopeId(String);
+pub struct GpuProfilerScopeId(String, usize);
 
-impl From<String> for GpuProfilerScopeId {
-    fn from(s: String) -> Self {
-        Self(s)
+impl GpuProfilerScopeId {
+    pub fn new(s: String, user_id: usize) -> Self {
+        Self(s, user_id)
     }
 }
 
@@ -87,25 +82,43 @@ impl GpuProfilerScope {
 #[derive(Default, Debug, Clone)]
 pub struct GpuProfilerStats {
     pub scopes: HashMap<GpuProfilerScopeId, GpuProfilerScope>,
-    pub order: Vec<GpuProfilerQueryId>,
+    pub order: Vec<GpuProfilerScopeId>,
 }
 
 struct ActiveQuery {
     id: GpuProfilerQueryId,
     name: String,
+    user_id: usize,
 }
 
 impl GpuProfilerStats {
-    fn report_duration_nanos(&mut self, query_id: GpuProfilerQueryId, duration: u64, name: String) {
-        let scope_id = GpuProfilerScopeId::from(name.clone());
+    fn report_duration_nanos(
+        &mut self,
+        query_id: GpuProfilerQueryId,
+        duration: u64,
+        active_query: ActiveQuery,
+    ) {
+        let scope_id = GpuProfilerScopeId::new(active_query.name.clone(), active_query.user_id);
+        self.order.push(scope_id.clone());
+
         let mut entry = self
             .scopes
             .entry(scope_id)
-            .or_insert_with(|| GpuProfilerScope::with_name(name));
+            .or_insert_with(|| GpuProfilerScope::with_name(active_query.name));
 
         let len = entry.hits.len();
         entry.hits[entry.write_head as usize % len] = duration;
         entry.write_head += 1;
+    }
+
+    pub fn get_ordered_name_ms(&self) -> Vec<(String, f64)> {
+        self.order
+            .iter()
+            .filter_map(|scope_id| {
+                let scope = &self.scopes[scope_id];
+                Some((scope.name.clone(), scope.average_duration_millis()))
+            })
+            .collect()
     }
 }
 
@@ -131,11 +144,13 @@ impl GpuProfiler {
         ns_per_tick: f32,
         durations: impl Iterator<Item = (GpuProfilerQueryId, u64)>,
     ) {
+        self.stats.order.clear();
+
         for (query_id, duration_ticks) in durations {
             // Remove the finished queries from the active list
             let q = self.active_queries.remove(&query_id).unwrap();
             let duration = (duration_ticks as f64 * ns_per_tick as f64) as u64;
-            self.stats.report_duration_nanos(query_id, duration, q.name);
+            self.stats.report_duration_nanos(query_id, duration, q);
         }
     }
 
@@ -145,20 +160,18 @@ impl GpuProfiler {
         }
     }
 
-    fn end_frame(&mut self) {
-        self.stats.order.clear();
-        self.stats.order.extend(self.frame_query_ids.drain(..));
-    }
-
-    fn create_gpu_query(&mut self, name: &str) -> GpuProfilerQueryId {
+    fn create_gpu_query(&mut self, name: &str, user_id: usize) -> GpuProfilerQueryId {
         let id = GpuProfilerQueryId(self.next_query_id);
         self.next_query_id += 1;
         self.frame_query_ids.push(id);
+
+        // TODO: prune old ones
         self.active_queries.insert(
             id,
             ActiveQuery {
                 id,
                 name: name.to_string(),
+                user_id,
             },
         );
         assert!(self.active_queries.len() < 8192);

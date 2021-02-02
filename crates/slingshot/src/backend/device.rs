@@ -494,6 +494,10 @@ impl Device {
             .get_mut()
             .release_all(&self.raw);
     }
+
+    pub fn physical_device(&self) -> &PhysicalDevice {
+        self.pdevice.as_ref()
+    }
 }
 
 impl Drop for Device {

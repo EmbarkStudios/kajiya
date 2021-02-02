@@ -1,0 +1,12 @@
+[package]
+name = "ash-imgui"
+version = "0.1.0"
+authors = ["Simon Brown <si@sjbrown.co.uk>", "Tomasz Stachowiak <h3@h3.gd>"]
+edition = "2018"
+publish = false
+
+[dependencies]
+ash = "0.31"
+imgui = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d" }
+arrayvec = "0.5.1"
+memoffset = "0.5"

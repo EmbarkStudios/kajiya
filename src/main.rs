@@ -2,6 +2,7 @@ mod asset;
 mod camera;
 mod image_cache;
 mod image_lut;
+mod imgui_backend;
 mod input;
 mod logging;
 mod lut_renderers;
@@ -14,12 +15,14 @@ mod viewport;
 use asset::{image::LoadImage, mesh::*};
 use camera::*;
 use image_cache::*;
+use imgui::im_str;
 use input::*;
 use lut_renderers::*;
 use math::*;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use parking_lot::Mutex;
 use render_client::{BindlessImageHandle, RenderMode};
 use slingshot::*;
 use std::{collections::HashMap, sync::Arc};
@@ -102,7 +105,6 @@ fn try_main() -> anyhow::Result<()> {
     }
 
     let mut renderer = renderer::Renderer::new(render_backend)?;
-
     let mut last_error_text = None;
 
     #[allow(unused_mut)]
@@ -184,13 +186,20 @@ fn try_main() -> anyhow::Result<()> {
     render_client.add_mesh(mesh);
     render_client.build_ray_tracing_top_level_acceleration();
 
-    let mut stats_spam = 0;
+    let mut imgui = imgui::Context::create();
+    let mut imgui_backend =
+        imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
+    imgui_backend.create_graphics_resources([window_cfg.width, window_cfg.height]);
+    let imgui_backend = Arc::new(Mutex::new(imgui_backend));
 
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
     while running {
         let mut events = Vec::new();
         event_loop.poll_events(|event| {
+            imgui_backend
+                .lock()
+                .handle_event(window.as_ref(), &mut imgui, &event);
             events.push(event);
         });
 
@@ -258,20 +267,45 @@ fn try_main() -> anyhow::Result<()> {
             input: input_state,
         };
 
+        let (ui_draw_data, imgui_target_image) = {
+            let mut imgui_backend = imgui_backend.lock();
+            let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
+
+            if ui
+                .collapsing_header(im_str!("GPU passes"))
+                .default_open(true)
+                .build()
+            {
+                let gpu_stats = gpu_profiler::get_stats();
+                ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
+
+                for (name, ms) in gpu_stats.get_ordered_name_ms() {
+                    ui.text(format!("{}: {:.3}ms", name, ms));
+                }
+            }
+
+            imgui_backend.prepare_render(&ui, &window);
+            (ui.render(), imgui_backend.get_target_image().unwrap())
+        };
+
+        let ui_draw_data: &'static imgui::DrawData = unsafe { std::mem::transmute(ui_draw_data) };
+        let imgui_backend = imgui_backend.clone();
+        let gui_extent = [frame_state.window_cfg.width, frame_state.window_cfg.height];
+
+        render_client.ui_frame = Some((
+            Box::new(move |cb| {
+                imgui_backend
+                    .lock()
+                    .render(gui_extent, ui_draw_data, cb)
+                    .expect("ui.render");
+            }),
+            imgui_target_image,
+        ));
+
         match renderer.prepare_frame(&mut render_client, &frame_state) {
             Ok(()) => {
                 renderer.draw_frame(&mut render_client, &frame_state);
                 last_error_text = None;
-
-                let gpu_stats = gpu_profiler::get_stats();
-
-                if stats_spam % 60 == 0 {
-                    println!("CPU frame time: {:.3}ms", dt * 1000.0);
-                    for (_scope_id, scope) in gpu_stats.scopes.iter() {
-                        println!("{}: {:.3}ms", scope.name, scope.average_duration_millis());
-                    }
-                }
-                stats_spam += 1;
             }
             Err(e) => {
                 let error_text = Some(format!("{:?}", e));

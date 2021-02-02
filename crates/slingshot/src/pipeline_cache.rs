@@ -282,7 +282,6 @@ impl PipelineCache {
 
             if entry.pipeline.is_none() {
                 let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
-                assert!(!entry.lazy_handle.is_stale());
 
                 let compiled_shaders = compiled_shaders
                     .shaders

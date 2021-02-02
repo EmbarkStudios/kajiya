@@ -1,12 +1,15 @@
 use super::{instance::Instance, surface::Surface};
 use anyhow::Result;
-use ash::{version::InstanceV1_0, vk};
+use ash::{
+    version::InstanceV1_0,
+    vk::{self, PhysicalDeviceMemoryProperties, PhysicalDeviceProperties},
+};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{ffi::CStr, sync::Arc};
+use std::sync::Arc;
 
 /// Properties of the physical device.
-#[derive(Clone, Debug)]
+/*#[derive(Clone, Debug)]
 pub struct PhysicalDeviceProperties {
     pub api_version: u32,
     pub driver_version: u32,
@@ -17,7 +20,7 @@ pub struct PhysicalDeviceProperties {
     pub pipeline_cache_uuid: [u8; 16],
     pub limits: vk::PhysicalDeviceLimits,
     pub sparse_properties: vk::PhysicalDeviceSparseProperties,
-}
+}*/
 
 #[derive(Copy, Clone)]
 pub struct QueueFamily {
@@ -29,8 +32,9 @@ pub struct PhysicalDevice {
     pub(crate) instance: Arc<Instance>,
     pub(crate) raw: vk::PhysicalDevice,
     pub(crate) queue_families: Vec<QueueFamily>,
-    pub(crate) properties: PhysicalDeviceProperties,
     pub(crate) presentation_requested: bool,
+    pub properties: PhysicalDeviceProperties,
+    pub memory_properties: PhysicalDeviceMemoryProperties,
 }
 
 impl std::fmt::Debug for PhysicalDevice {
@@ -47,7 +51,7 @@ pub fn enumerate_physical_devices(instance: &Arc<Instance>) -> Result<Vec<Physic
             .into_iter()
             .map(|pdevice| {
                 let properties = instance.raw.get_physical_device_properties(pdevice);
-                let properties = PhysicalDeviceProperties {
+                /*let properties = PhysicalDeviceProperties {
                     api_version: properties.api_version,
                     driver_version: properties.driver_version,
                     vendor_id: properties.vendor_id,
@@ -60,7 +64,7 @@ pub fn enumerate_physical_devices(instance: &Arc<Instance>) -> Result<Vec<Physic
                     pipeline_cache_uuid: properties.pipeline_cache_uuid,
                     limits: properties.limits,
                     sparse_properties: properties.sparse_properties,
-                };
+                };*/
 
                 let queue_families = instance
                     .raw
@@ -73,12 +77,15 @@ pub fn enumerate_physical_devices(instance: &Arc<Instance>) -> Result<Vec<Physic
                     })
                     .collect();
 
+                let memory_properties = instance.raw.get_physical_device_memory_properties(pdevice);
+
                 PhysicalDevice {
                     raw: pdevice,
                     queue_families,
-                    properties,
                     presentation_requested: true,
                     instance: instance.clone(),
+                    properties,
+                    memory_properties,
                 }
             })
             .collect())
