@@ -150,7 +150,7 @@ fn load_gltf_material(
     )
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone)]
 pub struct LoadGltfScene {
     pub path: PathBuf,
     pub scale: f32,
@@ -158,7 +158,8 @@ pub struct LoadGltfScene {
 
 impl Hash for LoadGltfScene {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(&bincode::serialize(self).unwrap());
+        self.path.hash(state);
+        self.scale.to_ne_bytes().hash(state);
     }
 }
 
@@ -335,7 +336,7 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
     }
 }
 
-#[derive(Copy, Clone, serde::Serialize)]
+#[derive(Copy, Clone)]
 #[repr(C)]
 struct GpuMaterial {
     base_color_mult: [f32; 4],

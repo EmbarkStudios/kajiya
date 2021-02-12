@@ -163,7 +163,7 @@ impl RtrRenderer {
         .write(&mut ray_len_tex)
         .constants((
             resolved_tex.desc().extent_inv_extent_2d(),
-            SPATIAL_RESOLVE_SAMPLES,
+            SPATIAL_RESOLVE_OFFSETS,
         ))
         .dispatch(resolved_tex.desc().extent);
 
@@ -186,7 +186,7 @@ impl RtrRenderer {
     }
 }
 
-pub const SPATIAL_RESOLVE_SAMPLES: [(i32, i32, i32, i32); 16 * 4 * 8] = [
+pub const SPATIAL_RESOLVE_OFFSETS: [(i32, i32, i32, i32); 16 * 4 * 8] = [
     (0i32, 0i32, 0, 0),
     (-1i32, -1i32, 0, 0),
     (2i32, -1i32, 0, 0),

@@ -9,7 +9,6 @@ edition = "2018"
 [dependencies]
 anyhow = "1.0"
 arrayvec = "0.5"
-bincode = "1.3"
 byte-slice-cast = "0.3"
 ash = "0.31"
 ash-window = "0.5"
@@ -31,7 +30,6 @@ parking_lot = "0.11"
 raw-window-handle = "0.3"
 relative-path = "1.3"
 rspirv = "0.7"  # note: patched over for latest RT
-serde = { version = "1.0", features = ["derive"] }
 rspirv-reflect = { git = "https://github.com/Traverse-Research/rspirv-reflect.git", rev = "1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f" }
 shader-prepper = "0.2"
 smol = "0.3"

@@ -4,7 +4,7 @@ use image::GenericImageView as _;
 use slingshot::file::LoadFile;
 use turbosloth::*;
 
-#[derive(Clone, Hash, serde::Serialize)]
+#[derive(Clone, Hash)]
 pub struct LoadImage {
     pub path: PathBuf,
 }
