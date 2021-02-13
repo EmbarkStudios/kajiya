@@ -146,7 +146,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
     //debug_out = bent_normal_dir * 0.5 + 0.5;
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
-    //debug_out = base_light_tex[px].xyz;
+    debug_out = base_light_tex[px].xyz;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

@@ -34,145 +34,108 @@ void main() {
     const float3 slice_dir = mul(slice_rot, float3(0, 0, -1));    
     const float3 trace_origin = vx_to_pos(px + float3(0, 0, 0.5), slice_rot);
 
-    RayDesc outgoing_ray;
-    outgoing_ray.Direction = vx_to_pos(px + float3(0, 0, -1), slice_rot) - trace_origin;
-    outgoing_ray.Origin = trace_origin;
-    outgoing_ray.TMin = 0;
-    outgoing_ray.TMax = 1.0;
+    const float spread0 = 1.0;
+    const float spread1 = 0.7;
 
-    float3 radiance = 0.0.xxx;
+    float3 scatter = 0.0;
 
-    /*const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
-    if (primary_hit.is_hit) {
-        float3 total_radiance = 0.0.xxx;
-        {
-            const float3 to_light_norm = SUN_DIRECTION;
-            const bool is_shadowed =
-                rt_is_shadowed(
-                    acceleration_structure,
-                    new_ray(
-                        primary_hit.position,
-                        to_light_norm,
-                        1e-4,
-                        SKY_DIST
-                ));
+    static const uint DIR_COUNT = 9;
+    static const int3 dirs[9] = {
+        int3(0, 0, -1),
 
-            GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-            const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-            const float3 wi = mul(to_light_norm, shading_basis);
-            float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
+        int3(1, 0, -1),
+        int3(-1, 0, -1),
+        int3(0, 1, -1),
+        int3(0, -1, -1),
 
-            LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+        int3(1, 1, -1),
+        int3(-1, 1, -1),
+        int3(1, -1, -1),
+        int3(-1, -1, -1)
+    };
+    static const float weights[9] = {
+        1,
+        spread0, spread0, spread0, spread0,
+        spread1, spread1, spread1, spread1
+    };
 
-            const float3 brdf_value = brdf.evaluate(wo, wi);
-            const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-            total_radiance += brdf_value * light_radiance;
+    float total_wt = 0;
 
-            //total_radiance *= saturate(dot(-gbuffer.normal, normalize(outgoing_ray.Direction)));
-        }
-
-        radiance += total_radiance;
-    }
-    else*/
+    for (uint dir_i = 0; dir_i < DIR_COUNT; ++dir_i)
     {
-        const float spread0 = 1.0;
-        const float spread1 = 0.7;
+        //const uint dir_i = 0;
+        total_wt += weights[dir_i];
 
-        float3 scatter = 0.0;
+        float3 r_dir = mul(slice_rot, float3(dirs[dir_i]));
+        float3 neighbor_pos = vx_to_pos(float3(px) + dirs[dir_i] * 1.5, slice_rot);    // 1.5 to hit corner/back wall
 
-        static const uint DIR_COUNT = 9;
-        static const int3 dirs[9] = {
-            int3(0, 0, -1),
+        RayDesc outgoing_ray = new_ray(
+            trace_origin,
+            neighbor_pos - trace_origin,
+            0,
+            1.0
+        );
 
-            int3(1, 0, -1),
-            int3(-1, 0, -1),
-            int3(0, 1, -1),
-            int3(0, -1, -1),
+        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
+        if (primary_hit.is_hit) {
+            float3 total_radiance = 0.0.xxx;
+            {
+                const float3 to_light_norm = SUN_DIRECTION;
+                const bool is_shadowed =
+                    rt_is_shadowed(
+                        acceleration_structure,
+                        new_ray(
+                            primary_hit.position,
+                            to_light_norm,
+                            1e-4,
+                            SKY_DIST
+                    ));
 
-            int3(1, 1, -1),
-            int3(-1, 1, -1),
-            int3(1, -1, -1),
-            int3(-1, -1, -1)
-        };
-        static const float weights[9] = {
-            1,
-            spread0, spread0, spread0, spread0,
-            spread1, spread1, spread1, spread1
-        };
+                GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+                
+                const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
 
-        float total_wt = 0;
+#if 0
+                const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
+                const float3 wi = mul(to_light_norm, shading_basis);
+                float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
 
-        [unroll]
-        for (uint dir_i = 0; dir_i < DIR_COUNT; ++dir_i)
-        {
-            //const uint dir_i = 0;
-            total_wt += weights[dir_i];
+                LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+                const float3 brdf_value = brdf.evaluate(wo, wi);
+                total_radiance += brdf_value * light_radiance;
+#else
+                total_radiance +=
+                    light_radiance * lerp(gbuffer.albedo, 1.0.xxx, 0.04) * max(0.0, dot(gbuffer.normal, to_light_norm)) / M_PI;
+#endif
 
-            float3 r_dir = mul(slice_rot, float3(dirs[dir_i]));
-            float3 neighbor_pos = vx_to_pos(float3(px) + dirs[dir_i] * 1.5, slice_rot);    // 1.5 to hit corner/back wall
 
-            RayDesc outgoing_ray = new_ray(
+
+
+                total_radiance *= saturate(0.0 + dot(-gbuffer.normal, normalize(outgoing_ray.Direction)));
+            }
+
+            //if (dir_i > 0)
+            scatter += total_radiance * weights[dir_i];
+        } else {
+            int3 src_px = int3(px) + dirs[dir_i];
+            if (src_px.x >= 0 && src_px.x < GI_VOLUME_DIMS) {
+                scatter += out0_tex[src_px + int3(GI_VOLUME_DIMS, 0, 0) * grid_idx].rgb * weights[dir_i];
+            }
+        }
+        
+        /*if (!rt_is_shadowed(
+            acceleration_structure,
+            new_ray(
                 trace_origin,
                 neighbor_pos - trace_origin,
                 0,
                 1.0
-            );
-
-            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
-            if (primary_hit.is_hit) {
-                float3 total_radiance = 0.0.xxx;
-                {
-                    const float3 to_light_norm = SUN_DIRECTION;
-                    const bool is_shadowed =
-                        rt_is_shadowed(
-                            acceleration_structure,
-                            new_ray(
-                                primary_hit.position,
-                                to_light_norm,
-                                1e-4,
-                                SKY_DIST
-                        ));
-
-                    GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-
-                    const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-                    const float3 wi = mul(to_light_norm, shading_basis);
-                    float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
-
-                    LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-                    const float3 brdf_value = brdf.evaluate(wo, wi);
-                    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-                    total_radiance += brdf_value * light_radiance;
-
-
-
-
-                    total_radiance *= saturate(0.0 + dot(-gbuffer.normal, normalize(outgoing_ray.Direction)));
-                }
-
-                //if (dir_i > 0)
-                scatter += total_radiance * weights[dir_i];
-            } else {
-                int3 src_px = int3(px) + dirs[dir_i];
-                if (src_px.x >= 0 && src_px.x < GI_VOLUME_DIMS) {
-                    scatter += out0_tex[src_px + int3(GI_VOLUME_DIMS, 0, 0) * grid_idx].rgb * weights[dir_i];
-                }
-            }
-            
-            /*if (!rt_is_shadowed(
-                acceleration_structure,
-                new_ray(
-                    trace_origin,
-                    neighbor_pos - trace_origin,
-                    0,
-                    1.0
-            ))) {
-                scatter += out0_tex[int3(px) + dirs[dir_i]].xyz * weights[dir_i];
-            }*/
-        }
-
-        radiance += scatter.xyz / total_wt;
+        ))) {
+            scatter += out0_tex[int3(px) + dirs[dir_i]].xyz * weights[dir_i];
+        }*/
     }
+
+    float3 radiance = scatter.xyz / total_wt;
 
     out0_tex[px + int3(GI_VOLUME_DIMS, 0, 0) * grid_idx] = float4(radiance, 1);
 }
