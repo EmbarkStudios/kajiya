@@ -2,8 +2,7 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/rt.hlsl"
-
-static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
+#include "../inc/sun.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] Texture2D<float> depth_tex;

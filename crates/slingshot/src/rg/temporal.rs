@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use anyhow::Context;
 use vk_sync::AccessType;
 
 use crate::{Device, Image, ImageDesc};
@@ -38,17 +39,17 @@ impl<'a> From<&'a str> for TemporalResourceKey {
 }
 
 #[derive(Clone)]
-enum TemporalResource {
+pub(crate) enum TemporalResource {
     Image(Arc<Image>),
     Buffer(Arc<Buffer>),
 }
 
-enum ExportedResourceHandle {
+pub(crate) enum ExportedResourceHandle {
     Image(ExportedHandle<Image>),
     Buffer(ExportedHandle<Buffer>),
 }
 
-enum TemporalResourceState {
+pub(crate) enum TemporalResourceState {
     Inert {
         resource: TemporalResource,
         access_type: vk_sync::AccessType,
@@ -65,7 +66,7 @@ enum TemporalResourceState {
 
 #[derive(Default)]
 pub struct TemporalRenderGraphState {
-    resources: HashMap<TemporalResourceKey, TemporalResourceState>,
+    pub(crate) resources: HashMap<TemporalResourceKey, TemporalResourceState>,
 }
 
 impl TemporalRenderGraphState {
@@ -95,7 +96,7 @@ impl TemporalRenderGraphState {
     }
 }
 
-pub struct ExportedTemporalRenderGraphState(TemporalRenderGraphState);
+pub struct ExportedTemporalRenderGraphState(pub(crate) TemporalRenderGraphState);
 
 pub struct TemporalRenderGraph {
     rg: RenderGraph,
@@ -189,7 +190,11 @@ impl GetOrCreateTemporal<ImageDesc> for TemporalRenderGraph {
                 }
             }
             hash_map::Entry::Vacant(entry) => {
-                let resource = Arc::new(self.device.create_image(desc, None)?);
+                let resource = Arc::new(
+                    self.device
+                        .create_image(desc, None)
+                        .with_context(|| format!("Creating image {:?}", desc))?,
+                );
                 let handle = self.rg.import(resource.clone(), AccessType::Nothing);
                 entry.insert(TemporalResourceState::Imported {
                     resource: TemporalResource::Image(resource),

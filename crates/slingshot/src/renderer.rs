@@ -328,11 +328,44 @@ impl Renderer {
         let (rg, temporal_rg_state) = rg.export_temporal();
 
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
-        self.pipeline_cache.prepare_frame(&self.backend.device)?;
 
-        self.temporal_rg_state = TemporalRg::Exported(temporal_rg_state);
+        match self.pipeline_cache.prepare_frame(&self.backend.device) {
+            Ok(()) => {
+                // If the frame preparation succeded, update stored temporal rg state and finish
+                self.temporal_rg_state = TemporalRg::Exported(temporal_rg_state);
+                Ok(())
+            }
+            Err(err) => {
+                // If frame preparation failed, we're not going to render anything, but we've potentially created
+                // some temporal resources, and we can reuse them in the next attempt.
+                //
+                // Import any new resources into our temporal rg state, but reset their access modes.
 
-        Ok(())
+                let self_temporal_rg_state = match &mut self.temporal_rg_state {
+                    TemporalRg::Inert(state) => state,
+                    TemporalRg::Exported(_) => unreachable!(),
+                };
+
+                for (res_key, res) in temporal_rg_state.0.resources {
+                    if !self_temporal_rg_state.resources.contains_key(&res_key) {
+                        let res = match res {
+                            res @ rg::TemporalResourceState::Inert { .. } => res,
+                            rg::TemporalResourceState::Imported { resource, .. }
+                            | rg::TemporalResourceState::Exported { resource, .. } => {
+                                rg::TemporalResourceState::Inert {
+                                    resource,
+                                    access_type: vk_sync::AccessType::Nothing,
+                                }
+                            }
+                        };
+
+                        self_temporal_rg_state.resources.insert(res_key, res);
+                    }
+                }
+
+                Err(err)
+            }
+        }
     }
 
     pub fn device(&self) -> &Arc<Device> {

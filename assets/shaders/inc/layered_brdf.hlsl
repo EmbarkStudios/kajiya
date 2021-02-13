@@ -1,4 +1,5 @@
 #include "gbuffer.hlsl"
+#include "color.hlsl"
 
 // Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo
 // is spread between the specular and diffuse layers. Scaling both the specular

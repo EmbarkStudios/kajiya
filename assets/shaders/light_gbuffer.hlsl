@@ -25,7 +25,7 @@
     float4 output_tex_size;
 };
 
-static const float3 SUN_DIRECTION = normalize(float3(1, 1.6, -0.2));
+#include "inc/sun.hlsl"
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 [numthreads(8, 8, 1)]

@@ -9,7 +9,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
-    renderers::{rtr::*, ssgi::*, GbufferDepth},
+    renderers::{csgi::CsgiRenderer, rtr::*, ssgi::*, GbufferDepth},
     rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
     FrameState,
@@ -592,6 +592,9 @@ impl VickiRenderClient {
             &mut debug_out_tex,
             self.bindless_descriptor_set,
         );
+
+        let mut csgi_volume = CsgiRenderer.render(rg, self.bindless_descriptor_set, &tlas);
+        csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
         let mut post = crate::render_passes::normalize_accum(
             rg,
