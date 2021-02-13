@@ -6,7 +6,7 @@
 #include "../inc/color.hlsl"
 #include "../inc/math.hlsl"
 
-#define USE_GRID_LINEAR_FETCH 1
+#define USE_GRID_LINEAR_FETCH 0
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
