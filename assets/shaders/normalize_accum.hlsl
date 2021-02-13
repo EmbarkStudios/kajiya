@@ -2,6 +2,9 @@
 #include "inc/tonemap.hlsl"
 #include "inc/bindless_textures.hlsl"
 
+#define USE_TONEMAP 0
+#define USE_DITHER 0
+
 Texture2D<float4> input_tex;
 RWTexture2D<float4> output_tex;
 
@@ -62,6 +65,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 	col.rgb *= max(0.0, sharpened_luma / max(1e-5, calculate_luma(col.rgb)));
 #endif
 
+#if USE_TONEMAP
     //col *= 2;
     //col -= 0.47;
     //col *= 8;
@@ -70,9 +74,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     col = lerp(calculate_luma(col), col, 1.05);
     col = pow(col, 1.02);
+#endif
     
     // Dither
-#if 1
+#if USE_DITHER
     const uint urand_idx = frame_constants.frame_index;
     // 256x256 blue noise
     float dither = triangle_remap(bindless_textures[1][

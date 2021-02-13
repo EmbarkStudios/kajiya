@@ -34,7 +34,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 static const bool FIREFLY_SUPPRESSION = true;
 
 float3 sample_environment_light(float3 dir) {
-    //return 0.5.xxx;
+    return 0.0.xxx;
     return atmosphere_default(dir, SUN_DIRECTION);
 
     float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
