@@ -8,8 +8,9 @@ static const uint GI_PRETRACE_DIMS = 48;
 #define GI_SCENE_BATTLE 1
 #define GI_SCENE_GAS_STATIONS 2
 #define GI_SCENE_VIZIERS 3
+#define GI_SCENE_SPONZA 4
 
-#define GI_SCENE GI_SCENE_CORNELL_BOX
+#define GI_SCENE GI_SCENE_BATTLE
 
 #if GI_SCENE == GI_SCENE_BATTLE
     static const float3 GI_VOLUME_CENTER = float3(-15, 4.0, 8);
@@ -24,6 +25,12 @@ static const uint GI_PRETRACE_DIMS = 48;
 #elif GI_SCENE == GI_SCENE_VIZIERS
     static const float3 GI_VOLUME_CENTER = float3(0, 15, 0);
     static const float GI_VOLUME_SIZE = GI_VOLUME_DIMS * (1.0 / 3);
+#elif GI_SCENE == GI_SCENE_SPONZA
+    //static const float3 GI_VOLUME_CENTER = float3(0, 4, -4);
+    //static const float GI_VOLUME_SIZE = GI_VOLUME_DIMS * 0.333;
+
+    static const float3 GI_VOLUME_CENTER = float3(0, 0, 0);
+    static const float GI_VOLUME_SIZE = GI_VOLUME_DIMS * 0.75;
 #endif
 
 //static const float GI_VOLUME_SCALE = GI_VOLUME_SIZE / GI_VOLUME_DIMS;

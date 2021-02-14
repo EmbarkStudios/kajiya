@@ -7,7 +7,6 @@
 #include "../inc/math.hlsl"
 
 #include "common.hlsl"
-#include "lookup.hlsl"
 
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -20,6 +19,8 @@
     float4 SLICE_DIRS[16];
 };
 
+
+#include "lookup.hlsl"
 
 [numthreads(8, 8, 1)]
 void main(
@@ -50,19 +51,19 @@ void main(
     gi_lookup_params.use_grid_linear_fetch = true;
     gi_lookup_params.use_pretrace = true;
     gi_lookup_params.debug_slice_idx = -1;
-    gi_lookup_params.slice_dirs = SLICE_DIRS;
-    gi_lookup_params.cascade0_tex = cascade0_tex;
-    gi_lookup_params.alt_cascade0_tex = alt_cascade0_tex;
+    //gi_lookup_params.slice_dirs = SLICE_DIRS;
+    //gi_lookup_params.cascade0_tex = cascade0_tex;
+    //gi_lookup_params.alt_cascade0_tex = alt_cascade0_tex;
 
     irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, gi_lookup_params);
-
-    irradiance *= gbuffer.albedo;
 
     //irradiance = cascade0_tex.SampleLevel(sampler_lnc, mul(slice_rot, vol_pos * 0.5 + 0.5), 0).rgb;
     //irradiance *= saturate(0.05 + dot(mul(slice_rot, gbuffer.normal), float3(0, 0, -1)));
 
     //if (uv.x > 0.5)
     {
-        out_tex[px] += float4(irradiance, 0);
+        out_tex[px] += float4(irradiance * gbuffer.albedo, 0);
     }
+
+    //out_tex[px] = float4(irradiance, 1);
 }

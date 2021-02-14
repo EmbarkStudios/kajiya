@@ -73,6 +73,14 @@ impl CsgiRenderer {
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
         );
 
+        let mut pretrace_normal_img = rg.create(
+            ImageDesc::new_3d(
+                vk::Format::R8G8B8A8_UNORM,
+                [48 * PRETRACE_COUNT as u32, 48, 48],
+            )
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        );
+
         let mut pretrace_col_img = rg.create(
             ImageDesc::new_3d(
                 vk::Format::R16G16B16A16_SFLOAT,
@@ -100,7 +108,9 @@ impl CsgiRenderer {
         )
         .write(&mut pretrace_hit_img)
         .write(&mut pretrace_col_img)
-        .constants(PRETRACE_DIRS)
+        .write(&mut pretrace_normal_img)
+        .read(&alt_cascade0)
+        .constants((SLICE_DIRS, PRETRACE_DIRS))
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, [48 * PRETRACE_COUNT as u32, 48, 1]);
 
@@ -152,6 +162,7 @@ impl CsgiRenderer {
         .write(&mut alt_cascade0)
         .read(&pretrace_hit_img)
         .read(&pretrace_col_img)
+        .read(&pretrace_normal_img)
         .constants((SLICE_DIRS, PRETRACE_DIRS, ray_dir_pretrace_indices))
         .dispatch(alt_cascade0.desc().extent);
 

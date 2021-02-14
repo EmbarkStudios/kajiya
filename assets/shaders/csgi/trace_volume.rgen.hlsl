@@ -112,10 +112,18 @@ void main() {
 
 
                 total_radiance *= saturate(0.0 + dot(-gbuffer.normal, normalize(outgoing_ray.Direction)));
+
+                // Remove contributions where the normal is facing away from
+                // the cone direction. This can happen e.g. on rays travelling near floors,
+                // where the neighbor rays hit the floors, but contribution should be zero.
+                total_radiance *= smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer.normal));
+                //total_radiance *= step(0.0, dot(slice_dir, -gbuffer.normal));
             }
 
-            //if (dir_i > 0)
-            scatter += total_radiance * weights[dir_i];
+            //if (dir_i == 0)
+            {
+                scatter += total_radiance * weights[dir_i];
+            }
         } else {
             int3 src_px = int3(px) + dirs[dir_i];
             if (src_px.x >= 0 && src_px.x < GI_VOLUME_DIMS) {

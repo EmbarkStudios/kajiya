@@ -66,9 +66,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 #endif
 
 #if USE_TONEMAP
-    col *= 3;
+    //col *= 2;
     //col -= 0.47;
-    //col *= 8;
+    col *= 8;
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 

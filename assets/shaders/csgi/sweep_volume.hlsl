@@ -7,7 +7,8 @@
 [[vk::binding(0)]] RWTexture3D<float4> out0_tex;
 [[vk::binding(1)]] Texture3D<float> pretrace_hit_tex;
 [[vk::binding(2)]] Texture3D<float4> pretrace_col_tex;
-[[vk::binding(3)]] cbuffer _ {
+[[vk::binding(3)]] Texture3D<float4> pretrace_normal_tex;
+[[vk::binding(4)]] cbuffer _ {
     float4 SLICE_DIRS[GI_SLICE_COUNT];
     float4 PRETRACE_DIRS[GI_PRETRACE_COUNT];
     uint4 RAY_DIR_PRETRACE_INDICES[GI_SLICE_COUNT * 9];
@@ -96,11 +97,14 @@ void main(in uint3 px : SV_DispatchThreadID) {
         const int3 pretrace_vx = int3(trunc(pretrace_vx_f.xy), trunc(pretrace_vx_f.z - 0.5));
 
         float4 pretrace_packed = 0.0.xxxx;
+        float3 hit_normal = 0.0.xxx;
+
         if (all(pretrace_vx >= 0) && all(pretrace_vx < GI_PRETRACE_DIMS)) {
             int3 pretrace_vx_resolved = pretrace_vx + int3(GI_PRETRACE_DIMS * pretraced_idx, 0, 0);
 
             if (pretrace_hit_tex[pretrace_vx_resolved] > 0) {
                 pretrace_packed = pretrace_col_tex[pretrace_vx_resolved];
+                hit_normal = pretrace_normal_tex[pretrace_vx_resolved].xyz * 2 - 1;
 
                 // HACK
                 /*if (pretrace_packed.w > 2 * float(GI_PRETRACE_DIMS) / GI_VOLUME_DIMS) {
@@ -111,7 +115,7 @@ void main(in uint3 px : SV_DispatchThreadID) {
 
         bool is_hit = pretrace_packed.w > 0.0;
         if (is_hit) {
-            float3 total_radiance = pretrace_packed.rgb;
+            float3 total_radiance = pretrace_packed.rgb * smoothstep(0.0, 0.1, dot(-hit_normal, slice_dir));
 
             scatter += total_radiance * weights[dir_i];
         } else {
