@@ -9,6 +9,8 @@ use slingshot::{
     vk_sync, Device,
 };
 
+const PRETRACE_DIMS: u32 = 32;
+
 use super::GbufferDepth;
 
 pub struct CsgiRenderer;
@@ -69,14 +71,25 @@ impl CsgiRenderer {
         .trace_rays(tlas, cascade0.desc().extent);
 
         let mut pretrace_hit_img = rg.create(
-            ImageDesc::new_3d(vk::Format::R8_UNORM, [48 * PRETRACE_COUNT as u32, 48, 48])
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            ImageDesc::new_3d(
+                vk::Format::R8_UNORM,
+                [
+                    PRETRACE_DIMS * PRETRACE_COUNT as u32,
+                    PRETRACE_DIMS,
+                    PRETRACE_DIMS,
+                ],
+            )
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
         );
 
         let mut pretrace_normal_img = rg.create(
             ImageDesc::new_3d(
                 vk::Format::R8G8B8A8_UNORM,
-                [48 * PRETRACE_COUNT as u32, 48, 48],
+                [
+                    PRETRACE_DIMS * PRETRACE_COUNT as u32,
+                    PRETRACE_DIMS,
+                    PRETRACE_DIMS,
+                ],
             )
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
         );
@@ -84,7 +97,11 @@ impl CsgiRenderer {
         let mut pretrace_col_img = rg.create(
             ImageDesc::new_3d(
                 vk::Format::R16G16B16A16_SFLOAT,
-                [48 * PRETRACE_COUNT as u32, 48, 48],
+                [
+                    PRETRACE_DIMS * PRETRACE_COUNT as u32,
+                    PRETRACE_DIMS,
+                    PRETRACE_DIMS,
+                ],
             )
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
         );
@@ -112,7 +129,10 @@ impl CsgiRenderer {
         .read(&alt_cascade0)
         .constants((SLICE_DIRS, PRETRACE_DIRS))
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, [48 * PRETRACE_COUNT as u32, 48, 1]);
+        .trace_rays(
+            tlas,
+            [PRETRACE_DIMS * PRETRACE_COUNT as u32, PRETRACE_DIMS, 1],
+        );
 
         let ray_dirs_canonical = [
             Vec3::new(0.0, 0.0, -1.0),
@@ -164,7 +184,7 @@ impl CsgiRenderer {
         .read(&pretrace_col_img)
         .read(&pretrace_normal_img)
         .constants((SLICE_DIRS, PRETRACE_DIRS, ray_dir_pretrace_indices))
-        .dispatch(alt_cascade0.desc().extent);
+        .dispatch([32, 32, SLICE_COUNT as u32]);
 
         CsgiVolume {
             cascade0,
@@ -233,7 +253,10 @@ const SLICE_DIRS: [[f32; 4]; SLICE_COUNT] = [
     [-0.5878232, 0.17476612, -0.7898867, 0.0],
 ];
 
-const PRETRACE_COUNT: usize = 32;
+const PRETRACE_COUNT: usize = SLICE_COUNT;
+const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = SLICE_DIRS;
+
+/*const PRETRACE_COUNT: usize = 32;
 const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = [
     [0.4949354, 0.65692055, 0.56876564, 0.0],
     [0.41396505, -0.5012211, -0.75987536, 0.0],
@@ -268,3 +291,4 @@ const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = [
     [0.23751135, -0.51609445, 0.82294285, 0.0],
     [0.5799199, -0.7884175, -0.20516169, 0.0],
 ];
+*/

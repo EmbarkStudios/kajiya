@@ -49,7 +49,7 @@ void main(
 
     CsgiLookupParams gi_lookup_params;
     gi_lookup_params.use_grid_linear_fetch = true;
-    gi_lookup_params.use_pretrace = true;
+    gi_lookup_params.use_pretrace = !true;
     gi_lookup_params.debug_slice_idx = -1;
     //gi_lookup_params.slice_dirs = SLICE_DIRS;
     //gi_lookup_params.cascade0_tex = cascade0_tex;

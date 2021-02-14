@@ -21,7 +21,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1.0) / 2.0) * (GI_VOLUME_SIZE / GI_VOLUME_DIMS) + GI_VOLUME_CENTER;
+    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1) / 2) * GI_VOXEL_SIZE + gi_volume_center(slice_rot);
 }
 
 [shader("raygeneration")]

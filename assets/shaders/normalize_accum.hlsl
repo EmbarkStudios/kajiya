@@ -87,5 +87,5 @@ void main(in uint2 px : SV_DispatchThreadID) {
     col += dither / 256.0;
 #endif
 
-    output_tex[px] = float4(col, 1.0);
+    output_tex[px] = float4(max(0.0, col), 1.0);
 }

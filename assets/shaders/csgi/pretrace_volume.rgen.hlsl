@@ -12,7 +12,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 
 #include "common.hlsl"
 
-static const bool USE_MULTIBOUNCE = true;
+static const bool USE_MULTIBOUNCE = !true;
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0)]] RWTexture3D<float> out_hit_tex;
@@ -21,7 +21,7 @@ static const bool USE_MULTIBOUNCE = true;
 [[vk::binding(3)]] Texture3D<float4> alt_cascade0_tex;
 [[vk::binding(4)]] cbuffer _ {
     float4 SLICE_DIRS[GI_SLICE_COUNT];
-    float4 PRETRACE_DIRS[32];
+    float4 PRETRACE_DIRS[GI_PRETRACE_COUNT];
 }
 
 // HACK; broken
@@ -32,7 +32,7 @@ static const bool USE_MULTIBOUNCE = true;
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_PRETRACE_DIMS - 1.0) / 2.0) * (GI_VOLUME_SIZE / GI_PRETRACE_DIMS) + GI_VOLUME_CENTER;
+    return mul(slice_rot, vx - (GI_PRETRACE_DIMS - 1.0) / 2.0) * (GI_VOLUME_SIZE / GI_PRETRACE_DIMS) + gi_volume_center(slice_rot);
 }
 
 [shader("raygeneration")]

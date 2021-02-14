@@ -103,5 +103,10 @@ struct ViewRayContext {
     }
 };
 
+float3 get_eye_position() {
+    float4 eye_pos_h = mul(frame_constants.view_constants.view_to_world, float4(0, 0, 0, 1));
+    return eye_pos_h.xyz / eye_pos_h.w;
+}
+
 
 #endif

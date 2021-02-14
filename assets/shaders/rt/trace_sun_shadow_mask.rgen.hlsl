@@ -25,13 +25,19 @@ void main() {
     float4 pt_vs = mul(frame_constants.view_constants.sample_to_view, pt_cs);
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, pt_vs);
     pt_ws /= pt_ws.w;
+    pt_vs /= pt_vs.w;
 
+    float4 eye_ws = mul(frame_constants.view_constants.view_to_world, float4(0, 0, 0, 1));
+
+    const float3 bias_dir = normalize(eye_ws.xyz / eye_ws.w - pt_ws.xyz);
+
+    const float3 ray_origin = pt_ws.xyz + bias_dir * (length(pt_vs.xyz) + length(pt_ws.xyz)) * 1e-4;
     const bool is_shadowed = rt_is_shadowed(
         acceleration_structure,
         new_ray(
-            pt_ws.xyz,
+            ray_origin,
             SUN_DIRECTION,
-            -pt_vs.z / pt_vs.w * 1e-3 + 1e-4,
+            0,
             FLT_MAX
         ));
 
