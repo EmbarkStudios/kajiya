@@ -9,7 +9,7 @@ static const uint GI_PRETRACE_DIMS = 48;
 #define GI_SCENE_GAS_STATIONS 2
 #define GI_SCENE_VIZIERS 3
 
-#define GI_SCENE GI_SCENE_BATTLE
+#define GI_SCENE GI_SCENE_CORNELL_BOX
 
 #if GI_SCENE == GI_SCENE_BATTLE
     static const float3 GI_VOLUME_CENTER = float3(-15, 4.0, 8);

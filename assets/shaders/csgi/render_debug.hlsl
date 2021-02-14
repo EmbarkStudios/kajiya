@@ -6,9 +6,9 @@
 #include "../inc/color.hlsl"
 #include "../inc/math.hlsl"
 
-#define USE_GRID_LINEAR_FETCH 1
-#define USE_PRETRACE 1
-#define DEBUG_SLICE_IDX -1
+#include "common.hlsl"
+#include "lookup.hlsl"
+
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -20,7 +20,6 @@
     float4 SLICE_DIRS[16];
 };
 
-#include "common.hlsl"
 
 [numthreads(8, 8, 1)]
 void main(
@@ -47,63 +46,15 @@ void main(
 
     float3 irradiance = 0.0.xxx;
 
-    //irradiance = cascade0_tex.SampleLevel(sampler_nnc, pt_ws.xyz, 0).xyz;
-    float3 noff = gbuffer.normal;
-    //const float normal_offset_scale = 1.1;
-    const float normal_offset_scale = 1.1;
+    CsgiLookupParams gi_lookup_params;
+    gi_lookup_params.use_grid_linear_fetch = true;
+    gi_lookup_params.use_pretrace = true;
+    gi_lookup_params.debug_slice_idx = -1;
+    gi_lookup_params.slice_dirs = SLICE_DIRS;
+    gi_lookup_params.cascade0_tex = cascade0_tex;
+    gi_lookup_params.alt_cascade0_tex = alt_cascade0_tex;
 
-    //noff *= 1.0 / max(abs(noff.x), max(abs(noff.y), abs(noff.z)));
-    //noff = trunc(noff);
-
-    //float3 vol_pos = pt_ws.xyz + float3(0, -1, 0) + noff * 1.1 / 16.0;
-    //irradiance = cascade0_tex[(mul(slice_rot, vol_pos * 16) + float3(0, 0, 0)) + 16].rgb;
-
-    //const gi_slice_idx = DEBUG_SLICE_IDX;
-    const float gi_scale = 1.0 / GI_SLICE_COUNT * M_PI;
-    for (uint gi_slice_iter = 0; gi_slice_iter < GI_SLICE_COUNT; ++gi_slice_iter) {
-        const uint gi_slice_idx = DEBUG_SLICE_IDX == -1 ? gi_slice_iter : DEBUG_SLICE_IDX;
-
-        const float3x3 slice_rot = build_orthonormal_basis(SLICE_DIRS[gi_slice_idx].xyz);
-
-        float3 vol_pos = (pt_ws.xyz - GI_VOLUME_CENTER + noff * normal_offset_scale * (GI_VOLUME_SIZE / GI_VOLUME_DIMS));
-        int3 gi_vx = int3(mul(vol_pos / (GI_VOLUME_SIZE / GI_VOLUME_DIMS), slice_rot) + GI_VOLUME_DIMS / 2);
-        {
-            float3 radiance = 0;
-
-#if USE_GRID_LINEAR_FETCH
-            float3 gi_uv = mul((vol_pos / (GI_VOLUME_SIZE / GI_VOLUME_DIMS) / (GI_VOLUME_DIMS / 2)), slice_rot) * 0.5 + 0.5;
-
-            if (all(gi_uv == saturate(gi_uv))) {
-                gi_uv = clamp(gi_uv, 0.5 / GI_VOLUME_DIMS, 1.0 - (0.5 / GI_VOLUME_DIMS));
-                gi_uv.x /= GI_SLICE_COUNT;
-                gi_uv.x += float(gi_slice_idx) / GI_SLICE_COUNT;
-
-                //if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS && all(gi_vx > 0) && all(gi_vx < GI_VOLUME_DIMS)) {
-
-                #if USE_PRETRACE
-                    radiance = alt_cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
-                #else
-                    radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
-                #endif
-            }
-#else
-            if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
-                #if USE_PRETRACE
-                    radiance = alt_cascade0_tex[gi_vx + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-                #else
-                    radiance = cascade0_tex[gi_vx + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-                #endif
-            }
-#endif
-
-            float3 ldir = SLICE_DIRS[gi_slice_idx].xyz;
-            //float throughput = DEBUG_SLICE_IDX == -1 ? saturate(0.0 + dot(mul(ldir, gbuffer.normal), float3(0, 0, -1))) : 0.333;
-            float throughput = saturate(0.0 + dot(mul(ldir, gbuffer.normal), float3(0, 0, -1)));
-            //throughput *= ldir.y > 0 ? 1 : 0;
-
-            irradiance += radiance * throughput * gi_scale;
-        }
-    }
+    irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, gi_lookup_params);
 
     irradiance *= gbuffer.albedo;
 
