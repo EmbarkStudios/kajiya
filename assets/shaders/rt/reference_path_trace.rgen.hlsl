@@ -25,7 +25,7 @@ static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
 static const bool USE_PIXEL_FILTER = false;
-static const bool INDIRECT_ONLY = true;
+static const bool INDIRECT_ONLY = false;
 
 float3 sample_environment_light(float3 dir) {
     return 0.0.xxx;

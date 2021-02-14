@@ -2,8 +2,8 @@
 #include "inc/tonemap.hlsl"
 #include "inc/bindless_textures.hlsl"
 
-#define USE_TONEMAP 0
-#define USE_DITHER 0
+#define USE_TONEMAP 1
+#define USE_DITHER 1
 
 Texture2D<float4> input_tex;
 RWTexture2D<float4> output_tex;
@@ -66,7 +66,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 #endif
 
 #if USE_TONEMAP
-    //col *= 2;
+    col *= 2;
     //col -= 0.47;
     //col *= 8;
     col = neutral_tonemap(col);

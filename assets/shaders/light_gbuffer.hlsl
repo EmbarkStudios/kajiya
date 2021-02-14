@@ -111,6 +111,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
     //total_radiance += uint_id_to_color(pt_hash);
 
+/*
     #if 1
         const float4 ssgi = ssgi_tex[px];
 
@@ -128,6 +129,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #else
         total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
     #endif
+    */
     
     output_tex[px] = float4(total_radiance, 1.0);
     float3 debug_out = total_radiance;
@@ -146,7 +148,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
     //debug_out = bent_normal_dir * 0.5 + 0.5;
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
-    debug_out = base_light_tex[px].xyz;
+    //debug_out = base_light_tex[px].xyz;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

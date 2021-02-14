@@ -15,7 +15,7 @@ use crate::{
     FrameState,
 };
 use backend::buffer::{Buffer, BufferDesc};
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -43,6 +43,7 @@ use winit::VirtualKeyCode;
 struct FrameConstants {
     view_constants: ViewConstants,
     mouse: [f32; 4],
+    sun_direction: [f32; 4],
     frame_idx: u32,
 }
 
@@ -750,6 +751,12 @@ impl RenderClient<FrameState> for VickiRenderClient {
             )
             .build(),
             mouse: gen_shader_mouse_state(&frame_state),
+            sun_direction: [
+                frame_state.sun_direction.x(),
+                frame_state.sun_direction.y(),
+                frame_state.sun_direction.z(),
+                0.0,
+            ],
             frame_idx: self.frame_idx,
         });
 

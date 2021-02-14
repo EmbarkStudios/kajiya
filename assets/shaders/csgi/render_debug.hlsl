@@ -7,6 +7,7 @@
 #include "../inc/math.hlsl"
 
 #define USE_GRID_LINEAR_FETCH 1
+#define USE_PRETRACE 1
 #define DEBUG_SLICE_IDX -1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -64,13 +65,13 @@ void main(
 
         const float3x3 slice_rot = build_orthonormal_basis(SLICE_DIRS[gi_slice_idx].xyz);
 
-        float3 vol_pos = (pt_ws.xyz - GI_VOLUME_CENTER + noff * normal_offset_scale * GI_VOLUME_SCALE);
-        int3 gi_vx = int3(mul(vol_pos / GI_VOLUME_SCALE, slice_rot) + GI_VOLUME_DIMS / 2);
+        float3 vol_pos = (pt_ws.xyz - GI_VOLUME_CENTER + noff * normal_offset_scale * (GI_VOLUME_SIZE / GI_VOLUME_DIMS));
+        int3 gi_vx = int3(mul(vol_pos / (GI_VOLUME_SIZE / GI_VOLUME_DIMS), slice_rot) + GI_VOLUME_DIMS / 2);
         {
             float3 radiance = 0;
 
 #if USE_GRID_LINEAR_FETCH
-            float3 gi_uv = mul((vol_pos / GI_VOLUME_SCALE / (GI_VOLUME_DIMS / 2)), slice_rot) * 0.5 + 0.5;
+            float3 gi_uv = mul((vol_pos / (GI_VOLUME_SIZE / GI_VOLUME_DIMS) / (GI_VOLUME_DIMS / 2)), slice_rot) * 0.5 + 0.5;
 
             if (all(gi_uv == saturate(gi_uv))) {
                 gi_uv = clamp(gi_uv, 0.5 / GI_VOLUME_DIMS, 1.0 - (0.5 / GI_VOLUME_DIMS));
@@ -78,34 +79,39 @@ void main(
                 gi_uv.x += float(gi_slice_idx) / GI_SLICE_COUNT;
 
                 //if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS && all(gi_vx > 0) && all(gi_vx < GI_VOLUME_DIMS)) {
-                if (uv.x < 0.5) {
-                    radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
-                } else {
+
+                #if USE_PRETRACE
                     radiance = alt_cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
-                }
+                #else
+                    radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
+                #endif
             }
 #else
             if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
-                if (uv.x < 0.5) {
-                    radiance = cascade0_tex[gi_vx + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-                } else {
+                #if USE_PRETRACE
                     radiance = alt_cascade0_tex[gi_vx + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-                }
+                #else
+                    radiance = cascade0_tex[gi_vx + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
+                #endif
             }
 #endif
 
             float3 ldir = SLICE_DIRS[gi_slice_idx].xyz;
-            float throughput = DEBUG_SLICE_IDX == -1 ? saturate(0.1 + dot(mul(ldir, gbuffer.normal), float3(0, 0, -1))) : 0.333;
+            //float throughput = DEBUG_SLICE_IDX == -1 ? saturate(0.0 + dot(mul(ldir, gbuffer.normal), float3(0, 0, -1))) : 0.333;
+            float throughput = saturate(0.0 + dot(mul(ldir, gbuffer.normal), float3(0, 0, -1)));
+            //throughput *= ldir.y > 0 ? 1 : 0;
 
             irradiance += radiance * throughput * gi_scale;
         }
     }
+
+    irradiance *= gbuffer.albedo;
 
     //irradiance = cascade0_tex.SampleLevel(sampler_lnc, mul(slice_rot, vol_pos * 0.5 + 0.5), 0).rgb;
     //irradiance *= saturate(0.05 + dot(mul(slice_rot, gbuffer.normal), float3(0, 0, -1)));
 
     //if (uv.x > 0.5)
     {
-        out_tex[px] = float4(irradiance, 1);
+        out_tex[px] += float4(irradiance, 0);
     }
 }

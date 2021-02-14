@@ -13,15 +13,16 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 #include "common.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0)]] RWTexture3D<float4> out0_tex;
-[[vk::binding(1)]] cbuffer _ {
+[[vk::binding(0)]] RWTexture3D<float> out_hit_tex;
+[[vk::binding(1)]] RWTexture3D<float4> out_col_tex;
+[[vk::binding(2)]] cbuffer _ {
     float4 PRETRACE_DIRS[32];
 }
 
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_PRETRACE_DIMS - 1.0) / 2.0) * GI_VOLUME_SCALE + GI_VOLUME_CENTER;
+    return mul(slice_rot, vx - (GI_PRETRACE_DIMS - 1.0) / 2.0) * (GI_VOLUME_SIZE / GI_PRETRACE_DIMS) + GI_VOLUME_CENTER;
 }
 
 [shader("raygeneration")]
@@ -82,10 +83,27 @@ void main() {
             slice_z -= cells_skipped_by_ray + 1;
 
             if (slice_z >= -1) {
-                out0_tex[int3(px, slice_z + 1) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, frac(primary_hit.ray_t)));
-                //out0_tex[int3(px, slice_z + 2) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, 1);
+                // Write hit info in cells before the intersection
+                out_col_tex[int3(px, slice_z + 1) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, primary_hit.ray_t - cells_skipped_by_ray));
+                out_hit_tex[int3(px, slice_z + 1) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
+
+                if (cells_skipped_by_ray > 0) {
+                    out_col_tex[int3(px, slice_z + 2) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, primary_hit.ray_t - cells_skipped_by_ray + 1));
+                    out_hit_tex[int3(px, slice_z + 2) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
+                }
+
+                if (cells_skipped_by_ray > 1) {
+                    out_col_tex[int3(px, slice_z + 3) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, primary_hit.ray_t - cells_skipped_by_ray + 2));
+                    out_hit_tex[int3(px, slice_z + 3) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
+                }
+
+                /*if (cells_skipped_by_ray > 2) {
+                    out_col_tex[int3(px, slice_z + 4) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, primary_hit.ray_t - cells_skipped_by_ray + 3));
+                    out_hit_tex[int3(px, slice_z + 4) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
+                }*/
             } else {
-                //out0_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, 1);
+                //out_col_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, 1);
+                //out_hit_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
                 return;
             }
         } else {

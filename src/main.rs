@@ -36,6 +36,7 @@ pub struct FrameState {
     pub camera_matrices: CameraMatrices,
     pub window_cfg: WindowConfig,
     pub input: InputState,
+    pub sun_direction: Vec3,
 }
 
 #[derive(Debug, StructOpt)]
@@ -192,6 +193,9 @@ fn try_main() -> anyhow::Result<()> {
     imgui_backend.create_graphics_resources([window_cfg.width, window_cfg.height]);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));
 
+    let mut light_theta = -4.54;
+    let mut light_phi = 1.48;
+
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
     while running {
@@ -256,6 +260,13 @@ fn try_main() -> anyhow::Result<()> {
             };
         }
 
+        if (mouse_state.button_mask & 1) != 0 {
+            light_theta +=
+                (mouse_state.delta.x() / window_cfg.width as f32) * std::f32::consts::PI * -2.0;
+            light_phi +=
+                (mouse_state.delta.y() / window_cfg.height as f32) * std::f32::consts::PI * 0.5;
+        }
+
         // Reset accumulation of the path tracer whenever the camera moves
         if !camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back) {
             render_client.reset_reference_accumulation = true;
@@ -265,6 +276,8 @@ fn try_main() -> anyhow::Result<()> {
             camera_matrices: camera.calc_matrices(),
             window_cfg: window_cfg,
             input: input_state,
+            //sun_direction: Vec3::new(-0.8, 0.3, 1.0).normalize(),
+            sun_direction: spherical_to_cartesian(light_theta, light_phi),
         };
 
         let (ui_draw_data, imgui_target_image) = {
@@ -331,4 +344,11 @@ fn main() {
         // std::thread::sleep(std::time::Duration::from_secs(1));
         loop {}
     }
+}
+
+fn spherical_to_cartesian(theta: f32, phi: f32) -> Vec3 {
+    let x = phi.sin() * theta.cos();
+    let y = phi.cos();
+    let z = phi.sin() * theta.sin();
+    Vec3::new(x, y, z)
 }
