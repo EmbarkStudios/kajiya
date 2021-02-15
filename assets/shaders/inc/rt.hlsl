@@ -93,4 +93,26 @@ GbufferPathVertex rt_trace_gbuffer(
     }
 }
 
+GbufferPathVertex rt_trace_gbuffer_nocull(
+    RaytracingAccelerationStructure acceleration_structure,
+    RayDesc ray
+) {
+    GbufferRayPayload payload = GbufferRayPayload::new_miss();
+    TraceRay(acceleration_structure, 0, 0xff, 0, 0, 0, ray, payload);
+
+    if (payload.is_hit()) {
+        GbufferPathVertex res;
+        res.is_hit = true;
+        res.position = ray.Origin + ray.Direction * payload.t;
+        res.gbuffer_packed = payload.gbuffer_packed;
+        res.ray_t = payload.t;
+        return res;
+    } else {
+        GbufferPathVertex res;
+        res.is_hit = false;
+        res.ray_t = FLT_MAX;
+        return res;
+    }
+}
+
 #endif

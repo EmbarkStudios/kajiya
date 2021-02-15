@@ -42,7 +42,6 @@ void main() {
 
     const float3x3 slice_rot = build_orthonormal_basis(SLICE_DIRS[grid_idx].xyz);
     const float3 slice_dir = mul(slice_rot, float3(0, 0, -1));    
-    const float3 trace_origin = vx_to_pos(px + float3(0, 0, 0.5), slice_rot);
 
     const float spread0 = 1.0;
     //const float spread1 = 0.7;
@@ -72,26 +71,34 @@ void main() {
 
     float total_wt = 0;
 
-    uint rng = hash_combine2(hash3(px), frame_constants.frame_index);
+    //uint rng = hash_combine2(hash3(px), frame_constants.frame_index);
+    //uint rng = hash1(frame_constants.frame_index);
+    uint rng = hash2(uint2(frame_constants.frame_index, grid_idx));
+    //uint rng = hash2(uint2(px.y, frame_constants.frame_index));
 
     //for (uint dir_i = 0; dir_i < DIR_COUNT; ++dir_i)
     //uint dir_i = rng % DIR_COUNT;
     uint dir_i = frame_constants.frame_index % DIR_COUNT;
+    //uint dir_i = (frame_constants.frame_index * 5) % DIR_COUNT;
     {
+        //uint rng = hash2(uint2(dir_i, frame_constants.frame_index));
+
         //const uint dir_i = 0;
         total_wt += weights[dir_i];
 
         #if 0
             const float offset_x = uint_to_u01_float(hash1_mut(rng)) - 0.5;
             const float offset_y = uint_to_u01_float(hash1_mut(rng)) - 0.5;
-            const float blend_factor = 0.1;
+            const float blend_factor = 0.5;
         #else
             const float offset_x = 0.0;
             const float offset_y = 0.0;
             const float blend_factor = 1.0;
         #endif
         
+        const float3 trace_origin = vx_to_pos(px + float3(offset_x, offset_y, 0.5), slice_rot);
         const float3 neighbor_pos = vx_to_pos(float3(px) + dirs[dir_i] + float3(offset_x, offset_y, 0.5), slice_rot);
+
         RayDesc outgoing_ray = new_ray(
             trace_origin,
             neighbor_pos - trace_origin,
@@ -101,7 +108,7 @@ void main() {
 
         const int3 preintegr_px = px * int3(1, DIR_COUNT, 1) + int3(GI_VOLUME_DIMS * grid_idx, dir_i, 0);
 
-        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
+        const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
             float3 total_radiance = 0.0.xxx;
             {
@@ -137,17 +144,6 @@ void main() {
                     light_radiance * bounce_albedo * max(0.0, dot(gbuffer.normal, to_light_norm)) / M_PI;
 #endif
 
-
-
-
-                //total_radiance *= saturate(0.0 + dot(-gbuffer.normal, normalize(outgoing_ray.Direction)));
-
-                // Remove contributions where the normal is facing away from
-                // the cone direction. This can happen e.g. on rays travelling near floors,
-                // where the neighbor rays hit the floors, but contribution should be zero.
-                total_radiance *= smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer.normal));
-                //total_radiance *= step(0.0, dot(slice_dir, -gbuffer.normal));
-
                 if (USE_MULTIBOUNCE) {
                     CsgiLookupParams gi_lookup_params;
                     gi_lookup_params.use_grid_linear_fetch = false;
@@ -156,6 +152,12 @@ void main() {
 
                     total_radiance += lookup_csgi(primary_hit.position, gbuffer.normal, gi_lookup_params) * bounce_albedo;
                 }
+
+                // Remove contributions where the normal is facing away from
+                // the cone direction. This can happen e.g. on rays travelling near floors,
+                // where the neighbor rays hit the floors, but contribution should be zero.
+                total_radiance *= smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer.normal));
+                //total_radiance *= step(0.0, dot(slice_dir, -gbuffer.normal));
             }
 
             //if (dir_i == 0)
@@ -186,7 +188,7 @@ void main() {
     }
 
     scatter = 0.0;
-    total_wt = 9;
+    total_wt = DIR_COUNT;
 
     for (uint i = 0; i < DIR_COUNT; ++i) {
         const int3 preintegr_px = px * int3(1, DIR_COUNT, 1) + int3(GI_VOLUME_DIMS * grid_idx, i, 0);

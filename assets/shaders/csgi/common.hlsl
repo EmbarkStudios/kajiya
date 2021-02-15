@@ -11,7 +11,7 @@ static const uint GI_PRETRACE_DIMS = 32;
 #define GI_SCENE_SPONZA 4
 #define GI_SCENE_MISC 5
 
-#define GI_SCENE GI_SCENE_SPONZA
+#define GI_SCENE GI_SCENE_BATTLE
 
 #if GI_SCENE == GI_SCENE_BATTLE
     //#define GI_VOLUME_CENTER float3(-15, 4.0, 8)
@@ -30,7 +30,7 @@ static const uint GI_PRETRACE_DIMS = 32;
     //#define GI_VOLUME_CENTER float3(0, 4, -4)
     static const float GI_VOLUME_SIZE = GI_VOLUME_DIMS * 0.75;
 #else
-    static const float GI_VOLUME_SIZE = 5.0;
+    static const float GI_VOLUME_SIZE = 16.0;
 #endif
 
 //static const float GI_VOLUME_SCALE = GI_VOLUME_SIZE / GI_VOLUME_DIMS;
