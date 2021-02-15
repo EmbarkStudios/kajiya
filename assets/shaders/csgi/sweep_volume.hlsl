@@ -15,7 +15,7 @@
 }
 
 float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1.0) / 2.0) * (GI_VOLUME_SIZE / GI_VOLUME_DIMS) + gi_volume_center(slice_rot);
+    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1.0) / 2.0) * GI_VOXEL_SIZE + gi_volume_center(slice_rot);
 }
 
 float3 pos_to_pretrace_vx(float3 pos, float3x3 slice_rot) {
@@ -38,7 +38,7 @@ void main(uint3 px2d_grid : SV_DispatchThreadID, uint idx_within_group: SV_Group
     const float3 slice_dir = mul(slice_rot, float3(0, 0, -1));    
 
     const float spread0 = 1.0;
-    const float spread1 = 0.7;
+    const float spread1 = 1.0;
 
     static const int3 dirs[9] = {
         int3(0, 0, -1),
@@ -107,7 +107,8 @@ void main(uint3 px2d_grid : SV_DispatchThreadID, uint idx_within_group: SV_Group
 
             const float3x3 pretrace_rot = build_orthonormal_basis(pretrace_dir);
             const float3 pretrace_vx_f = pos_to_pretrace_vx(trace_origin, pretrace_rot);
-            const int3 pretrace_vx = int3(trunc(pretrace_vx_f.xy), trunc(pretrace_vx_f.z - 0.5));
+            //const int3 pretrace_vx = int3(trunc(pretrace_vx_f.xy), trunc(pretrace_vx_f.z - 0.5));
+            const int3 pretrace_vx = int3(trunc(pretrace_vx_f));
             const int3 pretrace_vx_resolved = pretrace_vx + int3(GI_PRETRACE_DIMS * pretraced_idx, 0, 0);
 
             float4 pretrace_packed = 0.0.xxxx;

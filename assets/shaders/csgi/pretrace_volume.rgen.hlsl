@@ -26,13 +26,12 @@ static const bool USE_MULTIBOUNCE = !true;
 
 // HACK; broken
 #define cascade0_tex alt_cascade0_tex
-
 #include "lookup.hlsl"
 
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_PRETRACE_DIMS - 1.0) / 2.0) * (GI_VOLUME_SIZE / GI_PRETRACE_DIMS) + gi_volume_center(slice_rot);
+    return mul(slice_rot, vx - (GI_PRETRACE_DIMS - 1.0) / 2.0) * GI_VOXEL_SIZE + gi_volume_center(slice_rot);
 }
 
 [shader("raygeneration")]
@@ -119,19 +118,20 @@ void main() {
                     out_normal_tex[int3(px, slice_z + 2) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(hit_normal * 0.5 + 0.5, 0.0);
                 }
 
-                if (cells_skipped_by_ray > 1) {
+                /*if (cells_skipped_by_ray > 1) {
                     out_col_tex[int3(px, slice_z + 3) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, primary_hit.ray_t - cells_skipped_by_ray + 2));
                     out_hit_tex[int3(px, slice_z + 3) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
                     out_normal_tex[int3(px, slice_z + 3) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(hit_normal * 0.5 + 0.5, 0.0);
-                }
+                }*/
 
                 /*if (cells_skipped_by_ray > 2) {
                     out_col_tex[int3(px, slice_z + 4) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, max(1e-5, primary_hit.ray_t - cells_skipped_by_ray + 3));
                     out_hit_tex[int3(px, slice_z + 4) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
                 }*/
             } else {
-                //out_col_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, 1);
+                //out_col_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(total_radiance, 0);
                 //out_hit_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = 1;
+                //out_normal_tex[int3(px, 0) + int3(GI_PRETRACE_DIMS, 0, 0) * grid_idx] = float4(hit_normal * 0.5 + 0.5, 0.0);
                 return;
             }
         } else {

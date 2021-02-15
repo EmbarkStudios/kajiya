@@ -49,6 +49,17 @@ impl CsgiRenderer {
             )
             .unwrap();
 
+        let mut cascade0_integr = rg
+            .get_or_create_temporal(
+                "csgi.cascade0_integr",
+                ImageDesc::new_3d(
+                    vk::Format::R16G16B16A16_SFLOAT,
+                    [32 * SLICE_COUNT as u32, 9 * 32, 32],
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            )
+            .unwrap();
+
         /*SimpleRenderPass::new_compute(
             rg.add_pass("csgi clear"),
             "/assets/shaders/csgi/clear_volume.hlsl",
@@ -66,6 +77,7 @@ impl CsgiRenderer {
             &["/assets/shaders/rt/triangle.rchit.hlsl"],
         )
         .write(&mut cascade0)
+        .write(&mut cascade0_integr)
         .constants(SLICE_DIRS)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, cascade0.desc().extent);
@@ -253,10 +265,10 @@ const SLICE_DIRS: [[f32; 4]; SLICE_COUNT] = [
     [-0.5878232, 0.17476612, -0.7898867, 0.0],
 ];
 
-const PRETRACE_COUNT: usize = SLICE_COUNT;
-const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = SLICE_DIRS;
+/*const PRETRACE_COUNT: usize = SLICE_COUNT;
+const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = SLICE_DIRS;*/
 
-/*const PRETRACE_COUNT: usize = 32;
+const PRETRACE_COUNT: usize = 32;
 const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = [
     [0.4949354, 0.65692055, 0.56876564, 0.0],
     [0.41396505, -0.5012211, -0.75987536, 0.0],
@@ -291,4 +303,3 @@ const PRETRACE_DIRS: [[f32; 4]; PRETRACE_COUNT] = [
     [0.23751135, -0.51609445, 0.82294285, 0.0],
     [0.5799199, -0.7884175, -0.20516169, 0.0],
 ];
-*/

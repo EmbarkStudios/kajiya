@@ -24,6 +24,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
         {
             float3 radiance = 0;
 
+        #ifndef CSGI_LOOKUP_NEAREST_ONLY
             if (params.use_grid_linear_fetch) {
                 float3 gi_uv = mul((vol_pos / GI_VOXEL_SIZE / (GI_VOLUME_DIMS / 2)), slice_rot) * 0.5 + 0.5;
 
@@ -38,7 +39,9 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                         radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
                     }
                 }
-            } else {
+            } else
+        #endif
+            {
                 // Nearest lookup
 
                 if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
@@ -51,7 +54,11 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
             }
 
             const float3 ldir = SLICE_DIRS[gi_slice_idx].xyz;
-            const float visibility = saturate(0.2 + dot(mul(ldir, normal), float3(0, 0, -1)));
+            const float ndotl = dot(mul(ldir, normal), float3(0, 0, -1));
+
+            // TODO: remove or justify hack (bias to make NdotL less harsh for a cone of directions)
+            //const float visibility = max(0.0, ndotl);
+            const float visibility = max(0.0, lerp(ndotl, 0.9, 0.05));
 
             irradiance += radiance * visibility;
         }
