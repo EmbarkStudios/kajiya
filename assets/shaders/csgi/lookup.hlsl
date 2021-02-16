@@ -1,6 +1,5 @@
 struct CsgiLookupParams {
     bool use_grid_linear_fetch;
-    bool use_pretrace;
     int debug_slice_idx;
 
     //float4 slice_dirs[GI_SLICE_COUNT];
@@ -55,12 +54,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                     gi_uv = clamp(gi_uv, 0.5 / GI_VOLUME_DIMS, 1.0 - (0.5 / GI_VOLUME_DIMS));
                     gi_uv.x /= GI_SLICE_COUNT;
                     gi_uv.x += float(gi_slice_idx) / GI_SLICE_COUNT;
-
-                    if (params.use_pretrace) {
-                        radiance = alt_cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
-                    } else {
-                        radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
-                    }
+                    radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
                 }
             } else
         #endif
@@ -71,11 +65,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                 //const int3 depth_bias = int3(0, 0, 0);
 
                 if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
-                    if (params.use_pretrace) {
-                        radiance = alt_cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-                    } else {
-                        radiance = cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-                    }
+                    radiance = cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
                 }
             }
 

@@ -9,6 +9,7 @@ use slingshot::{
     vk_sync, Device,
 };
 
+const VOLUME_DIMS: u32 = 32;
 const PRETRACE_DIMS: u32 = 32;
 
 use super::GbufferDepth;
@@ -17,7 +18,7 @@ pub struct CsgiRenderer;
 
 pub struct CsgiVolume {
     pub cascade0: rg::Handle<Image>,
-    pub alt_cascade0: rg::Handle<Image>,
+    //pub alt_cascade0: rg::Handle<Image>,
 }
 
 impl CsgiRenderer {
@@ -32,29 +33,33 @@ impl CsgiRenderer {
                 "csgi.cascade0",
                 ImageDesc::new_3d(
                     vk::Format::R16G16B16A16_SFLOAT,
-                    [32 * SLICE_COUNT as u32, 32, 32],
+                    [VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             )
             .unwrap();
 
-        let mut alt_cascade0 = rg
-            .get_or_create_temporal(
-                "csgi.alt_cascade0",
-                ImageDesc::new_3d(
-                    vk::Format::R16G16B16A16_SFLOAT,
-                    [32 * SLICE_COUNT as u32, 32, 32],
-                )
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        /*let mut alt_cascade0 = rg
+        .get_or_create_temporal(
+            "csgi.alt_cascade0",
+            ImageDesc::new_3d(
+                vk::Format::R16G16B16A16_SFLOAT,
+                [32 * SLICE_COUNT as u32, 32, 32],
             )
-            .unwrap();
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        )
+        .unwrap();*/
 
         let mut cascade0_integr = rg
             .get_or_create_temporal(
                 "csgi.cascade0_integr",
                 ImageDesc::new_3d(
                     vk::Format::R16G16B16A16_SFLOAT,
-                    [32 * SLICE_COUNT as u32, 9 * 32, 32],
+                    [
+                        VOLUME_DIMS * SLICE_COUNT as u32,
+                        9 * VOLUME_DIMS,
+                        VOLUME_DIMS,
+                    ],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             )
@@ -76,13 +81,22 @@ impl CsgiRenderer {
             ],
             &["/assets/shaders/rt/triangle.rchit.hlsl"],
         )
-        .write(&mut cascade0)
+        .read(&mut cascade0)
         .write(&mut cascade0_integr)
         .constants(SLICE_DIRS)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, cascade0.desc().extent);
 
-        let mut pretrace_hit_img = rg.create(
+        SimpleRenderPass::new_compute(
+            rg.add_pass("csgi sweep"),
+            "/assets/shaders/csgi/sweep_volume.hlsl",
+        )
+        .read(&cascade0_integr)
+        .write(&mut cascade0)
+        .constants(SLICE_DIRS)
+        .dispatch(cascade0.desc().extent);
+
+        /*let mut pretrace_hit_img = rg.create(
             ImageDesc::new_3d(
                 vk::Format::R8_UNORM,
                 [
@@ -196,11 +210,11 @@ impl CsgiRenderer {
         .read(&pretrace_col_img)
         .read(&pretrace_normal_img)
         .constants((SLICE_DIRS, PRETRACE_DIRS, ray_dir_pretrace_indices))
-        .dispatch([32, 32, SLICE_COUNT as u32]);
+        .dispatch([32, 32, SLICE_COUNT as u32]);*/
 
         CsgiVolume {
             cascade0,
-            alt_cascade0,
+            //alt_cascade0,
         }
     }
 }
@@ -219,7 +233,7 @@ impl CsgiVolume {
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&self.cascade0)
-        .read(&self.alt_cascade0)
+        //.read(&self.alt_cascade0)
         .write(out_img)
         .constants((out_img.desc().extent_inv_extent_2d(), SLICE_DIRS))
         .dispatch(out_img.desc().extent);

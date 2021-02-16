@@ -12,9 +12,8 @@
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture3D<float4> cascade0_tex;
-[[vk::binding(3)]] Texture3D<float4> alt_cascade0_tex;
-[[vk::binding(4)]] RWTexture2D<float4> out_tex;
-[[vk::binding(5)]] cbuffer _ {
+[[vk::binding(3)]] RWTexture2D<float4> out_tex;
+[[vk::binding(4)]] cbuffer _ {
     float4 out_tex_size;
     float4 SLICE_DIRS[16];
 };
@@ -49,7 +48,6 @@ void main(
 
     CsgiLookupParams gi_lookup_params;
     gi_lookup_params.use_grid_linear_fetch = true;
-    gi_lookup_params.use_pretrace = false;
     gi_lookup_params.debug_slice_idx = -1;
     //gi_lookup_params.slice_dirs = SLICE_DIRS;
     //gi_lookup_params.cascade0_tex = cascade0_tex;

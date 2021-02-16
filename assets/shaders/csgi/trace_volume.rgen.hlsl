@@ -14,7 +14,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 #include "common.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0)]] RWTexture3D<float4> cascade0_tex;
+[[vk::binding(0)]] Texture3D<float4> cascade0_tex;
 [[vk::binding(1)]] RWTexture3D<float4> integr_tex;
 [[vk::binding(2)]] cbuffer _ {
     float4 SLICE_DIRS[16];
@@ -30,7 +30,6 @@ float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
 }
 
 // HACK; broken
-#define CSGI_LOOKUP_NEAREST_ONLY
 #define alt_cascade0_tex cascade0_tex
 #include "lookup.hlsl"
 
@@ -107,7 +106,8 @@ void main() {
             1.0
         );
 
-        const int3 preintegr_px = px * int3(1, DIR_COUNT, 1) + int3(GI_VOLUME_DIMS * grid_idx, dir_i, 0);
+        //const int3 preintegr_px = px * int3(1, DIR_COUNT, 1) + int3(GI_VOLUME_DIMS * grid_idx, dir_i, 0);
+        const int3 preintegr_px = px + int3(GI_VOLUME_DIMS * grid_idx, GI_VOLUME_DIMS * dir_i, 0);
 
         const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {
@@ -148,7 +148,6 @@ void main() {
                 if (USE_MULTIBOUNCE) {
                     CsgiLookupParams gi_lookup_params;
                     gi_lookup_params.use_grid_linear_fetch = false;
-                    gi_lookup_params.use_pretrace = false;
                     gi_lookup_params.debug_slice_idx = -1;
 
                     total_radiance += lookup_csgi(primary_hit.position, gbuffer.normal, gi_lookup_params) * bounce_albedo;
@@ -175,39 +174,5 @@ void main() {
 
             integr_tex[preintegr_px] = lerp(integr_tex[preintegr_px], float4(0, 0, 0, 1), blend_factor);
         }
-        
-        /*if (!rt_is_shadowed(
-            acceleration_structure,
-            new_ray(
-                trace_origin,
-                neighbor_pos - trace_origin,
-                0,
-                1.0
-        ))) {
-            scatter += cascade0_tex[int3(px) + dirs[dir_i]].xyz * weights[dir_i];
-        }*/
     }
-
-    scatter = 0.0;
-    total_wt = DIR_COUNT;
-
-    for (uint i = 0; i < DIR_COUNT; ++i) {
-        const int3 preintegr_px = px * int3(1, DIR_COUNT, 1) + int3(GI_VOLUME_DIMS * grid_idx, i, 0);
-        const float4 color_transp = integr_tex[preintegr_px];
-
-        scatter += color_transp.rgb;
-
-        int3 src_px = int3(px) + dirs[i];
-        if (src_px.x >= 0 && src_px.x < GI_VOLUME_DIMS) {
-            scatter += cascade0_tex[src_px + int3(GI_VOLUME_DIMS * grid_idx, 0, 0)].rgb * color_transp.a;
-        }
-    }
-
-    float3 radiance = scatter.xyz / total_wt;
-
-    float4 prev = cascade0_tex[px + int3(GI_VOLUME_DIMS, 0, 0) * grid_idx];
-    float4 cur = float4(radiance, 1);
-    //float4 output = lerp(prev, cur, 0.2);
-    float4 output = cur;
-    cascade0_tex[px + int3(GI_VOLUME_DIMS, 0, 0) * grid_idx] = output;
 }
