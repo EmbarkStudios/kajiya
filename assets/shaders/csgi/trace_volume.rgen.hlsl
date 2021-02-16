@@ -20,6 +20,9 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
     float4 SLICE_DIRS[16];
 }
 
+#define USE_RAY_JITTER 1
+#define USE_MULTIBOUNCE 1
+
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
@@ -30,8 +33,6 @@ float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
 #define CSGI_LOOKUP_NEAREST_ONLY
 #define alt_cascade0_tex cascade0_tex
 #include "lookup.hlsl"
-
-static const bool USE_MULTIBOUNCE = true;
 
 
 [shader("raygeneration")]
@@ -86,7 +87,7 @@ void main() {
         //const uint dir_i = 0;
         total_wt += weights[dir_i];
 
-        #if 0
+        #if USE_RAY_JITTER
             const float offset_x = uint_to_u01_float(hash1_mut(rng)) - 0.5;
             const float offset_y = uint_to_u01_float(hash1_mut(rng)) - 0.5;
             const float blend_factor = 0.5;

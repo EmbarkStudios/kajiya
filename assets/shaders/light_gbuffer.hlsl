@@ -13,6 +13,9 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
+#define USE_SURFEL_GI 0
+#define USE_SSGI 0
+
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
@@ -111,25 +114,25 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
     //total_radiance += uint_id_to_color(pt_hash);
 
-/*
-    #if 1
-        const float4 ssgi = ssgi_tex[px];
+    #if USE_SURFEL_GI
+        #if USE_SSGI
+            const float4 ssgi = ssgi_tex[px];
 
-        // HACK: need directionality in GI so that it can be properly masked.
-        // If simply masking with the AO term, it tends to over-darken.
-        // Reduce some of the occlusion, but for energy conservation, also reduce
-        // the light added.
-        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
+            // HACK: need directionality in GI so that it can be properly masked.
+            // If simply masking with the AO term, it tends to over-darken.
+            // Reduce some of the occlusion, but for energy conservation, also reduce
+            // the light added.
+            const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
 
-        total_radiance +=
-            (base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb)
-            * brdf.diffuse_brdf.albedo
-            * brdf.energy_preservation.preintegrated_transmission_fraction;
-        // total_radiance = ssgi.a;
-    #else
-        total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
-    #endif
-    */
+            total_radiance +=
+                (base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb)
+                * brdf.diffuse_brdf.albedo
+                * brdf.energy_preservation.preintegrated_transmission_fraction;
+            // total_radiance = ssgi.a;
+        #else
+            total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
+        #endif
+    #endif        
     
     output_tex[px] = float4(total_radiance, 1.0);
     float3 debug_out = total_radiance;

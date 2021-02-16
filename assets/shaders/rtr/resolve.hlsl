@@ -171,10 +171,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
         }
     }
 
-    contrib_accum.rgb /= max(1e-5, contrib_accum.w);
-    ex /= max(1e-5, contrib_accum.w);
-    ex2 /= max(1e-5, contrib_accum.w);
-    ray_len_accum /= max(1e-5, contrib_accum.w);
+    const float contrib_norm_factor = max(1e-10, contrib_accum.w);
+
+    contrib_accum.rgb /= contrib_norm_factor;
+    ex /= contrib_norm_factor;
+    ex2 /= contrib_norm_factor;
+    ray_len_accum /= contrib_norm_factor;
 
     ray_len_accum = max(0.0, -10 * log2(ray_len_accum));
 

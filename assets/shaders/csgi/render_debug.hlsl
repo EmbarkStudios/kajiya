@@ -62,7 +62,7 @@ void main(
 
     //if (uv.x > 0.5)
     {
-        out_tex[px] += float4(irradiance * gbuffer.albedo, 0);
+        out_tex[px] += float4(irradiance * lerp(gbuffer.albedo, 0.0, gbuffer.metalness), 0);
     }
 
     //out_tex[px] = float4(irradiance, 1);

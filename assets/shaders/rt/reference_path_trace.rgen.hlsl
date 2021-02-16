@@ -16,6 +16,9 @@
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
 static const uint MAX_PATH_LENGTH = 10;
+static const float MAX_RAY_LENGTH = FLT_MAX;
+//static const float MAX_RAY_LENGTH = 5.0;
+
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
@@ -100,6 +103,10 @@ void main() {
         } else {
             throughput *= 2;
         }*/
+
+        if (path_length == 1) {
+            outgoing_ray.TMax = MAX_RAY_LENGTH;
+        }
 
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
         if (primary_hit.is_hit) {

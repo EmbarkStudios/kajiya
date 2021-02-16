@@ -102,7 +102,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
     //float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
 
-    //float4 clamped_history = history;
+    //clamped_history = history0;
     //clamped_history.w = history.w;
 
     float target_sample_count = 24;//lerp(8, 24, saturate(0.3 * center.w));

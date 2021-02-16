@@ -13,7 +13,23 @@
 #include "../inc/atmosphere.hlsl"
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
-#define TEMPORAL_JITTER 1
+#define USE_TEMPORAL_JITTER 1
+#define USE_HEAVY_BIAS 0
+
+// Strongly reduces roughness of secondary hits
+#define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
+
+// BRDF bias
+#define SAMPLING_BIAS 0.0
+
+
+#if USE_HEAVY_BIAS
+    #undef USE_AGGRESSIVE_ROUGHNESS_BIAS
+    #define USE_AGGRESSIVE_ROUGHNESS_BIAS 1
+
+    #undef SAMPLING_BIAS
+    #define SAMPLING_BIAS 0.1
+#endif
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -89,13 +105,18 @@ void main() {
     SpecularBrdf specular_brdf;
     specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
     specular_brdf.roughness = gbuffer.roughness;
-    const float roughness_bias = 0.5 * gbuffer.roughness;
 
-    const uint seed = TEMPORAL_JITTER ? frame_constants.frame_index : 0;
+#if USE_AGGRESSIVE_ROUGHNESS_BIAS
+    const float roughness_bias = lerp(gbuffer.roughness, 1.0, 0.333);
+#else
+    const float roughness_bias = 0.5 * gbuffer.roughness;
+#endif
+
+    const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
     uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), seed);
 
 #if 1
-    const uint noise_offset = frame_constants.frame_index * (TEMPORAL_JITTER ? 1 : 0);
+    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
 
     float2 urand = float2(
         blue_noise_sampler(px.x, px.y, noise_offset, 0),
@@ -104,7 +125,7 @@ void main() {
 #elif 0
     // 256x256 blue noise
 
-    const uint noise_offset = frame_constants.frame_index * (TEMPORAL_JITTER ? 1 : 0);
+    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
 
     float2 urand = bindless_textures[1][
         (px + int2(noise_offset * 59, noise_offset * 37)) & 255
@@ -116,12 +137,12 @@ void main() {
     );
 #endif
 
-    const float sampling_bias = 0.0;
+    const float sampling_bias = SAMPLING_BIAS;
     urand.x = lerp(urand.x, 0.0, sampling_bias);
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
     
-#if TEMPORAL_JITTER
+#if USE_TEMPORAL_JITTER
     [loop]
     for (uint retry_count = 0; !brdf_sample.is_valid() && retry_count < 4; ++retry_count) {
         urand = float2(

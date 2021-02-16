@@ -30,7 +30,7 @@ static const uint GI_PRETRACE_DIMS = 32;
     //#define GI_VOLUME_CENTER float3(0, 4, -4)
     static const float GI_VOLUME_SIZE = GI_VOLUME_DIMS * 0.75;
 #else
-    static const float GI_VOLUME_SIZE = 16.0;
+    static const float GI_VOLUME_SIZE = 24.0;
 #endif
 
 //static const float GI_VOLUME_SCALE = GI_VOLUME_SIZE / GI_VOLUME_DIMS;
