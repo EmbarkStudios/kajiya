@@ -297,6 +297,28 @@ fn try_main() -> anyhow::Result<()> {
                 }
             }
 
+            if ui
+                .collapsing_header(im_str!("csgi"))
+                .default_open(true)
+                .build()
+            {
+                ui.drag_int(
+                    im_str!("Trace subdivision"),
+                    &mut render_client.csgi.trace_subdiv,
+                )
+                .min(0)
+                .max(5)
+                .build();
+
+                ui.drag_int(
+                    im_str!("Neighbors per frame"),
+                    &mut render_client.csgi.neighbors_per_frame,
+                )
+                .min(1)
+                .max(9)
+                .build();
+            }
+
             imgui_backend.prepare_render(&ui, &window);
             (ui.render(), imgui_backend.get_target_image().unwrap())
         };

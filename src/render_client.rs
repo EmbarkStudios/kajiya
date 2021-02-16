@@ -80,8 +80,9 @@ pub struct VickiRenderClient {
     frame_idx: u32,
     prev_camera_matrices: Option<CameraMatrices>,
 
-    ssgi: SsgiRenderer,
-    rtr: RtrRenderer,
+    pub ssgi: SsgiRenderer,
+    pub rtr: RtrRenderer,
+    pub csgi: CsgiRenderer,
 
     pub ui_frame: Option<(Box<dyn FnOnce(vk::CommandBuffer) + 'static>, Arc<Image>)>,
 }
@@ -308,6 +309,8 @@ impl VickiRenderClient {
 
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
+            csgi: CsgiRenderer::default(),
+
             ui_frame: Default::default(),
         })
     }
@@ -594,7 +597,7 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
-        let mut csgi_volume = CsgiRenderer.render(rg, self.bindless_descriptor_set, &tlas);
+        let csgi_volume = self.csgi.render(rg, self.bindless_descriptor_set, &tlas);
         csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
         let mut post = crate::render_passes::normalize_accum(

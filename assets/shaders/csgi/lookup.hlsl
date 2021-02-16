@@ -9,8 +9,6 @@ struct CsgiLookupParams {
 };
 
 float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
-    //const float normal_offset_scale = 1.1;
-
     float3 irradiance = 0.0.xxx;
 
     for (uint gi_slice_iter = 0; gi_slice_iter < GI_SLICE_COUNT; ++gi_slice_iter) {

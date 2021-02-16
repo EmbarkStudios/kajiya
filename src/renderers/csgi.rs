@@ -11,7 +11,19 @@ const VOLUME_DIMS: u32 = 32;
 
 use super::GbufferDepth;
 
-pub struct CsgiRenderer;
+pub struct CsgiRenderer {
+    pub trace_subdiv: i32,
+    pub neighbors_per_frame: i32,
+}
+
+impl Default for CsgiRenderer {
+    fn default() -> Self {
+        Self {
+            trace_subdiv: 3,
+            neighbors_per_frame: 2,
+        }
+    }
+}
 
 pub struct CsgiVolume {
     pub cascade0: rg::Handle<Image>,
@@ -28,7 +40,7 @@ impl CsgiRenderer {
             .get_or_create_temporal(
                 "csgi.cascade0",
                 ImageDesc::new_3d(
-                    vk::Format::R16G16B16A16_SFLOAT,
+                    vk::Format::B10G11R11_UFLOAT_PACK32,
                     [VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
@@ -57,6 +69,9 @@ impl CsgiRenderer {
         .write(&mut cascade0)
         .dispatch(cascade0.desc().extent);*/
 
+        let sweep_vx_count = VOLUME_DIMS >> self.trace_subdiv.clamp(0, 5);
+        let neighbors_per_frame = self.neighbors_per_frame.clamp(1, 9);
+
         SimpleRenderPass::new_rt(
             rg.add_pass("csgi trace"),
             "/assets/shaders/csgi/trace_volume.rgen.hlsl",
@@ -68,9 +83,16 @@ impl CsgiRenderer {
         )
         .read(&mut cascade0)
         .write(&mut cascade0_integr)
-        .constants(SLICE_DIRS)
+        .constants((SLICE_DIRS, (sweep_vx_count, neighbors_per_frame)))
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, cascade0.desc().extent);
+        .trace_rays(
+            tlas,
+            [
+                VOLUME_DIMS * SLICE_COUNT as u32,
+                VOLUME_DIMS * neighbors_per_frame as u32,
+                VOLUME_DIMS / sweep_vx_count,
+            ],
+        );
 
         SimpleRenderPass::new_compute(
             rg.add_pass("csgi sweep"),
@@ -78,7 +100,6 @@ impl CsgiRenderer {
         )
         .read(&cascade0_integr)
         .write(&mut cascade0)
-        .constants(SLICE_DIRS)
         .dispatch(cascade0.desc().extent);
 
         /*let mut pretrace_hit_img = rg.create(

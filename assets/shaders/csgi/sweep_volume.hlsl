@@ -15,24 +15,6 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 
 [[vk::binding(0)]] Texture3D<float4> integr_tex;
 [[vk::binding(1)]] RWTexture3D<float4> cascade0_tex;
-[[vk::binding(2)]] cbuffer _ {
-    float4 SLICE_DIRS[16];
-}
-
-#define USE_RAY_JITTER 1
-#define USE_MULTIBOUNCE 1
-
-static const float SKY_DIST = 1e5;
-
-float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1.0) / 2.0) * GI_VOXEL_SIZE + gi_volume_center(slice_rot);
-}
-
-// HACK; broken
-#define CSGI_LOOKUP_NEAREST_ONLY
-#define alt_cascade0_tex cascade0_tex
-#include "lookup.hlsl"
-
 
 [numthreads(8, 8, 1)]
 void main(uint3 px : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
