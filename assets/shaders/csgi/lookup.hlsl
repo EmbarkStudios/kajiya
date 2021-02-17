@@ -1,36 +1,58 @@
 struct CsgiLookupParams {
     bool use_grid_linear_fetch;
     int debug_slice_idx;
+    float normal_cutoff;
 
-    //float4 slice_dirs[GI_SLICE_COUNT];
-
-    //Texture3D<float4> cascade0_tex;
-    //Texture3D<float4> alt_cascade0_tex;
+    static CsgiLookupParams make_default() {
+        CsgiLookupParams res;
+        res.use_grid_linear_fetch = true;
+        res.debug_slice_idx = -1;
+        res.normal_cutoff = 1e-3;
+        return res;
+    }
 };
+
+uint closest_csgi_dir(float3 dir) {
+    float best_dot = -1;
+    uint best_idx = 0;
+
+    for (uint i = 0; i < GI_SLICE_COUNT; ++i) {
+        const float3 slice_dir = SLICE_DIRS[i].xyz;
+        const float d = dot(slice_dir, dir);
+        if (d > best_dot) {
+            best_dot = d;
+            best_idx = i;
+        }
+    }
+
+    return best_idx;
+}
 
 float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
     float3 irradiance = 0.0.xxx;
+    float wsum = 0.0;
 
     for (uint gi_slice_iter = 0; gi_slice_iter < GI_SLICE_COUNT; ++gi_slice_iter) {
+    //const uint gi_slice_iter = closest_csgi_dir(-normal); [unroll] for (uint dummy = 0; dummy < 1; ++dummy) {
         const uint gi_slice_idx = params.debug_slice_idx == -1 ? gi_slice_iter : params.debug_slice_idx;
 
-        const float3 ldir = SLICE_DIRS[gi_slice_idx].xyz;
-        const float ndotl = dot(mul(ldir, normal), float3(0, 0, -1));
+        const float3 slice_dir = SLICE_DIRS[gi_slice_idx].xyz;
+        const float ndotl = -dot(slice_dir, normal);
 
-        // TODO: remove or justify hack (bias to make NdotL less harsh for a cone of directions)
-        //const float visibility = max(0.0, ndotl);
-        const float visibility = max(0.0, lerp(ndotl, 0.9, 0.05));
-
-        if (visibility <= 0.0) {
+        if (ndotl < params.normal_cutoff) {
             continue;
         }
 
-        const float normal_offset_scale = min(1.5, 1.1 / abs(dot(normal, ldir)));
+        const float visibility = max(0.0, ndotl);
+        const float normal_offset_scale = min(1.5, 1.1 / ndotl);
         //const float normal_offset_scale = 1.01;
         //const float normal_offset_scale = 1.5;
 
-        const float3x3 slice_rot = build_orthonormal_basis(ldir);
-        const float3 vol_pos = (pos - gi_volume_center(slice_rot) + normal * normal_offset_scale * GI_VOXEL_SIZE);
+        const float3x3 slice_rot = build_orthonormal_basis(slice_dir);
+        const float3 volume_center = SLICE_CENTERS[gi_slice_iter].xyz;
+        //const float3 volume_center = gi_volume_center(slice_rot);
+
+        const float3 vol_pos = (pos - volume_center + normal * normal_offset_scale * GI_VOXEL_SIZE);
 
         int3 gi_vx = int3(mul(vol_pos, slice_rot) / GI_VOXEL_SIZE + GI_VOLUME_DIMS / 2);
         {
@@ -42,9 +64,6 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                 // even though most of it could be shadowed. This shifts the lookup to be deeper inside the surface.
                 //float3 depth_bias = float3(0, 0, -1.0 / GI_VOLUME_DIMS);
                 float3 depth_bias = 0;
-
-                //depth_bias *= dot(-ldir, normal);
-                //depth_bias *= saturate(dot(ldir, normal));
 
                 float3 gi_uv = mul((vol_pos / GI_VOXEL_SIZE / (GI_VOLUME_DIMS / 2)), slice_rot) * 0.5 + 0.5 + depth_bias;
 
@@ -59,8 +78,8 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
             {
                 // Nearest lookup
 
-                const int3 depth_bias = int3(0, 0, -1);
-                //const int3 depth_bias = int3(0, 0, 0);
+                //const int3 depth_bias = int3(0, 0, -1);
+                const int3 depth_bias = int3(0, 0, 0);
 
                 if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
                     radiance = cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
@@ -68,8 +87,9 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
             }
 
             irradiance += radiance * visibility;
+            wsum += visibility;
         }
     }
 
-    return irradiance * M_PI / GI_SLICE_COUNT;
+    return irradiance / max(1e-5, wsum);
 }

@@ -18,6 +18,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 [[vk::binding(1)]] RWTexture3D<float4> integr_tex;
 [[vk::binding(2)]] cbuffer _ {
     float4 SLICE_DIRS[16];
+    float4 SLICE_CENTERS[16];
     uint sweep_vx_count;
     uint neighbors_per_frame;
 }
@@ -64,8 +65,8 @@ void main() {
         int3(-1, -1, -1)
     };
 
-    const int slice_z_start = (dispatch_px.z + 1) * sweep_vx_count - 1;
-    const int slice_z_end = dispatch_px.z * sweep_vx_count - 1;    
+    const int slice_z_start = int((dispatch_px.z + 1) * sweep_vx_count) - 1;
+    const int slice_z_end = int(dispatch_px.z * sweep_vx_count) - 1;    
 
     uint rng = hash2(uint2(frame_constants.frame_index, grid_idx));
     //uint dir_i = frame_constants.frame_index % DIR_COUNT;
@@ -73,7 +74,7 @@ void main() {
     #if USE_RAY_JITTER
         const float offset_x = uint_to_u01_float(hash1_mut(rng)) - 0.5;
         const float offset_y = uint_to_u01_float(hash1_mut(rng)) - 0.5;
-        const float blend_factor = 0.5;
+        const float blend_factor = 0.4;
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;
@@ -88,21 +89,32 @@ void main() {
     uint dir_i = ((frame_constants.frame_index * neighbors_per_frame + neighbor_offset) * 5) % DIR_COUNT;
     //for (uint dir_i = 0; dir_i < DIR_COUNT; ++dir_i)
     {
+        const int3 preintegr_offset = int3(GI_VOLUME_DIMS * grid_idx, GI_VOLUME_DIMS * dir_i, 0);
+        const int3 pxdir = dirs[dir_i];
+
         int3 px = int3(dispatch_px.xy, slice_z_start);
-
         while (true) {
-            const int3 preintegr_offset = int3(GI_VOLUME_DIMS * grid_idx, GI_VOLUME_DIMS * dir_i, 0);
-
             //uint rng = hash2(uint2(dir_i, frame_constants.frame_index));
 
             const float3 trace_origin = vx_to_pos(px + float3(offset_x, offset_y, 0.5), slice_rot);
-            const float3 neighbor_pos = vx_to_pos(float3(px) + dirs[dir_i] + float3(offset_x, offset_y, 0.5), slice_rot);
+            const float3 neighbor_pos = vx_to_pos(px + pxdir + float3(offset_x, offset_y, 0.5), slice_rot);
+
+            // Distance to volume border along the `pxdir` direction
+            const int2 border_dist =
+                pxdir.xy == int2(0, 0)
+                ? GI_VOLUME_DIMS
+                : (pxdir.xy == int2(1, 1)
+                    ? (GI_VOLUME_DIMS - px.xy)
+                    : (1 + px.xy)
+                );
+            const int border_trace_dist = min(border_dist.x, border_dist.y);
+            const int ray_length_int = min(px.z - slice_z_end, border_trace_dist);
 
             RayDesc outgoing_ray = new_ray(
                 trace_origin,
                 neighbor_pos - trace_origin,
                 0,
-                px.z - slice_z_end
+                ray_length_int
             );
 
             const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray);
@@ -120,61 +132,73 @@ void main() {
                                 SKY_DIST
                         ));
 
-                    GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-                    
-                    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                    //GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+                    const float3 gbuffer_normal = primary_hit.gbuffer_packed.unpack_normal();
 
                     // Compensate for lost specular (TODO)
-                    const float3 bounce_albedo = lerp(gbuffer.albedo, 1.0.xxx, 0.04);
-                    //const float3 bounce_albedo = gbuffer.albedo;
-
-    #if 0
-                    const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-                    const float3 wi = mul(to_light_norm, shading_basis);
-                    float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
-
-                    LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-                    const float3 brdf_value = brdf.evaluate(wo, wi);
-                    total_radiance += brdf_value * light_radiance;
-    #else
-                    total_radiance +=
-                        light_radiance * bounce_albedo * max(0.0, dot(gbuffer.normal, to_light_norm)) / M_PI;
-    #endif
-
-                    if (USE_MULTIBOUNCE) {
-                        CsgiLookupParams gi_lookup_params;
-                        gi_lookup_params.use_grid_linear_fetch = false;
-                        gi_lookup_params.debug_slice_idx = -1;
-
-                        total_radiance += lookup_csgi(primary_hit.position, gbuffer.normal, gi_lookup_params) * bounce_albedo;
-                    }
-
+                    const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.04);
+                    
                     // Remove contributions where the normal is facing away from
                     // the cone direction. This can happen e.g. on rays travelling near floors,
                     // where the neighbor rays hit the floors, but contribution should be zero.
-                    total_radiance *= smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer.normal));
-                    //total_radiance *= step(0.0, dot(slice_dir, -gbuffer.normal));
+                    const float visibility_factor = smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer_normal));
+                    //const float visibility_factor = step(0.0, dot(slice_dir, -gbuffer_normal));
+
+                    if (visibility_factor > 1e-3) {
+                        const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+
+        #if 0
+                        const float3x3 shading_basis = build_orthonormal_basis(gbuffer_normal);
+                        const float3 wi = mul(to_light_norm, shading_basis);
+                        float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
+
+                        LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+                        const float3 brdf_value = brdf.evaluate(wo, wi);
+                        total_radiance += brdf_value * light_radiance;
+        #else
+                        total_radiance +=
+                            light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
+        #endif
+
+                        if (USE_MULTIBOUNCE) {
+                            CsgiLookupParams gi_lookup_params = CsgiLookupParams::make_default();
+
+                            // Faster, lower quality
+                            gi_lookup_params.use_grid_linear_fetch = false;
+                            gi_lookup_params.normal_cutoff = 0.7;
+
+                            total_radiance += lookup_csgi(primary_hit.position, gbuffer_normal, gi_lookup_params) * bounce_albedo;
+                        }
+
+                        total_radiance *= visibility_factor;
+                    }
                 }
 
                 int cells_skipped_by_ray = int(floor(primary_hit.ray_t));
-                while (--cells_skipped_by_ray > 0) {
+                while (cells_skipped_by_ray-- > 0) {
                     integr_tex[px + preintegr_offset] = lerp(integr_tex[px + preintegr_offset], float4(0, 0, 0, 1), blend_factor);
-                    px.z -= 1;
+                    px += pxdir;
+                    px.xy = int2(uint2(px.xy) % GI_VOLUME_DIMS);
                 }
 
-                //total_radiance = float3(1, 0, 0);
                 integr_tex[px + preintegr_offset] = lerp(integr_tex[px + preintegr_offset], float4(total_radiance, 0), blend_factor);
 
-                px.z -= 1;
+                px += pxdir;
+                px.xy = int2(uint2(px.xy) % GI_VOLUME_DIMS);
+
                 if (px.z <= slice_z_end) {
                     break;
                 }
             } else {
-                for (; px.z > slice_z_end;) {
+                for (int i = 0; i < ray_length_int; ++i) {
                     integr_tex[px + preintegr_offset] = lerp(integr_tex[px + preintegr_offset], float4(0, 0, 0, 1), blend_factor);
-                    px.z -= 1;
+                    px += pxdir;
+                    px.xy = int2(uint2(px.xy) % GI_VOLUME_DIMS);
                 }
-                break;
+
+                if (px.z <= slice_z_end) {
+                    break;
+                }
             }
         }
     }

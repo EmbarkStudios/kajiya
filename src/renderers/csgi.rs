@@ -1,5 +1,6 @@
 // Cone sweep global illumination prototype
 
+use glam::Vec3;
 use rg::GetOrCreateTemporal;
 use slingshot::{
     ash::vk,
@@ -8,6 +9,9 @@ use slingshot::{
 };
 
 const VOLUME_DIMS: u32 = 32;
+type VolumeCenters = [[f32; 4]; SLICE_COUNT];
+
+use crate::math::build_orthonormal_basis;
 
 use super::GbufferDepth;
 
@@ -27,11 +31,13 @@ impl Default for CsgiRenderer {
 
 pub struct CsgiVolume {
     pub cascade0: rg::Handle<Image>,
+    volume_centers: VolumeCenters,
 }
 
 impl CsgiRenderer {
     pub fn render(
         &mut self,
+        eye_position: Vec3,
         rg: &mut rg::TemporalRenderGraph,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
@@ -69,6 +75,8 @@ impl CsgiRenderer {
         .write(&mut cascade0)
         .dispatch(cascade0.desc().extent);*/
 
+        let volume_centers = Self::volume_centers(eye_position);
+
         let sweep_vx_count = VOLUME_DIMS >> self.trace_subdiv.clamp(0, 5);
         let neighbors_per_frame = self.neighbors_per_frame.clamp(1, 9);
 
@@ -83,7 +91,12 @@ impl CsgiRenderer {
         )
         .read(&mut cascade0)
         .write(&mut cascade0_integr)
-        .constants((SLICE_DIRS, (sweep_vx_count, neighbors_per_frame)))
+        .constants((
+            SLICE_DIRS,
+            volume_centers,
+            sweep_vx_count,
+            neighbors_per_frame,
+        ))
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(
             tlas,
@@ -102,55 +115,37 @@ impl CsgiRenderer {
         .write(&mut cascade0)
         .dispatch(cascade0.desc().extent);
 
-        /*let mut pretrace_hit_img = rg.create(
-                    ImageDesc::new_3d(
-                        vk::Format::R8_UNORM,
-                        [
-                            PRETRACE_DIMS * PRETRACE_COUNT as u32,
-                            PRETRACE_DIMS,
-                            PRETRACE_DIMS,
-                        ],
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                );
-
-                let mut pretrace_normal_img = rg.create(
-                    ImageDesc::new_3d(
-                        vk::Format::R8G8B8A8_UNORM,
-                        [
-                            PRETRACE_DIMS * PRETRACE_COUNT as u32,
-                            PRETRACE_DIMS,
-                            PRETRACE_DIMS,
-                        ],
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                );
-
-                let mut pretrace_col_img = rg.create(
-                    ImageDesc::new_3d(
-                        vk::Format::R16G16B16A16_SFLOAT,
-                        [
-                            PRETRACE_DIMS * PRETRACE_COUNT as u32,
-                            PRETRACE_DIMS,
-                            PRETRACE_DIMS,
-                        ],
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                );
-
-                SimpleRenderPass::new_compute(
-                    rg.add_pass("csgi clear"),
-                    "/assets/shaders/csgi/clear_volume.hlsl",
-                )
-                .write(&mut pretrace_hit_img)
-                //.dispatch(pretrace_img.desc().div_up_extent([2, 2, 2]).extent);
-                .dispatch(pretrace_col_img.desc().extent);
-        */
-
         CsgiVolume {
             cascade0,
-            //alt_cascade0,
+            volume_centers,
         }
+    }
+
+    fn volume_centers(eye_position: Vec3) -> VolumeCenters {
+        let mut volume_centers = [[0.0f32; 4]; SLICE_COUNT];
+
+        let volume_size = Vec3::splat(10.0); // TODO
+        let voxel_size = volume_size / Vec3::splat(VOLUME_DIMS as f32);
+
+        for (slice, volume_center) in volume_centers.iter_mut().enumerate() {
+            let slice_dir = SLICE_DIRS[slice];
+            let slice_dir = Vec3::new(slice_dir[0], slice_dir[1], slice_dir[2]);
+            let slice_rot = build_orthonormal_basis(slice_dir);
+
+            let mut pos = eye_position;
+
+            pos = slice_rot.transpose() * pos;
+            pos = pos / voxel_size;
+            pos.x = pos.x.trunc();
+            pos.y = pos.y.trunc();
+            pos.z = pos.z.trunc();
+            pos = pos * voxel_size;
+            pos = slice_rot * pos;
+
+            *volume_center = [pos.x, pos.y, pos.z, 1.0];
+        }
+
+        volume_centers
     }
 }
 
@@ -170,7 +165,11 @@ impl CsgiVolume {
         .read(&self.cascade0)
         //.read(&self.alt_cascade0)
         .write(out_img)
-        .constants((out_img.desc().extent_inv_extent_2d(), SLICE_DIRS))
+        .constants((
+            out_img.desc().extent_inv_extent_2d(),
+            SLICE_DIRS,
+            self.volume_centers,
+        ))
         .dispatch(out_img.desc().extent);
     }
 }

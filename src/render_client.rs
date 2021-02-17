@@ -597,7 +597,12 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
-        let csgi_volume = self.csgi.render(rg, self.bindless_descriptor_set, &tlas);
+        let csgi_volume = self.csgi.render(
+            frame_state.camera_matrices.eye_position(),
+            rg,
+            self.bindless_descriptor_set,
+            &tlas,
+        );
         csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
         let mut post = crate::render_passes::normalize_accum(
@@ -755,9 +760,9 @@ impl RenderClient<FrameState> for VickiRenderClient {
             .build(),
             mouse: gen_shader_mouse_state(&frame_state),
             sun_direction: [
-                frame_state.sun_direction.x(),
-                frame_state.sun_direction.y(),
-                frame_state.sun_direction.z(),
+                frame_state.sun_direction.x,
+                frame_state.sun_direction.y,
+                frame_state.sun_direction.z,
                 0.0,
             ],
             frame_idx: self.frame_idx,
@@ -798,8 +803,8 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
         );
 
     [
-        pos.x(),
-        pos.y(),
+        pos.x,
+        pos.y,
         if (frame_state.input.mouse.button_mask & 1) != 0 {
             1.0
         } else {

@@ -13,6 +13,8 @@ struct GbufferDataPacked {
     }
 
     GbufferData unpack();
+    float3 unpack_normal();
+    float3 unpack_albedo();
 };
 
 struct GbufferData {
@@ -39,11 +41,19 @@ GbufferDataPacked GbufferData::pack() {
 
 GbufferData GbufferDataPacked::unpack() {
     GbufferData res;
-    res.albedo = unpack_color_888(data0.x);
-    res.normal = unpack_normal_11_10_11(asfloat(data0.y));
+    res.albedo = unpack_albedo();
+    res.normal = unpack_normal();
     res.roughness = sqrt(asfloat(data0.z));
     res.metalness = asfloat(data0.w);
     return res;
+}
+
+float3 GbufferDataPacked::unpack_normal() {
+    return unpack_normal_11_10_11(asfloat(data0.y));
+}
+
+float3 GbufferDataPacked::unpack_albedo() {
+    return unpack_color_888(data0.x);
 }
 
 #endif

@@ -9,6 +9,12 @@ pub struct CameraMatrices {
     pub view_to_world: Mat4,
 }
 
+impl CameraMatrices {
+    pub fn eye_position(&self) -> Vec3 {
+        (self.view_to_world * Vec4::new(0.0, 0.0, 0.0, 1.0)).truncate()
+    }
+}
+
 pub trait Camera {
     type InputType;
 
@@ -54,8 +60,8 @@ impl From<&InputState> for FirstPersonCameraInput {
         let mut pitch_delta = 0.0;
 
         if (input_state.mouse.button_mask & 4) == 4 {
-            yaw_delta = -0.1 * input_state.mouse.delta.x();
-            pitch_delta = -0.1 * input_state.mouse.delta.y();
+            yaw_delta = -0.1 * input_state.mouse.delta.x;
+            pitch_delta = -0.1 * input_state.mouse.delta.y;
         }
 
         let mut move_vec = Vec3::zero();
@@ -268,7 +274,7 @@ impl<CameraType: Camera> Camera for CameraConvergenceEnforcer<CameraType> {
             .copied()
             .map(|cs_cur| {
                 let cs_prev = clip_to_prev_clip * cs_cur;
-                let cs_prev = cs_prev * (1.0 / cs_prev.w());
+                let cs_prev = cs_prev * (1.0 / cs_prev.w);
                 (cs_prev.truncate().truncate() - cs_cur.truncate().truncate()).length()
             })
             .sum();

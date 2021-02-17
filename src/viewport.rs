@@ -42,16 +42,15 @@ impl ViewConstants {
 
     pub fn set_pixel_offset(&mut self, v: Vec2, width: u32, height: u32) {
         let sample_offset_pixels = v;
-        let sample_offset_clip =
-            Vec2::new((2.0 * v.x()) / width as f32, (2.0 * v.y()) / height as f32);
+        let sample_offset_clip = Vec2::new((2.0 * v.x) / width as f32, (2.0 * v.y) / height as f32);
 
         let mut jitter_matrix = Mat4::identity();
-        jitter_matrix.set_w_axis((-sample_offset_clip).extend(0.0).extend(1.0));
+        jitter_matrix.w_axis = (-sample_offset_clip).extend(0.0).extend(1.0);
         //jitter_matrix.m14 = -sample_offset_clip.x;
         //jitter_matrix.m24 = -sample_offset_clip.y;
 
         let mut jitter_matrix_inv = Mat4::identity();
-        jitter_matrix_inv.set_w_axis(sample_offset_clip.extend(0.0).extend(1.0));
+        jitter_matrix_inv.w_axis = sample_offset_clip.extend(0.0).extend(1.0);
         //jitter_matrix_inv.m14 = sample_offset_clip.x;
         //jitter_matrix_inv.m24 = sample_offset_clip.y;
 

@@ -16,6 +16,7 @@
 [[vk::binding(4)]] cbuffer _ {
     float4 out_tex_size;
     float4 SLICE_DIRS[16];
+    float4 SLICE_CENTERS[16];
 };
 
 
@@ -46,14 +47,7 @@ void main(
 
     float3 irradiance = 0.0.xxx;
 
-    CsgiLookupParams gi_lookup_params;
-    gi_lookup_params.use_grid_linear_fetch = true;
-    gi_lookup_params.debug_slice_idx = -1;
-    //gi_lookup_params.slice_dirs = SLICE_DIRS;
-    //gi_lookup_params.cascade0_tex = cascade0_tex;
-    //gi_lookup_params.alt_cascade0_tex = alt_cascade0_tex;
-
-    irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, gi_lookup_params);
+    irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
 
     //irradiance = cascade0_tex.SampleLevel(sampler_lnc, mul(slice_rot, vol_pos * 0.5 + 0.5), 0).rgb;
     //irradiance *= saturate(0.05 + dot(mul(slice_rot, gbuffer.normal), float3(0, 0, -1)));

@@ -18,7 +18,7 @@ derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 fern = { version = "0.6", features = ["colored"] }
 futures = "0.3"
-glam = "0.9"
+glam = "0.12"
 gltf = "0.15"
 hassle-rs = "0.4"
 hotwatch = "0.4"

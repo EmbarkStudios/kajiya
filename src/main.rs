@@ -262,9 +262,9 @@ fn try_main() -> anyhow::Result<()> {
 
         if (mouse_state.button_mask & 1) != 0 {
             light_theta +=
-                (mouse_state.delta.x() / window_cfg.width as f32) * std::f32::consts::PI * -2.0;
+                (mouse_state.delta.x / window_cfg.width as f32) * std::f32::consts::PI * -2.0;
             light_phi +=
-                (mouse_state.delta.y() / window_cfg.height as f32) * std::f32::consts::PI * 0.5;
+                (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI * 0.5;
         }
 
         // Reset accumulation of the path tracer whenever the camera moves
