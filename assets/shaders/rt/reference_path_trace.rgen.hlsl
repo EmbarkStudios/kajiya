@@ -31,7 +31,7 @@ static const bool USE_PIXEL_FILTER = false;
 static const bool INDIRECT_ONLY = !true;
 
 float3 sample_environment_light(float3 dir) {
-    return 0.0.xxx;
+    //return 0.0.xxx;
 
     if (FURNACE_TEST) {
         return 0.5.xxx;

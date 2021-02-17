@@ -17,7 +17,7 @@ uint closest_csgi_dir(float3 dir) {
     uint best_idx = 0;
 
     for (uint i = 0; i < GI_SLICE_COUNT; ++i) {
-        const float3 slice_dir = SLICE_DIRS[i].xyz;
+        const float3 slice_dir = CSGI_SLICE_DIRS[i].xyz;
         const float d = dot(slice_dir, dir);
         if (d > best_dot) {
             best_dot = d;
@@ -36,7 +36,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
     //const uint gi_slice_iter = closest_csgi_dir(-normal); [unroll] for (uint dummy = 0; dummy < 1; ++dummy) {
         const uint gi_slice_idx = params.debug_slice_idx == -1 ? gi_slice_iter : params.debug_slice_idx;
 
-        const float3 slice_dir = SLICE_DIRS[gi_slice_idx].xyz;
+        const float3 slice_dir = CSGI_SLICE_DIRS[gi_slice_idx].xyz;
         const float ndotl = -dot(slice_dir, normal);
 
         if (ndotl < params.normal_cutoff) {
@@ -49,7 +49,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
         //const float normal_offset_scale = 1.5;
 
         const float3x3 slice_rot = build_orthonormal_basis(slice_dir);
-        const float3 volume_center = SLICE_CENTERS[gi_slice_iter].xyz;
+        const float3 volume_center = CSGI_SLICE_CENTERS[gi_slice_iter].xyz;
         //const float3 volume_center = gi_volume_center(slice_rot);
 
         const float3 vol_pos = (pos - volume_center + normal * normal_offset_scale * GI_VOXEL_SIZE);
@@ -71,7 +71,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                     gi_uv = clamp(gi_uv, 0.5 / GI_VOLUME_DIMS, 1.0 - (0.5 / GI_VOLUME_DIMS));
                     gi_uv.x /= GI_SLICE_COUNT;
                     gi_uv.x += float(gi_slice_idx) / GI_SLICE_COUNT;
-                    radiance = cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
+                    radiance = csgi_cascade0_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb;
                 }
             } else
         #endif
@@ -82,7 +82,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                 const int3 depth_bias = int3(0, 0, 0);
 
                 if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
-                    radiance = cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
+                    radiance = csgi_cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
                 }
             }
 

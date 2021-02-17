@@ -48,3 +48,18 @@ float3 gi_volume_center(float3x3 slice_rot) {
         return pos;
     #endif
 }
+
+static const uint GI_NEIGHBOR_DIR_COUNT = 9;
+static const int3 GI_NEIGHBOR_DIRS[GI_NEIGHBOR_DIR_COUNT] = {
+    int3(0, 0, -1),
+
+    int3(1, 0, -1),
+    int3(-1, 0, -1),
+    int3(0, 1, -1),
+    int3(0, -1, -1),
+
+    int3(1, 1, -1),
+    int3(-1, 1, -1),
+    int3(1, -1, -1),
+    int3(-1, -1, -1)
+};

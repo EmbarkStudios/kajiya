@@ -14,13 +14,13 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 #include "common.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0)]] Texture3D<float4> cascade0_tex;
+[[vk::binding(0)]] Texture3D<float4> csgi_cascade0_tex;
 [[vk::binding(1)]] RWTexture3D<float4> integr_tex;
 [[vk::binding(2)]] cbuffer _ {
-    float4 SLICE_DIRS[16];
-    float4 SLICE_CENTERS[16];
-    uint sweep_vx_count;
-    uint neighbors_per_frame;
+    float4 CSGI_SLICE_DIRS[16];
+    float4 CSGI_SLICE_CENTERS[16];
+    uint SWEEP_VX_COUNT;
+    uint NEIGHBORS_PER_FRAME;
 }
 
 #define USE_RAY_JITTER 0
@@ -33,7 +33,7 @@ float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
 }
 
 // HACK; broken
-#define alt_cascade0_tex cascade0_tex
+#define alt_cascade0_tex csgi_cascade0_tex
 #include "lookup.hlsl"
 
 
@@ -44,32 +44,17 @@ void main() {
     const uint grid_idx = dispatch_px.x / GI_VOLUME_DIMS;
     dispatch_px.x %= GI_VOLUME_DIMS;
 
-    const uint neighbor_offset = dispatch_px.y % neighbors_per_frame;
-    dispatch_px.y /= neighbors_per_frame;
+    const uint neighbor_offset = dispatch_px.y % NEIGHBORS_PER_FRAME;
+    dispatch_px.y /= NEIGHBORS_PER_FRAME;
 
-    const float3x3 slice_rot = build_orthonormal_basis(SLICE_DIRS[grid_idx].xyz);
+    const float3x3 slice_rot = build_orthonormal_basis(CSGI_SLICE_DIRS[grid_idx].xyz);
     const float3 slice_dir = mul(slice_rot, float3(0, 0, -1));    
 
-    static const uint DIR_COUNT = 9;
-    static const int3 dirs[9] = {
-        int3(0, 0, -1),
-
-        int3(1, 0, -1),
-        int3(-1, 0, -1),
-        int3(0, 1, -1),
-        int3(0, -1, -1),
-
-        int3(1, 1, -1),
-        int3(-1, 1, -1),
-        int3(1, -1, -1),
-        int3(-1, -1, -1)
-    };
-
-    const int slice_z_start = int((dispatch_px.z + 1) * sweep_vx_count) - 1;
-    const int slice_z_end = int(dispatch_px.z * sweep_vx_count) - 1;    
+    const int slice_z_start = int((dispatch_px.z + 1) * SWEEP_VX_COUNT) - 1;
+    const int slice_z_end = int(dispatch_px.z * SWEEP_VX_COUNT) - 1;    
 
     uint rng = hash2(uint2(frame_constants.frame_index, grid_idx));
-    //uint dir_i = frame_constants.frame_index % DIR_COUNT;
+    //uint dir_i = frame_constants.frame_index % GI_NEIGHBOR_DIR_COUNT;
 
     #if USE_RAY_JITTER
         const float offset_x = uint_to_u01_float(hash1_mut(rng)) - 0.5;
@@ -85,12 +70,12 @@ void main() {
     //uint rng = hash1(frame_constants.frame_index);
     //uint rng = hash2(uint2(px.y, frame_constants.frame_index));
 
-    //uint dir_i = rng % DIR_COUNT;
-    uint dir_i = ((frame_constants.frame_index * neighbors_per_frame + neighbor_offset) * 5) % DIR_COUNT;
-    //for (uint dir_i = 0; dir_i < DIR_COUNT; ++dir_i)
+    //uint dir_i = rng % GI_NEIGHBOR_DIR_COUNT;
+    uint dir_i = ((frame_constants.frame_index * NEIGHBORS_PER_FRAME + neighbor_offset) * 5) % GI_NEIGHBOR_DIR_COUNT;
+    //for (uint dir_i = 0; dir_i < GI_NEIGHBOR_DIR_COUNT; ++dir_i)
     {
         const int3 preintegr_offset = int3(GI_VOLUME_DIMS * grid_idx, GI_VOLUME_DIMS * dir_i, 0);
-        const int3 pxdir = dirs[dir_i];
+        const int3 pxdir = GI_NEIGHBOR_DIRS[dir_i];
 
         int3 px = int3(dispatch_px.xy, slice_z_start);
         while (true) {

@@ -194,9 +194,9 @@ void main() {
 
             out0_tex[px] = float4(total_radiance, primary_hit.ray_t);
         } else {
-            out0_tex[px] = float4(0.0.xxx, SKY_DIST);
+            //out0_tex[px] = float4(0.0.xxx, SKY_DIST);
             //out0_tex[px] = float4(0.5.xxx, SKY_DIST);
-            //out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
+            out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
         }
     } else {
         out0_tex[px] = float4(0.0.xxx, -SKY_DIST);

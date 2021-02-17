@@ -92,7 +92,7 @@ impl CsgiRenderer {
         .read(&mut cascade0)
         .write(&mut cascade0_integr)
         .constants((
-            SLICE_DIRS,
+            CSGI_SLICE_DIRS,
             volume_centers,
             sweep_vx_count,
             neighbors_per_frame,
@@ -113,7 +113,8 @@ impl CsgiRenderer {
         )
         .read(&cascade0_integr)
         .write(&mut cascade0)
-        .dispatch(cascade0.desc().extent);
+        .constants(CSGI_SLICE_DIRS)
+        .dispatch([VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, 1]);
 
         CsgiVolume {
             cascade0,
@@ -128,7 +129,7 @@ impl CsgiRenderer {
         let voxel_size = volume_size / Vec3::splat(VOLUME_DIMS as f32);
 
         for (slice, volume_center) in volume_centers.iter_mut().enumerate() {
-            let slice_dir = SLICE_DIRS[slice];
+            let slice_dir = CSGI_SLICE_DIRS[slice];
             let slice_dir = Vec3::new(slice_dir[0], slice_dir[1], slice_dir[2]);
             let slice_rot = build_orthonormal_basis(slice_dir);
 
@@ -167,7 +168,7 @@ impl CsgiVolume {
         .write(out_img)
         .constants((
             out_img.desc().extent_inv_extent_2d(),
-            SLICE_DIRS,
+            CSGI_SLICE_DIRS,
             self.volume_centers,
         ))
         .dispatch(out_img.desc().extent);
@@ -175,7 +176,7 @@ impl CsgiVolume {
 }
 
 const SLICE_COUNT: usize = 16;
-const SLICE_DIRS: [[f32; 4]; SLICE_COUNT] = [
+const CSGI_SLICE_DIRS: [[f32; 4]; SLICE_COUNT] = [
     [0.85225946, 0.36958295, 0.37021905, 0.0],
     [0.263413, 0.9570777, 0.120897286, 0.0],
     [0.5356124, -0.75899905, -0.3701891, 0.0],

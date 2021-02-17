@@ -11,12 +11,12 @@
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture3D<float4> cascade0_tex;
+[[vk::binding(2)]] Texture3D<float4> csgi_cascade0_tex;
 [[vk::binding(3)]] RWTexture2D<float4> out_tex;
 [[vk::binding(4)]] cbuffer _ {
     float4 out_tex_size;
-    float4 SLICE_DIRS[16];
-    float4 SLICE_CENTERS[16];
+    float4 CSGI_SLICE_DIRS[16];
+    float4 CSGI_SLICE_CENTERS[16];
 };
 
 
@@ -30,7 +30,7 @@ void main(
 
     const float4 gbuffer_packed = gbuffer_tex[px];
     if (all(gbuffer_packed == 0.0.xxxx)) {
-        out_tex[px] = float4(0, 0, 0, 1);
+        //out_tex[px] = float4(0, 0, 0, 1);
         return;
     }
 
@@ -49,7 +49,7 @@ void main(
 
     irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
 
-    //irradiance = cascade0_tex.SampleLevel(sampler_lnc, mul(slice_rot, vol_pos * 0.5 + 0.5), 0).rgb;
+    //irradiance = csgi_cascade0_tex.SampleLevel(sampler_lnc, mul(slice_rot, vol_pos * 0.5 + 0.5), 0).rgb;
     //irradiance *= saturate(0.05 + dot(mul(slice_rot, gbuffer.normal), float3(0, 0, -1)));
 
     //if (uv.x > 0.5)
