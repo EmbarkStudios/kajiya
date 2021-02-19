@@ -70,7 +70,7 @@ struct LayeredBrdf {
         return (
             spec.value() +// * energy_preservation.preintegrated_reflection_mult +
             diff.value() * spec.transmission_fraction
-        );// * max(0.0, wi.z);
+        );
     }
 
     BrdfSample sample(float3 wo, float3 urand) {

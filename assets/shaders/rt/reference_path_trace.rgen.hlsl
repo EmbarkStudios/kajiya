@@ -138,7 +138,7 @@ void main() {
             if (ONLY_SPECULAR_FIRST_BOUNCE && path_length == 0) {
                 gbuffer.albedo = 1.0;
                 gbuffer.metalness = 1.0;
-                gbuffer.roughness = 0.01;
+                //gbuffer.roughness = 0.01;
             }
             
             //gbuffer.roughness = lerp(gbuffer.roughness, 0.0, 0.8);
