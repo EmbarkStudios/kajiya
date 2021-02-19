@@ -115,7 +115,7 @@ fn load_gltf_material(
                 }
             })
         })
-        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 127, 255]));
+        .unwrap_or(MeshMaterialMap::Placeholder([255, 255, 255, 255]));
 
     let normal_map = mat
         .normal_texture()

@@ -66,7 +66,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 #endif
 
 #if USE_TONEMAP
-    col *= 2;
+    //col *= 2;
     //col -= 0.47;
     //col *= 4;
     col = neutral_tonemap(col);
@@ -75,7 +75,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
     col = lerp(calculate_luma(col), col, 1.05);
     col = pow(col, 1.02);
 #endif
-    
+
+    //col = pow(col * 8.5, 5.0);
+
     // Dither
 #if USE_DITHER
     const uint urand_idx = frame_constants.frame_index;

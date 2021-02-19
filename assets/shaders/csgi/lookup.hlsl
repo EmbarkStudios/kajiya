@@ -1,3 +1,5 @@
+// #define CSGI_LOOKUP_NEAREST_ONLY
+
 struct CsgiLookupParams {
     bool use_grid_linear_fetch;
     int debug_slice_idx;
@@ -39,14 +41,29 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
         const float3 slice_dir = CSGI_SLICE_DIRS[gi_slice_idx].xyz;
         const float ndotl = -dot(slice_dir, normal);
 
+        //if (ndotl < 0.3) {
         if (ndotl < params.normal_cutoff) {
             continue;
         }
 
         const float visibility = max(0.0, ndotl);
-        const float normal_offset_scale = min(1.5, 1.1 / ndotl);
-        //const float normal_offset_scale = 1.01;
-        //const float normal_offset_scale = 1.5;
+        //const float normal_offset_scale = min(1.5, 1.1 / ndotl);
+
+        #if 1
+            float normal_offset_scale = 1.51;
+            float depth_bias_scale = 0.0;
+        #else
+            float normal_offset_scale = 0.5;
+            float depth_bias_scale = 0.5;
+        #endif
+
+        if (!params.use_grid_linear_fetch) {
+            //normal_offset_scale = 0;//1.01;
+            //depth_bias_scale = 1.0;
+
+            normal_offset_scale = 1.01;
+            depth_bias_scale = 0.0;
+        }
 
         const float3x3 slice_rot = build_orthonormal_basis(slice_dir);
         const float3 volume_center = CSGI_SLICE_CENTERS[gi_slice_iter].xyz;
@@ -62,8 +79,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
             if (params.use_grid_linear_fetch) {
                 // HACK: if a hit is encountered early in a cell, the entire cell will report seeing a surface,
                 // even though most of it could be shadowed. This shifts the lookup to be deeper inside the surface.
-                //float3 depth_bias = float3(0, 0, -1.0 / GI_VOLUME_DIMS);
-                float3 depth_bias = 0;
+                float3 depth_bias = float3(0, 0, -depth_bias_scale / GI_VOLUME_DIMS);
 
                 float3 gi_uv = mul((vol_pos / GI_VOXEL_SIZE / (GI_VOLUME_DIMS / 2)), slice_rot) * 0.5 + 0.5 + depth_bias;
 
@@ -78,8 +94,8 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
             {
                 // Nearest lookup
 
-                //const int3 depth_bias = int3(0, 0, -1);
-                const int3 depth_bias = int3(0, 0, 0);
+                const int3 depth_bias = int3(0, 0, -depth_bias_scale);
+                //const int3 depth_bias = int3(0, 0, 0);
 
                 if (gi_vx.x >= 0 && gi_vx.x < GI_VOLUME_DIMS) {
                     radiance = csgi_cascade0_tex[gi_vx + depth_bias + int3(GI_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;

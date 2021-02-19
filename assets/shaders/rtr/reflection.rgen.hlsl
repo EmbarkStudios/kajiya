@@ -15,6 +15,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 
 #define USE_TEMPORAL_JITTER 1
 #define USE_HEAVY_BIAS 0
+#define USE_CSGI 1
 
 // Strongly reduces roughness of secondary hits
 #define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
@@ -28,7 +29,7 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
     #define USE_AGGRESSIVE_ROUGHNESS_BIAS 1
 
     #undef SAMPLING_BIAS
-    #define SAMPLING_BIAS 0.1
+    #define SAMPLING_BIAS 0.2
 #endif
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
@@ -40,9 +41,16 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 [[vk::binding(4)]] StructuredBuffer<uint> sobol_buf;
 [[vk::binding(5)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(6)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(7)]] cbuffer _ {
+[[vk::binding(7)]] Texture3D<float4> csgi_cascade0_tex;
+[[vk::binding(8)]] cbuffer _ {
     float4 gbuffer_tex_size;
+    float4 CSGI_SLICE_DIRS[16];
+    float4 CSGI_SLICE_CENTERS[16];
 };
+
+#include "../csgi/common.hlsl"
+#include "../csgi/lookup.hlsl"
+
 
 float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDimension)
 {
@@ -187,9 +195,14 @@ void main() {
 
                 LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
 
-                const float3 brdf_value = brdf.evaluate(wo, wi);
+                const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 total_radiance += brdf_value * light_radiance;
+
+                if (USE_CSGI) {
+                    float3 csgi = lookup_csgi(primary_hit.position, gbuffer.normal, CsgiLookupParams::make_default());
+                    total_radiance += csgi * gbuffer.albedo;
+                }
             }
 
             out0_tex[px] = float4(total_radiance, primary_hit.ray_t);

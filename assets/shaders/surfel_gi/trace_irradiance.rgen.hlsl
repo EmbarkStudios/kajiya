@@ -157,7 +157,7 @@ void main() {
                     brdf.specular_brdf.roughness = lerp(brdf.specular_brdf.roughness, 1.0, roughness_bias);
                 }
 
-                const float3 brdf_value = brdf.evaluate(wo, wi);
+                const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 const float3 contrib = throughput * brdf_value * light_radiance;
 

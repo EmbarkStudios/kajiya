@@ -11,7 +11,14 @@ lazy_static! {
 
 #[derive(Clone, Hash)]
 pub struct LoadFile {
-    pub path: PathBuf,
+    path: PathBuf,
+}
+
+impl LoadFile {
+    pub fn new(path: impl Into<PathBuf>) -> std::io::Result<Self> {
+        let path = path.into().canonicalize()?;
+        Ok(Self { path })
+    }
 }
 
 #[async_trait]
@@ -34,5 +41,9 @@ impl LazyWorker for LoadFile {
             .with_context(|| format!("LazyWorker: trying to read {:?}", self.path))?;
 
         Ok(buffer)
+    }
+
+    fn debug_description(&self) -> Option<std::borrow::Cow<'static, str>> {
+        Some(format!("LoadFile({:?})", self.path).into())
     }
 }

@@ -28,8 +28,11 @@ static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default
 
 static const float SKY_DIST = 1e5;
 
-float3 vx_to_pos(float3 vx, float3x3 slice_rot) {
-    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1.0) / 2.0) * GI_VOXEL_SIZE + gi_volume_center(slice_rot);
+float3 vx_to_pos(float3 vx, float3x3 slice_rot, uint gi_slice) {
+    //const float3 volume_center = CSGI_SLICE_CENTERS[gi_slice].xyz;
+    const float3 volume_center = gi_volume_center(slice_rot);
+
+    return mul(slice_rot, vx - (GI_VOLUME_DIMS - 1.0) / 2.0) * GI_VOXEL_SIZE + volume_center;
 }
 
 // HACK; broken
@@ -81,8 +84,8 @@ void main() {
         while (true) {
             //uint rng = hash2(uint2(dir_i, frame_constants.frame_index));
 
-            const float3 trace_origin = vx_to_pos(px + float3(offset_x, offset_y, 0.5), slice_rot);
-            const float3 neighbor_pos = vx_to_pos(px + pxdir + float3(offset_x, offset_y, 0.5), slice_rot);
+            const float3 trace_origin = vx_to_pos(px + float3(offset_x, offset_y, 0.5), slice_rot, grid_idx);
+            const float3 neighbor_pos = vx_to_pos(px + pxdir + float3(offset_x, offset_y, 0.5), slice_rot, grid_idx);
 
             // Distance to volume border along the `pxdir` direction
             const int2 border_dist =
@@ -102,7 +105,8 @@ void main() {
                 ray_length_int
             );
 
-            const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray);
+            //const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray);
+            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
             if (primary_hit.is_hit) {
                 float3 total_radiance = 0.0.xxx;
                 {
@@ -117,19 +121,24 @@ void main() {
                                 SKY_DIST
                         ));
 
-                    //GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+                    GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+                    gbuffer.roughness = 1.0;
+
                     const float3 gbuffer_normal = primary_hit.gbuffer_packed.unpack_normal();
 
                     // Compensate for lost specular (TODO)
-                    const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.04);
+                    //const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.04);
+                    //const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
+                    const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
                     
                     // Remove contributions where the normal is facing away from
                     // the cone direction. This can happen e.g. on rays travelling near floors,
                     // where the neighbor rays hit the floors, but contribution should be zero.
-                    const float visibility_factor = smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer_normal));
-                    //const float visibility_factor = step(0.0, dot(slice_dir, -gbuffer_normal));
+                    //const float normal_cutoff = smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer_normal));
+                    //const float normal_cutoff = step(0.0, dot(slice_dir, -gbuffer_normal));
+                    const float normal_cutoff = dot(slice_dir, -gbuffer_normal);
 
-                    if (visibility_factor > 1e-3) {
+                    if (normal_cutoff > 1e-3) {
                         const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
 
         #if 0
@@ -138,7 +147,7 @@ void main() {
                         float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
 
                         LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-                        const float3 brdf_value = brdf.evaluate(wo, wi);
+                        const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
                         total_radiance += brdf_value * light_radiance;
         #else
                         total_radiance +=
@@ -152,10 +161,11 @@ void main() {
                             gi_lookup_params.use_grid_linear_fetch = false;
                             gi_lookup_params.normal_cutoff = 0.7;
 
+                            //total_radiance += M_PI * lookup_csgi(primary_hit.position, gbuffer_normal, gi_lookup_params) * bounce_albedo;
                             total_radiance += lookup_csgi(primary_hit.position, gbuffer_normal, gi_lookup_params) * bounce_albedo;
                         }
-
-                        total_radiance *= visibility_factor;
+                    } else {
+                        total_radiance = -100;
                     }
                 }
 

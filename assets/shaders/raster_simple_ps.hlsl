@@ -35,7 +35,7 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     float4 metalness_roughness = spec_tex.Sample(sampler_llr, ps.uv);
 
     float roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
-    //roughness = 0.07;
+    //roughness = 0.01;
     float metalness = metalness_roughness.z * material.metalness_factor;//lerp(metalness_roughness.z, 1.0, material.metalness_factor);
 
     float4 res = 0.0.xxxx;

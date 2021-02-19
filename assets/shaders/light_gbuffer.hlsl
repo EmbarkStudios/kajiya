@@ -14,7 +14,8 @@
 #include "inc/color.hlsl"
 
 #define USE_SURFEL_GI 0
-#define USE_SSGI 0
+#define USE_SSGI 1
+#define USE_CSGI 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -24,9 +25,15 @@
 [[vk::binding(5)]] Texture2D<float4> base_light_tex;
 [[vk::binding(6)]] RWTexture2D<float4> output_tex;
 [[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(8)]] cbuffer _ {
+[[vk::binding(8)]] Texture3D<float4> csgi_cascade0_tex;
+[[vk::binding(9)]] cbuffer _ {
     float4 output_tex_size;
+    float4 CSGI_SLICE_DIRS[16];
+    float4 CSGI_SLICE_CENTERS[16];
 };
+
+#include "csgi/common.hlsl"
+#include "csgi/lookup.hlsl"
 
 #include "inc/sun.hlsl"
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
@@ -92,7 +99,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-    const float3 brdf_value = brdf.evaluate(wo, wi);
+    const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
     const float3 light_radiance = shadow_mask * SUN_COLOR;
     float3 total_radiance = brdf_value * light_radiance;
 
@@ -114,26 +121,36 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
     //total_radiance += uint_id_to_color(pt_hash);
 
+    float3 gi_irradiance = 0.0.xxx;
+
     #if USE_SURFEL_GI
-        #if USE_SSGI
-            const float4 ssgi = ssgi_tex[px];
+        gi_irradiance = base_light_tex[px].xyz;
+    #endif
 
-            // HACK: need directionality in GI so that it can be properly masked.
-            // If simply masking with the AO term, it tends to over-darken.
-            // Reduce some of the occlusion, but for energy conservation, also reduce
-            // the light added.
-            const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
+    #if USE_CSGI
+        gi_irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
+    #endif
 
-            total_radiance +=
-                (base_light_tex[px].xyz * biased_ssgi.a + biased_ssgi.rgb)
-                * brdf.diffuse_brdf.albedo
-                * brdf.energy_preservation.preintegrated_transmission_fraction;
-            // total_radiance = ssgi.a;
-        #else
-            total_radiance += base_light_tex[px].xyz * gbuffer.albedo;
-        #endif
-    #endif        
-    
+    #if USE_SSGI
+        const float4 ssgi = ssgi_tex[px];
+
+        // HACK: need directionality in GI so that it can be properly masked.
+        // If simply masking with the AO term, it tends to over-darken.
+        // Reduce some of the occlusion, but for energy conservation, also reduce
+        // the light added.
+        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.3);
+
+        total_radiance +=
+            (gi_irradiance * biased_ssgi.a + biased_ssgi.rgb)
+            * brdf.diffuse_brdf.albedo
+            * brdf.energy_preservation.preintegrated_transmission_fraction;
+        // total_radiance = ssgi.a;
+    #else
+        total_radiance += gi_irradiance
+            * brdf.diffuse_brdf.albedo
+            * brdf.energy_preservation.preintegrated_transmission_fraction;
+    #endif
+
     output_tex[px] = float4(total_radiance, 1.0);
     float3 debug_out = total_radiance;
         //base_light_tex[px].xyz * ssgi.a + ssgi.rgb,

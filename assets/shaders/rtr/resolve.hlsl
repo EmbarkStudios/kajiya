@@ -23,7 +23,7 @@
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
-#define USE_APPROX_BRDF 1
+#define USE_APPROX_BRDF 0
 #define SHUFFLE_SUBPIXELS 1
 #define BORROW_SAMPLES 1
 
@@ -102,9 +102,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
     }
 
-    const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
+    //const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
     //sample_count = WaveActiveMax(sample_count);
     //const uint sample_count = 16;
+    const uint sample_count = BORROW_SAMPLES ? clamp(filter_size * 128, 6, 16) : 1;
 
     // Choose one of a few pre-baked sample sets based on the footprint
     const uint filter_idx = uint(clamp(filter_size * 8, 0, 7));
@@ -131,7 +132,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if !USE_APPROX_BRDF
                 BrdfValue spec = specular_brdf.evaluate(wo, wi);
-                float spec_weight = spec.value().x;
+                float spec_weight = spec.value().x * max(0.0, wi.z);
     #else
                 float spec_weight;
                 {
@@ -141,7 +142,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                     //const float f = lerp(f0_grey, 1.0, approx_fresnel(wo, wi));
                     const float f = eval_fresnel_schlick(f0_grey, 1.0, dot(m, wi)).x;
 
-                    spec_weight = f * pdf_h_over_cos_theta / max(1e-5, wo.z + wi.z);
+                    spec_weight = f * pdf_h_over_cos_theta * max(0.0, wi.z) / max(1e-5, wo.z + wi.z);
                 }
     #endif
 

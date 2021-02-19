@@ -116,6 +116,7 @@ impl FirstPersonCamera {
     fn translate(&mut self, local_v: Vec3) {
         let rotation = self.calc_rotation_quat();
         self.position += rotation * local_v * self.move_speed;
+        //println!("self.position: {:?}", self.position);
     }
 
     fn calc_rotation_quat(&self) -> Quat {
@@ -130,7 +131,8 @@ impl FirstPersonCamera {
             yaw: 0.0,
             pitch: 0.0,
             roll: 0.0,
-            fov: 45.0,
+            //fov: 52.0,
+            fov: 70.0,
             position,
             near_dist: 0.01, // 1mm
             aspect: 1.6,

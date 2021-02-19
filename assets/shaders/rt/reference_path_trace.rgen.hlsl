@@ -29,6 +29,7 @@ static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
 static const bool USE_PIXEL_FILTER = false;
 static const bool INDIRECT_ONLY = !true;
+static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -133,6 +134,13 @@ void main() {
                 gbuffer.albedo = 1.0;
                 gbuffer.metalness = 0.0;
             }
+
+            if (ONLY_SPECULAR_FIRST_BOUNCE && path_length == 0) {
+                gbuffer.albedo = 1.0;
+                gbuffer.metalness = 1.0;
+                gbuffer.roughness = 0.01;
+            }
+            
             //gbuffer.roughness = lerp(gbuffer.roughness, 0.0, 0.8);
             //gbuffer.metalness = 1.0;
             //gbuffer.albedo = max(gbuffer.albedo, 1e-3);
@@ -166,7 +174,7 @@ void main() {
             if (!FURNACE_TEST) {
                 const float3 brdf_value = brdf.evaluate(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-                total_radiance += throughput * brdf_value * light_radiance;
+                total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);
             }
 
             float3 urand;

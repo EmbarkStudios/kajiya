@@ -26,6 +26,8 @@
 void main(
     uint2 px: SV_DispatchThreadID
 ) {
+#if 0
+
     const float2 uv = get_uv(px, out_tex_size);
 
     const float4 gbuffer_packed = gbuffer_tex[px];
@@ -47,15 +49,19 @@ void main(
 
     float3 irradiance = 0.0.xxx;
 
-    irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
+    CsgiLookupParams params = CsgiLookupParams::make_default();
+    //params.use_grid_linear_fetch = false;
+    irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, params);
 
     //irradiance = csgi_cascade0_tex.SampleLevel(sampler_lnc, mul(slice_rot, vol_pos * 0.5 + 0.5), 0).rgb;
     //irradiance *= saturate(0.05 + dot(mul(slice_rot, gbuffer.normal), float3(0, 0, -1)));
 
     //if (uv.x > 0.5)
     {
-        out_tex[px] += float4(irradiance * lerp(gbuffer.albedo, 0.0, gbuffer.metalness), 0);
+        //out_tex[px] += float4(irradiance * lerp(gbuffer.albedo, 0.0, gbuffer.metalness), 0);
     }
 
-    //out_tex[px] = float4(irradiance, 1);
+    out_tex[px] = float4(irradiance, 1);
+
+#endif
 }

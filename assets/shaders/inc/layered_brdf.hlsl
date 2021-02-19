@@ -1,6 +1,8 @@
 #include "gbuffer.hlsl"
 #include "color.hlsl"
 
+#define LAYERED_BRDF_FORCE_DIFFUSE_ONLY 0
+
 // Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo
 // is spread between the specular and diffuse layers. Scaling both the specular
 // and diffuse albedo by a constant can recover this energy.
@@ -57,16 +59,25 @@ struct LayeredBrdf {
     }
 
     float3 evaluate(float3 wo, float3 wi) {
-        const BrdfValue spec = specular_brdf.evaluate(wo, wi);
         const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
+
+        #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
+            return diff.value();
+        #endif
+
+        const BrdfValue spec = specular_brdf.evaluate(wo, wi);
 
         return (
             spec.value() +// * energy_preservation.preintegrated_reflection_mult +
             diff.value() * spec.transmission_fraction
-        ) * max(0.0, wi.z);
+        );// * max(0.0, wi.z);
     }
 
     BrdfSample sample(float3 wo, float3 urand) {
+        #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
+            return diffuse_brdf.sample(wo, urand.xy);
+        #endif
+
         BrdfSample brdf_sample;
 
         // We should transmit with throughput equal to `brdf_sample.transmission_fraction`,

@@ -31,7 +31,7 @@ impl Default for CsgiRenderer {
 
 pub struct CsgiVolume {
     pub cascade0: rg::Handle<Image>,
-    volume_centers: VolumeCenters,
+    pub volume_centers: VolumeCenters,
 }
 
 impl CsgiRenderer {
@@ -46,12 +46,22 @@ impl CsgiRenderer {
             .get_or_create_temporal(
                 "csgi.cascade0",
                 ImageDesc::new_3d(
-                    vk::Format::B10G11R11_UFLOAT_PACK32,
+                    //vk::Format::B10G11R11_UFLOAT_PACK32,
+                    vk::Format::R16G16B16A16_SFLOAT,
                     [VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             )
             .unwrap();
+
+        let mut cascade0_suppressed = rg.create(
+            ImageDesc::new_3d(
+                //vk::Format::B10G11R11_UFLOAT_PACK32,
+                vk::Format::R16G16B16A16_SFLOAT,
+                [VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
+            )
+            .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        );
 
         let mut cascade0_integr = rg
             .get_or_create_temporal(
@@ -113,11 +123,12 @@ impl CsgiRenderer {
         )
         .read(&cascade0_integr)
         .write(&mut cascade0)
+        .write(&mut cascade0_suppressed)
         .constants(CSGI_SLICE_DIRS)
         .dispatch([VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, 1]);
 
         CsgiVolume {
-            cascade0,
+            cascade0: cascade0_suppressed,
             volume_centers,
         }
     }
@@ -175,8 +186,8 @@ impl CsgiVolume {
     }
 }
 
-const SLICE_COUNT: usize = 16;
-const CSGI_SLICE_DIRS: [[f32; 4]; SLICE_COUNT] = [
+pub const SLICE_COUNT: usize = 16;
+pub const CSGI_SLICE_DIRS: [[f32; 4]; SLICE_COUNT] = [
     [0.85225946, 0.36958295, 0.37021905, 0.0],
     [0.263413, 0.9570777, 0.120897286, 0.0],
     [0.5356124, -0.75899905, -0.3701891, 0.0],

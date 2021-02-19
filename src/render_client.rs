@@ -571,12 +571,20 @@ impl VickiRenderClient {
 
         let lit = surfel_gi.debug_out;
 
+        let csgi_volume = self.csgi.render(
+            frame_state.camera_matrices.eye_position(),
+            rg,
+            self.bindless_descriptor_set,
+            &tlas,
+        );
+
         let rtr = self.rtr.render(
             rg,
             &gbuffer_depth,
             &reprojection_map,
             self.bindless_descriptor_set,
             &tlas,
+            &csgi_volume,
         );
 
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(
@@ -594,15 +602,10 @@ impl VickiRenderClient {
             &lit,
             &mut accum_img,
             &mut debug_out_tex,
+            &csgi_volume,
             self.bindless_descriptor_set,
         );
 
-        let csgi_volume = self.csgi.render(
-            frame_state.camera_matrices.eye_position(),
-            rg,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
         csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
         let mut post = crate::render_passes::normalize_accum(

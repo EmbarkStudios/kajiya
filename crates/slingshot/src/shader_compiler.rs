@@ -127,11 +127,9 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
         };
 
         let blob = smol::block_on(
-            crate::file::LoadFile {
-                path: PathBuf::from(&path),
-            }
-            .into_lazy()
-            .eval(&self.ctx),
+            crate::file::LoadFile::new(&path)?
+                .into_lazy()
+                .eval(&self.ctx),
         )
         .map_err(|err| failure::format_err!("{}", err))?;
 

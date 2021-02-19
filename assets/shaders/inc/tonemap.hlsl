@@ -10,8 +10,9 @@ float3 tonemap_curve(float3 v) {
 }
 
 float3 neutral_tonemap(float3 col) {
-    float3x3 ycbr_mat_t = float3x3(.2126, .7152, .0722, -.1146,-.3854, .5, .5,-.4542,-.0458);
-    float3 ycbcr = mul(ycbr_mat_t, col);
+    //float3x3 ycbr_mat_t = float3x3(.2126, .7152, .0722, -.1146,-.3854, .5, .5,-.4542,-.0458);
+    //float3 ycbcr = mul(ycbr_mat_t, col);
+    float3 ycbcr = rgb_to_ycbcr(col);
 
     float chroma = length(ycbcr.yz) * 2.4;
     float bt = tonemap_curve(chroma);

@@ -252,6 +252,9 @@ if (i != -1) {
 }
 
 float3 atmosphere_default(float3 wi, float3 to_light) {
+    //return wi * 0.5 + 0.5;
+    //return 1.0.xxx;
+
     return atmosphere2(
         wi,                 // normalized ray direction
         float3(0,6371e3,0),               // ray origin

@@ -19,12 +19,7 @@ impl LazyWorker for LoadImage {
     type Output = anyhow::Result<RawRgba8Image>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-        let file: Arc<Vec<u8>> = LoadFile {
-            path: self.path.clone(),
-        }
-        .into_lazy()
-        .eval(&ctx)
-        .await?;
+        let file: Arc<Vec<u8>> = LoadFile::new(&self.path)?.into_lazy().eval(&ctx).await?;
 
         let image = image::load_from_memory(file.as_slice())?;
         let image_dimensions = image.dimensions();
