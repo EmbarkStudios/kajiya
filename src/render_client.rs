@@ -531,9 +531,6 @@ impl VickiRenderClient {
             self.ssgi
                 .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
 
-        let mut surfel_gi =
-            crate::renderers::surfel_gi::allocate_surfels(rg, &*bent_normal_tex, &gbuffer_depth);
-
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),
             vk_sync::AccessType::AnyShaderReadOther,
@@ -541,18 +538,11 @@ impl VickiRenderClient {
         let sun_shadow_mask =
             crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
 
-        surfel_gi.trace_irradiance(rg, self.bindless_descriptor_set, &tlas);
-
-        /*let mut lit = crate::render_passes::create_image(
-            rg,
-            ImageDesc::new_2d(
-                vk::Format::R16G16B16A16_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ),
-        );
-        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);*/
-
-        let lit = surfel_gi.debug_out;
+        let mut lit = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            frame_state.window_cfg.dims(),
+        ));
+        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
 
         let csgi_volume = self.csgi.render(
             frame_state.camera_matrices.eye_position(),
