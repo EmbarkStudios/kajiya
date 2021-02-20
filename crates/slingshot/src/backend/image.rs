@@ -132,6 +132,8 @@ pub struct Image {
     pub views: Mutex<HashMap<ImageViewDesc, vk::ImageView>>,
     allocation: gpu_allocator::SubAllocation,
 }
+unsafe impl Send for Image {}
+unsafe impl Sync for Image {}
 
 impl Image {
     pub fn view(&self, device: &Device, desc: &ImageViewDesc) -> vk::ImageView {

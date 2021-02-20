@@ -12,7 +12,10 @@ mod render_passes;
 mod renderers;
 mod viewport;
 
-use asset::{image::LoadImage, mesh::*};
+use asset::{
+    image::{CreatePlaceholderImage, LoadImage, RawRgba8Image},
+    mesh::*,
+};
 use camera::*;
 use image_cache::*;
 use imgui::im_str;
@@ -25,12 +28,20 @@ use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use render_client::{BindlessImageHandle, RenderMode};
 use slingshot::*;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+    sync::Arc,
+};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
 use std::path::PathBuf;
 use structopt::StructOpt;
+
+use async_channel::unbounded;
+use async_executor::Executor;
+use easy_parallel::Parallel;
 
 pub struct FrameState {
     pub camera_matrices: CameraMatrices,
@@ -90,23 +101,26 @@ fn try_main() -> anyhow::Result<()> {
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
-    {
-        let blue_noise_img = LoadImage {
-            path: "assets/images/bluenoise/256_256/LDR_RGBA_0.png".into(),
-        }
-        .into_lazy();
-        let blue_noise_img = smol::block_on(blue_noise_img.eval(&lazy_cache)).unwrap();
-
-        render_client.add_image(
-            blue_noise_img.as_ref(),
-            TexParams {
-                gamma: TexGamma::Linear,
-            },
-        );
-    }
-
     let mut renderer = renderer::Renderer::new(render_backend)?;
     let mut last_error_text = None;
+
+    {
+        let image = LoadImage::new("assets/images/bluenoise/256_256/LDR_RGBA_0.png")?.into_lazy();
+        let blue_noise_img = smol::block_on(
+            UploadGpuImage {
+                image,
+                params: TexParams {
+                    gamma: TexGamma::Linear,
+                },
+                device: renderer.device().clone(),
+            }
+            .into_lazy()
+            .eval(&lazy_cache),
+        )
+        .unwrap();
+
+        render_client.add_image(blue_noise_img);
+    }
 
     #[allow(unused_mut)]
     let mut camera =
@@ -118,36 +132,6 @@ fn try_main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
-    /*let mesh = LoadGltfScene {
-        path: "assets/meshes2/336_lrm/scene.gltf".into(),
-        scale: 0.03,
-    }
-    .into_lazy();*/
-
-    /*let mesh = LoadGltfScene {
-        path: "assets/meshes/mireys_cute_gas_stove/scene.gltf".into(),
-        scale: 0.03,
-    }
-    .into_lazy();*/
-
-    /*let mesh = LoadGltfScene {
-        path: "assets/meshes/sploosh-o-matic/scene.gltf".into(),
-        scale: 0.03,
-    }
-    .into_lazy();*/
-
-    /*let mesh = LoadGltfScene {
-        path: "assets/meshes3/gas_stations_fixed/scene.gltf".into(),
-        scale: 0.02,
-    }
-    .into_lazy();*/
-
-    /*let mesh = LoadGltfScene {
-        path: "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf".into(),
-        scale: 0.003,
-    }
-    .into_lazy();*/
-
     let mesh = LoadGltfScene {
         path: opt.scene,
         scale: opt.scale,
@@ -156,27 +140,81 @@ fn try_main() -> anyhow::Result<()> {
 
     let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
 
-    let mut image_cache = ImageCache::new(lazy_cache.clone());
-    let mut cached_image_to_bindless_handle: HashMap<usize, BindlessImageHandle> =
+    let mut material_map_to_bindless_handlee: HashMap<MeshMaterialMap, BindlessImageHandle> =
         Default::default();
+
+    let mesh_images: Vec<Lazy<Image>> = mesh
+        .maps
+        .iter()
+        .map(|map| {
+            let (image, params) = match map {
+                MeshMaterialMap::Asset { path, params } => {
+                    (LoadImage::new(&path).unwrap().into_lazy(), *params)
+                }
+                MeshMaterialMap::Placeholder(values) => (
+                    CreatePlaceholderImage::new(*values).into_lazy(),
+                    TexParams {
+                        gamma: crate::asset::mesh::TexGamma::Linear,
+                    },
+                ),
+            };
+
+            UploadGpuImage {
+                image,
+                params,
+                device: renderer.device().clone(),
+            }
+            .into_lazy()
+        })
+        .collect();
+
+    /*{
+        let ex = Executor::new();
+        let (signal, shutdown) = unbounded::<()>();
+
+        Parallel::new()
+            // Run four executor threads.
+            .each(0..16, |_| {
+                futures_lite::future::block_on(ex.run(shutdown.recv()))
+            })
+            // Run the main future on the current thread.
+            .finish(|| {
+                futures_lite::future::block_on(async {
+                    let stream = stream::iter(mesh_images.into_iter()).then(|img| {
+                        ex.spawn({
+                            let lazy_cache = lazy_cache.clone();
+                            async move {
+                                loop {}
+                                img.eval(&lazy_cache).await
+                            }
+                        })
+                    });
+                    let images = stream.collect::<Vec<_>>().await;
+                    drop(signal);
+                })
+            });
+    }*/
+
+    let loaded_images = mesh_images
+        .iter()
+        .cloned()
+        .map(|img| smol::spawn(img.eval(&lazy_cache)));
+    let loaded_images = smol::block_on(futures::future::try_join_all(loaded_images))
+        .expect("Failed to load mesh images");
 
     let mut mesh = pack_triangle_mesh(&mesh);
     {
         let mesh_map_gpu_ids: Vec<BindlessImageHandle> = mesh
             .maps
             .iter()
-            .map(|map| {
-                let img = image_cache.load_mesh_map(map).unwrap();
-                match img {
-                    ImageCacheResponse::Hit { id } => cached_image_to_bindless_handle[&id],
-                    ImageCacheResponse::Miss { id, image, params } => {
-                        let handle = render_client.add_image(image.as_ref(), params);
-                        cached_image_to_bindless_handle.insert(id, handle);
-                        handle
-                    }
-                }
+            .zip(loaded_images.iter())
+            .map(|(map, img)| {
+                *material_map_to_bindless_handlee
+                    .entry(map.clone())
+                    .or_insert_with(|| render_client.add_image(img.clone()))
             })
             .collect();
+
         for mat in &mut mesh.materials {
             for m in &mut mat.maps {
                 *m = mesh_map_gpu_ids[*m as usize].0;

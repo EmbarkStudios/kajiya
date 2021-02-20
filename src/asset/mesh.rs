@@ -21,18 +21,18 @@ use std::{
 };
 use turbosloth::*;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum TexGamma {
     Linear,
     Srgb,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct TexParams {
     pub gamma: TexGamma,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum MeshMaterialMap {
     Asset { path: PathBuf, params: TexParams },
     Placeholder([u8; 4]),

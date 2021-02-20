@@ -73,7 +73,7 @@ pub struct VickiRenderClient {
     vertex_buffer: Mutex<Arc<Buffer>>,
     vertex_buffer_written: usize,
     bindless_descriptor_set: vk::DescriptorSet,
-    bindless_images: Vec<Image>,
+    bindless_images: Vec<Arc<Image>>,
     image_luts: Vec<ImageLut>,
     next_bindless_image_id: usize,
     pub render_mode: RenderMode,
@@ -379,24 +379,7 @@ impl VickiRenderClient {
         assert_eq!(handle.0 as usize, id);
     }
 
-    pub fn add_image(&mut self, src: &RawRgba8Image, params: TexParams) -> BindlessImageHandle {
-        let format = match params.gamma {
-            crate::asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
-            crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
-        };
-
-        let image = self
-            .device
-            .create_image(
-                ImageDesc::new_2d(format, src.dimensions).usage(vk::ImageUsageFlags::SAMPLED),
-                Some(ImageSubResourceData {
-                    data: &src.data,
-                    row_pitch: src.dimensions[0] as usize * 4,
-                    slice_pitch: 0,
-                }),
-            )
-            .unwrap();
-
+    pub fn add_image(&mut self, image: Arc<Image>) -> BindlessImageHandle {
         let handle = self
             .add_bindless_image_view(image.view(self.device.as_ref(), &ImageViewDesc::default()));
         self.bindless_images.push(image);

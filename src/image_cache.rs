@@ -1,9 +1,10 @@
-use std::{collections::HashMap, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, hash::Hash, path::PathBuf, sync::Arc};
 
 use crate::asset::{
     image::{LoadImage, RawRgba8Image},
     mesh::{MeshMaterialMap, TexParams},
 };
+use slingshot::{ash::vk, Device, Image, ImageDesc, ImageSubResourceData};
 use turbosloth::*;
 
 pub enum ImageCacheResponse {
@@ -12,7 +13,7 @@ pub enum ImageCacheResponse {
     },
     Miss {
         id: usize,
-        image: Arc<RawRgba8Image>,
+        image: Lazy<RawRgba8Image>,
         params: TexParams,
     },
 }
@@ -39,12 +40,11 @@ impl ImageCache {
         }
     }
 
-    pub fn load_mesh_map(&mut self, map: &MeshMaterialMap) -> anyhow::Result<ImageCacheResponse> {
+    /* pub fn load_mesh_map(&mut self, map: &MeshMaterialMap) -> anyhow::Result<ImageCacheResponse> {
         match map {
             MeshMaterialMap::Asset { path, params } => {
                 if !self.loaded_images.contains_key(path) {
-                    let lazy_handle = LoadImage { path: path.clone() }.into_lazy();
-                    let image = smol::block_on(lazy_handle.eval(&self.lazy_cache))?;
+                    let image = LoadImage { path: path.clone() }.into_lazy();
 
                     let id = self.next_id;
                     self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
@@ -52,7 +52,7 @@ impl ImageCache {
                     self.loaded_images.insert(
                         path.clone(),
                         CachedImage {
-                            lazy_handle,
+                            lazy_handle: image,
                             //image,
                             id,
                         },
@@ -70,7 +70,8 @@ impl ImageCache {
                 }
             }
             MeshMaterialMap::Placeholder(init_val) => {
-                if !self.placeholder_images.contains_key(init_val) {
+                todo!()
+                /* if !self.placeholder_images.contains_key(init_val) {
                     let image = Arc::new(RawRgba8Image {
                         data: init_val.to_vec(),
                         dimensions: [1, 1],
@@ -92,8 +93,45 @@ impl ImageCache {
                     Ok(ImageCacheResponse::Hit {
                         id: self.placeholder_images[init_val],
                     })
-                }
+                } */
             }
         }
+    } */
+}
+
+#[derive(Clone)]
+pub struct UploadGpuImage {
+    pub image: Lazy<RawRgba8Image>,
+    pub params: TexParams,
+    pub device: Arc<Device>,
+}
+
+impl Hash for UploadGpuImage {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.image.hash(state);
+        self.params.hash(state);
+    }
+}
+
+#[async_trait]
+impl LazyWorker for UploadGpuImage {
+    type Output = anyhow::Result<Image>;
+
+    async fn run(self, ctx: RunContext) -> Self::Output {
+        let src = self.image.eval(&ctx).await?;
+
+        let format = match self.params.gamma {
+            crate::asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
+            crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
+        };
+
+        self.device.create_image(
+            ImageDesc::new_2d(format, src.dimensions).usage(vk::ImageUsageFlags::SAMPLED),
+            Some(ImageSubResourceData {
+                data: &src.data,
+                row_pitch: src.dimensions[0] as usize * 4,
+                slice_pitch: 0,
+            }),
+        )
     }
 }

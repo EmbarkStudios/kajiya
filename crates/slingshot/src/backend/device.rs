@@ -139,6 +139,8 @@ pub struct Device {
     frame0: Mutex<Arc<DeviceFrame>>,
     frame1: Mutex<Arc<DeviceFrame>>,
 }
+unsafe impl Send for Device {}
+unsafe impl Sync for Device {}
 
 impl Device {
     fn extension_names(pdevice: &Arc<PhysicalDevice>) -> Vec<*const i8> {

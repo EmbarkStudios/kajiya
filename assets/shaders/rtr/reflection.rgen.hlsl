@@ -14,7 +14,7 @@
 static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 #define USE_TEMPORAL_JITTER 1
-#define USE_HEAVY_BIAS 0
+#define USE_HEAVY_BIAS 1
 #define USE_CSGI 1
 
 // Strongly reduces roughness of secondary hits
