@@ -229,16 +229,71 @@ impl PipelineCache {
             .unwrap()
     }
 
-    pub fn prepare_frame(
-        &mut self,
-        device: &Arc<crate::backend::device::Device>,
-    ) -> anyhow::Result<()> {
+    fn invalidate_stale_pipelines(&mut self) {
         for entry in self.compute_entries.values_mut() {
             if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
                 // TODO: release
                 entry.pipeline = None;
             }
+        }
 
+        for entry in self.raster_entries.values_mut() {
+            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
+                // TODO: release
+                entry.pipeline = None;
+            }
+        }
+
+        for entry in self.rt_entries.values_mut() {
+            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
+                // TODO: release
+                entry.pipeline = None;
+            }
+        }
+    }
+
+    // TODO: create pipelines right away too
+    pub fn parallel_compile_shaders(&mut self) -> anyhow::Result<()> {
+        let compute = self.compute_entries.values().filter_map(|entry| {
+            entry.pipeline.is_none().then(|| {
+                let task = entry.lazy_handle.eval(&self.lazy_cache);
+                smol::spawn(async move { task.await.map(|_| ()) })
+            })
+        });
+
+        let raster = self.raster_entries.values().filter_map(|entry| {
+            entry.pipeline.is_none().then(|| {
+                let task = entry.lazy_handle.eval(&self.lazy_cache);
+                smol::spawn(async move { task.await.map(|_| ()) })
+            })
+        });
+
+        let rt = self.rt_entries.values().filter_map(|entry| {
+            entry.pipeline.is_none().then(|| {
+                let task = entry.lazy_handle.eval(&self.lazy_cache);
+                smol::spawn(async move { task.await.map(|_| ()) })
+            })
+        });
+
+        let shaders: Vec<_> = compute.chain(raster).chain(rt).collect();
+
+        if !shaders.is_empty() {
+            println!("Building shaders in parallel");
+            let _ = smol::block_on(futures::future::try_join_all(shaders))?;
+            println!("Shaders compiled!");
+        }
+
+        Ok(())
+    }
+
+    pub fn prepare_frame(
+        &mut self,
+        device: &Arc<crate::backend::device::Device>,
+    ) -> anyhow::Result<()> {
+        self.invalidate_stale_pipelines();
+        self.parallel_compile_shaders()?;
+
+        for entry in self.compute_entries.values_mut() {
             if entry.pipeline.is_none() {
                 let compiled_shader = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
 
@@ -250,11 +305,6 @@ impl PipelineCache {
         }
 
         for entry in self.raster_entries.values_mut() {
-            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
-                // TODO: release
-                entry.pipeline = None;
-            }
-
             if entry.pipeline.is_none() {
                 let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
                 assert!(!entry.lazy_handle.is_stale());
@@ -275,11 +325,6 @@ impl PipelineCache {
         }
 
         for entry in self.rt_entries.values_mut() {
-            if entry.pipeline.is_some() && entry.lazy_handle.is_stale() {
-                // TODO: release
-                entry.pipeline = None;
-            }
-
             if entry.pipeline.is_none() {
                 let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
 

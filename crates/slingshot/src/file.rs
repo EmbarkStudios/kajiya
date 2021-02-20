@@ -6,7 +6,7 @@ use turbosloth::*;
 
 lazy_static! {
     static ref FILE_WATCHER: Mutex<Hotwatch> =
-        Mutex::new(Hotwatch::new_with_custom_delay(std::time::Duration::from_millis(200)).unwrap());
+        Mutex::new(Hotwatch::new_with_custom_delay(std::time::Duration::from_millis(100)).unwrap());
 }
 
 #[derive(Clone, Hash)]
@@ -31,8 +31,10 @@ impl LazyWorker for LoadFile {
         FILE_WATCHER
             .lock()
             .unwrap()
-            .watch(self.path.clone(), move |_| {
-                invalidation_trigger();
+            .watch(self.path.clone(), move |event| {
+                if matches!(event, hotwatch::Event::Write(_)) {
+                    invalidation_trigger();
+                }
             })
             .with_context(|| format!("LazyWorker: trying to watch {:?}", self.path))?;
 
