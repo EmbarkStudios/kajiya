@@ -44,14 +44,12 @@ impl PingPongTemporalResource {
 
 pub struct SsgiRenderer {
     ssgi_tex: PingPongTemporalResource,
-    bent_normal_tex: PingPongTemporalResource,
 }
 
 impl Default for SsgiRenderer {
     fn default() -> Self {
         Self {
             ssgi_tex: PingPongTemporalResource::new("ssgi"),
-            bent_normal_tex: PingPongTemporalResource::new("bent_normal"),
         }
     }
 }
@@ -63,19 +61,12 @@ impl SsgiRenderer {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         prev_radiance: &rg::Handle<Image>,
-    ) -> (rg::ReadOnlyHandle<Image>, rg::ReadOnlyHandle<Image>) {
+    ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
         let mut ssgi_tex = rg.create(
-            gbuffer_desc
-                .usage(vk::ImageUsageFlags::empty())
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
-
-        let mut bent_normal_tex = rg.create(
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
@@ -89,7 +80,6 @@ impl SsgiRenderer {
             .read(prev_radiance)
             .read(reprojection_map)
             .write(&mut ssgi_tex)
-            .write(&mut bent_normal_tex)
             .constants((
                 gbuffer_desc.extent_inv_extent_2d(),
                 ssgi_tex.desc().extent_inv_extent_2d(),
@@ -101,18 +91,10 @@ impl SsgiRenderer {
             &ssgi_tex,
             gbuffer_depth,
             reprojection_map,
-            &mut self.bent_normal_tex,
-        );
-
-        let bent_normal_tex = Self::filter_ssgi(
-            rg,
-            &bent_normal_tex,
-            gbuffer_depth,
-            reprojection_map,
             &mut self.ssgi_tex,
         );
 
-        (ssgi_tex, bent_normal_tex)
+        ssgi_tex
     }
 
     fn filter_ssgi(

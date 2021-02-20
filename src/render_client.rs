@@ -527,9 +527,9 @@ impl VickiRenderClient {
         let reprojection_map =
             crate::render_passes::calculate_reprojection_map(rg, &gbuffer_depth.depth);
 
-        let (ssgi_tex, bent_normal_tex) =
-            self.ssgi
-                .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
+        let ssgi_tex = self
+            .ssgi
+            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
 
         let tlas = rg.import(
             self.tlas.as_ref().unwrap().clone(),

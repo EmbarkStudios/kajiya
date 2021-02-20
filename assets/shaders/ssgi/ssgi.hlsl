@@ -12,9 +12,9 @@
 [[vk::binding(3)]] Texture2D<float4> prev_radiance_tex;
 [[vk::binding(4)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
-[[vk::binding(6)]] RWTexture2D<float4> bent_normal_out_tex;
+//[[vk::binding(6)]] RWTexture2D<float4> bent_normal_out_tex;
 
-[[vk::binding(7)]] cbuffer _ {
+[[vk::binding(6)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
 };
@@ -267,11 +267,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     col.rgb = color_accum.rgb;
     col *= slice_contrib_weight;
 
-    //float bent_normal_angle = M_PI / 2;//h1 * 0.5 + h2 * 0.5;
-    float bent_normal_angle = h1p + h2p - n_angle * 2;
+    /*float bent_normal_angle = h1p + h2p - n_angle * 2;
     float3 bent_normal_dir = sin(bent_normal_angle) * cross(slice_normal_vs, normal_vs) + cos(bent_normal_angle) * normal_vs;
-    bent_normal_dir = bent_normal_dir;
+    bent_normal_dir = bent_normal_dir;*/
 
     output_tex[px] = col;
-    bent_normal_out_tex[px] = float4(bent_normal_dir, 0);// / slice_contrib_weight;
+    //bent_normal_out_tex[px] = float4(bent_normal_dir, 0);// / slice_contrib_weight;
 }

@@ -69,7 +69,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //col /= 2;
     //col *= 2;
     //col *= 4;
-    //col *= 8;
+    col *= 8;
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 
