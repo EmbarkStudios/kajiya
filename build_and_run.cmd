@@ -1,7 +1,7 @@
 @echo off
 
 rem cargo run --release -- --scene "assets/meshes3/draft_punk/scene.gltf" --scale 0.1 --width 1920 --height 1080
-rem cargo run --release -- --scene "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf" --scale 0.005 --width 1920 --height 1080
+cargo run --release -- --scene "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf" --scale 0.005 --width 1920 --height 1080
 
 rem cargo run --release -- --scene "assets/meshes2/rm_342/scene.gltf" --scale 0.03 --width 1920 --height 1080
 rem cargo run --release -- --scene "assets/meshes2/336_lrm/scene.gltf" --scale 0.03 --width 1920 --height 1080
@@ -17,7 +17,7 @@ rem cargo run --release -- --scene "assets/meshes3/concept_art_shopping_kid/scen
 rem cargo run --release -- --scene "assets/meshes/cornell_box/scene.gltf" --scale 1.0
 rem  --width 1920 --height 1080
 
-cargo run --release -- --scene "assets/meshes3/sponza/Sponza.gltf" --scale 0.32 --width 1920 --height 1080 --no-vsync
+rem cargo run --release -- --scene "assets/meshes3/sponza/Sponza.gltf" --scale 0.32 --width 1920 --height 1080
 
 rem cargo run --release -- --scene "assets/meshes/pica_pica_-_mini_diorama_01/scene.gltf" --scale 0.1 --width 1920 --height 1080
 rem cargo run --release -- --scene "assets/meshes/RpgPackLite/RpgPackLite.gltf" --scale 0.2 --width 1920 --height 1080

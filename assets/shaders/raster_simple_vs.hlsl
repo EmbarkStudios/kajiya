@@ -8,6 +8,8 @@ struct VsOut {
     [[vk::location(1)]] float2 uv: TEXCOORD1;
     [[vk::location(2)]] float3 normal: TEXCOORD2;
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
+    [[vk::location(4)]] float3 tangent: TEXCOORD4;
+    [[vk::location(5)]] float3 bitangent: TEXCOORD5;
     //[[vk::location(4)]] float3 pos: TEXCOORD4;
 };
 
@@ -26,6 +28,11 @@ VsOut main(uint vid: SV_VertexID) {
             ? asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_aux_offset))
             : 1.0.xxxx;*/
 
+    float4 v_tangent_packed =
+        mesh.vertex_tangent_offset != 0
+            ? asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_tangent_offset))
+            : float4(1, 0, 0, 1);            
+
     float2 uv = asfloat(vertices.Load2(vid * sizeof(float2) + mesh.vertex_uv_offset));
     uint material_id = vertices.Load(vid * sizeof(uint) + mesh.vertex_mat_offset);
 
@@ -37,6 +44,9 @@ VsOut main(uint vid: SV_VertexID) {
     vsout.uv = uv;
     vsout.normal = v.normal;
     vsout.material_id = material_id;
+    vsout.tangent = v_tangent_packed.xyz;
+    vsout.bitangent = normalize(cross(v.normal, vsout.tangent) * v_tangent_packed.w);
+
     //vsout.pos = vs_pos.xyz / vs_pos.w;
 
     return vsout;

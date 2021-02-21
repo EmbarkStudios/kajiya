@@ -10,6 +10,7 @@ struct Mesh {
     uint vertex_uv_offset;
     uint vertex_mat_offset;
     uint vertex_aux_offset;
+    uint vertex_tangent_offset;
     uint mat_data_offset;
     uint index_offset;
 };

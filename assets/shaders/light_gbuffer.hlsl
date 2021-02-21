@@ -166,9 +166,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
     
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
     //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
+    //debug_out = pow((gbuffer.normal) * 0.5 + 0.5, 2);
     //debug_out = bent_normal_dir * 0.5 + 0.5;
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
     //debug_out = base_light_tex[px].xyz;
+
+    //debug_out = gi_irradiance;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

@@ -54,6 +54,8 @@ struct GpuMesh {
     vertex_uv_offset: u32,
     vertex_mat_offset: u32,
     vertex_aux_offset: u32,
+    vertex_tangent_offset: u32,
+
     mat_data_offset: u32,
     index_offset: u32,
 }
@@ -404,6 +406,7 @@ impl VickiRenderClient {
         let vertex_uv_offset = buffer_builder.append(&mesh.uvs) as _;
         let vertex_mat_offset = buffer_builder.append(&mesh.material_ids) as _;
         let vertex_aux_offset = buffer_builder.append(&mesh.colors) as _;
+        let vertex_tangent_offset = buffer_builder.append(&mesh.tangents) as _;
         let mat_data_offset = buffer_builder.append(&mesh.materials) as _;
 
         let mesh_buffer_dst = unsafe {
@@ -446,6 +449,7 @@ impl VickiRenderClient {
             vertex_uv_offset,
             vertex_mat_offset,
             vertex_aux_offset,
+            vertex_tangent_offset,
             mat_data_offset,
             index_offset: vertex_index_offset,
         };
