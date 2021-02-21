@@ -278,9 +278,7 @@ impl PipelineCache {
         let shaders: Vec<_> = compute.chain(raster).chain(rt).collect();
 
         if !shaders.is_empty() {
-            println!("Building shaders in parallel");
             let _ = smol::block_on(futures::future::try_join_all(shaders))?;
-            println!("Shaders compiled!");
         }
 
         Ok(())

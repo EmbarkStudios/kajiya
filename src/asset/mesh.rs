@@ -30,6 +30,7 @@ pub enum TexGamma {
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct TexParams {
     pub gamma: TexGamma,
+    pub use_mips: bool,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -98,6 +99,7 @@ fn load_gltf_material(
             path: make_asset_path(path),
             params: TexParams {
                 gamma: TexGamma::Linear,
+                use_mips: true,
             },
         }
     };
@@ -111,6 +113,7 @@ fn load_gltf_material(
                     path: make_asset_path(path),
                     params: TexParams {
                         gamma: TexGamma::Srgb,
+                        use_mips: true,
                     },
                 }
             })

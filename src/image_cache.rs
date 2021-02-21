@@ -1,103 +1,9 @@
-use std::{collections::HashMap, hash::Hash, path::PathBuf, sync::Arc};
+use std::{hash::Hash, sync::Arc};
 
-use crate::asset::{
-    image::{LoadImage, RawRgba8Image},
-    mesh::{MeshMaterialMap, TexParams},
-};
+use crate::asset::{image::RawRgba8Image, mesh::TexParams};
+use image::{imageops::FilterType, DynamicImage, GenericImageView};
 use slingshot::{ash::vk, Device, Image, ImageDesc, ImageSubResourceData};
 use turbosloth::*;
-
-pub enum ImageCacheResponse {
-    Hit {
-        id: usize,
-    },
-    Miss {
-        id: usize,
-        image: Lazy<RawRgba8Image>,
-        params: TexParams,
-    },
-}
-struct CachedImage {
-    #[allow(dead_code)] // Stored to keep the lifetime
-    lazy_handle: Lazy<RawRgba8Image>,
-    id: usize,
-}
-
-pub struct ImageCache {
-    lazy_cache: Arc<LazyCache>,
-    loaded_images: HashMap<PathBuf, CachedImage>,
-    placeholder_images: HashMap<[u8; 4], usize>,
-    next_id: usize,
-}
-
-impl ImageCache {
-    pub fn new(lazy_cache: Arc<LazyCache>) -> Self {
-        Self {
-            lazy_cache,
-            loaded_images: Default::default(),
-            placeholder_images: Default::default(),
-            next_id: 0,
-        }
-    }
-
-    /* pub fn load_mesh_map(&mut self, map: &MeshMaterialMap) -> anyhow::Result<ImageCacheResponse> {
-        match map {
-            MeshMaterialMap::Asset { path, params } => {
-                if !self.loaded_images.contains_key(path) {
-                    let image = LoadImage { path: path.clone() }.into_lazy();
-
-                    let id = self.next_id;
-                    self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
-
-                    self.loaded_images.insert(
-                        path.clone(),
-                        CachedImage {
-                            lazy_handle: image,
-                            //image,
-                            id,
-                        },
-                    );
-
-                    Ok(ImageCacheResponse::Miss {
-                        id,
-                        image,
-                        params: *params,
-                    })
-                } else {
-                    Ok(ImageCacheResponse::Hit {
-                        id: self.loaded_images[path].id,
-                    })
-                }
-            }
-            MeshMaterialMap::Placeholder(init_val) => {
-                todo!()
-                /* if !self.placeholder_images.contains_key(init_val) {
-                    let image = Arc::new(RawRgba8Image {
-                        data: init_val.to_vec(),
-                        dimensions: [1, 1],
-                    });
-
-                    let id = self.next_id;
-                    self.next_id = self.next_id.checked_add(1).expect("Ran out of image IDs");
-
-                    self.placeholder_images.insert(*init_val, id);
-
-                    Ok(ImageCacheResponse::Miss {
-                        id,
-                        image,
-                        params: TexParams {
-                            gamma: crate::asset::mesh::TexGamma::Linear,
-                        },
-                    })
-                } else {
-                    Ok(ImageCacheResponse::Hit {
-                        id: self.placeholder_images[init_val],
-                    })
-                } */
-            }
-        }
-    } */
-}
 
 #[derive(Clone)]
 pub struct UploadGpuImage {
@@ -125,13 +31,57 @@ impl LazyWorker for UploadGpuImage {
             crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
         };
 
-        self.device.create_image(
-            ImageDesc::new_2d(format, src.dimensions).usage(vk::ImageUsageFlags::SAMPLED),
-            Some(ImageSubResourceData {
-                data: &src.data,
-                row_pitch: src.dimensions[0] as usize * 4,
-                slice_pitch: 0,
-            }),
-        )
+        let mut desc =
+            ImageDesc::new_2d(format, src.dimensions).usage(vk::ImageUsageFlags::SAMPLED);
+
+        let mut initial_data = vec![ImageSubResourceData {
+            data: &src.data,
+            row_pitch: src.dimensions[0] as usize * 4,
+            slice_pitch: 0,
+        }];
+        let mut mip_levels_data = vec![];
+
+        if self.params.use_mips {
+            desc = desc.all_mip_levels();
+
+            let mut image = image::DynamicImage::ImageRgba8(
+                image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
+                    src.dimensions[0],
+                    src.dimensions[1],
+                    src.data.clone(),
+                )
+                .unwrap(),
+            );
+
+            let downsample = |image: &DynamicImage| {
+                // TODO: gamma-correct resize
+                image.resize_exact(
+                    (image.dimensions().0 / 2).max(1),
+                    (image.dimensions().1 / 2).max(1),
+                    FilterType::Lanczos3,
+                )
+            };
+
+            image = downsample(&image);
+
+            for _ in 1..desc.mip_levels {
+                let next = downsample(&image);
+                let mip = std::mem::replace(&mut image, next);
+                mip_levels_data.push(mip.into_rgba8().into_raw());
+            }
+
+            initial_data.extend(
+                mip_levels_data
+                    .iter()
+                    .enumerate()
+                    .map(|(level_less_1, mip)| ImageSubResourceData {
+                        data: mip.as_slice(),
+                        row_pitch: ((src.dimensions[0] as usize * 4) >> (level_less_1 + 1)).max(1),
+                        slice_pitch: 0,
+                    }),
+            );
+        }
+
+        self.device.create_image(desc, initial_data)
     }
 }

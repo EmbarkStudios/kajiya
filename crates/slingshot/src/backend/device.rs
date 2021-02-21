@@ -363,24 +363,29 @@ impl Device {
 
         let mut result = HashMap::new();
 
-        for texel_filter in &texel_filters {
-            for mipmap_mode in &mipmap_modes {
-                for address_mode in &address_modes {
+        for &texel_filter in &texel_filters {
+            for &mipmap_mode in &mipmap_modes {
+                for &address_mode in &address_modes {
+                    let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
+
                     result.insert(
                         SamplerDesc {
-                            texel_filter: *texel_filter,
-                            mipmap_mode: *mipmap_mode,
-                            address_modes: *address_mode,
+                            texel_filter: texel_filter,
+                            mipmap_mode: mipmap_mode,
+                            address_modes: address_mode,
                         },
                         unsafe {
                             device.create_sampler(
                                 &vk::SamplerCreateInfo::builder()
-                                    .mag_filter(*texel_filter)
-                                    .min_filter(*texel_filter)
-                                    .mipmap_mode(*mipmap_mode)
-                                    .address_mode_u(*address_mode)
-                                    .address_mode_v(*address_mode)
-                                    .address_mode_w(*address_mode)
+                                    .mag_filter(texel_filter)
+                                    .min_filter(texel_filter)
+                                    .mipmap_mode(mipmap_mode)
+                                    .address_mode_u(address_mode)
+                                    .address_mode_v(address_mode)
+                                    .address_mode_w(address_mode)
+                                    .max_lod(vk::LOD_CLAMP_NONE)
+                                    .max_anisotropy(16.0)
+                                    .anisotropy_enable(anisotropy_enable)
                                     .build(),
                                 None,
                             )

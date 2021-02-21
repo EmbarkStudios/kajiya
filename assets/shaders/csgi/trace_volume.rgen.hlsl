@@ -105,8 +105,10 @@ void main() {
                 ray_length_int
             );
 
-            //const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray);
-            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
+            //const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray, 1.0);
+
+            // TODO: cone spread angle (or use a different rchit shader without cones)
+            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1.0);
             if (primary_hit.is_hit) {
                 float3 total_radiance = 0.0.xxx;
                 {

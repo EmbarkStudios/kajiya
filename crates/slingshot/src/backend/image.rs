@@ -30,6 +30,11 @@ pub struct ImageDesc {
     pub array_elements: u32,
 }
 
+fn mip_count_1d(extent: u32) -> u16 {
+    // floor(log2(extent)) + 1
+    (32 - extent.leading_zeros()) as u16
+}
+
 #[allow(dead_code)]
 impl ImageDesc {
     pub fn new(format: vk::Format, image_type: ImageType, extent: [u32; 3]) -> Self {
@@ -86,6 +91,12 @@ impl ImageDesc {
 
     pub fn mip_levels(mut self, mip_levels: u16) -> Self {
         self.mip_levels = mip_levels;
+        self
+    }
+
+    pub fn all_mip_levels(mut self) -> Self {
+        self.mip_levels = mip_count_1d(self.extent[0])
+            .max(mip_count_1d(self.extent[1]).max(mip_count_1d(self.extent[2])));
         self
     }
 
@@ -180,12 +191,11 @@ impl Device {
     pub fn create_image(
         &self,
         desc: ImageDesc,
-        initial_data: Option<ImageSubResourceData>,
+        initial_data: Vec<ImageSubResourceData>,
     ) -> Result<Image> {
         log::info!("Creating an image: {:?}", desc);
 
-        let desc = desc.into();
-        let create_info = get_image_create_info(&desc, initial_data.is_some());
+        let create_info = get_image_create_info(&desc, !initial_data.is_empty());
 
         /*let allocation_info = vk_mem::AllocationCreateInfo {
             usage: vk_mem::MemoryUsage::GpuOnly,
@@ -220,58 +230,51 @@ impl Device {
                 .expect("bind_image_memory")
         };
 
-        if let Some(initial_data) = initial_data {
+        if !initial_data.is_empty() {
+            let total_initial_data_bytes = initial_data.iter().map(|d| d.data.len()).sum();
+
             let mut image_buffer = self
                 .create_buffer_impl(
                     super::buffer::BufferDesc {
-                        size: std::mem::size_of::<u8>() * initial_data.data.len(),
+                        size: total_initial_data_bytes,
                         usage: vk::BufferUsageFlags::TRANSFER_SRC,
                         mapped: true,
                     },
                     Default::default(),
                     MemoryLocation::CpuToGpu,
                 )
-                .expect("allocating a image upload buffer");
+                .expect("allocating an image upload buffer");
 
-            image_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.data.len()]
-                .copy_from_slice(initial_data.data);
+            let mapped_slice_mut = image_buffer.allocation.mapped_slice_mut().unwrap();
+            let mut offset = 0;
 
-            /*let image_buffer_info = vk::BufferCreateInfo {
-                size: (std::mem::size_of::<u8>() * initial_data.data.len()) as u64,
-                usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                sharing_mode: vk::SharingMode::EXCLUSIVE,
-                ..Default::default()
-            };
+            let buffer_copy_regions = initial_data
+                .into_iter()
+                .enumerate()
+                .map(|(level, sub)| {
+                    mapped_slice_mut[offset..offset + sub.data.len()].copy_from_slice(sub.data);
 
-            let buffer_mem_info = vk_mem::AllocationCreateInfo {
-                usage: vk_mem::MemoryUsage::CpuToGpu,
-                ..Default::default()
-            };
+                    let region = vk::BufferImageCopy::builder()
+                        .buffer_offset(offset as _)
+                        .image_subresource(
+                            vk::ImageSubresourceLayers::builder()
+                                .aspect_mask(vk::ImageAspectFlags::COLOR)
+                                .layer_count(1)
+                                .mip_level(level as _)
+                                .build(),
+                        )
+                        .image_extent(vk::Extent3D {
+                            width: (desc.extent[0] >> level).max(1),
+                            height: (desc.extent[1] >> level).max(1),
+                            depth: (desc.extent[2] >> level).max(1),
+                        });
 
-            let (image_buffer, buffer_allocation, buffer_allocation_info) = self
-                .global_allocator
-                .create_buffer(&image_buffer_info, &buffer_mem_info)
-                .expect("vma::create_buffer");
+                    offset += sub.data.len();
+                    region.build()
+                })
+                .collect::<Vec<_>>();
 
-            unsafe {
-                let image_ptr = self
-                    .global_allocator
-                    .map_memory(&buffer_allocation)
-                    .expect("mapping an image upload buffer failed")
-                    as *mut std::ffi::c_void;
-
-                let mut image_slice = Align::new(
-                    image_ptr,
-                    std::mem::align_of::<u8>() as u64,
-                    buffer_allocation_info.get_size() as u64,
-                );
-
-                image_slice.copy_from_slice(initial_data.data);
-
-                self.global_allocator
-                    .unmap_memory(&buffer_allocation)
-                    .expect("unmap_memory");
-            }*/
+            // println!("regions: {:#?}", buffer_copy_regions);
 
             self.with_setup_cb(|cb| unsafe {
                 super::barrier::record_image_barrier(
@@ -286,25 +289,12 @@ impl Device {
                     .with_discard(true),
                 );
 
-                let buffer_copy_regions = vk::BufferImageCopy::builder()
-                    .image_subresource(
-                        vk::ImageSubresourceLayers::builder()
-                            .aspect_mask(vk::ImageAspectFlags::COLOR)
-                            .layer_count(1)
-                            .build(),
-                    )
-                    .image_extent(vk::Extent3D {
-                        width: desc.extent[0],
-                        height: desc.extent[1],
-                        depth: desc.extent[2],
-                    });
-
                 self.raw.cmd_copy_buffer_to_image(
                     cb,
                     image_buffer.raw,
                     image,
                     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[buffer_copy_regions.build()],
+                    &buffer_copy_regions,
                 );
 
                 super::barrier::record_image_barrier(
@@ -357,7 +347,7 @@ impl Device {
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: desc.aspect_mask,
                 base_mip_level: 0,
-                level_count: 1,
+                level_count: image_desc.mip_levels as u32,
                 base_array_layer: 0,
                 layer_count: match image_desc.image_type {
                     ImageType::Cube | ImageType::CubeArray => 6,

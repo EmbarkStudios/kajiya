@@ -119,7 +119,7 @@ void main() {
 
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
-            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
+            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1.0);
             if (primary_hit.is_hit) {
                 const float3 to_light_norm = SUN_DIRECTION;
                 

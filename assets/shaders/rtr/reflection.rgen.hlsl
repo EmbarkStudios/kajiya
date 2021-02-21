@@ -172,7 +172,9 @@ void main() {
 
         out1_tex[px] = float4(outgoing_ray.Direction, clamp(brdf_sample.pdf, 1e-5, 1e5));
 
-        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
+        // TODO: cone spread angle
+        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1.0);
+
         if (primary_hit.is_hit) {
             float3 total_radiance = 0.0.xxx;
             {

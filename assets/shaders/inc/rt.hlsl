@@ -7,10 +7,12 @@
 struct GbufferRayPayload {
     GbufferDataPacked gbuffer_packed;
     float t;
+    float cone_width;
 
     static GbufferRayPayload new_miss() {
         GbufferRayPayload res;
         res.t = FLT_MAX;
+        res.cone_width = 0;
         return res;
     }
 
@@ -73,9 +75,12 @@ struct GbufferPathVertex {
 
 GbufferPathVertex rt_trace_gbuffer(
     RaytracingAccelerationStructure acceleration_structure,
-    RayDesc ray
+    RayDesc ray,
+    float cone_width
 ) {
     GbufferRayPayload payload = GbufferRayPayload::new_miss();
+    payload.cone_width = cone_width;
+
     TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
 
     if (payload.is_hit()) {
@@ -95,9 +100,12 @@ GbufferPathVertex rt_trace_gbuffer(
 
 GbufferPathVertex rt_trace_gbuffer_nocull(
     RaytracingAccelerationStructure acceleration_structure,
-    RayDesc ray
+    RayDesc ray,
+    float cone_width
 ) {
     GbufferRayPayload payload = GbufferRayPayload::new_miss();
+    payload.cone_width = cone_width;
+    
     TraceRay(acceleration_structure, 0, 0xff, 0, 0, 0, ray, payload);
 
     if (payload.is_hit()) {

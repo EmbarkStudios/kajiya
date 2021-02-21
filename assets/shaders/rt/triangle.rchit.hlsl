@@ -10,9 +10,33 @@ struct RayHitAttrib {
     float2 bary;
 };
 
+float twice_triangle_area(float3 p0, float3 p1, float3 p2) {
+    return length(cross(p1 - p0, p2 - p0));
+}
+
+float twice_uv_area(float2 t0, float2 t1, float2 t2) {
+    return abs((t1.x - t0.x) * (t2.y - t0.y) - (t2.x - t0.x) * (t1.y - t0.y));
+}
+
+float compute_texture_lod(Texture2D tex, float triangle_constant, float3 ray_direction, float3 surf_normal, float cone_width) {
+    uint w, h;
+    tex.GetDimensions(w, h);
+
+    float lambda = triangle_constant;
+    lambda += log2(abs(cone_width));
+    lambda += 0.5 * log2(float(w) * float(h));
+
+    // TODO: This blurs a lot at grazing angles; do aniso.
+    lambda -= log2(abs(dot(normalize(ray_direction), surf_normal)));
+
+    return lambda;
+}
+
+
 [shader("closesthit")]
-void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attrib : SV_IntersectionAttributes) {
+void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib: SV_IntersectionAttributes) {
     float3 hit_point = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();
+    const float hit_dist = length(hit_point - WorldRayOrigin());
 
     float3 barycentrics = float3(1.0 - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
     barycentrics.z += float(meshes[0].vertex_core_offset) * 1e-20;
@@ -32,23 +56,27 @@ void main(inout GbufferRayPayload payload : SV_RayPayload, in RayHitAttrib attri
     Vertex v1 = unpack_vertex(VertexPacked(asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_core_offset))));
     Vertex v2 = unpack_vertex(VertexPacked(asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_core_offset))));
     float3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
-    //float3 normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
+
+    const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
 
     float2 uv0 = asfloat(vertices.Load2(ind.x * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv1 = asfloat(vertices.Load2(ind.y * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv2 = asfloat(vertices.Load2(ind.z * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
-    float3 color = 1;
+    const float cone_width = payload.cone_width * hit_dist;
+    const float lod_triangle_constant = 0.5 * log2(twice_triangle_area(v0.position, v1.position, v2.position) / twice_uv_area(uv0, uv1, uv2));
 
     uint material_id = vertices.Load(ind.x * sizeof(uint) + mesh.vertex_mat_offset);
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + material_id * sizeof(MeshMaterial));
 
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
-    float3 albedo = albedo_tex.SampleLevel(sampler_llr, uv, 0).xyz * float4(material.base_color_mult).xyz * color.xyz;
+    float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float3 albedo = albedo_tex.SampleLevel(sampler_llr, uv, albedo_lod).xyz * float4(material.base_color_mult).xyz;
 
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
-    float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, uv, 0);
+    float spec_lod = compute_texture_lod(spec_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, uv, spec_lod);
 
     GbufferData gbuffer;
     gbuffer.albedo = albedo;

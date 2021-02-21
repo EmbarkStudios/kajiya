@@ -22,7 +22,7 @@ glam = "0.12"
 gltf = "0.15"
 hassle-rs = "0.4"
 hotwatch = "0.4"
-image = { version = "0.23", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
+image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
 imgui = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d" }
 imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d", features = ["winit-19"] }
 lazy_static = "1.4"

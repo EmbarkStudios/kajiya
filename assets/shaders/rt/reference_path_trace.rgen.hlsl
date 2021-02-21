@@ -57,10 +57,14 @@ float inv_error_function(float x, float truncation) {
 	float z = K + 0.5 * y;
 	return sqrt(max(0.0, sqrt(z*z - y * INV_ALPHA) - z)) * sign(x);
 }
+
 float remap_unorm_to_gaussian(float x, float truncation) {
 	return inv_error_function(x * 2.0 - 1.0, truncation);
 }
 
+float pixel_cone_spread_angle(float texture_height) {
+    return atan(2.0 * frame_constants.view_constants.clip_to_view._11 / texture_height);
+}
 
 [shader("raygeneration")]
 void main() {
@@ -96,6 +100,7 @@ void main() {
     float3 total_radiance = 0.0.xxx;
 
     float roughness_bias = 0.0;
+    float cone_spread_angle = pixel_cone_spread_angle(DispatchRaysDimensions().y);
 
     [loop]
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
@@ -109,7 +114,7 @@ void main() {
             outgoing_ray.TMax = MAX_RAY_LENGTH;
         }
 
-        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray);
+        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, cone_spread_angle);
         if (primary_hit.is_hit) {
             const float3 to_light_norm = SUN_DIRECTION;
             

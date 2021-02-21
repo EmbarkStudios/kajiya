@@ -604,7 +604,7 @@ impl CompiledRenderGraph {
 
                         let image = transient_resource_cache
                             .get_image(&desc)
-                            .unwrap_or_else(|| device.create_image(desc, None).unwrap());
+                            .unwrap_or_else(|| device.create_image(desc, vec![]).unwrap());
 
                         RegistryResource {
                             access_type: vk_sync::AccessType::Nothing,

@@ -111,6 +111,7 @@ fn try_main() -> anyhow::Result<()> {
                 image,
                 params: TexParams {
                     gamma: TexGamma::Linear,
+                    use_mips: false,
                 },
                 device: renderer.device().clone(),
             }
@@ -155,6 +156,7 @@ fn try_main() -> anyhow::Result<()> {
                     CreatePlaceholderImage::new(*values).into_lazy(),
                     TexParams {
                         gamma: crate::asset::mesh::TexGamma::Linear,
+                        use_mips: false,
                     },
                 ),
             };

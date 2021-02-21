@@ -192,7 +192,7 @@ impl GetOrCreateTemporal<ImageDesc> for TemporalRenderGraph {
             hash_map::Entry::Vacant(entry) => {
                 let resource = Arc::new(
                     self.device
-                        .create_image(desc, None)
+                        .create_image(desc, vec![])
                         .with_context(|| format!("Creating image {:?}", desc))?,
                 );
                 let handle = self.rg.import(resource.clone(), AccessType::Nothing);

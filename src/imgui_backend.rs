@@ -268,7 +268,7 @@ pub fn create_imgui_framebuffer(
         .create_image(
             ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, surface_resolution)
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::COLOR_ATTACHMENT),
-            None,
+            vec![],
         )
         .unwrap();
 

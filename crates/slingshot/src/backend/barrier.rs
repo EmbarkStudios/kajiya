@@ -15,9 +15,9 @@ pub fn record_image_barrier(device: &Device, cb: vk::CommandBuffer, barrier: Ima
     let range = vk::ImageSubresourceRange {
         aspect_mask: barrier.aspect_mask,
         base_mip_level: 0,
-        level_count: 1,
+        level_count: vk::REMAINING_MIP_LEVELS,
         base_array_layer: 0,
-        layer_count: 1,
+        layer_count: vk::REMAINING_ARRAY_LAYERS,
     };
 
     vk_sync::cmd::pipeline_barrier(

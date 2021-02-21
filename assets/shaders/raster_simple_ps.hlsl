@@ -29,6 +29,7 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     //normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
 
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
+    //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
     float3 albedo = albedo_tex.Sample(sampler_llr, ps.uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
 
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];

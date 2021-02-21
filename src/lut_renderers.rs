@@ -17,7 +17,7 @@ impl ComputeImageLut for BrdfFgLutComputer {
             .create_image(
                 ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, [64, 64])
                     .usage(ImageUsageFlags::STORAGE | ImageUsageFlags::SAMPLED),
-                None,
+                vec![],
             )
             .expect("image")
     }
