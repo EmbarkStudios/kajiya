@@ -9,8 +9,8 @@
 #include "../inc/rt.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/bindless_textures.hlsl"
-#include "../inc/sun.hlsl"
 #include "../inc/atmosphere.hlsl"
+#include "../inc/sun.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
@@ -19,17 +19,16 @@ static const uint MAX_PATH_LENGTH = 20;
 static const float MAX_RAY_LENGTH = FLT_MAX;
 //static const float MAX_RAY_LENGTH = 5.0;
 
-static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
-
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
 static const bool FIREFLY_SUPPRESSION = true;
-static const bool FURNACE_TEST = false;
+static const bool FURNACE_TEST = !true;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
 static const bool USE_PIXEL_FILTER = false;
 static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
+static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -145,6 +144,10 @@ void main() {
                 gbuffer.metalness = 1.0;
                 //gbuffer.roughness = 0.01;
             }
+
+            if (GREY_ALBEDO_FIRST_BOUNCE && path_length == 0) {
+                gbuffer.albedo = 0.5;
+            }
             
             //gbuffer.roughness = lerp(gbuffer.roughness, 0.0, 0.8);
             //gbuffer.metalness = 1.0;
@@ -180,6 +183,18 @@ void main() {
                 const float3 brdf_value = brdf.evaluate(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);
+
+                #if 0
+                    const float3 pos_ws = primary_hit.position;
+                    float4 pos_vs = mul(frame_constants.view_constants.world_to_view, float4(pos_ws, 1));
+                    const float view_dot = -normalize(pos_vs.xyz).z;
+
+                    float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
+
+                    total_radiance +=
+                        throughput *
+                        100 * smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
+                #endif
             }
 
             float3 urand;

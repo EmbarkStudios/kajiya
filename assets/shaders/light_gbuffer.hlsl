@@ -16,6 +16,7 @@
 #define USE_SURFEL_GI 0
 #define USE_SSGI 1
 #define USE_CSGI 1
+#define USE_RTR 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -36,7 +37,6 @@
 #include "csgi/lookup.hlsl"
 
 #include "inc/sun.hlsl"
-static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
@@ -83,7 +83,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     //gbuffer.roughness = 0.9;
     //gbuffer.metalness = 0;
-    //gbuffer.albedo = 1.0;
+    //gbuffer.albedo = 0.5;
     //gbuffer.metalness = 1;
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
@@ -132,7 +132,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #endif
 
     #if USE_SSGI
-        const float4 ssgi = ssgi_tex[px];
+        float4 ssgi = ssgi_tex[px];
 
         // HACK: need directionality in GI so that it can be properly masked.
         // If simply masking with the AO term, it tends to over-darken.
@@ -143,12 +143,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
         total_radiance +=
             (gi_irradiance * biased_ssgi.a + biased_ssgi.rgb)
             * brdf.diffuse_brdf.albedo
-            * brdf.energy_preservation.preintegrated_transmission_fraction;
+            * brdf.energy_preservation.preintegrated_transmission_fraction
+            ;
         // total_radiance = ssgi.a;
     #else
         total_radiance += gi_irradiance
             * brdf.diffuse_brdf.albedo
-            * brdf.energy_preservation.preintegrated_transmission_fraction;
+            * brdf.energy_preservation.preintegrated_transmission_fraction
+            ;
     #endif
 
     output_tex[px] = float4(total_radiance, 1.0);
@@ -158,7 +160,20 @@ void main(in uint2 px : SV_DispatchThreadID) {
         //ssgi.rgb,
         //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
 
-    debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+    #if USE_RTR
+        debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+    #endif
+    
+    #if 0
+        float4 pos_vs = mul(frame_constants.view_constants.world_to_view, pt_ws);
+        const float view_dot = -normalize(pos_vs.xyz).z;
+
+        float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
+
+        debug_out +=
+            smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
+    #endif
+
     //debug_out = rtr_tex[px].www * 0.2;
     //debug_out = rtr_tex[px].xyz;
 
@@ -166,12 +181,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
     
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
     //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
-    //debug_out = pow((gbuffer.normal) * 0.5 + 0.5, 2);
     //debug_out = bent_normal_dir * 0.5 + 0.5;
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
     //debug_out = base_light_tex[px].xyz;
 
+    //debug_out = ssgi.rgb;
     //debug_out = gi_irradiance;
+    //debug_out = gbuffer.metalness;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

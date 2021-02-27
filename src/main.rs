@@ -72,7 +72,7 @@ struct Opt {
     no_debug: bool,
 }
 
-fn try_main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     logging::set_up_logging()?;
     let opt = Opt::from_args();
 
@@ -393,19 +393,6 @@ fn try_main() -> anyhow::Result<()> {
     }
 
     Ok(())
-}
-
-fn main() {
-    /*panic::set_hook(Box::new(|panic_info| {
-        println!("rust panic: {}", panic_info);
-        loop {}
-    }));*/
-
-    if let Err(err) = try_main() {
-        eprintln!("ERROR: {:?}", err);
-        // std::thread::sleep(std::time::Duration::from_secs(1));
-        loop {}
-    }
 }
 
 fn spherical_to_cartesian(theta: f32, phi: f32) -> Vec3 {

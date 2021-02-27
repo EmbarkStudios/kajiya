@@ -129,7 +129,7 @@ fn load_gltf_material(
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
         .and_then(|tex| get_gltf_texture_source(tex.texture()).map(make_material_map))
-        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]));
+        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 0, 255]));
 
     let emissive = if mat.emissive_texture().is_some() {
         [0.0, 0.0, 0.0]
@@ -303,7 +303,107 @@ fn pack_unit_direction_11_10_11(x: f32, y: f32, z: f32) -> u32 {
     (z << 21) | (y << 11) | x
 }
 
-#[derive(Clone)]
+#[repr(C)]
+pub struct FlatVec<T> {
+    offset: u64,
+    len: u64,
+    marker: std::marker::PhantomData<T>,
+}
+
+impl<T> AsRef<[T]> for FlatVec<T> {
+    fn as_ref(&self) -> &[T] {
+        unsafe {
+            let data = (self as *const Self as *const u8).add(self.offset as usize);
+            std::slice::from_raw_parts(data as *const T, self.len as usize)
+        }
+    }
+}
+
+macro_rules! def_asset {
+    // Vector
+    (@proto_ty Vec($($type:tt)+)) => {
+        Vec<def_asset!(@proto_ty $($type)+ )>
+    };
+    (@flat_ty Vec($($type:tt)+)) => {
+        FlatVec<def_asset!(@flat_ty $($type)+ )>
+    };
+
+    // Bespoke
+    (@proto_ty Bespoke($($proto:tt)+) => ($($flat:tt)+)) => {
+        $($proto)+
+    };
+    (@flat_ty Bespoke($($proto:tt)+) => ($($flat:tt)+)) => {
+        $($flat)+
+    };
+
+    // Plain type
+    (@proto_ty $($type:tt)+) => {
+        $($type)+
+    };
+    (@flat_ty $($type:tt)+) => {
+        $($type)+
+    };
+
+    (
+        $(
+            #[derive($($derive:tt)+)]
+        )?
+        $struct_name:ident {
+            $(
+                $name:ident { $($type:tt)+ }
+            )+
+        }
+    ) => {
+        #[allow(non_snake_case)]
+        pub mod $struct_name {
+            use super::*;
+
+            $(#[derive($($derive)+)])?
+            pub struct Proto {
+                $(
+                    pub $name: def_asset!(@proto_ty $($type)+ ),
+                )*
+            }
+
+            #[repr(C)]
+            pub struct Flat {
+                $(
+                    pub $name: def_asset!(@flat_ty $($type)+ ),
+                )*
+            }
+        }
+    };
+}
+
+#[repr(C)]
+pub struct AssetRef<T> {
+    id: u64,
+    marker: std::marker::PhantomData<T>,
+}
+
+def_asset! {
+    FlatImage {
+        format { slingshot::ash::vk::Format }
+        extent { [u32; 3] }
+        mips { Vec(Vec(u8)) }
+    }
+}
+
+def_asset! {
+    #[derive(Clone)]
+    PackedTriMesh {
+        verts { Vec(PackedVertex) }
+        uvs { Vec([f32; 2]) }
+        tangents { Vec([f32; 4]) }
+        colors { Vec([f32; 4]) }
+        indices { Vec(u32) }
+        material_ids { Vec(u32) }
+        materials { Vec(MeshMaterial) }
+        maps { Vec(Bespoke(MeshMaterialMap) => (AssetRef<FlatImage::Flat>)) }
+    }
+}
+
+/*#[derive(Clone)]
 pub struct PackedTriangleMesh {
     pub verts: Vec<PackedVertex>,
     pub uvs: Vec<[f32; 2]>,
@@ -313,7 +413,9 @@ pub struct PackedTriangleMesh {
     pub material_ids: Vec<u32>,
     pub materials: Vec<MeshMaterial>,
     pub maps: Vec<MeshMaterialMap>,
-}
+}*/
+
+pub type PackedTriangleMesh = PackedTriMesh::Proto;
 
 pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
     let mut verts: Vec<PackedVertex> = Vec::with_capacity(mesh.positions.len());

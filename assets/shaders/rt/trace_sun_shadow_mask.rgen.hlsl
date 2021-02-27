@@ -2,6 +2,7 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/rt.hlsl"
+#include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;

@@ -46,8 +46,8 @@ impl CsgiRenderer {
             .get_or_create_temporal(
                 "csgi.cascade0",
                 ImageDesc::new_3d(
-                    vk::Format::B10G11R11_UFLOAT_PACK32,
-                    //vk::Format::R16G16B16A16_SFLOAT,
+                    //vk::Format::B10G11R11_UFLOAT_PACK32,
+                    vk::Format::R16G16B16A16_SFLOAT,
                     [VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
@@ -56,8 +56,8 @@ impl CsgiRenderer {
 
         let mut cascade0_suppressed = rg.create(
             ImageDesc::new_3d(
-                vk::Format::B10G11R11_UFLOAT_PACK32,
-                //vk::Format::R16G16B16A16_SFLOAT,
+                //vk::Format::B10G11R11_UFLOAT_PACK32,
+                vk::Format::R16G16B16A16_SFLOAT,
                 [VOLUME_DIMS * SLICE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
             )
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
@@ -99,7 +99,7 @@ impl CsgiRenderer {
             ],
             &["/assets/shaders/rt/triangle.rchit.hlsl"],
         )
-        .read(&mut cascade0)
+        .read(&mut cascade0_suppressed)
         .write(&mut cascade0_integr)
         .constants((
             CSGI_SLICE_DIRS,

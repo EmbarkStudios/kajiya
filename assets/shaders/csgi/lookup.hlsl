@@ -1,4 +1,4 @@
-// #define CSGI_LOOKUP_NEAREST_ONLY
+ // #define CSGI_LOOKUP_NEAREST_ONLY
 
 struct CsgiLookupParams {
     bool use_grid_linear_fetch;
@@ -31,6 +31,10 @@ uint closest_csgi_dir(float3 dir) {
 }
 
 float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
+    #ifdef CSGI_LOOKUP_NEAREST_ONLY
+        params.use_grid_linear_fetch = false;
+    #endif
+
     float3 irradiance = 0.0.xxx;
     float wsum = 0.0;
 
@@ -41,7 +45,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
         const float3 slice_dir = CSGI_SLICE_DIRS[gi_slice_idx].xyz;
         const float ndotl = -dot(slice_dir, normal);
 
-        //if (ndotl < 0.3) {
+        //if (ndotl < 0.7) {
         if (ndotl < params.normal_cutoff) {
             continue;
         }
@@ -50,19 +54,16 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
         //const float normal_offset_scale = min(1.5, 1.1 / ndotl);
 
         #if 1
+            float normal_offset_scale = 0.51;
+            float depth_bias_scale = 0.5;
+        #else
             float normal_offset_scale = 1.51;
             float depth_bias_scale = 0.0;
-        #else
-            float normal_offset_scale = 0.5;
-            float depth_bias_scale = 0.5;
         #endif
 
         if (!params.use_grid_linear_fetch) {
             //normal_offset_scale = 0;//1.01;
-            //depth_bias_scale = 1.0;
-
             normal_offset_scale = 1.01;
-            depth_bias_scale = 0.0;
         }
 
         const float3x3 slice_rot = build_orthonormal_basis(slice_dir);

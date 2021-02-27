@@ -53,6 +53,8 @@ pub fn set_up_logging() -> anyhow::Result<()> {
             ));
         })
         .level(log::LevelFilter::Trace)
+        .level_for("async_io", log::LevelFilter::Warn)
+        .level_for("polling", log::LevelFilter::Warn)
         .chain(
             std::fs::OpenOptions::new()
                 .write(true)

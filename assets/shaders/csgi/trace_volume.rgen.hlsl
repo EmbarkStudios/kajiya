@@ -6,10 +6,8 @@
 #include "../inc/layered_brdf.hlsl"
 #include "../inc/rt.hlsl"
 #include "../inc/hash.hlsl"
-#include "../inc/sun.hlsl"
-
 #include "../inc/atmosphere.hlsl"
-static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
+#include "../inc/sun.hlsl"
 
 #include "common.hlsl"
 
@@ -62,7 +60,7 @@ void main() {
     #if USE_RAY_JITTER
         const float offset_x = uint_to_u01_float(hash1_mut(rng)) - 0.5;
         const float offset_y = uint_to_u01_float(hash1_mut(rng)) - 0.5;
-        const float blend_factor = 0.4;
+        const float blend_factor = 1.0;
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;
@@ -155,6 +153,17 @@ void main() {
                         total_radiance +=
                             light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
         #endif
+
+                        #if 0
+                            const float3 pos_ws = primary_hit.position;
+                            float4 pos_vs = mul(frame_constants.view_constants.world_to_view, float4(pos_ws, 1));
+                            const float view_dot = -normalize(pos_vs.xyz).z;
+
+                            float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
+
+                            total_radiance +=
+                                100 * smoothstep(0.997, 1.0, view_dot) * bounce_albedo * max(0.0, dot(gbuffer_normal, -v_ws)) / M_PI;
+                        #endif
 
                         if (USE_MULTIBOUNCE) {
                             CsgiLookupParams gi_lookup_params = CsgiLookupParams::make_default();

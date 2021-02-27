@@ -25,7 +25,6 @@
 
 static const uint MAX_PATH_LENGTH = 5;
 #include "../inc/sun.hlsl"
-static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 
 // Rough-smooth-rough specular paths are a major source of fireflies.

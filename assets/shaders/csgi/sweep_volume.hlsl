@@ -6,10 +6,8 @@
 #include "../inc/layered_brdf.hlsl"
 #include "../inc/rt.hlsl"
 #include "../inc/hash.hlsl"
-#include "../inc/sun.hlsl"
-
 #include "../inc/atmosphere.hlsl"
-static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
+#include "../inc/sun.hlsl"
 
 #include "common.hlsl"
 

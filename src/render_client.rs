@@ -61,7 +61,7 @@ struct GpuMesh {
 }
 
 const MAX_GPU_MESHES: usize = 1024;
-const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 128;
+const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 246;
 
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
@@ -109,7 +109,10 @@ fn append_buffer_data<T: Copy>(buf_slice: &mut [u8], buf_written: &mut usize, da
 
         let data_start = (*buf_written + alignment - 1) & !(alignment - 1);
         let data_bytes = data.len() * size_of::<T>();
-        assert!(data_start + data_bytes <= buf_slice.len());
+        assert!(
+            data_start + data_bytes <= buf_slice.len(),
+            format!("data_bytes: {}; buf_slice: {}", data_bytes, buf_slice.len())
+        );
 
         let dst = unsafe {
             std::slice::from_raw_parts_mut(buf_slice.as_ptr().add(data_start) as *mut T, data.len())
