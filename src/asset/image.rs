@@ -83,21 +83,30 @@ impl LazyWorker for CreateGpuImage {
             crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
         };
 
-        let mut desc =
-            ImageDesc::new_2d(format, src.dimensions).usage(vk::ImageUsageFlags::SAMPLED);
+        let mut image = image::DynamicImage::ImageRgba8(
+            image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
+                src.dimensions[0],
+                src.dimensions[1],
+                src.data.clone(),
+            )
+            .unwrap(),
+        );
 
-        let mut mips: Vec<Vec<u8>> = vec![src.data.clone()];
-        if self.params.use_mips {
-            desc = desc.all_mip_levels();
+        const MAX_SIZE: u32 = 2048;
 
-            let mut image = image::DynamicImage::ImageRgba8(
-                image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
-                    src.dimensions[0],
-                    src.dimensions[1],
-                    src.data.clone(),
-                )
-                .unwrap(),
+        if image.dimensions().0 > MAX_SIZE || image.dimensions().1 > MAX_SIZE {
+            image = image.resize_exact(
+                image.dimensions().0.min(MAX_SIZE),
+                image.dimensions().1.min(MAX_SIZE),
+                FilterType::Lanczos3,
             );
+        }
+
+        let mut desc = ImageDesc::new_2d(format, [image.dimensions().0, image.dimensions().1])
+            .usage(vk::ImageUsageFlags::SAMPLED);
+
+        let mips: Vec<Vec<u8>> = if self.params.use_mips {
+            desc = desc.all_mip_levels();
 
             let downsample = |image: &DynamicImage| {
                 // TODO: gamma-correct resize
@@ -108,18 +117,27 @@ impl LazyWorker for CreateGpuImage {
                 )
             };
 
-            image = downsample(&image);
+            let mut mips;
+            image = {
+                let next = downsample(&image);
+                mips = vec![image.into_rgba8().into_raw()];
+                next
+            };
 
             for _ in 1..desc.mip_levels {
                 let next = downsample(&image);
                 let mip = std::mem::replace(&mut image, next);
                 mips.push(mip.into_rgba8().into_raw());
             }
-        }
+
+            mips
+        } else {
+            vec![image.into_rgba8().into_raw()]
+        };
 
         Ok(super::mesh::GpuImage::Proto {
             format,
-            extent: [src.dimensions[0], src.dimensions[1], 1],
+            extent: desc.extent,
             mips,
         })
 

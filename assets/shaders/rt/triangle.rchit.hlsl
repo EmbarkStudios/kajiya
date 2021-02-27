@@ -71,11 +71,11 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + material_id * sizeof(MeshMaterial));
 
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
-    float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float albedo_lod = 0;//compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float3 albedo = albedo_tex.SampleLevel(sampler_llr, uv, albedo_lod).xyz * float4(material.base_color_mult).xyz;
 
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
-    float spec_lod = compute_texture_lod(spec_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float spec_lod = 0;//compute_texture_lod(spec_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, uv, spec_lod);
 
     GbufferData gbuffer;

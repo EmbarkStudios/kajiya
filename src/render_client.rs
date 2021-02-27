@@ -434,6 +434,13 @@ impl VickiRenderClient {
                 })
                 .run()
         };
+        /*let loaded_images = {
+            let device = self.device.clone();
+            unique_images
+                .iter()
+                .map(|&asset| load_gpu_image_asset(device.clone(), asset))
+                .collect::<Vec<_>>()
+        };*/
         let loaded_images = loaded_images.into_iter().map(|img| self.add_image(img));
 
         let material_map_to_image: HashMap<AssetRef<GpuImage::Flat>, BindlessImageHandle> =
