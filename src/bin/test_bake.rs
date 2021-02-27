@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use memmap2::MmapOptions;
 use std::fs::File;
-use vicki::asset::mesh::{FlatImage, PackedTriMesh};
+use vicki::asset::mesh::{GpuImage, PackedTriMesh};
 
 fn main() -> Result<()> {
     {
@@ -21,8 +21,8 @@ fn main() -> Result<()> {
         let file = File::open("baked/derp.image")?;
         let mmap = unsafe { MmapOptions::new().map(&file)? };
         let data: &[u8] = &mmap;
-        let image: &FlatImage::Flat =
-            unsafe { (data.as_ptr() as *const FlatImage::Flat).as_ref() }.unwrap();
+        let image: &GpuImage::Flat =
+            unsafe { (data.as_ptr() as *const GpuImage::Flat).as_ref() }.unwrap();
 
         dbg!(image.format);
         dbg!(image.extent);

@@ -1,8 +1,10 @@
 /target
 /.vscode
+/baked
 /assets/images
 /assets/meshes
 /assets/meshes2
 /assets/meshes3
+/assets/meshes4
 *.log
 imgui.ini

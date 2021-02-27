@@ -1,5 +1,5 @@
 use super::device::Device;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ash::{version::DeviceV1_0, vk};
 use derive_builder::Builder;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
@@ -221,7 +221,8 @@ impl Device {
                 requirements,
                 location: MemoryLocation::GpuOnly,
                 linear: false,
-            })?;
+            })
+            .context("GpuOnly image allocation")?;
 
         // Bind memory to the image
         unsafe {
@@ -243,7 +244,7 @@ impl Device {
                     Default::default(),
                     MemoryLocation::CpuToGpu,
                 )
-                .expect("allocating an image upload buffer");
+                .context("CpuToGpu image staging buffer")?;
 
             let mapped_slice_mut = image_buffer.allocation.mapped_slice_mut().unwrap();
             let mut offset = 0;

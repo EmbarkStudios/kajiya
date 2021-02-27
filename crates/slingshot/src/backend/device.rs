@@ -304,6 +304,8 @@ impl Device {
                 physical_device: pdevice.raw,
                 debug_settings: AllocatorDebugSettings {
                     log_leaks_on_shutdown: false,
+                    log_memory_information: true,
+                    log_allocations: true,
                     ..Default::default()
                 },
             });

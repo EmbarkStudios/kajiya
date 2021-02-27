@@ -25,11 +25,13 @@ use math::*;
 
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use memmap2::MmapOptions;
 use parking_lot::Mutex;
 use render_client::{BindlessImageHandle, RenderMode};
 use slingshot::*;
 use std::{
     collections::{HashMap, HashSet},
+    fs::File,
     hash::Hash,
     sync::Arc,
 };
@@ -70,6 +72,20 @@ struct Opt {
 
     #[structopt(long)]
     no_debug: bool,
+}
+
+lazy_static::lazy_static! {
+    static ref ASSET_MMAPS: Mutex<HashMap<String, memmap2::Mmap>> = Mutex::new(HashMap::new());
+}
+
+pub fn mmapped_asset<T>(path: &str) -> anyhow::Result<&'static T> {
+    let mut mmaps = ASSET_MMAPS.lock();
+    let data: &[u8] = mmaps.entry(path.to_owned()).or_insert_with(|| {
+        let file = File::open(path).unwrap();
+        unsafe { MmapOptions::new().map(&file).unwrap() }
+    });
+    let asset: &T = unsafe { (data.as_ptr() as *const T).as_ref() }.unwrap();
+    Ok(asset)
 }
 
 fn main() -> anyhow::Result<()> {
@@ -133,15 +149,9 @@ fn main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
-    let mesh = LoadGltfScene {
-        path: opt.scene,
-        scale: opt.scale,
-    }
-    .into_lazy();
+    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/derp.mesh")?;
 
-    let mesh = smol::block_on(mesh.eval(&lazy_cache))?;
-
-    let mut material_map_to_bindless_handlee: HashMap<MeshMaterialMap, BindlessImageHandle> =
+    /*let mut material_map_to_bindless_handlee: HashMap<MeshMaterialMap, BindlessImageHandle> =
         Default::default();
 
     let mesh_images: Vec<Lazy<Image>> = mesh
@@ -168,7 +178,7 @@ fn main() -> anyhow::Result<()> {
             }
             .into_lazy()
         })
-        .collect();
+        .collect();*/
 
     /*{
         let ex = Executor::new();
@@ -197,15 +207,15 @@ fn main() -> anyhow::Result<()> {
             });
     }*/
 
-    let loaded_images = mesh_images
+    /*let loaded_images = mesh_images
         .iter()
         .cloned()
         .map(|img| smol::spawn(img.eval(&lazy_cache)));
     let loaded_images = smol::block_on(futures::future::try_join_all(loaded_images))
-        .expect("Failed to load mesh images");
+        .expect("Failed to load mesh images");*/
 
-    let mut mesh = pack_triangle_mesh(&mesh);
-    {
+    //let mut mesh = pack_triangle_mesh(&mesh);
+    /*{
         let mesh_map_gpu_ids: Vec<BindlessImageHandle> = mesh
             .maps
             .iter()
@@ -222,7 +232,7 @@ fn main() -> anyhow::Result<()> {
                 *m = mesh_map_gpu_ids[*m as usize].0;
             }
         }
-    }
+    }*/
 
     render_client.add_mesh(mesh);
     render_client.build_ray_tracing_top_level_acceleration();

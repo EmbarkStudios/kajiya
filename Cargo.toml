@@ -12,6 +12,7 @@ arrayvec = "0.5"
 ash-imgui = { path = "ash-imgui" }
 blue-noise-sampler = "0.1"
 byte-slice-cast = "0.3"
+byteorder = "1.4"
 chrono = "0.4"
 #derive_builder = { git = "https://github.com/colin-kiegel/rust-derive-builder.git", rev = "44f629c", features = ["logging"] }   # dyn Error instead of String
 derive_builder = { version = "0.9", default-features = false }
@@ -27,6 +28,7 @@ imgui = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d" }
 imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d", features = ["winit-19"] }
 lazy_static = "1.4"
 log = "0.4"
+memmap2 = "0.2"
 # once_cell = "1.4"
 parking_lot = "0.11"
 raw-window-handle = "0.3"

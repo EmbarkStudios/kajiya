@@ -1,3 +1,5 @@
+use crate::asset::mesh::PackedTriMesh;
+use crate::asset::mesh::{AssetRef, GpuImage};
 use crate::{
     asset::{
         image::RawRgba8Image,
@@ -391,8 +393,60 @@ impl VickiRenderClient {
         handle
     }
 
-    pub fn add_mesh(&mut self, mesh: PackedTriangleMesh) {
+    fn add_gpu_image_asset(&mut self, asset: AssetRef<GpuImage::Flat>) -> BindlessImageHandle {
+        let asset = crate::mmapped_asset::<GpuImage::Flat>(&format!(
+            "baked/{:8.8x}.image",
+            asset.identity()
+        ))
+        .unwrap();
+
+        let desc = ImageDesc::new_2d(asset.format, [asset.extent[0], asset.extent[1]])
+            .usage(vk::ImageUsageFlags::SAMPLED)
+            .mip_levels(asset.mips.len() as _);
+
+        let initial_data = asset
+            .mips
+            .as_slice()
+            .into_iter()
+            .enumerate()
+            .map(|(mip_level, mip)| ImageSubResourceData {
+                data: mip.as_slice(),
+                row_pitch: ((desc.extent[0] as usize) >> mip_level).max(1) * 4,
+                slice_pitch: 0,
+            })
+            .collect::<Vec<_>>();
+
+        let image = self.device.create_image(desc, initial_data).unwrap();
+        self.add_image(Arc::new(image))
+    }
+
+    pub fn add_mesh(&mut self, mesh: &PackedTriMesh::Flat) {
         let mesh_idx = self.meshes.len();
+
+        let mut material_map_to_bindless_handle: HashMap<
+            AssetRef<GpuImage::Flat>,
+            BindlessImageHandle,
+        > = Default::default();
+
+        let mut materials = mesh.materials.as_slice().to_vec();
+        {
+            let mesh_map_gpu_ids: Vec<BindlessImageHandle> = mesh
+                .maps
+                .as_slice()
+                .iter()
+                .map(|&map| {
+                    *material_map_to_bindless_handle
+                        .entry(map)
+                        .or_insert_with(|| self.add_gpu_image_asset(map))
+                })
+                .collect();
+
+            for mat in &mut materials {
+                for m in &mut mat.maps {
+                    *m = mesh_map_gpu_ids[*m as usize].0;
+                }
+            }
+        }
 
         let mut vertex_buffer = self.vertex_buffer.lock();
         let mut buffer_builder = BufferBuilder::new(
@@ -404,13 +458,13 @@ impl VickiRenderClient {
             &mut self.vertex_buffer_written,
         );
 
-        let vertex_index_offset = buffer_builder.append(&mesh.indices) as _;
-        let vertex_core_offset = buffer_builder.append(&mesh.verts) as _;
-        let vertex_uv_offset = buffer_builder.append(&mesh.uvs) as _;
-        let vertex_mat_offset = buffer_builder.append(&mesh.material_ids) as _;
-        let vertex_aux_offset = buffer_builder.append(&mesh.colors) as _;
-        let vertex_tangent_offset = buffer_builder.append(&mesh.tangents) as _;
-        let mat_data_offset = buffer_builder.append(&mesh.materials) as _;
+        let vertex_index_offset = buffer_builder.append(mesh.indices.as_slice()) as _;
+        let vertex_core_offset = buffer_builder.append(mesh.verts.as_slice()) as _;
+        let vertex_uv_offset = buffer_builder.append(mesh.uvs.as_slice()) as _;
+        let vertex_mat_offset = buffer_builder.append(mesh.material_ids.as_slice()) as _;
+        let vertex_aux_offset = buffer_builder.append(mesh.colors.as_slice()) as _;
+        let vertex_tangent_offset = buffer_builder.append(mesh.tangents.as_slice()) as _;
+        let mat_data_offset = buffer_builder.append(materials.as_slice()) as _;
 
         let mesh_buffer_dst = unsafe {
             let mut mesh_buffer = self.mesh_buffer.lock();
@@ -438,6 +492,7 @@ impl VickiRenderClient {
                         index_offset: 0,
                         max_vertex: mesh
                             .indices
+                            .as_slice()
                             .iter()
                             .copied()
                             .max()

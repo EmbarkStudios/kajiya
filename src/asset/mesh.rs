@@ -311,8 +311,8 @@ pub struct FlatVec<T> {
     marker: std::marker::PhantomData<T>,
 }
 
-impl<T> AsRef<[T]> for FlatVec<T> {
-    fn as_ref(&self) -> &[T] {
+impl<T> std::borrow::Borrow<[T]> for FlatVec<T> {
+    fn borrow(&self) -> &[T] {
         unsafe {
             let data = (self as *const Self as *const u8).add(self.offset as usize);
             std::slice::from_raw_parts(data as *const T, self.len as usize)
@@ -484,6 +484,22 @@ macro_rules! def_asset {
         $bespoke_flatten($output, $field)
     };
 
+    // Asset
+    (@proto_ty Asset($($type:tt)+)) => {
+        Lazy<def_asset!(@proto_ty $($type)+ ::Proto)>
+    };
+    (@flat_ty Asset($($type:tt)+)) => {
+        AssetRef<def_asset!(@flat_ty $($type)+ ::Flat)>
+    };
+    (@flatten $output:expr; $field:expr; Asset($($type:tt)+)) => {
+        let asset_ref: AssetRef<$($type ::Flat)+> = AssetRef {
+            identity: $field.identity(),
+            marker: std::marker::PhantomData,
+        };
+        flatten_plain_field(&mut $output.bytes, &asset_ref)
+    };
+
+
     // Plain type
     (@proto_ty $($type:tt)+) => {
         $($type)+
@@ -544,12 +560,37 @@ macro_rules! def_asset {
 
 #[repr(C)]
 pub struct AssetRef<T> {
-    id: u64,
-    marker: std::marker::PhantomData<T>,
+    identity: u64,
+    marker: std::marker::PhantomData<fn(&T)>,
+}
+impl<T> AssetRef<T> {
+    pub fn identity(&self) -> u64 {
+        self.identity
+    }
+}
+impl<T> Clone for AssetRef<T> {
+    fn clone(&self) -> Self {
+        Self {
+            identity: self.identity,
+            marker: std::marker::PhantomData,
+        }
+    }
+}
+impl<T> Copy for AssetRef<T> {}
+impl<T> PartialEq for AssetRef<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity == other.identity
+    }
+}
+impl<T> Eq for AssetRef<T> {}
+impl<T> Hash for AssetRef<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.identity)
+    }
 }
 
 def_asset! {
-    FlatImage {
+    GpuImage {
         format { slingshot::ash::vk::Format }
         extent { [u32; 3] }
         mips { Vec(Vec(u8)) }
@@ -566,7 +607,7 @@ def_asset! {
         indices { Vec(u32) }
         material_ids { Vec(u32) }
         materials { Vec(MeshMaterial) }
-        maps { Vec(Bespoke(MeshMaterialMap) => flatten_mesh_material_map => (AssetRef<FlatImage::Flat>)) }
+        maps { Vec(Asset(GpuImage)) }
     }
 }
 
@@ -601,6 +642,28 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
         });
     }
 
+    let maps = mesh
+        .maps
+        .iter()
+        .map(|map| {
+            let (image, params) = match map {
+                MeshMaterialMap::Asset { path, params } => (
+                    super::image::LoadImage::new(&path).unwrap().into_lazy(),
+                    *params,
+                ),
+                MeshMaterialMap::Placeholder(values) => (
+                    super::image::CreatePlaceholderImage::new(*values).into_lazy(),
+                    TexParams {
+                        gamma: crate::asset::mesh::TexGamma::Linear,
+                        use_mips: false,
+                    },
+                ),
+            };
+
+            crate::asset::image::CreateGpuImage { image, params }.into_lazy()
+        })
+        .collect();
+
     PackedTriangleMesh {
         verts,
         uvs: mesh.uvs.clone(),
@@ -609,7 +672,7 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
         indices: mesh.indices.clone(),
         material_ids: mesh.material_ids.clone(),
         materials: mesh.materials.clone(),
-        maps: mesh.maps.clone(),
+        maps,
     }
 }
 
