@@ -1,8 +1,9 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
-use crate::bytes::into_byte_vec;
+use byteorder::{ByteOrder, NativeEndian, WriteBytesExt};
 use glam::{Mat4, Vec3};
+use slingshot::bytes::into_byte_vec;
 /*use render_core::{
     constants::MAX_VERTEX_STREAMS,
     device::RenderDevice,
@@ -303,10 +304,10 @@ fn pack_unit_direction_11_10_11(x: f32, y: f32, z: f32) -> u32 {
     (z << 21) | (y << 11) | x
 }
 
-#[repr(C)]
+#[repr(packed)]
 pub struct FlatVec<T> {
-    offset: u64,
     len: u64,
+    offset: u64,
     marker: std::marker::PhantomData<T>,
 }
 
@@ -319,6 +320,139 @@ impl<T> AsRef<[T]> for FlatVec<T> {
     }
 }
 
+impl<T> std::ops::Index<usize> for FlatVec<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.as_slice()[index]
+    }
+}
+
+impl<T> FlatVec<T> {
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        self.len as usize
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        unsafe {
+            let data = (&self.offset as *const u64 as *const u8).add(self.offset as usize);
+            std::slice::from_raw_parts(data as *const T, self.len as usize)
+        }
+    }
+}
+
+pub fn flatten_vec_header(writer: &mut Vec<u8>, len: usize) -> usize {
+    writer
+        .write_u64::<byteorder::NativeEndian>(len as u64)
+        .unwrap();
+    writer.write_u64::<byteorder::NativeEndian>(0u64).unwrap();
+    writer.len() - 8
+}
+
+pub fn flatten_plain_field<T: Copy + Sized>(writer: &mut impl std::io::Write, data: &T) {
+    writer
+        .write_all(unsafe {
+            std::slice::from_raw_parts(data as *const T as *const u8, std::mem::size_of::<T>())
+        })
+        .unwrap();
+}
+
+pub struct DeferredBlob {
+    pub fixup_addr: usize, // offset within parent
+    pub nested: FlattenCtx,
+}
+
+#[derive(Default)]
+pub struct FlattenCtx {
+    pub section_idx: Option<usize>,
+    pub bytes: Vec<u8>,
+    pub deferred: Vec<DeferredBlob>,
+}
+
+impl FlattenCtx {
+    fn allocate_section_indices(&mut self) {
+        let mut counter = 0;
+        self.allocate_section_indices_impl(&mut counter);
+    }
+
+    fn allocate_section_indices_impl(&mut self, counter: &mut usize) {
+        self.section_idx = Some(*counter);
+        *counter += 1;
+
+        for child in &mut self.deferred {
+            child.nested.allocate_section_indices_impl(counter);
+        }
+    }
+
+    fn finish(mut self, writer: &mut impl std::io::Write) {
+        self.allocate_section_indices();
+
+        type FixupAddr = usize;
+        type SectionIdx = usize;
+
+        struct Section {
+            bytes: Vec<u8>,
+            fixups: Vec<(FixupAddr, SectionIdx)>,
+        }
+
+        // Build flattened sections over the nested structures
+        let mut sections: Vec<Section> = Vec::new();
+
+        let mut ctx_list = vec![self];
+        while !ctx_list.is_empty() {
+            let mut next_ctx_list: Vec<Self> = vec![];
+
+            for ctx in ctx_list {
+                sections.push(Section {
+                    bytes: ctx.bytes,
+                    fixups: ctx
+                        .deferred
+                        .iter()
+                        .map(|deferred| (deferred.fixup_addr, deferred.nested.section_idx.unwrap()))
+                        .collect(),
+                });
+
+                for deferred in ctx.deferred {
+                    next_ctx_list.push(deferred.nested);
+                }
+            }
+
+            ctx_list = next_ctx_list;
+        }
+
+        // Lay out the sections
+        let mut total_bytes = 0usize;
+        let section_base_addr: Vec<usize> = sections
+            .iter()
+            .map(|s| {
+                let base_addr = total_bytes;
+                total_bytes += s.bytes.len();
+                base_addr
+            })
+            .collect();
+
+        // Apply fixups
+        for (section, &section_addr) in sections.iter_mut().zip(&section_base_addr) {
+            for &(fixup_addr, target_section) in &section.fixups {
+                // Apply the fixup of the structure which was pointing at this deferred blob
+                let fixup_target: u64 = section_base_addr[target_section] as u64;
+
+                // The fixup is relative to the `offset` field itself
+                let fixup_relative = fixup_target - (fixup_addr + section_addr) as u64;
+
+                section.bytes[fixup_addr..fixup_addr + 8]
+                    .copy_from_slice(&fixup_relative.to_ne_bytes());
+            }
+        }
+
+        // Write sections out
+        for section in sections {
+            writer.write_all(section.bytes.as_slice()).unwrap();
+        }
+    }
+}
+
 macro_rules! def_asset {
     // Vector
     (@proto_ty Vec($($type:tt)+)) => {
@@ -327,13 +461,27 @@ macro_rules! def_asset {
     (@flat_ty Vec($($type:tt)+)) => {
         FlatVec<def_asset!(@flat_ty $($type)+ )>
     };
+    (@flatten $output:expr; $field:expr; Vec($($type:tt)+)) => {
+        let fixup_addr = flatten_vec_header(&mut $output.bytes, $field.len());
+        let mut nested = FlattenCtx::default();
+        for item in $field.iter() {
+            def_asset!(@flatten &mut nested; item; $($type)+ );
+        }
+        $output.deferred.push(DeferredBlob {
+            fixup_addr,
+            nested,
+        });
+    };
 
     // Bespoke
-    (@proto_ty Bespoke($($proto:tt)+) => ($($flat:tt)+)) => {
+    (@proto_ty Bespoke($($proto:tt)+) => $bespoke_flatten:ident => ($($flat:tt)+)) => {
         $($proto)+
     };
-    (@flat_ty Bespoke($($proto:tt)+) => ($($flat:tt)+)) => {
+    (@flat_ty Bespoke($($proto:tt)+) => $bespoke_flatten:ident => ($($flat:tt)+)) => {
         $($flat)+
+    };
+    (@flatten $output:expr; $field:expr; Bespoke($($proto:tt)+) => $bespoke_flatten:ident => ($($flat:tt)+)) => {
+        $bespoke_flatten($output, $field)
     };
 
     // Plain type
@@ -342,6 +490,9 @@ macro_rules! def_asset {
     };
     (@flat_ty $($type:tt)+) => {
         $($type)+
+    };
+    (@flatten $output:expr; $field:expr; $($type:tt)+) => {
+        flatten_plain_field(&mut $output.bytes, $field)
     };
 
     (
@@ -365,11 +516,27 @@ macro_rules! def_asset {
                 )*
             }
 
-            #[repr(C)]
+            #[repr(packed)]
             pub struct Flat {
                 $(
                     pub $name: def_asset!(@flat_ty $($type)+ ),
                 )*
+            }
+
+            impl Proto {
+                pub fn flatten_into(&self, writer: &mut impl std::io::Write) {
+                    let mut output = FlattenCtx {
+                        bytes: Vec::new(),
+                        deferred: Default::default(),
+                        section_idx: None,
+                    };
+
+                    $(
+                        def_asset!(@flatten &mut output; &self.$name; $($type)+ );
+                    )*
+
+                    output.finish(writer)
+                }
             }
         }
     };
@@ -399,8 +566,13 @@ def_asset! {
         indices { Vec(u32) }
         material_ids { Vec(u32) }
         materials { Vec(MeshMaterial) }
-        maps { Vec(Bespoke(MeshMaterialMap) => (AssetRef<FlatImage::Flat>)) }
+        maps { Vec(Bespoke(MeshMaterialMap) => flatten_mesh_material_map => (AssetRef<FlatImage::Flat>)) }
     }
+}
+
+pub fn flatten_mesh_material_map(ctx: &mut FlattenCtx, value: &MeshMaterialMap) {
+    // TODO
+    //todo!()
 }
 
 /*#[derive(Clone)]
