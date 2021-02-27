@@ -237,6 +237,33 @@ impl<'a> BufferBuilder<'a> {
     }
 }
 
+fn load_gpu_image_asset(
+    device: Arc<slingshot::Device>,
+    asset: AssetRef<GpuImage::Flat>,
+) -> Arc<Image> {
+    let asset =
+        crate::mmapped_asset::<GpuImage::Flat>(&format!("baked/{:8.8x}.image", asset.identity()))
+            .unwrap();
+
+    let desc = ImageDesc::new_2d(asset.format, [asset.extent[0], asset.extent[1]])
+        .usage(vk::ImageUsageFlags::SAMPLED)
+        .mip_levels(asset.mips.len() as _);
+
+    let initial_data = asset
+        .mips
+        .as_slice()
+        .into_iter()
+        .enumerate()
+        .map(|(mip_level, mip)| ImageSubResourceData {
+            data: mip.as_slice(),
+            row_pitch: ((desc.extent[0] as usize) >> mip_level).max(1) * 4,
+            slice_pitch: 0,
+        })
+        .collect::<Vec<_>>();
+
+    Arc::new(device.create_image(desc, initial_data).unwrap())
+}
+
 impl VickiRenderClient {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
         let raster_simple_render_pass = create_render_pass(
@@ -393,40 +420,24 @@ impl VickiRenderClient {
         handle
     }
 
-    fn add_gpu_image_asset(&mut self, asset: AssetRef<GpuImage::Flat>) -> BindlessImageHandle {
-        let asset = crate::mmapped_asset::<GpuImage::Flat>(&format!(
-            "baked/{:8.8x}.image",
-            asset.identity()
-        ))
-        .unwrap();
-
-        let desc = ImageDesc::new_2d(asset.format, [asset.extent[0], asset.extent[1]])
-            .usage(vk::ImageUsageFlags::SAMPLED)
-            .mip_levels(asset.mips.len() as _);
-
-        let initial_data = asset
-            .mips
-            .as_slice()
-            .into_iter()
-            .enumerate()
-            .map(|(mip_level, mip)| ImageSubResourceData {
-                data: mip.as_slice(),
-                row_pitch: ((desc.extent[0] as usize) >> mip_level).max(1) * 4,
-                slice_pitch: 0,
-            })
-            .collect::<Vec<_>>();
-
-        let image = self.device.create_image(desc, initial_data).unwrap();
-        self.add_image(Arc::new(image))
-    }
-
     pub fn add_mesh(&mut self, mesh: &PackedTriMesh::Flat) {
         let mesh_idx = self.meshes.len();
+        let mut unique_images: Vec<AssetRef<GpuImage::Flat>> = mesh.maps.as_slice().to_vec();
+        unique_images.sort();
+        unique_images.dedup();
 
-        let mut material_map_to_bindless_handle: HashMap<
-            AssetRef<GpuImage::Flat>,
-            BindlessImageHandle,
-        > = Default::default();
+        let loaded_images = {
+            let device = self.device.clone();
+            easy_parallel::Parallel::new()
+                .each(unique_images.iter(), |&asset| {
+                    load_gpu_image_asset(device, asset)
+                })
+                .run()
+        };
+        let loaded_images = loaded_images.into_iter().map(|img| self.add_image(img));
+
+        let material_map_to_image: HashMap<AssetRef<GpuImage::Flat>, BindlessImageHandle> =
+            unique_images.into_iter().zip(loaded_images).collect();
 
         let mut materials = mesh.materials.as_slice().to_vec();
         {
@@ -434,11 +445,7 @@ impl VickiRenderClient {
                 .maps
                 .as_slice()
                 .iter()
-                .map(|&map| {
-                    *material_map_to_bindless_handle
-                        .entry(map)
-                        .or_insert_with(|| self.add_gpu_image_asset(map))
-                })
+                .map(|map| material_map_to_image[map])
                 .collect();
 
             for mat in &mut materials {

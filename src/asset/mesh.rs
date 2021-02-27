@@ -588,6 +588,16 @@ impl<T> Hash for AssetRef<T> {
         state.write_u64(self.identity)
     }
 }
+impl<T> PartialOrd for AssetRef<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.identity.partial_cmp(&other.identity)
+    }
+}
+impl<T> Ord for AssetRef<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.identity.cmp(&other.identity)
+    }
+}
 
 def_asset! {
     GpuImage {
