@@ -23,7 +23,7 @@ impl TransientResourceCache {
         if let Some(entry) = self.images.get_mut(&image.desc) {
             entry.push(image)
         } else {
-            self.images.insert(image.desc.clone(), vec![image]);
+            self.images.insert(image.desc, vec![image]);
         }
     }
 
@@ -39,7 +39,7 @@ impl TransientResourceCache {
         if let Some(entry) = self.buffers.get_mut(&buffer.desc) {
             entry.push(buffer)
         } else {
-            self.buffers.insert(buffer.desc.clone(), vec![buffer]);
+            self.buffers.insert(buffer.desc, vec![buffer]);
         }
     }
 }

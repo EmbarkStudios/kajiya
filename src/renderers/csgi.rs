@@ -99,7 +99,7 @@ impl CsgiRenderer {
             ],
             &["/assets/shaders/rt/triangle.rchit.hlsl"],
         )
-        .read(&mut cascade0_suppressed)
+        .read(&cascade0_suppressed)
         .write(&mut cascade0_integr)
         .constants((
             CSGI_SLICE_DIRS,
@@ -147,11 +147,11 @@ impl CsgiRenderer {
             let mut pos = eye_position;
 
             pos = slice_rot.transpose() * pos;
-            pos = pos / voxel_size;
+            pos /= voxel_size;
             pos.x = pos.x.trunc();
             pos.y = pos.y.trunc();
             pos.z = pos.z.trunc();
-            pos = pos * voxel_size;
+            pos *= voxel_size;
             pos = slice_rot * pos;
 
             *volume_center = [pos.x, pos.y, pos.z, 1.0];

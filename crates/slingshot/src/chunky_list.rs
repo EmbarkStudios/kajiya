@@ -16,6 +16,12 @@ impl<T> Default for TempListInner<T> {
 
 pub struct TempList<T>(UnsafeCell<Box<TempListInner<T>>>);
 
+impl<T> Default for TempList<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> TempList<T> {
     pub fn new() -> Self {
         Self(UnsafeCell::new(Box::new(TempListInner::default())))

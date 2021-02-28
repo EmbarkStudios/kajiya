@@ -114,9 +114,9 @@ impl GpuProfilerStats {
     pub fn get_ordered_name_ms(&self) -> Vec<(String, f64)> {
         self.order
             .iter()
-            .filter_map(|scope_id| {
+            .map(|scope_id| {
                 let scope = &self.scopes[scope_id];
-                Some((scope.name.clone(), scope.average_duration_millis()))
+                (scope.name.clone(), scope.average_duration_millis())
             })
             .collect()
     }

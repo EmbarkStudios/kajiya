@@ -3,7 +3,6 @@
 use anyhow::{anyhow, bail, Result};
 use byte_slice_cast::IntoByteVec;
 use relative_path::{RelativePath, RelativePathBuf};
-use shader_prepper;
 use std::{
     collections::{HashMap, HashSet},
     path::PathBuf,
@@ -28,7 +27,7 @@ impl LazyWorker for CompileShader {
         let file_path = self.path.to_str().unwrap().to_owned();
         let source = shader_prepper::process_file(
             &file_path,
-            &mut ShaderIncludeProvider { ctx: ctx.clone() },
+            &mut ShaderIncludeProvider { ctx },
             String::new(),
         );
         let source = source.map_err(|err| anyhow!("{}", err))?;
@@ -37,13 +36,13 @@ impl LazyWorker for CompileShader {
             .path
             .extension()
             .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or("".to_string());
+            .unwrap_or_else(|| "".to_string());
 
         let name = self
             .path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or("unknown".to_string());
+            .unwrap_or_else(|| "unknown".to_string());
 
         match ext.as_str() {
             "glsl" => unimplemented!(),
@@ -76,7 +75,7 @@ impl LazyWorker for CompileRayTracingShader {
         let file_path = self.path.to_str().unwrap().to_owned();
         let source = shader_prepper::process_file(
             &file_path,
-            &mut ShaderIncludeProvider { ctx: ctx.clone() },
+            &mut ShaderIncludeProvider { ctx },
             String::new(),
         );
         let source = source.map_err(|err| anyhow!("{}", err))?;
@@ -85,13 +84,13 @@ impl LazyWorker for CompileRayTracingShader {
             .path
             .extension()
             .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or("".to_string());
+            .unwrap_or_else(|| "".to_string());
 
         let name = self
             .path
             .file_stem()
             .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or("unknown".to_string());
+            .unwrap_or_else(|| "unknown".to_string());
 
         match ext.as_str() {
             "glsl" => unimplemented!(),
@@ -150,7 +149,7 @@ pub fn get_cs_local_size_from_spirv(spirv: &[u32]) -> Result<[u32; 3]> {
             let local_size = &inst.operands[2..5];
             use rspirv::dr::Operand::LiteralInt32;
 
-            if let &[LiteralInt32(x), LiteralInt32(y), LiteralInt32(z)] = local_size {
+            if let [LiteralInt32(x), LiteralInt32(y), LiteralInt32(z)] = *local_size {
                 return Ok([x, y, z]);
             } else {
                 bail!("Could not parse the ExecutionMode SPIR-V op");

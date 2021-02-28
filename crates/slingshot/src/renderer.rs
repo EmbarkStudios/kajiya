@@ -347,6 +347,8 @@ impl Renderer {
                 };
 
                 for (res_key, res) in temporal_rg_state.0.resources {
+                    // `insert` is infrequent here, and we can avoid cloning the key.
+                    #[allow(clippy::map_entry)]
                     if !self_temporal_rg_state.resources.contains_key(&res_key) {
                         let res = match res {
                             res @ rg::TemporalResourceState::Inert { .. } => res,

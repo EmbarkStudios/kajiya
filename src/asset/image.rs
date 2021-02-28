@@ -33,7 +33,7 @@ impl LazyWorker for LoadImage {
         let image_dimensions = image.dimensions();
         log::info!("Loaded image: {:?} {:?}", image_dimensions, image.color());
 
-        let image = image.to_rgba();
+        let image = image.to_rgba8();
 
         Ok(RawRgba8Image {
             data: image.into_raw(),
@@ -57,7 +57,7 @@ impl CreatePlaceholderImage {
 impl LazyWorker for CreatePlaceholderImage {
     type Output = anyhow::Result<RawRgba8Image>;
 
-    async fn run(self, ctx: RunContext) -> Self::Output {
+    async fn run(self, _ctx: RunContext) -> Self::Output {
         Ok(RawRgba8Image {
             data: self.values.to_vec(),
             dimensions: [1, 1],

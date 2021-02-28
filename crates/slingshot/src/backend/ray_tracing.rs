@@ -7,7 +7,7 @@ use super::{
         ShaderPipelineStage,
     },
 };
-use anyhow::Result;
+use anyhow::{Context, Result};
 use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
 use byte_slice_cast::AsSliceOf;
 
@@ -263,7 +263,7 @@ impl Device {
                 },
                 None,
             )
-            .expect("Acceleration structure buffer");
+            .context("Acceleration structure buffer")?;
 
         let accel_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
             .ty(ty)
@@ -275,7 +275,7 @@ impl Device {
             let accel_raw = self
                 .acceleration_structure_ext
                 .create_acceleration_structure(&accel_info, None)
-                .expect("create_acceleration_structure");
+                .context("create_acceleration_structure")?;
 
             let scratch_buffer = self
                 .create_buffer(
@@ -287,7 +287,7 @@ impl Device {
                     },
                     None,
                 )
-                .expect("Acceleration structure scratch buffer");
+                .context("Acceleration structure scratch buffer")?;
 
             geometry_info.dst_acceleration_structure = accel_raw;
             geometry_info.scratch_data = ash::vk::DeviceOrHostAddressKHR {
@@ -353,14 +353,16 @@ impl Device {
                     group_count as _,
                     group_handles_size,
                 )
-                .unwrap()
+                .context("get_ray_tracing_shader_group_handles")?
         };
 
         let prog_size = shader_group_handle_size;
 
-        let create_binding_table = |entry_offset: u32, entry_count: u32| {
+        let create_binding_table = |entry_offset: u32,
+                                    entry_count: u32|
+         -> Result<Option<crate::backend::buffer::Buffer>> {
             if 0 == entry_count {
-                return None;
+                return Ok(None);
             }
 
             let mut shader_binding_table_data = vec![0u8; (entry_count as usize * prog_size) as _];
@@ -375,7 +377,7 @@ impl Device {
                     );
             }
 
-            Some(
+            Ok(Some(
                 self.create_buffer(
                     super::buffer::BufferDesc {
                         size: shader_binding_table_data.len(),
@@ -385,17 +387,17 @@ impl Device {
                     },
                     Some(&shader_binding_table_data),
                 )
-                .expect("SBT sub-buffer"),
-            )
+                .context("SBT sub-buffer")?,
+            ))
         };
 
-        let raygen_shader_binding_table = create_binding_table(0, desc.raygen_entry_count);
+        let raygen_shader_binding_table = create_binding_table(0, desc.raygen_entry_count)?;
         let miss_shader_binding_table =
-            create_binding_table(desc.raygen_entry_count, desc.miss_entry_count);
+            create_binding_table(desc.raygen_entry_count, desc.miss_entry_count)?;
         let hit_shader_binding_table = create_binding_table(
             desc.raygen_entry_count + desc.miss_entry_count,
             desc.hit_entry_count,
-        );
+        )?;
 
         Ok(RayTracingShaderTable {
             raygen_shader_binding_table: vk::StridedDeviceAddressRegionKHR {

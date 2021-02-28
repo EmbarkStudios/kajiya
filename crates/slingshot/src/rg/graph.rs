@@ -271,6 +271,12 @@ impl<T: Sized> TypeEquals for T {
     }
 }
 
+impl Default for RenderGraph {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RenderGraph {
     pub fn new() -> Self {
         Self {
@@ -295,7 +301,7 @@ impl RenderGraph {
             raw: self.create_raw_resource(GraphResourceCreateInfo {
                 desc: desc.clone().into(),
             }),
-            desc: TypeEquals::same(desc.clone()),
+            desc: TypeEquals::same(desc),
             marker: PhantomData,
         };
 
@@ -658,7 +664,7 @@ impl CompiledRenderGraph {
         let mut resource_registry = ResourceRegistry {
             execution_params: &params,
             resources,
-            dynamic_constants: dynamic_constants,
+            dynamic_constants,
             compute_pipelines: self.compute_pipelines,
             raster_pipelines: self.raster_pipelines,
             rt_pipelines: self.rt_pipelines,
@@ -674,7 +680,7 @@ impl CompiledRenderGraph {
                         cb.raw,
                         vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                         params.profiler_data.query_pool,
-                        vk_query_idx * 2 + 0,
+                        vk_query_idx * 2,
                     );
                 }
 

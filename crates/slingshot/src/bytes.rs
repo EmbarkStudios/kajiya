@@ -14,7 +14,7 @@ where
 }
 
 #[allow(dead_code)]
-pub fn as_byte_slice<'a, T>(t: &'a T) -> &'a [u8]
+pub fn as_byte_slice<T>(t: &T) -> &[u8]
 where
     T: Copy,
 {

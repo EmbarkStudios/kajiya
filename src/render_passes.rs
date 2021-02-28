@@ -33,7 +33,7 @@ pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
                 },
                 std::slice::from_ref(&vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
-                    level_count: 1 as u32,
+                    level_count: 1,
                     layer_count: 1,
                     ..Default::default()
                 }),
@@ -62,7 +62,7 @@ pub fn clear_color(rg: &mut RenderGraph, img: &mut Handle<Image>, clear_color: [
                 },
                 std::slice::from_ref(&vk::ImageSubresourceRange {
                     aspect_mask: vk::ImageAspectFlags::COLOR,
-                    level_count: 1 as u32,
+                    level_count: 1,
                     layer_count: 1,
                     ..Default::default()
                 }),
@@ -389,6 +389,7 @@ pub fn raster_meshes(
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn light_gbuffer(
     rg: &mut RenderGraph,
     gbuffer: &Handle<Image>,

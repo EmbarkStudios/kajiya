@@ -124,7 +124,7 @@ pub fn create_descriptor_set_layouts(
         let set = set_opts
             .replace
             .as_ref()
-            .or(descriptor_sets.get(&set_index));
+            .or_else(|| descriptor_sets.get(&set_index));
 
         if let Some(set) = set {
             let mut bindings: Vec<vk::DescriptorSetLayoutBinding> = Vec::with_capacity(set.len());
@@ -133,7 +133,7 @@ pub fn create_descriptor_set_layouts(
 
             let mut set_layout_create_flags = vk::DescriptorSetLayoutCreateFlags::empty();
 
-            for (binding_index, binding) in set.into_iter() {
+            for (binding_index, binding) in set.iter() {
                 /*if binding.name == "bindless_textures" {
                     panic!("{:?}", binding);
                 }*/

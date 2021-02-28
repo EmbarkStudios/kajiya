@@ -274,7 +274,7 @@ impl TemporalRenderGraph {
         let mut rg = self.rg;
         let mut state = self.temporal_state;
 
-        for (_, state) in &mut state.resources {
+        for state in state.resources.values_mut() {
             match state {
                 TemporalResourceState::Inert { .. } => {
                     // Nothing to do here
@@ -309,7 +309,7 @@ impl ExportedTemporalRenderGraphState {
     pub fn retire_temporal(self, rg: &RetiredRenderGraph) -> TemporalRenderGraphState {
         let mut state = self.0;
 
-        for (_, state) in &mut state.resources {
+        for state in state.resources.values_mut() {
             match state {
                 TemporalResourceState::Inert { .. } => {
                     // Nothing to do here

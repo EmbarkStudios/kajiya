@@ -1,10 +1,7 @@
 use crate::asset::mesh::PackedTriMesh;
 use crate::asset::mesh::{AssetRef, GpuImage};
 use crate::{
-    asset::{
-        image::RawRgba8Image,
-        mesh::{PackedTriangleMesh, PackedVertex, TexParams},
-    },
+    asset::mesh::PackedVertex,
     backend::{self, image::*, shader::*, RenderBackend},
     camera::CameraMatrices,
     dynamic_constants::DynamicConstants,
@@ -17,7 +14,7 @@ use crate::{
     FrameState,
 };
 use backend::buffer::{Buffer, BufferDesc};
-use glam::{Vec2, Vec3};
+use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -88,8 +85,10 @@ pub struct VickiRenderClient {
     pub rtr: RtrRenderer,
     pub csgi: CsgiRenderer,
 
-    pub ui_frame: Option<(Box<dyn FnOnce(vk::CommandBuffer) + 'static>, Arc<Image>)>,
+    pub ui_frame: Option<(UiRenderCallback, Arc<Image>)>,
 }
+
+pub type UiRenderCallback = Box<dyn FnOnce(vk::CommandBuffer) + 'static>;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RenderMode {
@@ -251,8 +250,7 @@ fn load_gpu_image_asset(
 
     let initial_data = asset
         .mips
-        .as_slice()
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(mip_level, mip)| ImageSubResourceData {
             data: mip.as_slice(),

@@ -202,7 +202,7 @@ impl Swapchain {
             {
                 Err(SwapchainAcquireImageErr::RecreateFramebuffer)
             }
-            err @ _ => {
+            err => {
                 panic!("Could not acquire swapchain image: {:?}", err);
             }
         }
@@ -226,7 +226,7 @@ impl Swapchain {
                 {
                     // Handled in the next frame
                 }
-                err @ _ => {
+                err => {
                     panic!("Could not acquire swapchain image: {:?}", err);
                 }
             }

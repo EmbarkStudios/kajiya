@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use slingshot::{
     ash::{self, version::DeviceV1_0, vk},
-    backend::barrier::{record_image_barrier, ImageBarrier},
-    vk_sync, Device, Image, ImageDesc, ImageViewDesc,
+    Device, Image, ImageDesc, ImageViewDesc,
 };
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -72,6 +71,8 @@ impl ImGuiBackend {
         }
     }
 
+    // TODO
+    #[allow(dead_code)]
     pub fn destroy_graphics_resources(&mut self) {
         let device = &self.device.raw;
 
@@ -248,13 +249,11 @@ pub fn create_imgui_render_pass(device: &ash::Device) -> vk::RenderPass {
         .subpasses(&subpasses)
         .dependencies(&dependencies);
 
-    let renderpass = unsafe {
+    unsafe {
         device
             .create_render_pass(&renderpass_create_info, None)
             .unwrap()
-    };
-
-    renderpass
+    }
 }
 
 pub fn create_imgui_framebuffer(

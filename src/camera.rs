@@ -162,7 +162,7 @@ impl Camera for FirstPersonCamera {
         let pos_interp = 1.0 - (-input.dt * 16.0 / self.move_smoothness.max(1e-5)).exp();
         self.interp_rot = self.interp_rot.slerp(target_quat, rot_interp);
         self.interp_rot = self.interp_rot.normalize();
-        self.interp_pos = self.interp_pos.lerp(self.position, pos_interp).into();
+        self.interp_pos = self.interp_pos.lerp(self.position, pos_interp);
     }
 
     fn calc_matrices(&self) -> CameraMatrices {
@@ -240,7 +240,7 @@ impl<CameraType: Camera> CameraConvergenceEnforcer<CameraType> {
         let matrices = camera.calc_matrices();
         Self {
             camera,
-            prev_matrices: matrices.clone(),
+            prev_matrices: matrices,
             frozen_matrices: matrices,
             prev_error: -1.0,
             is_converged: true,
@@ -282,7 +282,7 @@ impl<CameraType: Camera> Camera for CameraConvergenceEnforcer<CameraType> {
             .sum();
 
         if error > 1e-5 || error > self.prev_error * 1.05 + 1e-5 {
-            self.frozen_matrices = new_matrices.clone();
+            self.frozen_matrices = new_matrices;
             self.is_converged = false;
         } else {
             self.is_converged = true;
@@ -293,6 +293,6 @@ impl<CameraType: Camera> Camera for CameraConvergenceEnforcer<CameraType> {
     }
 
     fn calc_matrices(&self) -> CameraMatrices {
-        self.frozen_matrices.clone()
+        self.frozen_matrices
     }
 }

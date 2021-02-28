@@ -1,4 +1,3 @@
-use super::buffer::{Buffer, BufferDesc};
 use ash::{version::DeviceV1_0, vk};
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation, SubAllocation, VulkanAllocator};
 
@@ -39,19 +38,6 @@ const MAX_QUERY_COUNT: usize = 1024;
 
 impl VkProfilerData {
     pub fn new(device: &ash::Device, allocator: &mut VulkanAllocator) -> Self {
-        let usage: vk::BufferUsageFlags = vk::BufferUsageFlags::TRANSFER_DST;
-
-        /*let buffer = device
-        .create_buffer(
-            BufferDesc {
-                size: MAX_QUERY_COUNT * 8 * 2,
-                usage,
-                mapped: true,
-            },
-            None,
-        )
-        .unwrap();*/
-
         let (buffer, allocation) = {
             let size = MAX_QUERY_COUNT * 8 * 2;
             let usage = vk::BufferUsageFlags::TRANSFER_DST;

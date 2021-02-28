@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{cell::UnsafeCell, sync::Arc};
 
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
@@ -282,7 +282,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             color_attachments
                 .iter()
                 .chain(depth_attachment.as_ref().into_iter())
-                .map(|(img, view)| self.resources.image_view(img.handle, view.clone()))
+                .map(|(img, view)| self.resources.image_view(img.handle, view))
                 .collect();
 
         let mut pass_attachment_desc =
@@ -533,7 +533,8 @@ fn bind_descriptor_set(
 
     let image_info = TempList::new();
     let buffer_info = TempList::new();
-    let accel_info = TempList::new();
+    let accel_info: TempList<UnsafeCell<vk::WriteDescriptorSetAccelerationStructureKHR>> =
+        TempList::new();
 
     let raw_device = &device.raw;
 
@@ -558,59 +559,58 @@ fn bind_descriptor_set(
 
     unsafe {
         let mut dynamic_offsets: Vec<u32> = Vec::new();
-        let descriptor_writes: Vec<vk::WriteDescriptorSet> = bindings
-            .iter()
-            .enumerate()
-            .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
-            .map(|(binding_idx, binding)| {
-                let write = vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
-                    .dst_binding(binding_idx as _)
-                    .dst_array_element(0);
+        let descriptor_writes: Vec<vk::WriteDescriptorSet> =
+            bindings
+                .iter()
+                .enumerate()
+                .filter(|(binding_idx, _)| shader_set_info.contains_key(&(*binding_idx as u32)))
+                .map(|(binding_idx, binding)| {
+                    let write = vk::WriteDescriptorSet::builder()
+                        .dst_set(descriptor_set)
+                        .dst_binding(binding_idx as _)
+                        .dst_array_element(0);
 
-                match binding {
-                    DescriptorSetBinding::Image(image) => write
-                        .descriptor_type(match image.image_layout {
-                            vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
-                                vk::DescriptorType::SAMPLED_IMAGE
-                            }
-                            vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
-                            _ => unimplemented!("{:?}", image.image_layout),
-                        })
-                        .image_info(std::slice::from_ref(image_info.add(*image)))
-                        .build(),
-                    DescriptorSetBinding::Buffer(buffer) => write
-                        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                        .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                        .build(),
-                    DescriptorSetBinding::DynamicBuffer { buffer, offset } => {
-                        dynamic_offsets.push(*offset);
-                        write
-                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                    match binding {
+                        DescriptorSetBinding::Image(image) => write
+                            .descriptor_type(match image.image_layout {
+                                vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                                    vk::DescriptorType::SAMPLED_IMAGE
+                                }
+                                vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
+                                _ => unimplemented!("{:?}", image.image_layout),
+                            })
+                            .image_info(std::slice::from_ref(image_info.add(*image)))
+                            .build(),
+                        DescriptorSetBinding::Buffer(buffer) => write
+                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                             .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
-                            .build()
-                    }
-                    DescriptorSetBinding::RayTracingAcceleration(acc) => {
-                        let mut write = write
+                            .build(),
+                        DescriptorSetBinding::DynamicBuffer { buffer, offset } => {
+                            dynamic_offsets.push(*offset);
+                            write
+                                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                                .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
+                                .build()
+                        }
+                        DescriptorSetBinding::RayTracingAcceleration(acc) => {
+                            let mut write = write
                             .descriptor_type(vk::DescriptorType::ACCELERATION_STRUCTURE_KHR)
                             .push_next(
-                                &mut *(accel_info.add(
+                                accel_info.add(UnsafeCell::new(
                                     vk::WriteDescriptorSetAccelerationStructureKHR::builder()
                                         .acceleration_structures(std::slice::from_ref(acc))
                                         .build(),
-                                )
-                                    as *const vk::WriteDescriptorSetAccelerationStructureKHR
-                                    as *mut vk::WriteDescriptorSetAccelerationStructureKHR),
+                                )).get().as_mut().unwrap(),
                             )
                             .build();
 
-                        // This is only set by the builder for images, buffers, or views; need to set explicitly after
-                        write.descriptor_count = 1;
-                        write
+                            // This is only set by the builder for images, buffers, or views; need to set explicitly after
+                            write.descriptor_count = 1;
+                            write
+                        }
                     }
-                }
-            })
-            .collect();
+                })
+                .collect();
 
         device.raw.update_descriptor_sets(&descriptor_writes, &[]);
 

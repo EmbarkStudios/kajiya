@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use std::mem::size_of;
 
 use rg::GetOrCreateTemporal;
@@ -157,7 +158,7 @@ impl SurfelGiRenderState {
                 rg.add_pass("surfel dispatch args"),
                 "/assets/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
             )
-            .read(&mut self.surfel_meta_buf)
+            .read(&self.surfel_meta_buf)
             .write(&mut indirect_args_buf)
             .dispatch([1, 1, 1]);
 
@@ -216,7 +217,7 @@ impl SurfelGiRenderState {
                 rg.add_pass("surfel gi dispatch args"),
                 "/assets/shaders/surfel_gi/prepare_trace_dispatch_args.hlsl",
             )
-            .read(&mut self.surfel_meta_buf)
+            .read(&self.surfel_meta_buf)
             .write(&mut indirect_args_buf)
             .dispatch([1, 1, 1]);
 

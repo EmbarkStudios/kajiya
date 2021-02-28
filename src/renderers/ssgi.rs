@@ -5,10 +5,7 @@ use slingshot::{
     rg::{self, GetOrCreateTemporal, SimpleRenderPass},
 };
 
-use super::{
-    half_res::{extract_half_res_depth, extract_half_res_gbuffer_view_normal_rgba8},
-    GbufferDepth,
-};
+use super::GbufferDepth;
 
 struct PingPongTemporalResource {
     output_tex: rg::TemporalResourceKey,
@@ -29,11 +26,11 @@ impl PingPongTemporalResource {
         desc: ImageDesc,
     ) -> (rg::Handle<Image>, rg::Handle<Image>) {
         let output_tex = rg
-            .get_or_create_temporal(self.output_tex.clone(), desc.clone())
+            .get_or_create_temporal(self.output_tex.clone(), desc)
             .unwrap();
 
         let history_tex = rg
-            .get_or_create_temporal(self.history_tex.clone(), desc.clone())
+            .get_or_create_temporal(self.history_tex.clone(), desc)
             .unwrap();
 
         std::mem::swap(&mut self.output_tex, &mut self.history_tex);
@@ -86,15 +83,13 @@ impl SsgiRenderer {
             ))
             .dispatch(ssgi_tex.desc().extent);
 
-        let ssgi_tex = Self::filter_ssgi(
+        Self::filter_ssgi(
             rg,
             &ssgi_tex,
             gbuffer_depth,
             reprojection_map,
             &mut self.ssgi_tex,
-        );
-
-        ssgi_tex
+        )
     }
 
     fn filter_ssgi(

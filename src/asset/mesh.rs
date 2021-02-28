@@ -90,8 +90,8 @@ fn load_gltf_material(
     mat: &gltf::material::Material,
     parent_path: &Path,
 ) -> (Vec<MeshMaterialMap>, MeshMaterial) {
-    let make_asset_path = |path: String| -> PathBuf {
-        let mut asset_name: std::path::PathBuf = parent_path.clone().into();
+    let make_asset_path = move |path: String| -> PathBuf {
+        let mut asset_name: std::path::PathBuf = parent_path.into();
         asset_name.pop();
         asset_name.push(&path);
         asset_name
@@ -382,11 +382,22 @@ impl<T> FlatVec<T> {
         self.len as usize
     }
 
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         unsafe {
             let data = (&self.offset as *const u64 as *const u8).add(self.offset as usize);
             std::slice::from_raw_parts(data as *const T, self.len as usize)
         }
+    }
+
+    #[inline(always)]
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.as_slice().iter()
     }
 }
 
@@ -519,17 +530,6 @@ macro_rules! def_asset {
             fixup_addr,
             nested,
         });
-    };
-
-    // Bespoke
-    (@proto_ty Bespoke($($proto:tt)+) => $bespoke_flatten:ident => ($($flat:tt)+)) => {
-        $($proto)+
-    };
-    (@flat_ty Bespoke($($proto:tt)+) => $bespoke_flatten:ident => ($($flat:tt)+)) => {
-        $($flat)+
-    };
-    (@flatten $output:expr; $field:expr; Bespoke($($proto:tt)+) => $bespoke_flatten:ident => ($($flat:tt)+)) => {
-        $bespoke_flatten($output, $field)
     };
 
     // Asset
@@ -667,11 +667,6 @@ def_asset! {
         materials { Vec(MeshMaterial) }
         maps { Vec(Asset(GpuImage)) }
     }
-}
-
-pub fn flatten_mesh_material_map(ctx: &mut FlattenCtx, value: &MeshMaterialMap) {
-    // TODO
-    //todo!()
 }
 
 /*#[derive(Clone)]

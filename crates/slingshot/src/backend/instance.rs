@@ -35,6 +35,7 @@ pub struct Instance {
     pub(crate) entry: ash::Entry,
     pub(crate) raw: ash::Instance,
     pub(crate) debug_callback: Option<vk::DebugReportCallbackEXT>,
+    #[allow(deprecated)]
     pub(crate) debug_loader: Option<ext::DebugReport>,
 }
 
@@ -47,6 +48,7 @@ impl Instance {
         let mut names = vec![vk::KhrGetPhysicalDeviceProperties2Fn::name().as_ptr()];
 
         if builder.graphics_debugging {
+            #[allow(deprecated)]
             names.push(ext::DebugReport::name().as_ptr());
         }
 
@@ -95,9 +97,11 @@ impl Instance {
                 ..Default::default()
             };
 
+            #[allow(deprecated)]
             let debug_loader = ext::DebugReport::new(&entry, &instance);
 
             let debug_callback = unsafe {
+                #[allow(deprecated)]
                 debug_loader
                     .create_debug_report_callback(&debug_info, None)
                     .unwrap()
@@ -128,6 +132,8 @@ unsafe extern "system" fn vulkan_debug_callback(
     _user_data: *mut c_void,
 ) -> u32 {
     let message = CStr::from_ptr(message).to_str().unwrap();
+
+    #[allow(clippy::if_same_then_else)]
     if message.starts_with("Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-00322")
         || message.starts_with("Validation Error: [ VUID-VkWriteDescriptorSet-descriptorType-02752")
     {

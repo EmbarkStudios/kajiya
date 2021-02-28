@@ -264,8 +264,10 @@ impl Device {
             .build();
 
         let mut get_buffer_device_address_features =
-            ash::vk::PhysicalDeviceBufferDeviceAddressFeaturesKHR::default();
-        get_buffer_device_address_features.buffer_device_address = 1;
+            ash::vk::PhysicalDeviceBufferDeviceAddressFeatures {
+                buffer_device_address: 1,
+                ..Default::default()
+            };
 
         unsafe {
             let instance = &pdevice.instance.raw;
@@ -367,14 +369,14 @@ impl Device {
 
         for &texel_filter in &texel_filters {
             for &mipmap_mode in &mipmap_modes {
-                for &address_mode in &address_modes {
+                for &address_modes in &address_modes {
                     let anisotropy_enable = texel_filter == vk::Filter::LINEAR;
 
                     result.insert(
                         SamplerDesc {
-                            texel_filter: texel_filter,
-                            mipmap_mode: mipmap_mode,
-                            address_modes: address_mode,
+                            texel_filter,
+                            mipmap_mode,
+                            address_modes,
                         },
                         unsafe {
                             device.create_sampler(
@@ -382,9 +384,9 @@ impl Device {
                                     .mag_filter(texel_filter)
                                     .min_filter(texel_filter)
                                     .mipmap_mode(mipmap_mode)
-                                    .address_mode_u(address_mode)
-                                    .address_mode_v(address_mode)
-                                    .address_mode_w(address_mode)
+                                    .address_mode_u(address_modes)
+                                    .address_mode_v(address_modes)
+                                    .address_mode_w(address_modes)
                                     .max_lod(vk::LOD_CLAMP_NONE)
                                     .max_anisotropy(16.0)
                                     .anisotropy_enable(anisotropy_enable)
@@ -392,7 +394,6 @@ impl Device {
                                 None,
                             )
                         }
-                        .ok()
                         .expect("create_sampler"),
                     );
                 }

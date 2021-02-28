@@ -106,8 +106,8 @@ impl ImageDesc {
     }
 
     pub fn div_up_extent(mut self, div_extent: [u32; 3]) -> Self {
-        for i in 0..3 {
-            self.extent[i] = (self.extent[i] + div_extent[i] - 1) / div_extent[i];
+        for (extent, &div_extent) in self.extent.iter_mut().zip(&div_extent) {
+            *extent = (*extent + div_extent - 1) / div_extent;
         }
         self
     }
@@ -153,9 +153,9 @@ impl Image {
         if let Some(entry) = views.get(desc) {
             *entry
         } else {
-            *views.entry(desc.clone()).or_insert_with(|| {
+            *views.entry(*desc).or_insert_with(|| {
                 device
-                    .create_image_view(desc.clone(), &self.desc, self.raw)
+                    .create_image_view(*desc, &self.desc, self.raw)
                     .unwrap()
             })
         }

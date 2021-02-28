@@ -90,10 +90,10 @@ impl<T: Sized> ResourceStorage<T> {
             new_block.push(item);
             pending.push(UnsafeCell::new(new_block));
 
-            return ResourceHandle {
+            ResourceHandle {
                 index: (block_index * PENDING_RESOURE_BLOCK_SIZE + idx_within_block) as _,
                 version: 0,
-            };
+            }
         }
     }
 
@@ -125,19 +125,17 @@ impl<T: Sized> ResourceStorage<T> {
         let index = handle.index as usize;
         if index < self.current.len() {
             unsafe { *self.versions.get_unchecked(index) == handle.version }
+        } else if handle.version != 0 {
+            false
         } else {
-            if handle.version != 0 {
-                false
-            } else {
-                let pending = self.pending.lock();
-                let block = index / PENDING_RESOURE_BLOCK_SIZE;
-                let element = index % PENDING_RESOURE_BLOCK_SIZE;
+            let pending = self.pending.lock();
+            let block = index / PENDING_RESOURE_BLOCK_SIZE;
+            let element = index % PENDING_RESOURE_BLOCK_SIZE;
 
-                if let Some(block) = pending.get(block) {
-                    unsafe { element < (*block.get()).len() }
-                } else {
-                    false
-                }
+            if let Some(block) = pending.get(block) {
+                unsafe { element < (*block.get()).len() }
+            } else {
+                false
             }
         }
     }

@@ -147,7 +147,7 @@ impl<ResType: Resource> Handle<ResType> {
 
     pub(crate) fn clone_unchecked(&self) -> Self {
         Self {
-            raw: self.raw.clone(),
+            raw: self.raw,
             desc: self.desc.clone(),
             marker: PhantomData,
         }
@@ -177,7 +177,7 @@ where
 {
     fn clone(&self) -> Self {
         Self {
-            handle: self.handle.clone(),
+            handle: self.handle,
             desc: self.desc.clone(),
             marker: PhantomData,
         }

@@ -12,10 +12,7 @@ mod render_passes;
 mod renderers;
 mod viewport;
 
-use asset::{
-    image::{CreatePlaceholderImage, LoadImage, RawRgba8Image},
-    mesh::*,
-};
+use asset::{image::LoadImage, mesh::*};
 use camera::*;
 use image_cache::*;
 use imgui::im_str;
@@ -27,23 +24,14 @@ use math::*;
 use log::{debug, error, info, trace, warn};
 use memmap2::MmapOptions;
 use parking_lot::Mutex;
-use render_client::{BindlessImageHandle, RenderMode};
+use render_client::RenderMode;
 use slingshot::*;
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    hash::Hash,
-    sync::Arc,
-};
+use std::{collections::HashMap, fs::File, sync::Arc};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
 use std::path::PathBuf;
 use structopt::StructOpt;
-
-use async_channel::unbounded;
-use async_executor::Executor;
-use easy_parallel::Parallel;
 
 pub struct FrameState {
     pub camera_matrices: CameraMatrices,
@@ -150,90 +138,6 @@ fn main() -> anyhow::Result<()> {
     let mut new_mouse_state: MouseState = Default::default();
 
     let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/derp.mesh")?;
-
-    /*let mut material_map_to_bindless_handlee: HashMap<MeshMaterialMap, BindlessImageHandle> =
-        Default::default();
-
-    let mesh_images: Vec<Lazy<Image>> = mesh
-        .maps
-        .iter()
-        .map(|map| {
-            let (image, params) = match map {
-                MeshMaterialMap::Asset { path, params } => {
-                    (LoadImage::new(&path).unwrap().into_lazy(), *params)
-                }
-                MeshMaterialMap::Placeholder(values) => (
-                    CreatePlaceholderImage::new(*values).into_lazy(),
-                    TexParams {
-                        gamma: crate::asset::mesh::TexGamma::Linear,
-                        use_mips: false,
-                    },
-                ),
-            };
-
-            UploadGpuImage {
-                image,
-                params,
-                device: renderer.device().clone(),
-            }
-            .into_lazy()
-        })
-        .collect();*/
-
-    /*{
-        let ex = Executor::new();
-        let (signal, shutdown) = unbounded::<()>();
-
-        Parallel::new()
-            // Run four executor threads.
-            .each(0..16, |_| {
-                futures_lite::future::block_on(ex.run(shutdown.recv()))
-            })
-            // Run the main future on the current thread.
-            .finish(|| {
-                futures_lite::future::block_on(async {
-                    let stream = stream::iter(mesh_images.into_iter()).then(|img| {
-                        ex.spawn({
-                            let lazy_cache = lazy_cache.clone();
-                            async move {
-                                loop {}
-                                img.eval(&lazy_cache).await
-                            }
-                        })
-                    });
-                    let images = stream.collect::<Vec<_>>().await;
-                    drop(signal);
-                })
-            });
-    }*/
-
-    /*let loaded_images = mesh_images
-        .iter()
-        .cloned()
-        .map(|img| smol::spawn(img.eval(&lazy_cache)));
-    let loaded_images = smol::block_on(futures::future::try_join_all(loaded_images))
-        .expect("Failed to load mesh images");*/
-
-    //let mut mesh = pack_triangle_mesh(&mesh);
-    /*{
-        let mesh_map_gpu_ids: Vec<BindlessImageHandle> = mesh
-            .maps
-            .iter()
-            .zip(loaded_images.iter())
-            .map(|(map, img)| {
-                *material_map_to_bindless_handlee
-                    .entry(map.clone())
-                    .or_insert_with(|| render_client.add_image(img.clone()))
-            })
-            .collect();
-
-        for mat in &mut mesh.materials {
-            for m in &mut mat.maps {
-                *m = mesh_map_gpu_ids[*m as usize].0;
-            }
-        }
-    }*/
-
     render_client.add_mesh(mesh);
     render_client.build_ray_tracing_top_level_acceleration();
 
@@ -258,6 +162,7 @@ fn main() -> anyhow::Result<()> {
         });
 
         for event in events.into_iter() {
+            #[allow(clippy::single_match)]
             match event {
                 Event::WindowEvent { event, .. } => match event {
                     WindowEvent::CloseRequested => running = false,
@@ -294,7 +199,7 @@ fn main() -> anyhow::Result<()> {
 
         keyboard.update(std::mem::take(&mut keyboard_events), dt);
         mouse_state.update(&new_mouse_state);
-        new_mouse_state = mouse_state.clone();
+        new_mouse_state = mouse_state;
 
         let input_state = InputState {
             mouse: mouse_state,
@@ -324,7 +229,7 @@ fn main() -> anyhow::Result<()> {
 
         let frame_state = FrameState {
             camera_matrices: camera.calc_matrices(),
-            window_cfg: window_cfg,
+            window_cfg,
             input: input_state,
             //sun_direction: Vec3::new(-0.8, 0.3, 1.0).normalize(),
             sun_direction: spherical_to_cartesian(light_theta, light_phi),
