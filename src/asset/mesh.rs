@@ -3,6 +3,7 @@
 
 use byteorder::{ByteOrder, NativeEndian, WriteBytesExt};
 use glam::{Mat4, Vec3};
+use gltf::texture::TextureTransform;
 use slingshot::bytes::into_byte_vec;
 /*use render_core::{
     constants::MAX_VERTEX_STREAMS,
@@ -48,6 +49,7 @@ pub struct MeshMaterial {
     pub roughness_mult: f32,
     pub metalness_factor: f32,
     pub emissive: [f32; 3],
+    pub map_transforms: [[f32; 6]; 3],
 }
 
 #[derive(Clone, Default)]
@@ -105,32 +107,75 @@ fn load_gltf_material(
         }
     };
 
-    let albedo_map = mat
+    const DEFAULT_MAP_TRANSFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    let mut map_transforms: [[f32; 6]; 3] = [DEFAULT_MAP_TRANSFORM; 3];
+
+    fn texture_transform_to_matrix(xform: Option<TextureTransform>) -> [f32; 6] {
+        if let Some(xform) = xform {
+            let r = xform.rotation();
+            let s = xform.scale();
+            let o = xform.offset();
+
+            [
+                r.cos() * s[0],
+                r.sin() * s[1],
+                -r.sin() * s[0],
+                r.cos() * s[1],
+                o[0],
+                o[1],
+            ]
+        } else {
+            DEFAULT_MAP_TRANSFORM
+        }
+    }
+
+    let (albedo_map, albedo_map_transform) = mat
         .pbr_metallic_roughness()
         .base_color_texture()
         .and_then(|tex| {
-            get_gltf_texture_source(tex.texture()).map(|path: String| -> MeshMaterialMap {
-                MeshMaterialMap::Asset {
-                    path: make_asset_path(path),
-                    params: TexParams {
-                        gamma: TexGamma::Srgb,
-                        use_mips: true,
-                    },
-                }
-            })
-        })
-        .unwrap_or(MeshMaterialMap::Placeholder([255, 255, 255, 255]));
+            let transform = texture_transform_to_matrix(tex.texture_transform());
 
+            Some((
+                get_gltf_texture_source(tex.texture()).map(|path: String| -> MeshMaterialMap {
+                    MeshMaterialMap::Asset {
+                        path: make_asset_path(path),
+                        params: TexParams {
+                            gamma: TexGamma::Srgb,
+                            use_mips: true,
+                        },
+                    }
+                })?,
+                transform,
+            ))
+        })
+        .unwrap_or((
+            MeshMaterialMap::Placeholder([255, 255, 255, 255]),
+            DEFAULT_MAP_TRANSFORM,
+        ));
+
+    map_transforms[0] = albedo_map_transform;
+
+    // TODO: add texture transform to the normal map in the `gltf` crate
     let normal_map = mat
         .normal_texture()
         .and_then(|tex| get_gltf_texture_source(tex.texture()).map(make_material_map))
         .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]));
 
-    let spec_map = mat
+    let (spec_map, spec_map_transform) = mat
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
-        .and_then(|tex| get_gltf_texture_source(tex.texture()).map(make_material_map))
-        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 0, 255]));
+        .and_then(|tex| {
+            Some((
+                get_gltf_texture_source(tex.texture()).map(make_material_map)?,
+                texture_transform_to_matrix(tex.texture_transform()),
+            ))
+        })
+        .unwrap_or((
+            MeshMaterialMap::Placeholder([127, 127, 0, 255]),
+            DEFAULT_MAP_TRANSFORM,
+        ));
+
+    map_transforms[2] = spec_map_transform;
 
     let emissive = if mat.emissive_texture().is_some() {
         [0.0, 0.0, 0.0]
@@ -142,6 +187,8 @@ fn load_gltf_material(
     let roughness_mult = mat.pbr_metallic_roughness().roughness_factor();
     let metalness_factor = mat.pbr_metallic_roughness().metallic_factor();
 
+    //mata.normal_texture().and_then(|tex| tex.transform())
+
     (
         vec![normal_map, spec_map, albedo_map],
         MeshMaterial {
@@ -150,6 +197,7 @@ fn load_gltf_material(
             roughness_mult,
             metalness_factor,
             emissive,
+            map_transforms,
         },
     )
 }

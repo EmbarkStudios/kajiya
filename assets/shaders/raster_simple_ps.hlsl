@@ -15,6 +15,13 @@ struct PsIn {
     //[[vk::location(4)]] float3 pos: TEXCOORD4;
 };
 
+float2 transform_material_uv(MeshMaterial mat, float2 uv, uint map_idx) {
+    uint xo = map_idx * 6;
+    float2x2 rot_scl = float2x2(mat.map_transforms[xo+0], mat.map_transforms[xo+1], mat.map_transforms[xo+2], mat.map_transforms[xo+3]);
+    float2 offset = float2(mat.map_transforms[xo+4], mat.map_transforms[xo+5]);
+    return mul(rot_scl, uv) + offset;
+}
+
 float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     Mesh mesh = meshes[0];
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * sizeof(MeshMaterial));
@@ -23,12 +30,14 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     //float3 d2 = ddy(ps.pos);
     //normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
 
+    float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
-    const float3 albedo = albedo_tex.Sample(sampler_llr, ps.uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
+    const float3 albedo = albedo_tex.Sample(sampler_llr, albedo_uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
 
+    float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
-    const float4 metalness_roughness = spec_tex.Sample(sampler_llr, ps.uv);
+    const float4 metalness_roughness = spec_tex.Sample(sampler_llr, spec_uv);
 
     float roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
     //roughness = 0.01;

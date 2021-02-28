@@ -43,6 +43,7 @@ struct MeshMaterial {
     float roughness_mult;
     float metalness_factor;
     float emissive[3];
+    float map_transforms[6 * 3];
 };
 
 #endif
