@@ -30,7 +30,6 @@ use std::{collections::HashMap, fs::File, sync::Arc};
 use turbosloth::*;
 use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
 
-use std::path::PathBuf;
 use structopt::StructOpt;
 
 pub struct FrameState {
@@ -49,11 +48,10 @@ struct Opt {
     #[structopt(long, default_value = "720")]
     height: u32,
 
-    #[structopt(long, parse(from_os_str))]
-    scene: PathBuf,
-
-    #[structopt(long, default_value = "0.1")]
-    scale: f32,
+    //#[structopt(long, parse(from_os_str))]
+    //scene: PathBuf,
+    #[structopt(long)]
+    scene: String,
 
     #[structopt(long)]
     no_vsync: bool,
@@ -137,7 +135,7 @@ fn main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
-    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/derp.mesh")?;
+    let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
     render_client.add_mesh(mesh);
     render_client.build_ray_tracing_top_level_acceleration();
 

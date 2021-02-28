@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs::File, path::PathBuf, sync::Arc};
+use std::{collections::HashSet, fs::File, path::PathBuf};
 use vicki::asset::mesh::{pack_triangle_mesh, GpuImage, LoadGltfScene, PackedTriMesh};
 
 use turbosloth::*;
@@ -14,6 +14,9 @@ struct Opt {
 
     #[structopt(long, default_value = "0.1")]
     scale: f32,
+
+    #[structopt(short = "o")]
+    output_name: String,
 }
 
 fn main() -> Result<()> {
@@ -30,7 +33,10 @@ fn main() -> Result<()> {
         let mesh: PackedTriMesh::Proto =
             pack_triangle_mesh(&*smol::block_on(mesh.eval(&lazy_cache))?);
 
-        mesh.flatten_into(&mut File::create("baked/derp.mesh")?);
+        mesh.flatten_into(&mut File::create(format!(
+            "baked/{}.mesh",
+            opt.output_name
+        ))?);
         let unique_images: Vec<Lazy<GpuImage::Proto>> = mesh
             .maps
             .into_iter()
@@ -38,21 +44,19 @@ fn main() -> Result<()> {
             .into_iter()
             .collect::<Vec<_>>();
 
-        let loaded_images = unique_images
-            .iter()
-            .cloned()
-            .map(|img| smol::spawn(img.eval(&lazy_cache)));
+        let lazy_cache = &lazy_cache;
+        let images = unique_images.iter().cloned().map(|img| async move {
+            let loaded = smol::spawn(img.eval(lazy_cache)).await?;
 
-        let loaded_images: Vec<Arc<GpuImage::Proto>> =
-            smol::block_on(futures::future::try_join_all(loaded_images))
-                .expect("Failed to load mesh images");
-
-        for (image, handle) in loaded_images.into_iter().zip(unique_images) {
-            image.flatten_into(&mut File::create(format!(
+            loaded.flatten_into(&mut File::create(format!(
                 "baked/{:8.8x}.image",
-                handle.identity()
+                img.identity()
             ))?);
-        }
+
+            anyhow::Result::<()>::Ok(())
+        });
+
+        smol::block_on(futures::future::try_join_all(images)).expect("Failed to load mesh images");
     }
 
     /*{

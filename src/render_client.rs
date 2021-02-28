@@ -60,7 +60,7 @@ struct GpuMesh {
 }
 
 const MAX_GPU_MESHES: usize = 1024;
-const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 512;
+const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 325;
 
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
@@ -314,6 +314,7 @@ impl BufferBuilder {
             src_range: Range<usize>,
         }
 
+        // TODO: merge chunks to perform fewer uploads if multiple source regions fit in one chunk
         let chunks: Vec<UploadChunk> = self
             .pending_uploads
             .iter()
