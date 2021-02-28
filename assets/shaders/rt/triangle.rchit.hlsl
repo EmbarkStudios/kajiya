@@ -39,11 +39,9 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     const float hit_dist = length(hit_point - WorldRayOrigin());
 
     float3 barycentrics = float3(1.0 - attrib.bary.x - attrib.bary.y, attrib.bary.x, attrib.bary.y);
-    barycentrics.z += float(meshes[0].vertex_core_offset) * 1e-20;
-    barycentrics.z += float(vertices.Load(0)) * 1e-20;
-    barycentrics.z += bindless_textures[0][uint2(0, 0)].x * 1e-20;
 
-    Mesh mesh = meshes[InstanceIndex()];
+    //Mesh mesh = meshes[InstanceIndex() / 2];
+    Mesh mesh = meshes[InstanceID()];
 
     // Indices of the triangle
     uint3 ind = uint3(

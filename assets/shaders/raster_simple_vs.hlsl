@@ -2,6 +2,12 @@
 #include "inc/mesh.hlsl"
 #include "inc/bindless.hlsl"
 
+[[vk::push_constant]]
+struct {
+    uint mesh_index;
+    float instance_position[3];
+} push_constants;
+
 struct VsOut {
 	float4 position: SV_Position;
     [[vk::location(0)]] float4 color: TEXCOORD0;
@@ -13,10 +19,10 @@ struct VsOut {
     //[[vk::location(4)]] float3 pos: TEXCOORD4;
 };
 
-VsOut main(uint vid: SV_VertexID) {
+VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     VsOut vsout;
 
-    Mesh mesh = meshes[0];
+    const Mesh mesh = meshes[push_constants.mesh_index];
 
     // TODO: replace with Load<float4> once there's a fast path for NV
     // https://github.com/microsoft/DirectXShaderCompiler/issues/2193
@@ -36,7 +42,8 @@ VsOut main(uint vid: SV_VertexID) {
     float2 uv = asfloat(vertices.Load2(vid * sizeof(float2) + mesh.vertex_uv_offset));
     uint material_id = vertices.Load(vid * sizeof(uint) + mesh.vertex_mat_offset);
 
-    float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(v.position, 1.0));
+    float3 ws_pos = v.position + float3(push_constants.instance_position);
+    float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(ws_pos, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
     vsout.position = cs_pos;

@@ -15,6 +15,12 @@ struct PsIn {
     //[[vk::location(4)]] float3 pos: TEXCOORD4;
 };
 
+[[vk::push_constant]]
+struct {
+    uint mesh_index;
+    float instance_position[3];
+} push_constants;
+
 float2 transform_material_uv(MeshMaterial mat, float2 uv, uint map_idx) {
     uint xo = map_idx * 6;
     float2x2 rot_scl = float2x2(mat.map_transforms[xo+0], mat.map_transforms[xo+1], mat.map_transforms[xo+2], mat.map_transforms[xo+3]);
@@ -23,7 +29,7 @@ float2 transform_material_uv(MeshMaterial mat, float2 uv, uint map_idx) {
 }
 
 float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
-    Mesh mesh = meshes[0];
+    Mesh mesh = meshes[push_constants.mesh_index];
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * sizeof(MeshMaterial));
 
     //float3 d1 = ddx(ps.pos);

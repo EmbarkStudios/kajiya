@@ -114,7 +114,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
     }
 
     pub fn bind_raster_pipeline<'s>(
-        &'s mut self,
+        &'s self,
         binding: RenderPassPipelineBinding<'_, RgRasterPipelineHandle>,
     ) -> BoundRasterPipeline<'s, 'a, 'exec_params, 'constants> {
         let device = self.resources.execution_params.device;
@@ -144,7 +144,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
     }
 
     fn bind_pipeline_common(
-        &mut self,
+        &self,
         device: &Device,
         pipeline: &ShaderPipelineCommon,
         binding: &RenderPassCommonShaderPipelineBinding,
@@ -384,9 +384,34 @@ impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_pa
 
 pub struct BoundRasterPipeline<'api, 'a, 'exec_params, 'constants> {
     #[allow(dead_code)]
-    api: &'api mut RenderPassApi<'a, 'exec_params, 'constants>,
+    api: &'api RenderPassApi<'a, 'exec_params, 'constants>,
     #[allow(dead_code)]
     pipeline: Arc<RasterPipeline>,
+}
+
+impl<'api, 'a, 'exec_params, 'constants> BoundRasterPipeline<'api, 'a, 'exec_params, 'constants> {
+    pub fn push_constants(
+        &self,
+        command_buffer: vk::CommandBuffer,
+        stage_flags: vk::ShaderStageFlags,
+        offset: u32,
+        constants: &[u8],
+    ) {
+        unsafe {
+            self.api
+                .resources
+                .execution_params
+                .device
+                .raw
+                .cmd_push_constants(
+                    command_buffer,
+                    self.pipeline.pipeline_layout,
+                    stage_flags,
+                    offset,
+                    constants,
+                )
+        }
+    }
 }
 
 pub struct RenderPassImageBinding {

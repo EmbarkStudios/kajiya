@@ -303,6 +303,7 @@ pub struct UploadedTriMesh {
 
 pub struct RasterMeshesData<'a> {
     pub meshes: &'a [UploadedTriMesh],
+    pub instances: &'a [crate::render_client::MeshInstance],
     pub vertex_buffer: Arc<Buffer>,
     pub bindless_descriptor_set: vk::DescriptorSet,
 }
@@ -333,10 +334,12 @@ pub fn raster_meshes(
         ],
         RasterPipelineDesc::builder()
             .render_pass(render_pass.clone())
-            .face_cull(true),
+            .face_cull(true)
+            .push_constants_bytes(16),
     );
 
-    let chunks: Vec<UploadedTriMesh> = mesh_data.meshes.to_owned();
+    let meshes: Vec<UploadedTriMesh> = mesh_data.meshes.to_vec();
+    let instances: Vec<crate::render_client::MeshInstance> = mesh_data.instances.to_vec();
 
     let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
@@ -362,7 +365,7 @@ pub fn raster_meshes(
 
         api.set_default_view_and_scissor([width, height]);
 
-        let _pipeline = api.bind_raster_pipeline(
+        let pipeline = api.bind_raster_pipeline(
             pipeline
                 .into_binding()
                 .descriptor_set(0, &[])
@@ -373,15 +376,31 @@ pub fn raster_meshes(
             let raw_device = &api.device().raw;
             let cb = api.cb;
 
-            for chunk in chunks {
+            for instance in instances {
+                let mesh = &meshes[instance.mesh.0];
+
                 raw_device.cmd_bind_index_buffer(
                     cb.raw,
                     vertex_buffer.raw,
-                    chunk.index_buffer_offset,
+                    mesh.index_buffer_offset,
                     vk::IndexType::UINT32,
                 );
 
-                raw_device.cmd_draw_indexed(cb.raw, chunk.index_count, 1, 0, 0, 0);
+                let push_constants = (
+                    instance.mesh.0 as u32,
+                    instance.position.x,
+                    instance.position.y,
+                    instance.position.z,
+                );
+
+                pipeline.push_constants(
+                    cb.raw,
+                    vk::ShaderStageFlags::ALL_GRAPHICS,
+                    0,
+                    std::slice::from_raw_parts(&push_constants as *const _ as *const u8, 16),
+                );
+
+                raw_device.cmd_draw_indexed(cb.raw, mesh.index_count, 1, 0, 0, 0);
             }
         }
 

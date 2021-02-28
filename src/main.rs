@@ -135,8 +135,20 @@ fn main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
+    /*let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
+    let mesh = render_client.add_mesh(mesh);
+    render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, -2.5));
+    render_client.add_instance(mesh, Vec3::new(1.5, 0.0, -2.5));
+
+    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    let mesh = render_client.add_mesh(mesh);
+    render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, 2.5));
+    render_client.add_instance(mesh, Vec3::new(1.5, 0.0, 2.5));*/
+
     let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
-    render_client.add_mesh(mesh);
+    let mesh = render_client.add_mesh(mesh);
+    render_client.add_instance(mesh, Vec3::zero());
+
     render_client.build_ray_tracing_top_level_acceleration();
 
     let mut imgui = imgui::Context::create();

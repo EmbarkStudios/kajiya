@@ -10,6 +10,7 @@ use super::{
 use anyhow::{Context, Result};
 use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
 use byte_slice_cast::AsSliceOf;
+use glam::Vec3;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum RayTracingGeometryType {
@@ -34,22 +35,21 @@ pub struct RayTracingGeometryDesc {
     pub parts: Vec<RayTracingGeometryPart>,
 }
 
-// TODO
-type RenderResourceHandle = ();
+#[derive(Clone)]
+pub struct RayTracingInstanceDesc<'a> {
+    pub blas: &'a RayTracingAcceleration,
+    pub position: Vec3,
+    pub mesh_index: u32,
+}
 
 #[derive(Clone)]
 pub struct RayTracingTopAccelerationDesc<'a> {
-    pub instances: Vec<&'a RayTracingAcceleration>,
+    pub instances: Vec<RayTracingInstanceDesc<'a>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct RayTracingBottomAccelerationDesc {
     pub geometries: Vec<RayTracingGeometryDesc>,
-}
-
-#[derive(Clone, Debug)]
-pub struct RayTracingPipelineStateDesc {
-    pub programs: Vec<RenderResourceHandle>,
 }
 
 #[derive(Clone, Debug)]
@@ -154,20 +154,29 @@ impl Device {
                         .get_acceleration_structure_device_address(
                             self.raw.handle(),
                             &ash::vk::AccelerationStructureDeviceAddressInfoKHR::builder()
-                                .acceleration_structure(desc.raw)
+                                .acceleration_structure(desc.blas.raw)
                                 .build(),
                         )
                 };
 
                 let transform: [f32; 12] = [
-                    1.0, 0.0, 0.0, -0.0, //
-                    0.0, 1.0, 0.0, -0.0, //
-                    0.0, 0.0, 1.0, -0.0, //
+                    1.0,
+                    0.0,
+                    0.0,
+                    desc.position.x,
+                    0.0,
+                    1.0,
+                    0.0,
+                    desc.position.y,
+                    0.0,
+                    0.0,
+                    1.0,
+                    desc.position.z,
                 ];
 
                 GeometryInstance::new(
                     transform,
-                    0, /* instance id */
+                    desc.mesh_index, /* instance id */
                     0xff,
                     0,
                     /*ash::vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE

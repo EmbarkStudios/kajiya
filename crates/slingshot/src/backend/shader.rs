@@ -461,6 +461,8 @@ pub struct RasterPipelineDesc {
     pub render_pass: Arc<RenderPass>,
     #[builder(default)]
     pub face_cull: bool,
+    #[builder(default)]
+    pub push_constants_bytes: usize,
 }
 
 impl RasterPipelineDesc {
@@ -779,9 +781,19 @@ pub fn create_raster_pipeline(
     );
 
     unsafe {
-        let layout_create_info = vk::PipelineLayoutCreateInfo::builder()
-            .set_layouts(&descriptor_set_layouts)
-            .build();
+        let mut layout_create_info =
+            vk::PipelineLayoutCreateInfo::builder().set_layouts(&descriptor_set_layouts);
+
+        let push_constant_ranges = vk::PushConstantRange {
+            stage_flags: vk::ShaderStageFlags::ALL_GRAPHICS,
+            offset: 0,
+            size: desc.push_constants_bytes as _,
+        };
+
+        if desc.push_constants_bytes > 0 {
+            layout_create_info = layout_create_info
+                .push_constant_ranges(std::slice::from_ref(&push_constant_ranges));
+        }
 
         let pipeline_layout = device
             .raw

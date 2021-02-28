@@ -14,7 +14,7 @@ use crate::{
     FrameState,
 };
 use backend::buffer::{Buffer, BufferDesc};
-use glam::Vec2;
+use glam::{Vec2, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -28,7 +28,8 @@ use slingshot::{
         device,
         ray_tracing::{
             RayTracingAcceleration, RayTracingBottomAccelerationDesc, RayTracingGeometryDesc,
-            RayTracingGeometryPart, RayTracingGeometryType, RayTracingTopAccelerationDesc,
+            RayTracingGeometryPart, RayTracingGeometryType, RayTracingInstanceDesc,
+            RayTracingTopAccelerationDesc,
         },
     },
     rspirv_reflect,
@@ -59,8 +60,20 @@ struct GpuMesh {
     index_offset: u32,
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct MeshHandle(pub usize);
+
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub struct InstanceHandle(pub usize);
+
 const MAX_GPU_MESHES: usize = 1024;
 const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 325;
+
+#[derive(Clone, Copy)]
+pub struct MeshInstance {
+    pub position: Vec3,
+    pub mesh: MeshHandle,
+}
 
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
@@ -69,6 +82,7 @@ pub struct VickiRenderClient {
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
     mesh_blas: Vec<RayTracingAcceleration>,
+    instances: Vec<MeshInstance>,
     tlas: Option<Arc<RayTracingAcceleration>>,
     mesh_buffer: Mutex<Arc<Buffer>>,
     vertex_buffer: Mutex<Arc<Buffer>>,
@@ -447,6 +461,7 @@ impl VickiRenderClient {
             device: backend.device.clone(),
             meshes: Default::default(),
             mesh_blas: Default::default(),
+            instances: Default::default(),
             tlas: Default::default(),
             mesh_buffer: Mutex::new(Arc::new(mesh_buffer)),
             vertex_buffer: Mutex::new(Arc::new(vertex_buffer)),
@@ -538,7 +553,7 @@ impl VickiRenderClient {
         handle
     }
 
-    pub fn add_mesh(&mut self, mesh: &'static PackedTriMesh::Flat) {
+    pub fn add_mesh(&mut self, mesh: &'static PackedTriMesh::Flat) -> MeshHandle {
         let mesh_idx = self.meshes.len();
         let mut unique_images: Vec<AssetRef<GpuImage::Flat>> = mesh.maps.as_slice().to_vec();
         unique_images.sort();
@@ -580,14 +595,22 @@ impl VickiRenderClient {
             }
         }
 
+        let vertex_data_offset = self.vertex_buffer_written as u32;
+
         let mut buffer_builder = BufferBuilder::new();
-        let vertex_index_offset = buffer_builder.append(mesh.indices.as_slice()) as _;
-        let vertex_core_offset = buffer_builder.append(mesh.verts.as_slice()) as _;
-        let vertex_uv_offset = buffer_builder.append(mesh.uvs.as_slice()) as _;
-        let vertex_mat_offset = buffer_builder.append(mesh.material_ids.as_slice()) as _;
-        let vertex_aux_offset = buffer_builder.append(mesh.colors.as_slice()) as _;
-        let vertex_tangent_offset = buffer_builder.append(mesh.tangents.as_slice()) as _;
-        let mat_data_offset = buffer_builder.append(materials) as _;
+        let vertex_index_offset =
+            buffer_builder.append(mesh.indices.as_slice()) as u32 + vertex_data_offset;
+        let vertex_core_offset =
+            buffer_builder.append(mesh.verts.as_slice()) as u32 + vertex_data_offset;
+        let vertex_uv_offset =
+            buffer_builder.append(mesh.uvs.as_slice()) as u32 + vertex_data_offset;
+        let vertex_mat_offset =
+            buffer_builder.append(mesh.material_ids.as_slice()) as u32 + vertex_data_offset;
+        let vertex_aux_offset =
+            buffer_builder.append(mesh.colors.as_slice()) as u32 + vertex_data_offset;
+        let vertex_tangent_offset =
+            buffer_builder.append(mesh.tangents.as_slice()) as u32 + vertex_data_offset;
+        let mat_data_offset = buffer_builder.append(materials) as u32 + vertex_data_offset;
 
         let total_buffer_size = buffer_builder.current_offset;
         let mut vertex_buffer = self.vertex_buffer.lock();
@@ -650,13 +673,33 @@ impl VickiRenderClient {
         });
 
         self.mesh_blas.push(blas);
+
+        MeshHandle(mesh_idx)
+    }
+
+    pub fn add_instance(&mut self, mesh: MeshHandle, pos: Vec3) -> InstanceHandle {
+        let handle = InstanceHandle(self.instances.len());
+        self.instances.push(MeshInstance {
+            position: pos,
+            mesh,
+        });
+        handle
     }
 
     pub fn build_ray_tracing_top_level_acceleration(&mut self) {
         let tlas = self
             .device
             .create_ray_tracing_top_acceleration(&RayTracingTopAccelerationDesc {
-                instances: self.mesh_blas.iter().collect::<Vec<_>>(),
+                //instances: self.mesh_blas.iter().collect::<Vec<_>>(),
+                instances: self
+                    .instances
+                    .iter()
+                    .map(|inst| RayTracingInstanceDesc {
+                        blas: &self.mesh_blas[inst.mesh.0],
+                        position: inst.position,
+                        mesh_index: inst.mesh.0 as u32,
+                    })
+                    .collect::<Vec<_>>(),
             })
             .expect("tlas");
 
@@ -710,6 +753,7 @@ impl VickiRenderClient {
                 &mut gbuffer,
                 RasterMeshesData {
                     meshes: self.meshes.as_slice(),
+                    instances: self.instances.as_slice(),
                     vertex_buffer: self.vertex_buffer.lock().clone(),
                     bindless_descriptor_set: self.bindless_descriptor_set,
                 },
