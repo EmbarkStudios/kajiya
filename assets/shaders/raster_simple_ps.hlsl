@@ -21,12 +21,6 @@ struct {
     float instance_position[3];
 } push_constants;
 
-float2 transform_material_uv(MeshMaterial mat, float2 uv, uint map_idx) {
-    uint xo = map_idx * 6;
-    float2x2 rot_scl = float2x2(mat.map_transforms[xo+0], mat.map_transforms[xo+1], mat.map_transforms[xo+2], mat.map_transforms[xo+3]);
-    float2 offset = float2(mat.map_transforms[xo+4], mat.map_transforms[xo+5]);
-    return mul(rot_scl, uv) + offset;
-}
 
 float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     Mesh mesh = meshes[push_constants.mesh_index];

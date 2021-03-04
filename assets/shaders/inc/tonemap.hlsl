@@ -14,9 +14,8 @@ float3 neutral_tonemap(float3 col) {
     //float3 ycbcr = mul(ycbr_mat_t, col);
     float3 ycbcr = rgb_to_ycbcr(col);
 
-    float chroma = length(ycbcr.yz) * 2.4;
-    float bt = tonemap_curve(chroma);
-
+    //float bt = tonemap_curve(length(ycbcr.yz) * 2.4);
+    float bt = tonemap_curve(length(ycbcr.yz) * 1.2);
     float desat = max((bt - 0.7) * 0.8, 0.0);
     desat *= desat;
 

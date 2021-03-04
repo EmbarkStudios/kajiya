@@ -127,9 +127,12 @@ void main() {
                     const float3 gbuffer_normal = primary_hit.gbuffer_packed.unpack_normal();
 
                     // Compensate for lost specular (TODO)
-                    //const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.04);
+                    // Especially important for dark dielectrics which don't bounce light in a diffuse way,
+                    // but can reflect quite a lot through the specular path.
+                    // TODO: don't lose saturation.
+                    const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.08);
                     //const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
-                    const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
+                    //const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
                     
                     // Remove contributions where the normal is facing away from
                     // the cone direction. This can happen e.g. on rays travelling near floors,

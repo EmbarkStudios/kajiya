@@ -231,6 +231,17 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         self
     }
 
+    pub fn read_view(mut self, handle: &Handle<Image>, view_desc: ImageViewDescBuilder) -> Self {
+        let handle_ref = self.pass.read(
+            handle,
+            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
+        self.state.bindings.push(handle_ref.bind_view(view_desc));
+
+        self
+    }
+
     pub fn read_aspect(
         mut self,
         handle: &Handle<Image>,
@@ -256,6 +267,18 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         let handle_ref = self.pass.write(handle, AccessType::AnyShaderWrite);
 
         self.state.bindings.push(BindRgRef::bind(&handle_ref));
+
+        self
+    }
+
+    pub fn write_view(
+        mut self,
+        handle: &mut Handle<Image>,
+        view_desc: ImageViewDescBuilder,
+    ) -> Self {
+        let handle_ref = self.pass.write(handle, AccessType::AnyShaderWrite);
+
+        self.state.bindings.push(handle_ref.bind_view(view_desc));
 
         self
     }

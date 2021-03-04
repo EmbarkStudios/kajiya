@@ -131,8 +131,8 @@ impl FirstPersonCamera {
             yaw: 0.0,
             pitch: 0.0,
             roll: 0.0,
-            //fov: 52.0,
-            fov: 70.0,
+            fov: 52.0,
+            //fov: 70.0,
             position,
             near_dist: 0.01, // 1mm
             aspect: 1.6,

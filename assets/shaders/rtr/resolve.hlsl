@@ -127,24 +127,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
         if (packed0.w > 0) {
             float4 packed1 = hit1_tex[sample_px];
 
-            const float3 wi = mul(packed1.xyz, shading_basis);
+            float3 wi = mul(packed1.xyz, shading_basis);
             if (wi.z > 1e-5) {
-
-    #if !USE_APPROX_BRDF
-                BrdfValue spec = specular_brdf.evaluate(wo, wi);
-                float spec_weight = spec.value().x * max(0.0, wi.z);
-    #else
-                float spec_weight;
-                {
-                    const float3 m = normalize(wo + wi);
-                    const float cos_theta = m.z;
-                    const float pdf_h_over_cos_theta = SpecularBrdf::ggx_ndf(a2, cos_theta);
-                    //const float f = lerp(f0_grey, 1.0, approx_fresnel(wo, wi));
-                    const float f = eval_fresnel_schlick(f0_grey, 1.0, dot(m, wi)).x;
-
-                    spec_weight = f * pdf_h_over_cos_theta * max(0.0, wi.z) / max(1e-5, wo.z + wi.z);
-                }
-    #endif
 
             #if 0
                 float rejection_bias = 1;
@@ -156,6 +140,35 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 //rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
                 rejection_bias *= exp2(-10.0 * abs(depth / sample_depth - 1.0));
             #endif
+
+    #if !USE_APPROX_BRDF
+                /*const float2 sample_uv = get_uv(sample_px, output_tex_size * float4(0.5.xx, 2.0.xx));
+                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+                const float3 sample_origin_ws = sample_ray_ctx.ray_hit_ws();
+                const float3 sample_hit_ws = sample_origin_ws + packed1.xyz * packed0.w;
+                wi = mul(normalize(sample_hit_ws - view_ray_context.ray_hit_ws()), shading_basis);*/
+
+                BrdfValue spec = specular_brdf.evaluate(wo, wi);
+
+                // Note: looks closer to reference when comparing against metalness=1 albedo=1 PT reference.
+                // As soon as the regular image is compared though. This term just happens to look
+                // similar to the lack of Fresnel in the metalness=1 albedo=1 case.
+                // float spec_weight = spec.value().x * max(0.0, wi.z);
+
+                float spec_weight = spec.value().x * step(0.0, wi.z);
+    #else
+                float spec_weight;
+                {
+                    const float3 m = normalize(wo + wi);
+                    const float cos_theta = m.z;
+                    const float pdf_h_over_cos_theta = SpecularBrdf::ggx_ndf(a2, cos_theta);
+                    //const float f = lerp(f0_grey, 1.0, approx_fresnel(wo, wi));
+                    const float f = eval_fresnel_schlick(f0_grey, 1.0, dot(m, wi)).x;
+
+                    //spec_weight = f * pdf_h_over_cos_theta * max(0.0, wi.z) / max(1e-5, wo.z + wi.z);
+                    spec_weight = f * pdf_h_over_cos_theta * step(0.0, wi.z) / max(1e-5, wo.z + wi.z);
+                }
+    #endif
 
                 // TODO: approx shadowing
 

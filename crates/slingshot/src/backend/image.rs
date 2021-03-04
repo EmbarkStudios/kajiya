@@ -107,7 +107,14 @@ impl ImageDesc {
 
     pub fn div_up_extent(mut self, div_extent: [u32; 3]) -> Self {
         for (extent, &div_extent) in self.extent.iter_mut().zip(&div_extent) {
-            *extent = (*extent + div_extent - 1) / div_extent;
+            *extent = ((*extent + div_extent - 1) / div_extent).max(1);
+        }
+        self
+    }
+
+    pub fn div_extent(mut self, div_extent: [u32; 3]) -> Self {
+        for (extent, &div_extent) in self.extent.iter_mut().zip(&div_extent) {
+            *extent = (*extent / div_extent).max(1);
         }
         self
     }
@@ -171,6 +178,10 @@ pub struct ImageViewDesc {
     pub format: Option<vk::Format>,
     #[builder(default = "vk::ImageAspectFlags::COLOR")]
     pub aspect_mask: vk::ImageAspectFlags,
+    #[builder(default = "0")]
+    pub base_mip_level: u32,
+    #[builder(default = "None")]
+    pub level_count: Option<u32>,
     // TODO
 }
 
@@ -347,8 +358,8 @@ impl Device {
             // TODO
             .subresource_range(vk::ImageSubresourceRange {
                 aspect_mask: desc.aspect_mask,
-                base_mip_level: 0,
-                level_count: image_desc.mip_levels as u32,
+                base_mip_level: desc.base_mip_level,
+                level_count: desc.level_count.unwrap_or(image_desc.mip_levels as u32),
                 base_array_layer: 0,
                 layer_count: match image_desc.image_type {
                     ImageType::Cube | ImageType::CubeArray => 6,

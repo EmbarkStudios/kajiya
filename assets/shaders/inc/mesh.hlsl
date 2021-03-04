@@ -46,4 +46,12 @@ struct MeshMaterial {
     float map_transforms[6 * 3];
 };
 
+float2 transform_material_uv(MeshMaterial mat, float2 uv, uint map_idx) {
+    uint xo = map_idx * 6;
+    float2x2 rot_scl = float2x2(mat.map_transforms[xo+0], mat.map_transforms[xo+1], mat.map_transforms[xo+2], mat.map_transforms[xo+3]);
+    float2 offset = float2(mat.map_transforms[xo+4], mat.map_transforms[xo+5]);
+    return mul(rot_scl, uv) + offset;
+}
+
+
 #endif

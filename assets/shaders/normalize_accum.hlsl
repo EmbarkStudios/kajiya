@@ -4,6 +4,7 @@
 
 #define USE_TONEMAP 1
 #define USE_DITHER 1
+#define USE_SHARPEN 0
 
 Texture2D<float4> input_tex;
 RWTexture2D<float4> output_tex;
@@ -34,7 +35,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 col = fetch_color(px);
 
     // TODO: move to its own pass
-#if 0
+#if USE_SHARPEN
     static const float sharpen_amount = 0.4;
 
 	float neighbors = 0;
@@ -73,7 +74,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 
-    col = lerp(calculate_luma(col), col, 1.05);
+    //col = lerp(calculate_luma(col), col, 1.05);
     col = pow(col, 1.02);
 #endif
 

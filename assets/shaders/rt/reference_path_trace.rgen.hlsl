@@ -25,7 +25,7 @@ static const float MAX_RAY_LENGTH = FLT_MAX;
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = !true;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = false;
-static const bool USE_PIXEL_FILTER = false;
+static const bool USE_PIXEL_FILTER = true;
 static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
@@ -179,7 +179,7 @@ void main() {
                 brdf.diffuse_brdf.albedo = 0.0.xxx;
             }
 
-            if (!FURNACE_TEST) {
+            if (!FURNACE_TEST && !(ONLY_SPECULAR_FIRST_BOUNCE && path_length == 0)) {
                 const float3 brdf_value = brdf.evaluate(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);

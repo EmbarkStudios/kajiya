@@ -819,12 +819,7 @@ impl VickiRenderClient {
 
         csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
-        let mut post = crate::render_passes::normalize_accum(
-            rg,
-            &debug_out_tex,
-            vk::Format::R16G16B16A16_SFLOAT,
-            self.bindless_descriptor_set,
-        );
+        let mut post = crate::render_passes::post_process(rg, &debug_out_tex);
 
         self.render_ui(rg, &mut post);
 

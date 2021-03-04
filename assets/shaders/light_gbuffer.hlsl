@@ -64,7 +64,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float4 gbuffer_packed = gbuffer_tex[px];
     if (all(gbuffer_packed == 0.0.xxxx)) {
         float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
-        //float3 output = 0.5;
         output_tex[px] = float4(output, 1);
         debug_out_tex[px] = float4(output, 1);
         //output_tex[px] = float4(0.1.xxx, 1.0);
@@ -187,7 +186,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //debug_out = ssgi.rgb;
     //debug_out = gi_irradiance;
-    //debug_out = gbuffer.metalness;
+    //debug_out = gbuffer.albedo;
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

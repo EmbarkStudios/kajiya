@@ -1,3 +1,6 @@
+#ifndef ATMOSPHERE_HLSL
+#define ATMOSPHERE_HLSL
+
 #include "math_const.hlsl"
 
 // Based on https://github.com/hdachev/glsl-atmosphere
@@ -15,7 +18,8 @@
 #define mieExtinctionMul 1.11 // 1.11 in frostbite
 
 // why the fuck do i need to crank this shit
-#define ozoMul 6.00
+//#define ozoMul 6.00
+#define ozoMul 1.00
 
 float2 rsi(float3 r0, float3 rd, float sr) {
     // ray-sphere intersection that assumes
@@ -251,22 +255,45 @@ if (i != -1) {
          + phaseMie * kMie * totalMie;
 }
 
-float3 atmosphere_default(float3 wi, float3 to_light) {
-    //return wi * 0.5 + 0.5;
-    //return 1.0.xxx;
+#include "atmosphere2.hlsl"
 
-    return atmosphere2(
-        wi,                 // normalized ray direction
-        float3(0,6371e3,0),               // ray origin
-        // sun pos
-        to_light,
-        6371e3,                         // radius of the planet in meters
-        6471e3,                         // radius of the atmosphere in meters
-        float3(5.8e-6, 13.5e-6, 33.1e-6), // frostbite
-        21e-6,                          // Mie scattering coefficient
-        float3(3.426e-7, 8.298e-7, 0.356e-7), // Ozone extinction, frostbite
-        8e3,                            // Rayleigh scale height
-        1.2e3,                          // Mie scale height
-        0.758                           // Mie preferred scattering direction
-    ) * 20.0;
+#define USE_FELIX_ATMOSPHERE 1
+
+float3 atmosphere_default(float3 wi, float3 to_light) {
+    #if USE_FELIX_ATMOSPHERE
+        float3 _WorldSpaceCameraPos = float3(0, 0, 0);
+        float3 rayStart  = _WorldSpaceCameraPos;
+        float3 rayDir    = wi;
+        float  rayLength = INFINITY;
+
+        float3 lightDir   = to_light;
+        float3 lightColor = 1.0.xxx;
+
+        float3 transmittance;
+        float3 output = IntegrateScattering(rayStart, rayDir, rayLength, lightDir, lightColor, transmittance);
+
+        return output;
+    #else
+        //return wi * 0.5 + 0.5;
+        //return 1.0.xxx;
+
+        return atmosphere2(
+            wi,                 // normalized ray direction
+            float3(0,6371e3,0),               // ray origin
+            // sun pos
+            to_light,
+            6371e3,                         // radius of the planet in meters
+            6471e3,                         // radius of the atmosphere in meters
+            float3(5.8e-6, 13.5e-6, 33.1e-6), // frostbite
+            //21e-6,                          // Mie scattering coefficient
+            3.996 * 1e-6,// Mie scattering coefficient
+            //float3(3.426e-7, 8.298e-7, 0.356e-7), // Ozone extinction, frostbite
+            (float3(0.650,  1.881,  0.085) * 1e-6),
+            8e3,                            // Rayleigh scale height
+            1.2e3,                          // Mie scale height
+            0.758                           // Mie preferred scattering direction
+        ) * 20.0;
+    #endif
 }
+
+#endif

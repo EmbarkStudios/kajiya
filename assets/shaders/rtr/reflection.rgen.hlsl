@@ -16,7 +16,7 @@
 #define USE_CSGI 1
 
 // Strongly reduces roughness of secondary hits
-#define USE_AGGRESSIVE_ROUGHNESS_BIAS 1
+#define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
 
 // BRDF bias
 #define SAMPLING_BIAS 0.05

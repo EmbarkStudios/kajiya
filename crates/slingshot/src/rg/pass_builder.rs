@@ -43,6 +43,8 @@ impl<'rg> PassBuilder<'rg> {
     ) -> Ref<Res, ViewType> {
         let pass = self.pass.as_mut().unwrap();
 
+        // CHECK DISABLED: multiple writes or mixing of reads and writes is valid with non-overlapping views
+        /*
         // Don't know of a good way to use the borrow checker to verify that writes and reads
         // don't overlap, and that multiple writes don't happen to the same resource.
         // The borrow checker will at least check that resources don't alias each other,
@@ -51,7 +53,7 @@ impl<'rg> PassBuilder<'rg> {
             panic!("Trying to write twice to the same resource within one render pass");
         } else if pass.read.iter().any(|item| item.handle == handle.raw) {
             panic!("Trying to read and write to the same resource within one render pass");
-        }
+        }*/
 
         pass.write.push(PassResourceRef {
             handle: handle.raw,
@@ -155,12 +157,13 @@ impl<'rg> PassBuilder<'rg> {
 
         let pass = self.pass.as_mut().unwrap();
 
-        // Runtime "borrow" check; see info in `write` above.
+        // CHECK DISABLED: multiple writes or mixing of reads and writes is valid with non-overlapping views
+        /*// Runtime "borrow" check; see info in `write` above.
         if pass.write.iter().any(|item| item.handle == handle.raw) {
             panic!("Trying to read and write to the same resource within one render pass");
-        }
+        }*/
 
-        pass.write.push(PassResourceRef {
+        pass.read.push(PassResourceRef {
             handle: handle.raw,
             access: PassResourceAccessType::new(access_type),
         });
