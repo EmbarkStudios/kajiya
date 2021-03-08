@@ -113,6 +113,36 @@ impl FirstPersonCamera {
         }
     }
 
+    pub fn look_at(&mut self, target: Vec3) {
+        let q = Mat4::look_at_rh(self.position, target, Vec3::unit_y())
+            .to_scale_rotation_translation()
+            .1
+            .conjugate()
+            .normalize();
+
+        // (x-axis rotation)
+        let sinr_cosp = 2.0 * (q.w * q.x + q.y * q.z);
+        let cosr_cosp = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
+        self.pitch = f32::atan2(sinr_cosp, cosr_cosp).to_degrees();
+
+        // (y-axis rotation)
+        let sinp = 2.0 * (q.w * q.y - q.z * q.x);
+
+        self.yaw = if sinp.abs() >= 1.0 {
+            std::f32::consts::FRAC_PI_2.copysign(sinp) // use 90 degrees if out of range
+        } else {
+            sinp.asin()
+        }
+        .to_degrees();
+
+        // (z-axis rotation)
+        let siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
+        let cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+        self.roll = f32::atan2(siny_cosp, cosy_cosp).to_degrees();
+
+        self.interp_rot = self.calc_rotation_quat();
+    }
+
     fn translate(&mut self, local_v: Vec3) {
         let rotation = self.calc_rotation_quat();
         self.position += rotation * local_v * self.move_speed;

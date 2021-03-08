@@ -62,7 +62,7 @@ void main()
         const BrdfValue spec = specular_brdf.evaluate(wo, wi);
         const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
 
-        const float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
+        const float3 radiance = (spec.value + spec.transmission_fraction * diff.value) * max(0.0, wi.z);
         const float3 ambient = ambient_light * gbuffer.albedo;
 
         const float3 light_radiance = is_shadowed ? 0.0 : 5.0;

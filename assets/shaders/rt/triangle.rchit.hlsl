@@ -85,6 +85,10 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness_roughness.z * material.metalness_factor;
 
+    //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
+    //gbuffer.metalness = 1;
+    //gbuffer.roughness = 1;
+
     payload.gbuffer_packed = gbuffer.pack();
     payload.t = RayTCurrent();
 }

@@ -98,11 +98,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-    const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
+    const float3 brdf_value = brdf.evaluate_directional_light(wo, wi) * max(0.0, wi.z);
     const float3 light_radiance = shadow_mask * SUN_COLOR;
     float3 total_radiance = brdf_value * light_radiance;
 
-    //const float3 radiance = (spec.value() + spec.transmission_fraction * diff.value()) * max(0.0, wi.z);
+    //const float3 radiance = (spec.value + spec.transmission_fraction * diff.value) * max(0.0, wi.z);
     //const float3 light_radiance = shadow_mask * SUN_COLOR;
     //total_radiance += radiance * light_radiance;
 
@@ -187,6 +187,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = ssgi.rgb;
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.albedo;
+
+#if 0
+    debug_out = bindless_textures[0][px / 16].rgb;
+#endif
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

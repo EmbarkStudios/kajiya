@@ -59,17 +59,48 @@ struct LayeredBrdf {
     }
 
     float3 evaluate(float3 wo, float3 wi) {
+        if (wo.z <= 0 || wi.z <= 0) {
+            return 0;
+        }
+
         const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
 
         #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
-            return diff.value();
+            return diff.value;
+        #endif
+
+        const BrdfValue spec = specular_brdf.evaluate(wo, wi);
+        return (
+            spec.value * energy_preservation.preintegrated_reflection_mult +
+            diff.value * spec.transmission_fraction
+        );
+    }
+
+    float3 evaluate_directional_light(float3 wo, float3 wi) {
+        if (wo.z <= 0 || wi.z <= 0) {
+            return 0;
+        }
+
+        const BrdfValue diff = diffuse_brdf.evaluate(wo, wi);
+
+        #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
+            return diff.value;
         #endif
 
         const BrdfValue spec = specular_brdf.evaluate(wo, wi);
 
+        // TODO: multi-scattering on the interface can secondary lobes away from
+        // the evaluated direction, which is particularly apparent for directional lights.
+        // In the latter case, the following term works better.
+        // On the other hand, this will result in energy loss for non-directional lights
+        // since the lobes are just redirected, and not lost.
+        const float3 preintegrated_reflection_mult_directional =
+            //energy_preservation.preintegrated_reflection_mult;
+            lerp(1.0, energy_preservation.preintegrated_reflection_mult, sqrt(abs(wi.z)));
+
         return (
-            spec.value() +// * energy_preservation.preintegrated_reflection_mult +
-            diff.value() * spec.transmission_fraction
+            spec.value * preintegrated_reflection_mult_directional +
+            diff.value * spec.transmission_fraction
         );
     }
 

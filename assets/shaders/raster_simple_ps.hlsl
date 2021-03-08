@@ -33,7 +33,7 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
-    const float3 albedo = albedo_tex.Sample(sampler_llr, albedo_uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
+    float3 albedo = albedo_tex.Sample(sampler_llr, albedo_uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
 
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
@@ -52,6 +52,10 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
         normal = mul(ts_normal, tbn);
     }*/
     normal = normalize(normal);
+
+    //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
+    //metalness = 1;
+    //roughness = 0.6;
 
     float4 res = 0.0.xxxx;
     res.x = asfloat(pack_color_888(albedo));

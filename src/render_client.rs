@@ -870,12 +870,14 @@ impl VickiRenderClient {
             &tlas,
         );
 
-        let mut lit = crate::render_passes::normalize_accum(
+        /*let mut lit = crate::render_passes::normalize_accum(
             rg,
             &accum_img,
             vk::Format::R16G16B16A16_SFLOAT,
             self.bindless_descriptor_set,
-        );
+        );*/
+
+        let mut lit = crate::render_passes::post_process(rg, &accum_img);
 
         self.render_ui(rg, &mut lit);
 

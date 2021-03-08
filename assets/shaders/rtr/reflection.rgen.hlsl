@@ -149,16 +149,19 @@ void main() {
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
     
 #if USE_TEMPORAL_JITTER
-    [loop]
-    for (uint retry_count = 0; !brdf_sample.is_valid() && retry_count < 4; ++retry_count) {
-        urand = float2(
-            uint_to_u01_float(hash1_mut(rng)),
-            uint_to_u01_float(hash1_mut(rng))
-        );
-        urand.x = lerp(urand.x, 0.0, sampling_bias);
+    #if !USE_GGX_VNDF_SAMPLING
+        [loop]
+        for (uint retry_i = 0; retry_i < 4 && !brdf_sample.is_valid(); ++retry_i)
+    #endif
+        {
+            urand = float2(
+                uint_to_u01_float(hash1_mut(rng)),
+                uint_to_u01_float(hash1_mut(rng))
+            );
+            urand.x = lerp(urand.x, 0.0, sampling_bias);
 
-        brdf_sample = specular_brdf.sample(wo, urand);
-    }
+            brdf_sample = specular_brdf.sample(wo, urand);
+        }
 #endif
 
     if (brdf_sample.is_valid()) {

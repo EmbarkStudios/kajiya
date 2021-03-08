@@ -23,7 +23,7 @@
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
-#define USE_APPROX_BRDF 0
+#define USE_APPROX_BRDF 1
 #define SHUFFLE_SUBPIXELS 1
 #define BORROW_SAMPLES 1
 
@@ -54,6 +54,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float4 gbuffer_packed = gbuffer_tex[px];
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+    
+    // Clamp to fix moire on mirror-like surfaces
+    gbuffer.roughness = max(gbuffer.roughness, 3e-4);
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
     float3 wo = mul(-normalize(view_ray_context.ray_dir_ws()), shading_basis);
@@ -114,6 +117,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float4 contrib_accum = 0.0;
     float ray_len_accum = 0;
+    float brdf_weight_accum = 0.0;
 
     float ex = 0.0;
     float ex2 = 0.0;
@@ -153,9 +157,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 // Note: looks closer to reference when comparing against metalness=1 albedo=1 PT reference.
                 // As soon as the regular image is compared though. This term just happens to look
                 // similar to the lack of Fresnel in the metalness=1 albedo=1 case.
-                // float spec_weight = spec.value().x * max(0.0, wi.z);
+                // float spec_weight = spec.value.x * max(0.0, wi.z);
 
-                float spec_weight = spec.value().x * step(0.0, wi.z);
+                float spec_weight = spec.value.x * step(0.0, wi.z);
     #else
                 float spec_weight;
                 {
@@ -165,7 +169,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
                     //const float f = lerp(f0_grey, 1.0, approx_fresnel(wo, wi));
                     const float f = eval_fresnel_schlick(f0_grey, 1.0, dot(m, wi)).x;
 
-                    //spec_weight = f * pdf_h_over_cos_theta * max(0.0, wi.z) / max(1e-5, wo.z + wi.z);
                     spec_weight = f * pdf_h_over_cos_theta * step(0.0, wi.z) / max(1e-5, wo.z + wi.z);
                 }
     #endif
@@ -174,6 +177,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
                 const float contrib_wt = spec_weight * rejection_bias / packed1.w;
                 contrib_accum += float4(packed0.rgb, 1) * contrib_wt;
+
+                brdf_weight_accum += spec_weight / packed1.w * contrib_wt;
 
                 float luma = calculate_luma(packed0.rgb);
                 ex += luma * contrib_wt;
@@ -185,12 +190,22 @@ void main(in uint2 px : SV_DispatchThreadID) {
         }
     }
 
+    // TODO: when the borrow sample count is low (or 1), normalizing here
+    // introduces a heavy bias, as it disregards the PDFs with which
+    // samples have been taken. It should probably be temporally accumulated instead.
+    //
+    // Could temporally accumulate contributions scaled by brdf_weight_accum,
+    // but then the latter needs to be stored as well, and renormalized before
+    // sampling in a given frame. Could also be tricky to temporally filter it.
+
     const float contrib_norm_factor = max(1e-10, contrib_accum.w);
 
     contrib_accum.rgb /= contrib_norm_factor;
     ex /= contrib_norm_factor;
     ex2 /= contrib_norm_factor;
     ray_len_accum /= contrib_norm_factor;
+    brdf_weight_accum /= contrib_norm_factor;
+    //contrib_accum.rgb *= brdf_weight_accum;
 
     ray_len_accum = max(0.0, -10 * log2(ray_len_accum));
 

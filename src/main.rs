@@ -128,9 +128,17 @@ fn main() -> anyhow::Result<()> {
         render_client.add_image(blue_noise_img);
     }
 
+    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 0.0, 8.0));
+
+    // Mitsuba match
+    /*let mut camera = camera::FirstPersonCamera::new(Vec3::new(-2.0, 4.0, 8.0));
+    camera.fov = 35.0 * 9.0 / 16.0;
+    camera.look_at(Vec3::new(0.0, 0.75, 0.0));*/
+
+    camera.aspect = window_cfg.width as f32 / window_cfg.height as f32;
+
     #[allow(unused_mut)]
-    let mut camera =
-        CameraConvergenceEnforcer::new(camera::FirstPersonCamera::new(Vec3::new(0.0, 2.0, 10.0)));
+    let mut camera = CameraConvergenceEnforcer::new(camera);
 
     let mut mouse_state: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
@@ -252,7 +260,7 @@ fn main() -> anyhow::Result<()> {
             camera_matrices: camera.calc_matrices(),
             window_cfg,
             input: input_state,
-            //sun_direction: Vec3::new(-0.8, 0.3, 1.0).normalize(),
+            //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
             sun_direction: spherical_to_cartesian(light_theta, light_phi),
         };
 

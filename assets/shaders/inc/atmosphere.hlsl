@@ -260,6 +260,8 @@ if (i != -1) {
 #define USE_FELIX_ATMOSPHERE 1
 
 float3 atmosphere_default(float3 wi, float3 to_light) {
+    //return 0.5;
+
     #if USE_FELIX_ATMOSPHERE
         float3 _WorldSpaceCameraPos = float3(0, 0, 0);
         float3 rayStart  = _WorldSpaceCameraPos;

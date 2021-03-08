@@ -11,7 +11,8 @@ RWTexture2D<float4> output_tex;
 
 float3 fetch_color(uint2 px) {
     float4 res = input_tex[px];
-    return res.xyz / res.w;
+    //return res.xyz / res.w;
+    return res.rgb;
 }
 
 float sharpen_remap(float l) {
@@ -66,11 +67,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
 	col.rgb *= max(0.0, sharpened_luma / max(1e-5, calculate_luma(col.rgb)));
 #endif
 
-#if USE_TONEMAP
-    //col /= 2;
+    col /= 4;
     //col *= 2;
     //col *= 4;
     //col *= 8;
+
+#if USE_TONEMAP
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 

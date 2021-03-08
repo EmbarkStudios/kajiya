@@ -14,11 +14,16 @@
 #define USE_TONEMAP 1
 #define USE_TIGHT_BLUR 1
 
-static const float glare_amount = 0.04;
+static const float glare_amount = 0.07;
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
+
+#if 0
+    output_tex[px] = input_tex[px];
+    return;
+#endif
 
 #if 0
     static const float glare_falloff = 1.25;
@@ -61,16 +66,17 @@ void main(uint2 px: SV_DispatchThreadID) {
     //col *= 0.3;
     //col *= 500;
 
-#if USE_TONEMAP
-    //col *= 0.5;
+    //col /= 4;
     //col *= 2;
     //col *= 4;
     //col *= 16;
+
+#if USE_TONEMAP
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 
     //col = lerp(calculate_luma(col), col, 1.05);
-    col = pow(col, 1.02);
+    col = pow(col, 1.03);
 #endif
 
     output_tex[px] = float4(col, 1);
