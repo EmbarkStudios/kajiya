@@ -12,5 +12,7 @@ rem cargo run --bin bake --release -- --scene "assets/meshes3/sponza/Sponza.gltf
 rem cargo run --bin bake --release -- --scene "assets/meshes/pica_pica_-_mini_diorama_01/scene.gltf" --scale 0.1 -o pica
 rem cargo run --bin bake --release -- --scene "assets/meshes2/b0x-bot/scene.gltf" --scale 1.0 -o b0x-bot
 
-cargo run --bin bake --release -- --scene "assets/test-meshes/floor.gltf" --scale 1.0 -o floor
+rem cargo run --bin bake --release -- --scene "assets/test-meshes/floor.gltf" --scale 1.0 -o floor
+rem cargo run --bin bake --release -- --scene "assets/test-meshes/mitsuba.gltf" --scale 1.0 -o mitsuba
+cargo run --bin bake --release -- --scene "assets/test-meshes/testball.gltf" --scale 1.0 -o testball
 rem cargo run --bin bake --release -- --scene "assets/meshes3/walkman/scene.gltf" --scale 10.0 -o walkman

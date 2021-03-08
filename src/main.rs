@@ -40,7 +40,7 @@ pub struct FrameState {
 }
 
 #[derive(Debug, StructOpt)]
-#[structopt(name = "vicki", about = "Toy rendering engine.")]
+#[structopt(name = "kajiya", about = "Toy rendering engine.")]
 struct Opt {
     #[structopt(long, default_value = "1280")]
     width: u32,
@@ -91,7 +91,7 @@ fn main() -> anyhow::Result<()> {
 
     let window = Arc::new(
         WindowBuilder::new()
-            .with_title("vicki")
+            .with_title("kajiya")
             .with_dimensions(winit::dpi::LogicalSize::new(
                 window_cfg.width as f64,
                 window_cfg.height as f64,

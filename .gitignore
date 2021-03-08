@@ -6,5 +6,6 @@
 /assets/meshes2
 /assets/meshes3
 /assets/meshes4
+/assets/test-meshes
 *.log
 imgui.ini

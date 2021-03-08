@@ -647,6 +647,7 @@ impl<T> Ord for AssetRef<T> {
     }
 }
 
+// TODO: use `rkyv` instead
 def_asset! {
     GpuImage {
         format { slingshot::ash::vk::Format }
@@ -655,6 +656,7 @@ def_asset! {
     }
 }
 
+// TODO: use `rkyv` instead
 def_asset! {
     #[derive(Clone)]
     PackedTriMesh {

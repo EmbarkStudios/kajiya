@@ -5,6 +5,9 @@ rem cargo run --bin vicki --release -- --scene %* --width 1920 --height 1080
 
 cargo run --bin vicki --release -- --scene 336_lrm --y-offset=-0.001 --width 1920 --height 1080
 
+rem Mitsuba match:
+rem cargo run --bin vicki --release -- --scene testball --y-offset=-0.001 --width 1280 --height 720
+
 rem cargo run --bin vicki --release -- --scene "assets/meshes3/draft_punk/scene.gltf" --scale 0.1 --width 1920 --height 1080
 rem cargo run --bin vicki --release -- --scene "assets/meshes3/flying_world_-_battle_of_the_trash_god/scene.gltf" --scale 0.005 --width 1920 --height 1080
 
