@@ -8,7 +8,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
-    renderers::{csgi::CsgiRenderer, rtr::*, ssgi::*, GbufferDepth},
+    renderers::{csgi::CsgiRenderer, csgi2::Csgi2Renderer, rtr::*, ssgi::*, GbufferDepth},
     rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
     FrameState,
@@ -75,6 +75,12 @@ pub struct MeshInstance {
     pub mesh: MeshHandle,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RenderDebugMode {
+    None,
+    Csgi2VoxelGrid,
+}
+
 pub struct VickiRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
@@ -98,6 +104,9 @@ pub struct VickiRenderClient {
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub csgi: CsgiRenderer,
+    pub csgi2: Csgi2Renderer,
+
+    pub debug_mode: RenderDebugMode,
 
     pub ui_frame: Option<(UiRenderCallback, Arc<Image>)>,
 }
@@ -477,6 +486,9 @@ impl VickiRenderClient {
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             csgi: CsgiRenderer::default(),
+            csgi2: Csgi2Renderer::default(),
+
+            debug_mode: RenderDebugMode::None,
 
             ui_frame: Default::default(),
         })
@@ -718,6 +730,11 @@ impl VickiRenderClient {
         rg: &mut crate::rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
+        let tlas = rg.import(
+            self.tlas.as_ref().unwrap().clone(),
+            vk_sync::AccessType::AnyShaderReadOther,
+        );
+
         let mut accum_img = rg
             .get_or_create_temporal(
                 "root.accum",
@@ -733,6 +750,13 @@ impl VickiRenderClient {
             )
             .unwrap();
 
+        let csgi2_volume = self.csgi2.render(
+            frame_state.camera_matrices.eye_position(),
+            rg,
+            self.bindless_descriptor_set,
+            &tlas,
+        );
+
         let gbuffer_depth = {
             let mut depth_img = rg.create(ImageDesc::new_2d(
                 vk::Format::D24_UNORM_S8_UINT,
@@ -746,18 +770,29 @@ impl VickiRenderClient {
             ));
             crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
-            crate::render_passes::raster_meshes(
-                rg,
-                self.raster_simple_render_pass.clone(),
-                &mut depth_img,
-                &mut gbuffer,
-                RasterMeshesData {
-                    meshes: self.meshes.as_slice(),
-                    instances: self.instances.as_slice(),
-                    vertex_buffer: self.vertex_buffer.lock().clone(),
-                    bindless_descriptor_set: self.bindless_descriptor_set,
-                },
-            );
+            if self.debug_mode != RenderDebugMode::Csgi2VoxelGrid {
+                crate::render_passes::raster_meshes(
+                    rg,
+                    self.raster_simple_render_pass.clone(),
+                    &mut depth_img,
+                    &mut gbuffer,
+                    RasterMeshesData {
+                        meshes: self.meshes.as_slice(),
+                        instances: self.instances.as_slice(),
+                        vertex_buffer: self.vertex_buffer.lock().clone(),
+                        bindless_descriptor_set: self.bindless_descriptor_set,
+                    },
+                );
+            }
+
+            if self.debug_mode == RenderDebugMode::Csgi2VoxelGrid {
+                csgi2_volume.debug_raster_voxel_grid(
+                    rg,
+                    self.raster_simple_render_pass.clone(),
+                    &mut depth_img,
+                    &mut gbuffer,
+                );
+            }
 
             GbufferDepth::new(gbuffer, depth_img)
         };
@@ -769,10 +804,6 @@ impl VickiRenderClient {
             .ssgi
             .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
 
-        let tlas = rg.import(
-            self.tlas.as_ref().unwrap().clone(),
-            vk_sync::AccessType::AnyShaderReadOther,
-        );
         let sun_shadow_mask =
             crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
 
@@ -819,7 +850,8 @@ impl VickiRenderClient {
 
         csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
-        let mut post = crate::render_passes::post_process(rg, &debug_out_tex);
+        let mut post =
+            crate::render_passes::post_process(rg, &debug_out_tex, self.bindless_descriptor_set);
 
         self.render_ui(rg, &mut post);
 
@@ -877,7 +909,8 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );*/
 
-        let mut lit = crate::render_passes::post_process(rg, &accum_img);
+        let mut lit =
+            crate::render_passes::post_process(rg, &accum_img, self.bindless_descriptor_set);
 
         self.render_ui(rg, &mut lit);
 

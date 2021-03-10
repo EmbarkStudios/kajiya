@@ -27,7 +27,21 @@ void main(
     uint2 px: SV_DispatchThreadID
 ) {
 #if 0
-    out_tex[px] = all(px == (500 + (frame_constants.frame_index / 10) % 10)) ? float4(100000.xxx, 1) : float4(0.0.xxx, 1.0);
+    out_tex[px] = 0;
+
+    int frame_cycle = 100;
+    int xoffset = sin(frame_constants.frame_index % frame_cycle / float(frame_cycle) * M_PI * 2) * 50;
+
+    if (px.y == 500) {
+        for (int i = 1; i <= 8; ++i) {
+            if (px.x + xoffset == int(exp(i * 0.2) * 430) - 410) {
+                float t =  pow(i * 0.5, 2.0) * 500 + 2200;
+                float3 tint = blackbody_radiation(t);
+                tint /= max(max(1e-5, tint.r), max(tint.g, tint.b));
+                out_tex[px] = float4(pow(3.5, i-1) * 2.0 * tint, 1);
+            }
+        }
+    }
 #endif
 
 #if 0

@@ -2,6 +2,7 @@
 #include "inc/mesh.hlsl"
 #include "inc/pack_unpack.hlsl"
 #include "inc/bindless.hlsl"
+#include "inc/gbuffer.hlsl"
 
 SamplerState sampler_llr;
 
@@ -57,11 +58,10 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     //metalness = 1;
     //roughness = 0.6;
 
-    float4 res = 0.0.xxxx;
-    res.x = asfloat(pack_color_888(albedo));
-    res.y = pack_normal_11_10_11(normal);
-    res.z = roughness * roughness;      // UE4 remap
-    res.w = metalness;
-
-    return res;
+    GbufferData gbuffer;
+    gbuffer.albedo = albedo;
+    gbuffer.normal = normal;
+    gbuffer.roughness = roughness;
+    gbuffer.metalness = metalness;
+    return asfloat(gbuffer.pack().data0);
 }

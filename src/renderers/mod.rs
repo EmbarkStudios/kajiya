@@ -3,6 +3,7 @@ use std::cell::{Ref, RefCell};
 use slingshot::{rg, Image};
 
 pub mod csgi;
+pub mod csgi2;
 pub mod half_res;
 pub mod rtr;
 pub mod ssgi;

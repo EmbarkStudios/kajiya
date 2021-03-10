@@ -24,7 +24,7 @@ use math::*;
 use log::{debug, error, info, trace, warn};
 use memmap2::MmapOptions;
 use parking_lot::Mutex;
-use render_client::RenderMode;
+use render_client::{RenderDebugMode, RenderMode};
 use slingshot::*;
 use std::{collections::HashMap, fs::File, sync::Arc};
 use turbosloth::*;
@@ -92,6 +92,7 @@ fn main() -> anyhow::Result<()> {
     let window = Arc::new(
         WindowBuilder::new()
             .with_title("kajiya")
+            .with_decorations(false)
             .with_dimensions(winit::dpi::LogicalSize::new(
                 window_cfg.width as f64,
                 window_cfg.height as f64,
@@ -156,9 +157,9 @@ fn main() -> anyhow::Result<()> {
     render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, 2.5));
     render_client.add_instance(mesh, Vec3::new(1.5, 0.0, 2.5));*/
 
-    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
+    /*let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
     let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));
+    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));*/
 
     let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
     let mesh = render_client.add_mesh(mesh);
@@ -175,6 +176,7 @@ fn main() -> anyhow::Result<()> {
         imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
     imgui_backend.create_graphics_resources([window_cfg.width, window_cfg.height]);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));
+    let mut show_gui = true;
 
     let mut light_theta = -4.54;
     let mut light_phi = 1.48;
@@ -264,62 +266,89 @@ fn main() -> anyhow::Result<()> {
             sun_direction: spherical_to_cartesian(light_theta, light_phi),
         };
 
-        let (ui_draw_data, imgui_target_image) = {
-            let mut imgui_backend = imgui_backend.lock();
-            let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
+        if keyboard.was_just_pressed(VirtualKeyCode::Tab) {
+            show_gui = !show_gui;
+        }
 
-            if ui
-                .collapsing_header(im_str!("GPU passes"))
-                .default_open(true)
-                .build()
-            {
-                let gpu_stats = gpu_profiler::get_stats();
-                ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
+        if show_gui {
+            let (ui_draw_data, imgui_target_image) = {
+                let mut imgui_backend = imgui_backend.lock();
+                let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
 
-                for (name, ms) in gpu_stats.get_ordered_name_ms() {
-                    ui.text(format!("{}: {:.3}ms", name, ms));
+                if ui
+                    .collapsing_header(im_str!("GPU passes"))
+                    .default_open(true)
+                    .build()
+                {
+                    let gpu_stats = gpu_profiler::get_stats();
+                    ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
+
+                    for (name, ms) in gpu_stats.get_ordered_name_ms() {
+                        ui.text(format!("{}: {:.3}ms", name, ms));
+                    }
                 }
-            }
 
-            if ui
-                .collapsing_header(im_str!("csgi"))
-                .default_open(true)
-                .build()
-            {
-                ui.drag_int(
-                    im_str!("Trace subdivision"),
-                    &mut render_client.csgi.trace_subdiv,
-                )
-                .min(0)
-                .max(5)
-                .build();
+                if ui
+                    .collapsing_header(im_str!("csgi"))
+                    .default_open(true)
+                    .build()
+                {
+                    ui.drag_int(
+                        im_str!("Trace subdivision"),
+                        &mut render_client.csgi.trace_subdiv,
+                    )
+                    .min(0)
+                    .max(5)
+                    .build();
 
-                ui.drag_int(
-                    im_str!("Neighbors per frame"),
-                    &mut render_client.csgi.neighbors_per_frame,
-                )
-                .min(1)
-                .max(9)
-                .build();
-            }
+                    ui.drag_int(
+                        im_str!("Neighbors per frame"),
+                        &mut render_client.csgi.neighbors_per_frame,
+                    )
+                    .min(1)
+                    .max(9)
+                    .build();
+                }
 
-            imgui_backend.prepare_render(&ui, &window);
-            (ui.render(), imgui_backend.get_target_image().unwrap())
-        };
+                if ui
+                    .collapsing_header(im_str!("debug"))
+                    .default_open(true)
+                    .build()
+                {
+                    if ui.radio_button_bool(
+                        im_str!("none"),
+                        render_client.debug_mode == RenderDebugMode::None,
+                    ) {
+                        render_client.debug_mode = RenderDebugMode::None;
+                    }
 
-        let ui_draw_data: &'static imgui::DrawData = unsafe { std::mem::transmute(ui_draw_data) };
-        let imgui_backend = imgui_backend.clone();
-        let gui_extent = [frame_state.window_cfg.width, frame_state.window_cfg.height];
+                    if ui.radio_button_bool(
+                        im_str!("csgi2 voxel grid"),
+                        render_client.debug_mode == RenderDebugMode::Csgi2VoxelGrid,
+                    ) {
+                        render_client.debug_mode = RenderDebugMode::Csgi2VoxelGrid;
+                    }
+                }
 
-        render_client.ui_frame = Some((
-            Box::new(move |cb| {
-                imgui_backend
-                    .lock()
-                    .render(gui_extent, ui_draw_data, cb)
-                    .expect("ui.render");
-            }),
-            imgui_target_image,
-        ));
+                imgui_backend.prepare_render(&ui, &window);
+                (ui.render(), imgui_backend.get_target_image().unwrap())
+            };
+
+            let ui_draw_data: &'static imgui::DrawData =
+                unsafe { std::mem::transmute(ui_draw_data) };
+            let imgui_backend = imgui_backend.clone();
+            let gui_extent = [frame_state.window_cfg.width, frame_state.window_cfg.height];
+
+            render_client.ui_frame = Some((
+                Box::new(move |cb| {
+                    imgui_backend
+                        .lock()
+                        .render(gui_extent, ui_draw_data, cb)
+                        .expect("ui.render");
+                }),
+                imgui_target_image,
+            ));
+        }
 
         match renderer.prepare_frame(&mut render_client, &frame_state) {
             Ok(()) => {

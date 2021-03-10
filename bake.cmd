@@ -14,5 +14,7 @@ rem cargo run --bin bake --release -- --scene "assets/meshes2/b0x-bot/scene.gltf
 
 rem cargo run --bin bake --release -- --scene "assets/test-meshes/floor.gltf" --scale 1.0 -o floor
 rem cargo run --bin bake --release -- --scene "assets/test-meshes/mitsuba.gltf" --scale 1.0 -o mitsuba
-cargo run --bin bake --release -- --scene "assets/test-meshes/testball.gltf" --scale 1.0 -o testball
+rem cargo run --bin bake --release -- --scene "assets/test-meshes/testball.gltf" --scale 1.0 -o testball
 rem cargo run --bin bake --release -- --scene "assets/meshes3/walkman/scene.gltf" --scale 10.0 -o walkman
+
+cargo run --bin bake --release -- --scene "assets/meshes/cornell_box/scene.gltf" --scale 1.0 -o cornell_box

@@ -635,7 +635,11 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &Handle<Image>) -> Han
     output
 }
 
-pub fn post_process(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
+pub fn post_process(
+    rg: &mut RenderGraph,
+    input: &Handle<Image>,
+    bindless_descriptor_set: vk::DescriptorSet,
+) -> Handle<Image> {
     let blur_pyramid = blur_pyramid(rg, input);
     let rev_blur_pyramid = rev_blur_pyramid(rg, &blur_pyramid);
 
@@ -647,6 +651,7 @@ pub fn post_process(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image
         .read(&blur_pyramid)
         .read(&rev_blur_pyramid)
         .write(&mut output)
+        .raw_descriptor_set(1, bindless_descriptor_set)
         .constants((output.desc().extent_inv_extent_2d(), blur_pyramid_mip_count))
         .dispatch(output.desc().extent);
 

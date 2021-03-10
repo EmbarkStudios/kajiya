@@ -152,16 +152,19 @@ void main(in uint2 px : SV_DispatchThreadID) {
             ;
     #endif
 
+    total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
+
+    #if USE_RTR
+        total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+    #endif
+
     output_tex[px] = float4(total_radiance, 1.0);
+
     float3 debug_out = total_radiance;
         //base_light_tex[px].xyz * ssgi.a + ssgi.rgb,
         //base_light_tex[px].xyz,
         //ssgi.rgb,
         //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
-
-    #if USE_RTR
-        debug_out += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
-    #endif
     
     #if 0
         float4 pos_vs = mul(frame_constants.view_constants.world_to_view, pt_ws);
@@ -184,7 +187,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
     //debug_out = base_light_tex[px].xyz;
 
-    //debug_out = ssgi.rgb;
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.albedo;
 
