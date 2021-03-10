@@ -23,26 +23,27 @@
 
 static const float SKY_DIST = 1e5;
 
-float3 vx_to_pos(float3 vx, float3x3 slice_rot, uint gi_slice) {
-    //const float3 volume_center = CSGI2_SLICE_CENTERS[gi_slice].xyz;
-    const float3 volume_center = gi_volume_center(slice_rot);
-
-    return mul(slice_rot, vx - (CSGI2_VOLUME_DIMS - 1.0) / 2.0) * CSGI2_VOXEL_SIZE + volume_center;
+float3 vx_to_pos(float3 vx) {
+    const float3 volume_center = CSGI2_VOLUME_CENTER;
+    return (vx - (CSGI2_VOLUME_DIMS - 1.0) / 2.0) * CSGI2_VOXEL_SIZE + volume_center;
 }
 
 
 [shader("raygeneration")]
 void main() {
-    uint3 dispatch_px = DispatchRaysIndex().xyz;
+    uint3 dispatch_vx = DispatchRaysIndex().xyz;
 
-    const uint grid_idx = dispatch_px.x / CSGI2_VOLUME_DIMS;
-    dispatch_px.x %= CSGI2_VOLUME_DIMS;
+    const uint grid_idx = dispatch_vx.x / CSGI2_VOLUME_DIMS;
+    dispatch_vx.x %= CSGI2_VOLUME_DIMS;
 
-    const float3x3 slice_rot = build_orthonormal_basis(CSGI2_SLICE_DIRS[grid_idx].xyz);
-    const float3 slice_dir = mul(slice_rot, float3(0, 0, -1));    
+    const int3 slice_dir = CSGI2_SLICE_DIRS[grid_idx]; 
 
-    const int slice_z_start = int((dispatch_px.z + 1) * SWEEP_VX_COUNT) - 1;
-    const int slice_z_end = int(dispatch_px.z * SWEEP_VX_COUNT) - 1;    
+    int slice_z_start = int(dispatch_vx.z * SWEEP_VX_COUNT);
+
+    if (0 == (grid_idx & 1)) {
+        // Going in the negative direction of an axis. Start at the high end of the slice.
+        slice_z_start += SWEEP_VX_COUNT - 1;
+    }
 
     uint rng = hash2(uint2(frame_constants.frame_index, grid_idx));
     //uint dir_i = frame_constants.frame_index % CSGI2_NEIGHBOR_DIR_COUNT;
@@ -57,21 +58,26 @@ void main() {
         const float blend_factor = 1.0;
     #endif
 
-    //uint rng = hash_combine2(hash3(px), frame_constants.frame_index);
-    //uint rng = hash1(frame_constants.frame_index);
-    //uint rng = hash2(uint2(px.y, frame_constants.frame_index));
+    float3 vx_trace_offset;
+    int3 vx;
+
+    if (grid_idx < 2) {
+        vx_trace_offset = float3(-0.5 * slice_dir.x, offset_x, offset_y);
+        vx = int3(slice_z_start, dispatch_vx.x, dispatch_vx.y);
+    } else if (grid_idx < 4) {
+        vx_trace_offset = float3(offset_x, -0.5 * slice_dir.y, offset_y);
+        vx = int3(dispatch_vx.x, slice_z_start, dispatch_vx.y);
+    } else {
+        vx_trace_offset = float3(offset_x, offset_y, -0.5 * slice_dir.z);
+        vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
+    }
 
     const int3 output_offset = int3(CSGI2_VOLUME_DIMS * grid_idx, 0, 0);
-    const int3 pxdir = int3(0, 0, -1);
+    int ray_length_int = SWEEP_VX_COUNT;
 
-    int3 px = int3(dispatch_px.xy, slice_z_start);
-    while (true) {
-        //uint rng = hash2(uint2(dir_i, frame_constants.frame_index));
-
-        const float3 trace_origin = vx_to_pos(px + float3(offset_x, offset_y, 0.5), slice_rot, grid_idx);
-        const float3 neighbor_pos = vx_to_pos(px + pxdir + float3(offset_x, offset_y, 0.5), slice_rot, grid_idx);
-
-        const int ray_length_int = px.z - slice_z_end;
+    while (ray_length_int > 0) {
+        const float3 trace_origin = vx_to_pos(vx + vx_trace_offset);
+        const float3 neighbor_pos = vx_to_pos(vx + slice_dir + vx_trace_offset);
 
         RayDesc outgoing_ray = new_ray(
             trace_origin,
@@ -116,7 +122,7 @@ void main() {
                 // where the neighbor rays hit the floors, but contribution should be zero.
                 //const float normal_cutoff = smoothstep(0.0, 0.1, dot(slice_dir, -gbuffer_normal));
                 //const float normal_cutoff = step(0.0, dot(slice_dir, -gbuffer_normal));
-                const float normal_cutoff = dot(slice_dir, -gbuffer_normal);
+                const float normal_cutoff = dot(float3(slice_dir), -gbuffer_normal);
 
                 if (normal_cutoff > 1e-3) {
                     const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
@@ -150,27 +156,22 @@ void main() {
             }
 
             int cells_skipped_by_ray = int(floor(primary_hit.ray_t));
+            ray_length_int -= cells_skipped_by_ray + 1;
+
             while (cells_skipped_by_ray-- > 0) {
-                csgi_cascade0_out_tex[px + output_offset] = lerp(csgi_cascade0_out_tex[px + output_offset], float4(0, 0, 0, 1), blend_factor);
-                px += pxdir;
+                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 1), blend_factor);
+                vx += slice_dir;
             }
 
-            csgi_cascade0_out_tex[px + output_offset] = lerp(csgi_cascade0_out_tex[px + output_offset], float4(total_radiance, 0), blend_factor);
-
-            px += pxdir;
-
-            if (px.z <= slice_z_end) {
-                break;
-            }
+            csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(total_radiance, 0), blend_factor);
+            vx += slice_dir;
         } else {
-            for (int i = 0; i < ray_length_int; ++i) {
-                csgi_cascade0_out_tex[px + output_offset] = lerp(csgi_cascade0_out_tex[px + output_offset], float4(0, 0, 0, 1), blend_factor);
-                px += pxdir;
+            while (ray_length_int-- > 0) {
+                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 1), blend_factor);
+                vx += slice_dir;
             }
-
-            if (px.z <= slice_z_end) {
-                break;
-            }
+            
+            break;
         }
     }
 }
