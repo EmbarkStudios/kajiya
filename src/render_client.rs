@@ -845,6 +845,7 @@ impl VickiRenderClient {
             &mut accum_img,
             &mut debug_out_tex,
             &csgi_volume,
+            &csgi2_volume,
             self.bindless_descriptor_set,
         );
 

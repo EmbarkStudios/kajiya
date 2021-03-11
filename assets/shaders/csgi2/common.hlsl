@@ -36,7 +36,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
 
 #define CSGI2_VOXEL_SIZE (float(CSGI2_VOLUME_SIZE) / float(CSGI2_VOLUME_DIMS))
 
-float3 gi_volume_center(float3x3 slice_rot) {
+/*float3 gi_volume_center(float3x3 slice_rot) {
     #ifdef CSGI2_VOLUME_CENTER
         return CSGI2_VOLUME_CENTER;
     #else
@@ -46,7 +46,7 @@ float3 gi_volume_center(float3x3 slice_rot) {
         pos = mul(slice_rot, pos);
         return pos;
     #endif
-}
+}*/
 
 static const uint CSGI2_NEIGHBOR_DIR_COUNT = 9;
 static const int3 CSGI2_NEIGHBOR_DIRS[CSGI2_NEIGHBOR_DIR_COUNT] = {

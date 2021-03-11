@@ -140,7 +140,7 @@ void main() {
                         light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
     #endif
 
-                    total_radiance = gbuffer.albedo;
+                    //total_radiance = gbuffer.albedo;
 
                     #if 0
                         const float3 pos_ws = primary_hit.position;
@@ -159,15 +159,15 @@ void main() {
             ray_length_int -= cells_skipped_by_ray + 1;
 
             while (cells_skipped_by_ray-- > 0) {
-                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 1), blend_factor);
+                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
                 vx += slice_dir;
             }
 
-            csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(total_radiance, 0), blend_factor);
+            csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(total_radiance, 1), blend_factor);
             vx += slice_dir;
         } else {
             while (ray_length_int-- > 0) {
-                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 1), blend_factor);
+                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
                 vx += slice_dir;
             }
             

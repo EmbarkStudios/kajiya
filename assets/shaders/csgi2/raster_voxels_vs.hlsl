@@ -28,7 +28,7 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     const uint3 grid_offset = uint3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
 
     float4 voxel_packed = csgi_cascade0_tex[uint3(voxel_x, voxel_y, voxel_z) + grid_offset];
-    if (voxel_packed.a == 0) {
+    if (voxel_packed.a == 1) {
         static const float2 face_verts_2d[6] = {
             float2(-1, -1),
             float2(1, 1),

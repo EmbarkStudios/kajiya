@@ -27,7 +27,9 @@
 [[vk::binding(6)]] RWTexture2D<float4> output_tex;
 [[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
 [[vk::binding(8)]] Texture3D<float4> csgi_cascade0_tex;
-[[vk::binding(9)]] cbuffer _ {
+[[vk::binding(9)]] Texture3D<float4> csgi2_direct_tex;
+[[vk::binding(10)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(11)]] cbuffer _ {
     float4 output_tex_size;
     float4 CSGI_SLICE_DIRS[16];
     float4 CSGI_SLICE_CENTERS[16];
@@ -35,6 +37,8 @@
 
 #include "csgi/common.hlsl"
 #include "csgi/lookup.hlsl"
+
+#include "csgi2/common.hlsl"
 
 #include "inc/sun.hlsl"
 
@@ -152,7 +156,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             ;
     #endif
 
-    total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
+    //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
 
     #if USE_RTR
         total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
@@ -189,6 +193,16 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.albedo;
+
+#if 1
+    const float3 volume_center = CSGI2_VOLUME_CENTER;
+    const float normal_offset_scale = 1.0;
+    const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
+    const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
+    const uint gi_slice_idx = 4;
+    debug_out = csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
+    //debug_out = frac(gi_vx / 64.0);
+#endif
 
 #if 0
     debug_out = bindless_textures[0][px / 16].rgb;

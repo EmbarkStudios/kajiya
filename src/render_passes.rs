@@ -8,7 +8,10 @@ use slingshot::{
 use crate::{
     backend::image::ImageViewDesc,
     backend::shader::*,
-    renderers::csgi::{self, CSGI_SLICE_DIRS},
+    renderers::{
+        csgi::{self, CSGI_SLICE_DIRS},
+        csgi2,
+    },
     rg::*,
 };
 
@@ -420,6 +423,7 @@ pub fn light_gbuffer(
     output: &mut Handle<Image>,
     debug_output: &mut Handle<Image>,
     csgi_volume: &csgi::CsgiVolume,
+    csgi2_volume: &csgi2::Csgi2Volume,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
     SimpleRenderPass::new_compute(
@@ -435,6 +439,8 @@ pub fn light_gbuffer(
     .write(output)
     .write(debug_output)
     .read(&csgi_volume.cascade0)
+    .read(&csgi2_volume.direct_cascade0)
+    .read(&csgi2_volume.indirect_cascade0)
     .constants((
         gbuffer.desc().extent_inv_extent_2d(),
         CSGI_SLICE_DIRS,
