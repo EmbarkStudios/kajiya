@@ -15,28 +15,33 @@ float4 sample_indirect_from(int3 vx, uint dir_idx) {
 }
 
 [numthreads(8, 8, 1)]
-void main(uint2 vx_2d : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
-    //return;
-
-    // rays towards -Z, light towards +Z
-    const uint direct_dir_idx = 4;
-    const uint indirect_dir_idx = 4;
+void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
+    const uint direct_dir_idx = dispatch_vx.z;
+    const uint indirect_dir_idx = direct_dir_idx;
     const int3 slice_dir = CSGI2_SLICE_DIRS[direct_dir_idx];
 
-    //const uint direct_dir_idx = vx_2d.x / CSGI2_VOLUME_DIMS;
-
-    vx_2d.x %= CSGI2_VOLUME_DIMS;
     const int3 direct_offset = int3(CSGI2_VOLUME_DIMS * direct_dir_idx, 0, 0);
     const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 
-    float3 atmosphere_color = 0;//atmosphere_default(-CSGI2_SLICE_DIRS[direct_dir_idx].xyz, SUN_DIRECTION);
-
     static const uint TANGENT_COUNT = 4;
-    uint tangent_dir_indices[TANGENT_COUNT] = { 0, 1, 2, 3 };  // -X, +X, -Y, +Y
+    uint tangent_dir_indices[TANGENT_COUNT];
+    {for (uint i = 0; i < TANGENT_COUNT; ++i) {
+        tangent_dir_indices[i] = ((direct_dir_idx & uint(~1)) + 2 + i) % CSGI2_SLICE_COUNT;
+    }}
+
+    int slice_z_start = (direct_dir_idx & 1) * CSGI2_VOLUME_DIMS;
+
+    int3 vx;
+    if (direct_dir_idx < 2) {
+        vx = int3(slice_z_start, dispatch_vx.x, dispatch_vx.y);
+    } else if (direct_dir_idx < 4) {
+        vx = int3(dispatch_vx.x, slice_z_start, dispatch_vx.y);
+    } else {
+        vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
+    }
 
     {[loop]
-    for (uint slice_z = 0; slice_z < CSGI2_VOLUME_DIMS; ++slice_z) {
-        uint3 vx = uint3(vx_2d, slice_z);
+    for (uint slice_z = 0; slice_z < CSGI2_VOLUME_DIMS; ++slice_z, vx -= slice_dir) {
         float3 scatter = 0.0;
         float scatter_wt = 0.0;
 
@@ -46,6 +51,9 @@ void main(uint2 vx_2d : SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
             scatter = center_direct_s.rgb;
             scatter_wt = 1;
         } else {
+            scatter = sample_indirect_from(vx + slice_dir, direct_dir_idx).rgb;
+            scatter_wt = 1;
+
             [unroll]
             for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
                 const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
@@ -56,8 +64,10 @@ void main(uint2 vx_2d : SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
                 const float4 direct_neighbor_s = sample_direct_from(vx + tangent_dir, direct_dir_idx);
 
                 float3 neighbor_radiance = sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx).rgb;
+                
                 neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_s.rgb, direct_neighbor_s.a);
-                neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, direct_neighbor_t.a);
+                //neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, direct_neighbor_t.a);
+                neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_t.rgb, direct_neighbor_t.a);
                 neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_opacity_t);
                 neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_direct_s.a);
 

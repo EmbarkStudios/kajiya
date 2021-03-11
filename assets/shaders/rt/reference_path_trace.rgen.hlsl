@@ -15,7 +15,7 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
-static const uint MAX_PATH_LENGTH = 50;
+static const uint MAX_PATH_LENGTH = 3;
 static const uint RUSSIAN_ROULETTE_START_PATH_LENGTH = 3;
 static const float MAX_RAY_LENGTH = FLT_MAX;
 //static const float MAX_RAY_LENGTH = 5.0;
@@ -27,7 +27,7 @@ static const bool FIREFLY_SUPPRESSION = !true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;
-static const bool INDIRECT_ONLY = !true;
+static const bool INDIRECT_ONLY = true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
 

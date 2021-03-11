@@ -112,7 +112,7 @@ impl Csgi2Renderer {
         )
         .read(&direct_cascade0)
         .write(&mut indirect_cascade0)
-        .dispatch([VOLUME_DIMS, VOLUME_DIMS, 1]);
+        .dispatch([VOLUME_DIMS, VOLUME_DIMS, TRACE_COUNT as u32]);
 
         Csgi2Volume {
             direct_cascade0,
