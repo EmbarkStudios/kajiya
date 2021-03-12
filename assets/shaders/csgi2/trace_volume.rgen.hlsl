@@ -80,7 +80,7 @@ void main() {
         const float3 neighbor_pos = vx_to_pos(vx + slice_dir + vx_trace_offset);
 
         RayDesc outgoing_ray = new_ray(
-            trace_origin,
+            lerp(trace_origin, neighbor_pos, 1e-3),
             neighbor_pos - trace_origin,
             0,
             ray_length_int
@@ -113,8 +113,8 @@ void main() {
                 // Especially important for dark dielectrics which don't bounce light in a diffuse way,
                 // but can reflect quite a lot through the specular path.
                 // TODO: don't lose saturation.
-                const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.08);
-                //const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
+                //const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.08);
+                const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.04);
                 //const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
                 
                 // Remove contributions where the normal is facing away from
@@ -140,7 +140,7 @@ void main() {
                         light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
     #endif
 
-                    //total_radiance = gbuffer.albedo;
+                    //total_radiance = gbuffer.albedo + 0.1;
 
                     #if 0
                         const float3 pos_ws = primary_hit.position;

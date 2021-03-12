@@ -36,11 +36,6 @@ void vblur_into_shmem(int2 dst_px, uint xfetch, uint2 group_id) {
 
 [numthreads(group_width, 1, 1)]
 void main(uint2 px: SV_DispatchThreadID, uint2 px_within_group: SV_GroupThreadID, uint2 group_id: SV_GroupID) {
-    /*vblur_into_shmem(px_within_group.x, group_id);
-    vblur_into_shmem(px_within_group.x + group_width, group_id);
-    if (px_within_group.x + group_width * 2 < vblur_window_size) {
-        vblur_into_shmem(px_within_group.x + group_width * 2, group_id);
-    }*/
 	for (int xfetch = px_within_group.x; xfetch < vblur_window_size; xfetch += group_width) {
         vblur_into_shmem(px, xfetch, group_id);
 	}

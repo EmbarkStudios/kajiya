@@ -22,7 +22,7 @@
 }
 
 #define USE_RAY_JITTER 0
-#define USE_MULTIBOUNCE 1
+#define USE_MULTIBOUNCE 0
 
 static const float SKY_DIST = 1e5;
 

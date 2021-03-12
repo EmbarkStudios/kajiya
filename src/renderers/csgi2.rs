@@ -68,8 +68,24 @@ impl Csgi2Renderer {
             .get_or_create_temporal(
                 "csgi2.indirect_cascade0",
                 ImageDesc::new_3d(
-                    //vk::Format::B10G11R11_UFLOAT_PACK32,
-                    vk::Format::R16G16B16A16_SFLOAT,
+                    vk::Format::B10G11R11_UFLOAT_PACK32,
+                    //vk::Format::R16G16B16A16_SFLOAT,
+                    [
+                        VOLUME_DIMS * TRACE_COUNT as u32,
+                        VOLUME_DIMS * 4,
+                        VOLUME_DIMS,
+                    ],
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            )
+            .unwrap();
+
+        let mut indirect_cascade_combined0 = rg
+            .get_or_create_temporal(
+                "csgi2.indirect_cascade_combined0",
+                ImageDesc::new_3d(
+                    vk::Format::B10G11R11_UFLOAT_PACK32,
+                    //vk::Format::R16G16B16A16_SFLOAT,
                     [VOLUME_DIMS * TRACE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
@@ -112,11 +128,31 @@ impl Csgi2Renderer {
         )
         .read(&direct_cascade0)
         .write(&mut indirect_cascade0)
-        .dispatch([VOLUME_DIMS, VOLUME_DIMS, TRACE_COUNT as u32]);
+        .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("csgi2 diagonal sweep"),
+            "/assets/shaders/csgi2/diagonal_sweep_volume.hlsl",
+        )
+        .read(&direct_cascade0)
+        .write(&mut indirect_cascade0)
+        .dispatch([
+            VOLUME_DIMS,
+            VOLUME_DIMS,
+            (TRACE_COUNT - PRETRACE_COUNT) as u32,
+        ]);
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("csgi2 subray combine"),
+            "/assets/shaders/csgi2/subray_combine.hlsl",
+        )
+        .read(&indirect_cascade0)
+        .write(&mut indirect_cascade_combined0)
+        .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);
 
         Csgi2Volume {
             direct_cascade0,
-            indirect_cascade0,
+            indirect_cascade0: indirect_cascade_combined0,
         }
     }
 }
@@ -202,4 +238,4 @@ impl Csgi2Volume {
 }
 
 const PRETRACE_COUNT: usize = 6;
-const TRACE_COUNT: usize = 6;
+const TRACE_COUNT: usize = 6 + 8;

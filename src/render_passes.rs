@@ -634,7 +634,7 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &Handle<Image>) -> Han
                 .base_mip_level(target_mip)
                 .level_count(Some(1)),
         )
-        .constants((output_extent[0], output_extent[1], src_mip, self_weight))
+        .constants((output_extent[0], output_extent[1], self_weight))
         .dispatch(output_extent);
     }
 

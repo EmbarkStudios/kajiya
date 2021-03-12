@@ -1,4 +1,5 @@
 static const uint CSGI2_SLICE_COUNT = 6;
+static const uint CSGI2_INDIRECT_COUNT = 6 + 8;
 
 static const uint CSGI2_VOLUME_DIMS = 64;
 
@@ -12,11 +13,12 @@ static const uint CSGI2_VOLUME_DIMS = 64;
 #define CSGI2_SCENE CSGI2_SCENE_SPONZA
 
 #if CSGI2_SCENE == CSGI2_SCENE_BATTLE
-    //#define CSGI2_VOLUME_CENTER float3(-15, 4.0, 8)
+    #define CSGI2_VOLUME_CENTER float3(-15, 4.0, 8)
     static const float CSGI2_VOLUME_SIZE = 10.0;
 #elif CSGI2_SCENE == CSGI2_SCENE_CORNELL_BOX
     #define CSGI2_VOLUME_CENTER float3(0, 1.0, 0)
-    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.04;
+    //static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.04;
+    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.08;
 #elif CSGI2_SCENE == CSGI2_SCENE_GAS_STATIONS
     //#define CSGI2_VOLUME_CENTER float3(2, 8, 6)
     #define CSGI2_VOLUME_CENTER float3(9, 2, 2)
@@ -26,10 +28,10 @@ static const uint CSGI2_VOLUME_DIMS = 64;
     static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * (1.0 / 3);
 #elif CSGI2_SCENE == CSGI2_SCENE_SPONZA
     #define CSGI2_VOLUME_CENTER float3(0, 0, 0)
-    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.125;
+    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.12;
 #else
     #define CSGI2_VOLUME_CENTER float3(0, 0, 0)
-    static const float CSGI2_VOLUME_SIZE = 5.0;
+    static const float CSGI2_VOLUME_SIZE = 8.0;
 #endif
 
 //static const float CSGI2_VOLUME_SCALE = CSGI2_VOLUME_SIZE / CSGI2_VOLUME_DIMS;
@@ -70,4 +72,22 @@ static const int3 CSGI2_SLICE_DIRS[CSGI2_SLICE_COUNT] = {
     int3(0, 1, 0),
     int3(0, 0, -1),
     int3(0, 0, 1)
+};
+
+static const int3 CSGI2_INDIRECT_DIRS[CSGI2_INDIRECT_COUNT] = {
+    int3(-1, 0, 0),
+    int3(1, 0, 0),
+    int3(0, -1, 0),
+    int3(0, 1, 0),
+    int3(0, 0, -1),
+    int3(0, 0, 1),
+
+    int3(-1, -1, -1),
+    int3(1, -1, -1),
+    int3(-1, 1, -1),
+    int3(1, 1, -1),
+    int3(-1, -1, 1),
+    int3(1, -1, 1),
+    int3(-1, 1, 1),
+    int3(1, 1, 1),
 };

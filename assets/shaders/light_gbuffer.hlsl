@@ -198,15 +198,32 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 total_gi = 0;
     float total_gi_wt = 0;
 
-    //const uint gi_slice_idx = 3;
-    for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
+    //const uint gi_slice_idx = 1; {
+    for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
+    //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
         const float3 volume_center = CSGI2_VOLUME_CENTER;
-        const float normal_offset_scale = 1.0;
+        const float normal_offset_scale = 1.01;
         const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
         const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
-        const float wt = saturate(0 + 1 * dot(CSGI2_SLICE_DIRS[gi_slice_idx], gbuffer.normal));
+        const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
+        const float wt = saturate(-0.01 + 1.01 * dot(normalize(slice_dir), gbuffer.normal));
         total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb * wt;
         total_gi_wt += wt;
+    }
+    debug_out = total_gi / max(1.0, total_gi_wt);
+    //debug_out = frac(gi_vx / 64.0);
+#elif 0
+    float3 total_gi = 0;
+    float total_gi_wt = 0;
+
+    const uint gi_slice_idx = 6;
+    {
+        const float3 volume_center = CSGI2_VOLUME_CENTER;
+        const float normal_offset_scale = 1.01;
+        const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
+        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
+        total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
+        total_gi_wt += 1;
     }
     debug_out = total_gi / total_gi_wt;
     //debug_out = frac(gi_vx / 64.0);
