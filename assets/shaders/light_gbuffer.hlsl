@@ -156,11 +156,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
             ;
     #endif
 
-    //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
-
     #if USE_RTR
         total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
     #endif
+
+    //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
 
     output_tex[px] = float4(total_radiance, 1.0);
 
@@ -198,7 +198,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 total_gi = 0;
     float total_gi_wt = 0;
 
-    //const uint gi_slice_idx = 1; {
+    //const uint gi_slice_idx = 0; {
     for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
     //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
         const float3 volume_center = CSGI2_VOLUME_CENTER;

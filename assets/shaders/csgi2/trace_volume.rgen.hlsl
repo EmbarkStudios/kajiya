@@ -45,12 +45,13 @@ void main() {
         slice_z_start += SWEEP_VX_COUNT - 1;
     }
 
-    uint rng = hash2(uint2(frame_constants.frame_index, grid_idx));
+    uint rng = hash1(frame_constants.frame_index);
     //uint dir_i = frame_constants.frame_index % CSGI2_NEIGHBOR_DIR_COUNT;
 
     #if USE_RAY_JITTER
-        const float offset_x = uint_to_u01_float(hash1_mut(rng)) - 0.5;
-        const float offset_y = uint_to_u01_float(hash1_mut(rng)) - 0.5;
+        const float jitter_amount = 0.5;
+        const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
+        const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         const float blend_factor = 1.0;
     #else
         const float offset_x = 0.0;
@@ -61,14 +62,17 @@ void main() {
     float3 vx_trace_offset;
     int3 vx;
 
+    // Start at the start of the cell, trace a ray to the end
+    const float cell_ray_start_offset = -0.5;
+
     if (grid_idx < 2) {
-        vx_trace_offset = float3(-0.5 * slice_dir.x, offset_x, offset_y);
+        vx_trace_offset = float3(cell_ray_start_offset * slice_dir.x, offset_x, offset_y);
         vx = int3(slice_z_start, dispatch_vx.x, dispatch_vx.y);
     } else if (grid_idx < 4) {
-        vx_trace_offset = float3(offset_x, -0.5 * slice_dir.y, offset_y);
+        vx_trace_offset = float3(offset_x, cell_ray_start_offset * slice_dir.y, offset_y);
         vx = int3(dispatch_vx.x, slice_z_start, dispatch_vx.y);
     } else {
-        vx_trace_offset = float3(offset_x, offset_y, -0.5 * slice_dir.z);
+        vx_trace_offset = float3(offset_x, offset_y, cell_ray_start_offset * slice_dir.z);
         vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
     }
 

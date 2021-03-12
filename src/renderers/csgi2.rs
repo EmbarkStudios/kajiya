@@ -68,8 +68,8 @@ impl Csgi2Renderer {
             .get_or_create_temporal(
                 "csgi2.indirect_cascade0",
                 ImageDesc::new_3d(
-                    vk::Format::B10G11R11_UFLOAT_PACK32,
-                    //vk::Format::R16G16B16A16_SFLOAT,
+                    //vk::Format::B10G11R11_UFLOAT_PACK32,
+                    vk::Format::R16G16B16A16_SFLOAT,
                     [
                         VOLUME_DIMS * TRACE_COUNT as u32,
                         VOLUME_DIMS * 4,
@@ -84,8 +84,8 @@ impl Csgi2Renderer {
             .get_or_create_temporal(
                 "csgi2.indirect_cascade_combined0",
                 ImageDesc::new_3d(
-                    vk::Format::B10G11R11_UFLOAT_PACK32,
-                    //vk::Format::R16G16B16A16_SFLOAT,
+                    //vk::Format::B10G11R11_UFLOAT_PACK32,
+                    vk::Format::R16G16B16A16_SFLOAT,
                     [VOLUME_DIMS * TRACE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),

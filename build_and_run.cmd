@@ -3,7 +3,7 @@
 set SMOL_THREADS=64
 rem cargo run --bin vicki --release -- --scene %* --width 1920 --height 1080
 
-cargo run --bin vicki --release -- --scene sponza --y-offset=-0.001
+cargo run --bin vicki --release -- --scene pica --y-offset=-0.001
 rem --width 1920 --height 1080
 
 rem Mitsuba match:

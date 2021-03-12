@@ -6,15 +6,28 @@
 [[vk::binding(1)]] RWTexture3D<float4> indirect_tex;
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
+    if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
+        return 0.0.xxxx;
+    }
+
     const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
     return direct_tex[offset + vx];
 }
 
-float4 sample_indirect_from(int3 vx, uint dir_idx) {
+float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
+    if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
+        return 0.0.xxxx;
+    }
+
     const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
-    return indirect_tex[offset + vx];
+    const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
+
+    return indirect_tex[offset + subray_offset + vx];
 }
 
+// TODO: 3D textures on NV seem to be only tiled in the XY plane,
+// meaning that the -Z and +Z sweeps are fast, but the others are slow.
+// Might want to reshuffle the textures, and then unshuffle them in the "subray combine" pass.
 [numthreads(8, 8, 1)]
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
     const uint direct_dir_idx = dispatch_vx.z;
@@ -29,7 +42,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         tangent_dir_indices[i] = ((direct_dir_idx & uint(~1)) + 2 + i) % CSGI2_SLICE_COUNT;
     }}
 
-    int slice_z_start = (direct_dir_idx & 1) * CSGI2_VOLUME_DIMS;
+    int slice_z_start = (direct_dir_idx & 1) ? (CSGI2_VOLUME_DIMS - 1) : 0; 
 
     int3 initial_vx;
     if (direct_dir_idx < 2) {
@@ -40,20 +53,20 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         initial_vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
     }
 
-    //uint rng = hash2(uint2(frame_constants.frame_index / 2, indirect_dir_idx));
+    uint rng = hash1(frame_constants.frame_index);
+    const float jitter_amount = 0.0;
+    const float2 subray_jitter = float2((uint_to_u01_float(hash1_mut(rng)) - 0.5), (uint_to_u01_float(hash1_mut(rng)) - 0.5)) * jitter_amount;
 
     static const float skew = 0.5;
     static const float2 subray_bias[4] = {
-        float2(-skew, -skew),
-        float2(skew, -skew),
-        float2(-skew, skew),
-        float2(skew, skew)
+        float2(-skew, -skew) + subray_jitter,
+        float2(skew, -skew) + subray_jitter,
+        float2(-skew, skew) + subray_jitter,
+        float2(skew, skew) + subray_jitter
     };
 
-    
     //[unroll] for (uint subray = 0; subray < 4; ++subray) {
     { uint subray = frame_constants.frame_index % 4;
-        int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
         float bias_x = subray_bias[subray].x;
         float bias_y = subray_bias[subray].y;
         float weights[4] = {
@@ -75,8 +88,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 scatter = center_direct_s.rgb;
                 scatter_wt = 1;
             } else {
-                scatter = sample_indirect_from(subray_offset + vx + slice_dir, direct_dir_idx).rgb;
-                scatter_wt = 1;
+                scatter = sample_indirect_from(vx + slice_dir, direct_dir_idx, subray).rgb;
+                scatter_wt += 1;
 
                 [unroll]
                 for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
@@ -87,10 +100,11 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                     const float4 direct_neighbor_t = sample_direct_from(vx + tangent_dir, tangent_dir_idx);
                     const float4 direct_neighbor_s = sample_direct_from(vx + tangent_dir, direct_dir_idx);
 
-                    float3 neighbor_radiance = sample_indirect_from(subray_offset + vx + slice_dir + tangent_dir, indirect_dir_idx).rgb;
+                    float3 neighbor_radiance = sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
                     
                     neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_s.rgb, direct_neighbor_s.a);
-                    neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_t.rgb, direct_neighbor_t.a);
+                    // HACK: ad-hoc scale for off-axis contributions
+                    neighbor_radiance = lerp(neighbor_radiance, 0.25*direct_neighbor_t.rgb, direct_neighbor_t.a);
                     neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_opacity_t);
                     neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_direct_s.a);
 
@@ -101,6 +115,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             }
 
             float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
+            const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
             indirect_tex[subray_offset + vx + indirect_offset] = radiance;
         }}
     }

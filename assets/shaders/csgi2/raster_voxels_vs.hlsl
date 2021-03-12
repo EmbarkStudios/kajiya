@@ -50,7 +50,7 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
         float3 color = voxel_packed.rgb;
 
         vsout.position = cs_pos;
-        vsout.color = float4(color, 1);
+        vsout.color = float4(color + 0.01, 1);
         //vsout.color = float4(1.0 - exp(-0.25 * color), 1);
         //vsout.color = float4(color, 1);
         vsout.normal = -slice_dir;
