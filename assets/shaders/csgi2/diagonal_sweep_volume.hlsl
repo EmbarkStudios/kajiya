@@ -27,52 +27,72 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
     const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 
+#if 1
+    static const uint PLANE_COUNT = (CSGI2_VOLUME_DIMS - 1) * 3;
+
+    {[loop]
+    for (uint plane_idx = 0; plane_idx < PLANE_COUNT; ++plane_idx) {
+        const int sum_to = plane_idx;
+        const int extent = CSGI2_VOLUME_DIMS;
+        //const int2 xrange = int2(max(0, sum_to - (extent-1) * 2), min(sum_to, extent - 1));
+        const int xmin = max(0, sum_to - (extent-1) * 2);
+        const int vx_x = dispatch_vx.x + xmin;
+        const int ymin = max(0, sum_to - (extent - 1) - vx_x);
+        const int vx_y = dispatch_vx.y + ymin;
+        int3 vx = int3(vx_x, vx_y, plane_idx - vx_x - vx_y);
+
+        vx = indirect_dir > 0 ? (CSGI2_VOLUME_DIMS - vx - 1) : vx;
+
+        if (all(vx >= 0 && vx < extent))
+        {
+#else
     {[loop]
     for (uint slice_z = 0; slice_z < CSGI2_VOLUME_DIMS; ++slice_z) {
-        const int3 vx = int3(dispatch_vx.xy, slice_z);
+        const int3 vx = int3(dispatch_vx.xy, slice_z); {
+#endif
+            const float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
+            const float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
+            const float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
 
-        const float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
-        const float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
-        const float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
+            static const float skew = 0.333;
+            static const float3 subray_wts[3] = {
+                float3(skew, 1.0, 1.0),
+                float3(1.0, skew, 1.0),
+                float3(1.0, 1.0, skew),
+            };
 
-        static const float skew = 0.333;
-        static const float3 subray_wts[3] = {
-            float3(skew, 1.0, 1.0),
-            float3(1.0, skew, 1.0),
-            float3(1.0, 1.0, skew),
-        };
+            // [unroll] for (uint subray = 0; subray < 3; ++subray) {
+            { uint subray = frame_constants.frame_index % 3;
+                float3 scatter = 0.0;
+                float scatter_wt = 0.0;
 
-        // [unroll] for (uint subray = 0; subray < 3; ++subray) {
-        { uint subray = frame_constants.frame_index % 3;
-            float3 scatter = 0.0;
-            float scatter_wt = 0.0;
+                int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
 
-            int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
+                const float4 indirect_i = sample_indirect_from(subray_offset + vx + dir_i, indirect_dir_idx);
+                const float4 indirect_j = sample_indirect_from(subray_offset + vx + dir_j, indirect_dir_idx);
+                const float4 indirect_k = sample_indirect_from(subray_offset + vx + dir_k, indirect_dir_idx);
 
-            const float4 indirect_i = sample_indirect_from(subray_offset + vx + dir_i, indirect_dir_idx);
-            const float4 indirect_j = sample_indirect_from(subray_offset + vx + dir_j, indirect_dir_idx);
-            const float4 indirect_k = sample_indirect_from(subray_offset + vx + dir_k, indirect_dir_idx);
+                {
+                    float wt = subray_wts[subray].x;
+                    scatter += lerp(indirect_i.rgb, center_direct_i.rgb, center_direct_i.a) * wt;
+                    scatter_wt += wt;
+                }
 
-            {
-                float wt = subray_wts[subray].x;
-                scatter += lerp(indirect_i.rgb, center_direct_i.rgb, center_direct_i.a) * wt;
-                scatter_wt += wt;
+                {
+                    float wt = subray_wts[subray].y;
+                    scatter += lerp(indirect_j.rgb, center_direct_j.rgb, center_direct_j.a) * wt;
+                    scatter_wt += wt;
+                }
+
+                {
+                    float wt = subray_wts[subray].z;
+                    scatter += lerp(indirect_k.rgb, center_direct_k.rgb, center_direct_k.a) * wt;
+                    scatter_wt += wt;
+                }
+
+                float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
+                indirect_tex[subray_offset + vx + indirect_offset] = radiance;
             }
-
-            {
-                float wt = subray_wts[subray].y;
-                scatter += lerp(indirect_j.rgb, center_direct_j.rgb, center_direct_j.a) * wt;
-                scatter_wt += wt;
-            }
-
-            {
-                float wt = subray_wts[subray].z;
-                scatter += lerp(indirect_k.rgb, center_direct_k.rgb, center_direct_k.a) * wt;
-                scatter_wt += wt;
-            }
-
-            float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
-            indirect_tex[subray_offset + vx + indirect_offset] = radiance;
         }
     }}
 }

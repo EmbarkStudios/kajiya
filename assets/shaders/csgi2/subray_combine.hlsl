@@ -10,6 +10,7 @@ void main(in uint3 vx : SV_DispatchThreadID) {
     float3 result = input_tex[vx];
     uint subray_count = dir_idx < 6 ? 4 : 3;
 
+    [unroll]
     for (uint subray = 1; subray < subray_count; ++subray) {
         uint3 subray_offset = uint3(0, subray * CSGI2_VOLUME_DIMS, 0);
         result += input_tex[vx + subray_offset];
