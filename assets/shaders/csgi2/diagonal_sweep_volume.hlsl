@@ -95,7 +95,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 }
 
                 {
-                    float wt = subray_wts[subray].x;
+                    float wt = subray_wts[subray].y;
                     float3 indirect = indirect_j.rgb;
                     #if USE_DEEP_OCCLUDE
                         indirect = lerp(indirect, center_direct_j2.rgb, center_direct_j2.a);
@@ -106,7 +106,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 }
 
                 {
-                    float wt = subray_wts[subray].x;
+                    float wt = subray_wts[subray].z;
                     float3 indirect = indirect_k.rgb;
                     #if USE_DEEP_OCCLUDE
                         indirect = lerp(indirect, center_direct_k2.rgb, center_direct_k2.a);
