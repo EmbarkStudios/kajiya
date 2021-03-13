@@ -13,6 +13,8 @@
 
 #define USE_TEMPORAL_JITTER 1
 #define USE_HEAVY_BIAS 0
+
+// TODO: hook up CSGI2
 #define USE_CSGI 1
 
 // Strongly reduces roughness of secondary hits

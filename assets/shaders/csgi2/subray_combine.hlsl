@@ -17,5 +17,5 @@ void main(in uint3 vx : SV_DispatchThreadID) {
     }
     result /= subray_count;
 
-    output_tex[vx] = lerp(output_tex[vx], result, 1.0);
+    output_tex[vx] = lerp(output_tex[vx], result, 1);
 }

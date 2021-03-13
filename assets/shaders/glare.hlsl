@@ -79,7 +79,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     //col /= 2;
     //col *= 2;
-    //col *= 4;
+    col *= 4;
     //col *= 16;
 
 #if USE_TONEMAP

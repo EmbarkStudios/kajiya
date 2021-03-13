@@ -13,7 +13,9 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
     }
 
     const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
-    return direct_tex[offset + vx];
+    float4 val = direct_tex[offset + vx];
+    val.rgb /= max(0.01, val.a);
+    return val;
 }
 
 float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
@@ -24,7 +26,7 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
     const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
 
-    return indirect_tex[offset + subray_offset + vx];
+    return float4(indirect_tex[offset + subray_offset + vx].rgb, 1);
 }
 
 // TODO: 3D textures on NV seem to be only tiled in the XY plane,
@@ -36,7 +38,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     const uint indirect_dir_idx = direct_dir_idx;
     const int3 slice_dir = CSGI2_SLICE_DIRS[direct_dir_idx];
 
-    const float3 atmosphere_color = atmosphere_default(normalize(CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz), SUN_DIRECTION);
+    // HACK: avoid the horizon due to high brightnes at sunset. TODO: convolve sky
+    const float3 atmosphere_color = atmosphere_default(normalize(CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz + float3(0.0, 0.05, 0.0)), SUN_DIRECTION);
 
     const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 

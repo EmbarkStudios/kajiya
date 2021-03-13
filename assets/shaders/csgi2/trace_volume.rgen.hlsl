@@ -19,7 +19,7 @@
 
 //float4 CSGI2_SLICE_CENTERS[CSGI2_SLICE_COUNT];
 
-#define USE_RAY_JITTER 0
+#define USE_RAY_JITTER 1
 
 static const float SKY_DIST = 1e5;
 
@@ -49,10 +49,10 @@ void main() {
     //uint dir_i = frame_constants.frame_index % CSGI2_NEIGHBOR_DIR_COUNT;
 
     #if USE_RAY_JITTER
-        const float jitter_amount = 0.5;
+        const float jitter_amount = 0.75;
         const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
-        const float blend_factor = 1.0;
+        const float blend_factor = 0.07;
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;

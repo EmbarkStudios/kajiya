@@ -130,6 +130,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 0.0, 8.0));
+    //camera.fov = 65.0;
 
     // Mitsuba match
     /*let mut camera = camera::FirstPersonCamera::new(Vec3::new(-2.0, 4.0, 8.0));
@@ -157,17 +158,17 @@ fn main() -> anyhow::Result<()> {
     render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, 2.5));
     render_client.add_instance(mesh, Vec3::new(1.5, 0.0, 2.5));*/
 
-    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
+    /*let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
     let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));
+    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));*/
 
     let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
     let mesh = render_client.add_mesh(mesh);
-    //render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
-    render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
+    render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
+    /*render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, 2.5));
-    render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));
+    render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));*/
 
     render_client.build_ray_tracing_top_level_acceleration();
 

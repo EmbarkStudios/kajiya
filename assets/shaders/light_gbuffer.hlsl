@@ -150,8 +150,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
             for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
             //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
                 const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
-                const float wt = saturate(-0.01 + 1.01 * dot(normalize(slice_dir), gbuffer.normal));
-
+                float wt = saturate(dot(normalize(slice_dir), gbuffer.normal));
+                //wt *= wt;
+                
                 #if 1
                     float3 gi_uv = (vol_pos / CSGI2_VOXEL_SIZE / (CSGI2_VOLUME_DIMS / 2)) * 0.5 + 0.5;
 
