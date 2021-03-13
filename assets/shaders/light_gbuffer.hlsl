@@ -15,7 +15,8 @@
 
 #define USE_SURFEL_GI 0
 #define USE_SSGI 1
-#define USE_CSGI 1
+#define USE_CSGI 0
+#define USE_CSGI2 1
 #define USE_RTR 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -134,6 +135,44 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gi_irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
     #endif
 
+    #if USE_CSGI2
+    {
+        float3 total_gi = 0;
+        float total_gi_wt = 0;
+
+        const float3 volume_center = CSGI2_VOLUME_CENTER;
+        const float normal_offset_scale = 1.01;
+        const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
+        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
+
+        if (all(gi_vx >= 0) && all(gi_vx < CSGI2_VOLUME_DIMS)) {
+            //const uint gi_slice_idx = 0; {
+            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
+            //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
+                const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
+                const float wt = saturate(-0.01 + 1.01 * dot(normalize(slice_dir), gbuffer.normal));
+
+                #if 1
+                    float3 gi_uv = (vol_pos / CSGI2_VOXEL_SIZE / (CSGI2_VOLUME_DIMS / 2)) * 0.5 + 0.5;
+
+                    if (all(gi_uv == saturate(gi_uv))) {
+                        gi_uv = clamp(gi_uv, 0.5 / CSGI2_VOLUME_DIMS, 1.0 - (0.5 / CSGI2_VOLUME_DIMS));
+                        gi_uv.x /= CSGI2_INDIRECT_COUNT;
+                        gi_uv.x += float(gi_slice_idx) / CSGI2_INDIRECT_COUNT;
+                        total_gi += csgi2_indirect_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb * wt;
+                        total_gi_wt += wt;
+                    }
+                #else
+                    total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb * wt;
+                    total_gi_wt += wt;
+                #endif
+            }
+        }
+
+        gi_irradiance = total_gi / max(1.0, total_gi_wt);
+    }
+    #endif
+
     #if USE_SSGI
         float4 ssgi = ssgi_tex[px];
 
@@ -193,41 +232,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.albedo;
-
-#if 1
-    float3 total_gi = 0;
-    float total_gi_wt = 0;
-
-    //const uint gi_slice_idx = 0; {
-    for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
-    //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
-        const float3 volume_center = CSGI2_VOLUME_CENTER;
-        const float normal_offset_scale = 1.01;
-        const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
-        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
-        const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
-        const float wt = saturate(-0.01 + 1.01 * dot(normalize(slice_dir), gbuffer.normal));
-        total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb * wt;
-        total_gi_wt += wt;
-    }
-    debug_out = total_gi / max(1.0, total_gi_wt);
-    //debug_out = frac(gi_vx / 64.0);
-#elif 0
-    float3 total_gi = 0;
-    float total_gi_wt = 0;
-
-    const uint gi_slice_idx = 6;
-    {
-        const float3 volume_center = CSGI2_VOLUME_CENTER;
-        const float normal_offset_scale = 1.01;
-        const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
-        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
-        total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb;
-        total_gi_wt += 1;
-    }
-    debug_out = total_gi / total_gi_wt;
-    //debug_out = frac(gi_vx / 64.0);
-#endif
 
 #if 0
     debug_out = bindless_textures[0][px / 16].rgb;

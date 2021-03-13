@@ -20,3 +20,4 @@ rem cargo run --bin bake --release -- --scene "assets/meshes3/walkman/scene.gltf
 rem cargo run --bin bake --release -- --scene "assets/meshes/cornell_box/scene.gltf" --scale 1.0 -o cornell_box
 rem cargo run --bin bake --release -- --scene "assets/meshes3/cozy-room/scene.gltf" --scale 1.0 -o cozy-room
 rem cargo run --bin bake --release -- --scene "assets/meshes3/kitchen-interior/scene.gltf" --scale 0.75 -o kitchen-interior
+rem cargo run --bin bake --release -- --scene "assets/meshes3/gas_stations_fixed/scene.gltf" --scale 0.01 -o gas_stations

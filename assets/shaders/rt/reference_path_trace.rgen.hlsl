@@ -27,7 +27,7 @@ static const bool FIREFLY_SUPPRESSION = !true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;
-static const bool INDIRECT_ONLY = true;
+static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
 
@@ -78,7 +78,7 @@ void main() {
         float px_off1 = 0.5;
 
         if (USE_PIXEL_FILTER) {
-            const float psf_scale = 0.85;
+            const float psf_scale = 0.4;
             px_off0 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(rng)), 1e-8);
             px_off1 += psf_scale * remap_unorm_to_gaussian(uint_to_u01_float(hash1_mut(rng)), 1e-8);
         }
@@ -103,7 +103,9 @@ void main() {
         float3 total_radiance = 0.0.xxx;
 
         float roughness_bias = 0.0;
-        float cone_spread_angle = pixel_cone_spread_angle(DispatchRaysDimensions().y);
+
+        // TODO
+        float cone_spread_angle = 0;//pixel_cone_spread_angle(DispatchRaysDimensions().y);
 
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {

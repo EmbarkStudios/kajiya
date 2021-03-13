@@ -60,7 +60,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         for (int y = -k; y <= k; ++y) {
             [unroll]
             for (int x = -k; x <= k; ++x) {
-                float wt = exp2(-7.0 * sqrt(float(x * x + y * y)));
+                float wt = exp2(-6.0 * sqrt(float(x * x + y * y)));
                 tight_glare += input_tex[px + uint2(x, y)].rgb * wt;
                 wt_sum += wt;
             }
@@ -77,7 +77,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //col *= 0.3;
     //col *= 500;
 
-    //col /= 4;
+    //col /= 2;
     //col *= 2;
     //col *= 4;
     //col *= 16;

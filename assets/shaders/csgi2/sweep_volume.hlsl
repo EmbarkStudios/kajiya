@@ -1,5 +1,7 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/hash.hlsl"
+#include "../inc/atmosphere.hlsl"
+#include "../inc/sun.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
@@ -33,6 +35,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     const uint direct_dir_idx = dispatch_vx.z;
     const uint indirect_dir_idx = direct_dir_idx;
     const int3 slice_dir = CSGI2_SLICE_DIRS[direct_dir_idx];
+
+    const float3 atmosphere_color = atmosphere_default(normalize(CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz), SUN_DIRECTION);
 
     const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 
@@ -88,7 +92,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 scatter = center_direct_s.rgb;
                 scatter_wt = 1;
             } else {
-                scatter = sample_indirect_from(vx + slice_dir, direct_dir_idx, subray).rgb;
+                scatter = 0 == slice_z ? atmosphere_color : sample_indirect_from(vx + slice_dir, direct_dir_idx, subray).rgb;
                 scatter_wt += 1;
 
                 [unroll]
@@ -100,7 +104,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                     const float4 direct_neighbor_t = sample_direct_from(vx + tangent_dir, tangent_dir_idx);
                     const float4 direct_neighbor_s = sample_direct_from(vx + tangent_dir, direct_dir_idx);
 
-                    float3 neighbor_radiance = sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
+                    float3 neighbor_radiance = 0 == slice_z ? atmosphere_color : sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
                     
                     neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_s.rgb, direct_neighbor_s.a);
                     // HACK: ad-hoc scale for off-axis contributions

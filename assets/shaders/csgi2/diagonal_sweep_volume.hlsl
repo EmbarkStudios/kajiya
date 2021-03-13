@@ -1,4 +1,6 @@
 #include "../inc/frame_constants.hlsl"
+#include "../inc/atmosphere.hlsl"
+#include "../inc/sun.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
@@ -23,7 +25,7 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
     const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
 
-    return indirect_tex[offset + subray_offset + vx];
+    return float4(indirect_tex[offset + subray_offset + vx].rgb, 1);
 }
 
 [numthreads(8, 8, 1)]
@@ -36,6 +38,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     const int3 dir_i = CSGI2_SLICE_DIRS[dir_i_idx];
     const int3 dir_j = CSGI2_SLICE_DIRS[dir_j_idx];
     const int3 dir_k = CSGI2_SLICE_DIRS[dir_k_idx];
+
+    const float3 atmosphere_color = atmosphere_default(normalize(CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz), SUN_DIRECTION);
 
 #if 1
     static const uint PLANE_COUNT = (CSGI2_VOLUME_DIMS - 1) * 3;
@@ -79,9 +83,13 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 float3 scatter = 0.0;
                 float scatter_wt = 0.0;
 
-                const float4 indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
-                const float4 indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
-                const float4 indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
+                float4 indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
+                float4 indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
+                float4 indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
+
+                indirect_i.rgb = lerp(atmosphere_color, indirect_i.rgb, indirect_i.a);
+                indirect_j.rgb = lerp(atmosphere_color, indirect_j.rgb, indirect_j.a);
+                indirect_k.rgb = lerp(atmosphere_color, indirect_k.rgb, indirect_k.a);
 
                 {
                     float wt = subray_wts[subray].x;
