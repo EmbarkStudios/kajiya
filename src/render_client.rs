@@ -826,7 +826,7 @@ impl VickiRenderClient {
             &reprojection_map,
             self.bindless_descriptor_set,
             &tlas,
-            &csgi_volume,
+            &csgi2_volume,
         );
 
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(

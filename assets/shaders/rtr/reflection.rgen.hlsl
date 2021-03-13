@@ -14,8 +14,7 @@
 #define USE_TEMPORAL_JITTER 1
 #define USE_HEAVY_BIAS 0
 
-// TODO: hook up CSGI2
-#define USE_CSGI 1
+#define USE_CSGI2 1
 
 // Strongly reduces roughness of secondary hits
 #define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
@@ -41,15 +40,14 @@
 [[vk::binding(4)]] StructuredBuffer<uint> sobol_buf;
 [[vk::binding(5)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(6)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi_cascade0_tex;
-[[vk::binding(8)]] cbuffer _ {
+[[vk::binding(7)]] Texture3D<float4> csgi2_direct_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(9)]] cbuffer _ {
     float4 gbuffer_tex_size;
-    float4 CSGI_SLICE_DIRS[16];
-    float4 CSGI_SLICE_CENTERS[16];
 };
 
-#include "../csgi/common.hlsl"
-#include "../csgi/lookup.hlsl"
+#include "../csgi2/common.hlsl"
+#include "../csgi2/lookup.hlsl"
 
 
 float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDimension)
@@ -204,8 +202,8 @@ void main() {
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 total_radiance += brdf_value * light_radiance;
 
-                if (USE_CSGI) {
-                    float3 csgi = lookup_csgi(primary_hit.position, gbuffer.normal, CsgiLookupParams::make_default());
+                if (USE_CSGI2) {
+                    float3 csgi = lookup_csgi2(primary_hit.position, gbuffer.normal, Csgi2LookupParams::make_default().with_linear_fetch(false));
                     total_radiance += csgi * gbuffer.albedo;
                 }
             }

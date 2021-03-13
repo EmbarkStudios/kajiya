@@ -8,7 +8,7 @@ use slingshot::{
     vk_sync, Device,
 };
 
-use super::{csgi, GbufferDepth};
+use super::{csgi2, GbufferDepth};
 
 use blue_noise_sampler::spp16::*;
 
@@ -66,7 +66,7 @@ impl RtrRenderer {
         reprojection_map: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        csgi_volume: &csgi::CsgiVolume,
+        csgi_volume: &csgi2::Csgi2Volume,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
@@ -113,12 +113,9 @@ impl RtrRenderer {
         .read(&sobol_buf)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)
-        .read(&csgi_volume.cascade0)
-        .constants((
-            gbuffer_desc.extent_inv_extent_2d(),
-            super::csgi::CSGI_SLICE_DIRS,
-            csgi_volume.volume_centers,
-        ))
+        .read(&csgi_volume.direct_cascade0)
+        .read(&csgi_volume.indirect_cascade0)
+        .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);
 

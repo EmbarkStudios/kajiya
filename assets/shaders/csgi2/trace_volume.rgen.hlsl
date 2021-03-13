@@ -1,3 +1,4 @@
+#include "../inc/samplers.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/gbuffer.hlsl"
@@ -12,14 +13,21 @@
 #include "common.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0)]] RWTexture3D<float4> csgi_cascade0_out_tex;
-[[vk::binding(1)]] cbuffer _ {
+[[vk::binding(0)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(1)]] RWTexture3D<float4> csgi2_direct_tex;
+[[vk::binding(2)]] cbuffer _ {
     uint SWEEP_VX_COUNT;
 }
+
+#include "lookup.hlsl"
 
 //float4 CSGI2_SLICE_CENTERS[CSGI2_SLICE_COUNT];
 
 #define USE_RAY_JITTER 1
+#define RAY_JITTER_AMOUNT 0.75
+#define ACCUM_HYSTERESIS 0.05
+
+#define USE_MULTIBOUNCE 1
 
 static const float SKY_DIST = 1e5;
 
@@ -49,10 +57,10 @@ void main() {
     //uint dir_i = frame_constants.frame_index % CSGI2_NEIGHBOR_DIR_COUNT;
 
     #if USE_RAY_JITTER
-        const float jitter_amount = 0.75;
+        const float jitter_amount = RAY_JITTER_AMOUNT;
         const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
-        const float blend_factor = 0.05;
+        const float blend_factor = ACCUM_HYSTERESIS;
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;
@@ -156,6 +164,14 @@ void main() {
                         total_radiance +=
                             100 * smoothstep(0.997, 1.0, view_dot) * bounce_albedo * max(0.0, dot(gbuffer_normal, -v_ws)) / M_PI;
                     #endif
+
+                    if (USE_MULTIBOUNCE) {
+                        total_radiance += lookup_csgi2(
+                            primary_hit.position,
+                            gbuffer_normal,
+                            Csgi2LookupParams::make_default().with_linear_fetch(false)
+                        ) * bounce_albedo;
+                    }
                 }
             }
 
@@ -163,15 +179,15 @@ void main() {
             ray_length_int -= cells_skipped_by_ray + 1;
 
             while (cells_skipped_by_ray-- > 0) {
-                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
+                csgi2_direct_tex[vx + output_offset] = lerp(csgi2_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
                 vx += slice_dir;
             }
 
-            csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(total_radiance, 1), blend_factor);
+            csgi2_direct_tex[vx + output_offset] = lerp(csgi2_direct_tex[vx + output_offset], float4(total_radiance, 1), blend_factor);
             vx += slice_dir;
         } else {
             while (ray_length_int-- > 0) {
-                csgi_cascade0_out_tex[vx + output_offset] = lerp(csgi_cascade0_out_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
+                csgi2_direct_tex[vx + output_offset] = lerp(csgi2_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
                 vx += slice_dir;
             }
             

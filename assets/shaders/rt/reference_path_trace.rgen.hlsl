@@ -15,7 +15,7 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
-static const uint MAX_PATH_LENGTH = 3;
+static const uint MAX_PATH_LENGTH = 30;
 static const uint RUSSIAN_ROULETTE_START_PATH_LENGTH = 3;
 static const float MAX_RAY_LENGTH = FLT_MAX;
 //static const float MAX_RAY_LENGTH = 5.0;

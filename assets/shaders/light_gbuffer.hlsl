@@ -40,6 +40,7 @@
 #include "csgi/lookup.hlsl"
 
 #include "csgi2/common.hlsl"
+#include "csgi2/lookup.hlsl"
 
 #include "inc/sun.hlsl"
 
@@ -138,80 +139,17 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if USE_CSGI2
     {
-        const float3 volume_center = CSGI2_VOLUME_CENTER;
-
-#define CSGI2_LOOKUP_LINEAR 1
-
-        const float normal_offset_scale = CSGI2_LOOKUP_LINEAR ? 1.51 : 1.01;
-        //const float normal_offset_scale = 1.01;
-        float3 vol_pos = pt_ws.xyz - volume_center;
-
-        // Normal bias
-        vol_pos += (gbuffer.normal * normal_offset_scale) * CSGI2_VOXEL_SIZE;
-
-        float3 jitter_amount = CSGI2_VOXEL_SIZE;
-        float3 urand = float3(
-            uint_to_u01_float(hash1_mut(rng)) - 0.5,
-            uint_to_u01_float(hash1_mut(rng)) - 0.5,
-            uint_to_u01_float(hash1_mut(rng)) - 0.5
-        ) * jitter_amount;
-        //vol_pos += urand;
-
-        float3 total_gi = 0;
-        float total_gi_wt = 0;
-
-        {
-            const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
-
-            float3 to_eye = get_eye_position() - pt_ws.xyz;
-
-            // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
-            // Note: point-lookup doesn't leak, so multiple bounces should be fine
-            float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
-
-            //float3 pseudo_bent_normal = normalize(to_eye);
-
-            for (int gi_slice_idx = 0; gi_slice_idx < CSGI2_SLICE_COUNT; ++gi_slice_idx) {
-                const float opacity = csgi2_direct_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].a;
-                const float3 slice_dir = CSGI2_SLICE_DIRS[gi_slice_idx];
-
-                // Already normal-biased; only shift in the tangent plane.
-                const float3 offset_dir = slice_dir - gbuffer.normal * dot(gbuffer.normal, slice_dir);
-
-                if (CSGI2_LOOKUP_LINEAR) {
-                    vol_pos += 1.0 * offset_dir * clamp(3 * dot(slice_dir, pseudo_bent_normal), 0.0, 0.5) * CSGI2_VOXEL_SIZE;
-                }
-                //total_gi_wt += opacity * 1e10;
-            }
-        }
-
-        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
-        if (all(gi_vx >= 0) && all(gi_vx < CSGI2_VOLUME_DIMS)) {
-            //const uint gi_slice_idx = 0; {
-            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
-            //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
-                const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
-                float wt = saturate(dot(normalize(slice_dir), gbuffer.normal));
-                //wt *= wt;
-                
-                #if CSGI2_LOOKUP_LINEAR
-                    float3 gi_uv = (vol_pos / CSGI2_VOXEL_SIZE / (CSGI2_VOLUME_DIMS / 2)) * 0.5 + 0.5;
-
-                    if (all(gi_uv == saturate(gi_uv))) {
-                        gi_uv = clamp(gi_uv, 0.5 / CSGI2_VOLUME_DIMS, 1.0 - (0.5 / CSGI2_VOLUME_DIMS));
-                        gi_uv.x /= CSGI2_INDIRECT_COUNT;
-                        gi_uv.x += float(gi_slice_idx) / CSGI2_INDIRECT_COUNT;
-                        total_gi += csgi2_indirect_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb * wt;
-                        total_gi_wt += wt;
-                    }
-                #else
-                    total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb * wt;
-                    total_gi_wt += wt;
-                #endif
-            }
-        }
-
-        gi_irradiance = total_gi / max(1.0, total_gi_wt);
+        // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
+        // Note: point-lookup doesn't leak, so multiple bounces should be fine
+        float3 to_eye = get_eye_position() - pt_ws.xyz;
+        float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
+        
+        gi_irradiance = lookup_csgi2(
+            pt_ws.xyz,
+            gbuffer.normal,
+            Csgi2LookupParams::make_default()
+                .with_bent_normal(pseudo_bent_normal)
+        );
     }
     #endif
 
@@ -222,7 +160,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // If simply masking with the AO term, it tends to over-darken.
         // Reduce some of the occlusion, but for energy conservation, also reduce
         // the light added.
-        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
+        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.3);
 
         total_radiance +=
             (gi_irradiance * biased_ssgi.a + biased_ssgi.rgb)

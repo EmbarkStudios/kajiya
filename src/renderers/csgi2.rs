@@ -110,6 +110,7 @@ impl Csgi2Renderer {
             ],
             &["/assets/shaders/rt/triangle.rchit.hlsl"],
         )
+        .read(&indirect_cascade_combined0)
         .write(&mut direct_cascade0)
         .constants(sweep_vx_count)
         .raw_descriptor_set(1, bindless_descriptor_set)
