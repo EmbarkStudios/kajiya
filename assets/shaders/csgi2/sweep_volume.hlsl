@@ -14,6 +14,7 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
 
     const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
     float4 val = direct_tex[offset + vx];
+    //val.a = val.a * val.a;
     val.rgb /= max(0.01, val.a);
     return val;
 }

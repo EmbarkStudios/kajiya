@@ -147,6 +147,7 @@ impl Csgi2Renderer {
             "/assets/shaders/csgi2/subray_combine.hlsl",
         )
         .read(&indirect_cascade0)
+        .read(&direct_cascade0)
         .write(&mut indirect_cascade_combined0)
         .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);
 

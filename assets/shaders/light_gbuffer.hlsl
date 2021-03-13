@@ -122,7 +122,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //res.xyz = 1.0 - exp(-res.xyz);
     //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z);
 
-    //uint pt_hash = hash3(asuint(int3(floor(pt_ws.xyz * 3.0))));
+    uint rng = hash3(asuint(pt_ws.xyz * 3.0));
+    rng = hash2(uint2(rng, frame_constants.frame_index));
     //total_radiance += uint_id_to_color(pt_hash);
 
     float3 gi_irradiance = 0.0.xxx;
@@ -137,14 +138,54 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if USE_CSGI2
     {
+        const float3 volume_center = CSGI2_VOLUME_CENTER;
+
+#define CSGI2_LOOKUP_LINEAR 1
+
+        const float normal_offset_scale = CSGI2_LOOKUP_LINEAR ? 1.51 : 1.01;
+        //const float normal_offset_scale = 1.01;
+        float3 vol_pos = pt_ws.xyz - volume_center;
+
+        // Normal bias
+        vol_pos += (gbuffer.normal * normal_offset_scale) * CSGI2_VOXEL_SIZE;
+
+        float3 jitter_amount = CSGI2_VOXEL_SIZE;
+        float3 urand = float3(
+            uint_to_u01_float(hash1_mut(rng)) - 0.5,
+            uint_to_u01_float(hash1_mut(rng)) - 0.5,
+            uint_to_u01_float(hash1_mut(rng)) - 0.5
+        ) * jitter_amount;
+        //vol_pos += urand;
+
         float3 total_gi = 0;
         float total_gi_wt = 0;
 
-        const float3 volume_center = CSGI2_VOLUME_CENTER;
-        const float normal_offset_scale = 1.01;
-        const float3 vol_pos = (pt_ws.xyz - volume_center + gbuffer.normal * normal_offset_scale * CSGI2_VOXEL_SIZE);
-        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
+        {
+            const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
 
+            float3 to_eye = get_eye_position() - pt_ws.xyz;
+
+            // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
+            // Note: point-lookup doesn't leak, so multiple bounces should be fine
+            float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
+
+            //float3 pseudo_bent_normal = normalize(to_eye);
+
+            for (int gi_slice_idx = 0; gi_slice_idx < CSGI2_SLICE_COUNT; ++gi_slice_idx) {
+                const float opacity = csgi2_direct_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].a;
+                const float3 slice_dir = CSGI2_SLICE_DIRS[gi_slice_idx];
+
+                // Already normal-biased; only shift in the tangent plane.
+                const float3 offset_dir = slice_dir - gbuffer.normal * dot(gbuffer.normal, slice_dir);
+
+                if (CSGI2_LOOKUP_LINEAR) {
+                    vol_pos += 1.0 * offset_dir * clamp(3 * dot(slice_dir, pseudo_bent_normal), 0.0, 0.5) * CSGI2_VOXEL_SIZE;
+                }
+                //total_gi_wt += opacity * 1e10;
+            }
+        }
+
+        const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
         if (all(gi_vx >= 0) && all(gi_vx < CSGI2_VOLUME_DIMS)) {
             //const uint gi_slice_idx = 0; {
             for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
@@ -153,7 +194,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 float wt = saturate(dot(normalize(slice_dir), gbuffer.normal));
                 //wt *= wt;
                 
-                #if 1
+                #if CSGI2_LOOKUP_LINEAR
                     float3 gi_uv = (vol_pos / CSGI2_VOXEL_SIZE / (CSGI2_VOLUME_DIMS / 2)) * 0.5 + 0.5;
 
                     if (all(gi_uv == saturate(gi_uv))) {
@@ -181,7 +222,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // If simply masking with the AO term, it tends to over-darken.
         // Reduce some of the occlusion, but for energy conservation, also reduce
         // the light added.
-        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.3);
+        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.1);
 
         total_radiance +=
             (gi_irradiance * biased_ssgi.a + biased_ssgi.rgb)
@@ -232,7 +273,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = base_light_tex[px].xyz;
 
     //debug_out = gi_irradiance;
-    //debug_out = gbuffer.albedo;
+    //debug_out = gbuffer.normal;
 
 #if 0
     debug_out = bindless_textures[0][px / 16].rgb;

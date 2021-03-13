@@ -52,7 +52,7 @@ void main() {
         const float jitter_amount = 0.75;
         const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
-        const float blend_factor = 0.07;
+        const float blend_factor = 0.05;
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;

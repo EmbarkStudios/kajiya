@@ -16,7 +16,7 @@ struct VsOut {
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
     [[vk::location(4)]] float3 tangent: TEXCOORD4;
     [[vk::location(5)]] float3 bitangent: TEXCOORD5;
-    //[[vk::location(4)]] float3 pos: TEXCOORD4;
+    [[vk::location(6)]] float3 pos: TEXCOORD6;
 };
 
 VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
@@ -54,7 +54,7 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     vsout.tangent = v_tangent_packed.xyz;
     vsout.bitangent = normalize(cross(v.normal, vsout.tangent) * v_tangent_packed.w);
 
-    //vsout.pos = vs_pos.xyz / vs_pos.w;
+    vsout.pos = vs_pos.xyz / vs_pos.w;
 
     return vsout;
 }

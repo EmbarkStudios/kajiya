@@ -13,7 +13,7 @@ struct PsIn {
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
     [[vk::location(4)]] float3 tangent: TEXCOORD4;
     [[vk::location(5)]] float3 bitangent: TEXCOORD5;
-    //[[vk::location(4)]] float3 pos: TEXCOORD4;
+    [[vk::location(6)]] float3 pos: TEXCOORD6;
 };
 
 [[vk::push_constant]]
@@ -26,10 +26,6 @@ struct {
 float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     Mesh mesh = meshes[push_constants.mesh_index];
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * sizeof(MeshMaterial));
-
-    //float3 d1 = ddx(ps.pos);
-    //float3 d2 = ddy(ps.pos);
-    //normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
 
     float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
@@ -53,6 +49,13 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
         normal = mul(ts_normal, tbn);
     }
     normal = normalize(normal);
+
+    if (!true) {
+        // Derive normal from depth
+        float3 d1 = ddx(ps.pos);
+        float3 d2 = ddy(ps.pos);
+        normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
+    }
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //metalness = 1;
