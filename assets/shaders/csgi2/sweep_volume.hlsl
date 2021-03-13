@@ -1,11 +1,11 @@
+#include "../inc/samplers.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/hash.hlsl"
-#include "../inc/atmosphere.hlsl"
-#include "../inc/sun.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
-[[vk::binding(1)]] RWTexture3D<float4> indirect_tex;
+[[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(2)]] RWTexture3D<float4> indirect_tex;
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
     if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
@@ -40,7 +40,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     const int3 slice_dir = CSGI2_SLICE_DIRS[direct_dir_idx];
 
     // HACK: avoid the horizon due to high brightnes at sunset. TODO: convolve sky
-    const float3 atmosphere_color = atmosphere_default(normalize(CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz + float3(0.0, 0.05, 0.0)), SUN_DIRECTION);
+    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz + float3(0.0, 0.05, 0.0), 0).rgb;
 
     const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 

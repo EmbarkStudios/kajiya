@@ -424,6 +424,7 @@ pub fn light_gbuffer(
     debug_output: &mut Handle<Image>,
     csgi_volume: &csgi::CsgiVolume,
     csgi2_volume: &csgi2::Csgi2Volume,
+    sky_cube: &Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
     SimpleRenderPass::new_compute(
@@ -441,6 +442,7 @@ pub fn light_gbuffer(
     .read(&csgi_volume.cascade0)
     .read(&csgi2_volume.direct_cascade0)
     .read(&csgi2_volume.indirect_cascade0)
+    .read(sky_cube)
     .constants((
         gbuffer.desc().extent_inv_extent_2d(),
         CSGI_SLICE_DIRS,

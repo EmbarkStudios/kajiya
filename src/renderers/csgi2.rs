@@ -45,6 +45,7 @@ impl Csgi2Renderer {
         &mut self,
         eye_position: Vec3,
         rg: &mut rg::TemporalRenderGraph,
+        sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
     ) -> Csgi2Volume {
@@ -128,6 +129,7 @@ impl Csgi2Renderer {
             "/assets/shaders/csgi2/sweep_volume.hlsl",
         )
         .read(&direct_cascade0)
+        .read(sky_cube)
         .write(&mut indirect_cascade0)
         .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
 
@@ -136,6 +138,7 @@ impl Csgi2Renderer {
             "/assets/shaders/csgi2/diagonal_sweep_volume.hlsl",
         )
         .read(&direct_cascade0)
+        .read(sky_cube)
         .write(&mut indirect_cascade0)
         .dispatch([
             VOLUME_DIMS,

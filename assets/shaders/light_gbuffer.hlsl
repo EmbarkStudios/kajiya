@@ -8,7 +8,6 @@
 #include "inc/layered_brdf.hlsl"
 #include "inc/uv.hlsl"
 #include "inc/bindless_textures.hlsl"
-#include "inc/atmosphere.hlsl"
 
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
@@ -30,7 +29,8 @@
 [[vk::binding(8)]] Texture3D<float4> csgi_cascade0_tex;
 [[vk::binding(9)]] Texture3D<float4> csgi2_direct_tex;
 [[vk::binding(10)]] Texture3D<float4> csgi2_indirect_tex;
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 output_tex_size;
     float4 CSGI_SLICE_DIRS[16];
     float4 CSGI_SLICE_CENTERS[16];
@@ -42,6 +42,7 @@
 #include "csgi2/common.hlsl"
 #include "csgi2/lookup.hlsl"
 
+#include "inc/atmosphere.hlsl"
 #include "inc/sun.hlsl"
 
 [numthreads(8, 8, 1)]
@@ -69,7 +70,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float4 gbuffer_packed = gbuffer_tex[px];
     if (all(gbuffer_packed == 0.0.xxxx)) {
-        float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
+        #if 1
+            float3 output = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+        #else
+            float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
+            //float3 output = outgoing_ray.Direction * 0.5 + 0.5;
+        #endif
         output_tex[px] = float4(output, 1);
         debug_out_tex[px] = float4(output, 1);
         //output_tex[px] = float4(0.1.xxx, 1.0);

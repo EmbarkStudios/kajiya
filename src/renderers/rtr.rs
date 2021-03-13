@@ -64,6 +64,7 @@ impl RtrRenderer {
         rg: &mut rg::TemporalRenderGraph,
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
+        sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi2::Csgi2Volume,
@@ -115,6 +116,7 @@ impl RtrRenderer {
         .write(&mut refl1_tex)
         .read(&csgi_volume.direct_cascade0)
         .read(&csgi_volume.indirect_cascade0)
+        .read(sky_cube)
         .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);

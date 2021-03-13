@@ -1,0 +1,22 @@
+use slingshot::{
+    ash::vk,
+    backend::image::*,
+    rg::{self, SimpleRenderPass},
+};
+
+pub fn render_sky_cube(rg: &mut rg::RenderGraph) -> rg::Handle<Image> {
+    let width = 32;
+    let mut sky_tex = rg.create(ImageDesc::new_cube(vk::Format::R16G16B16A16_SFLOAT, width));
+
+    SimpleRenderPass::new_compute(
+        rg.add_pass("sky cube"),
+        "/assets/shaders/sky/comp_cube.hlsl",
+    )
+    .write_view(
+        &mut sky_tex,
+        ImageViewDesc::builder().view_type(vk::ImageViewType::TYPE_2D_ARRAY),
+    )
+    .dispatch([width, width, 6]);
+
+    sky_tex
+}

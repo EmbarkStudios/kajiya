@@ -22,7 +22,7 @@ pub enum ImageType {
 pub struct ImageDesc {
     pub image_type: ImageType,
     pub usage: vk::ImageUsageFlags,
-    pub flags: vk::ImageCreateFlags, // TODO: CUBE_COMPATIBLE
+    pub flags: vk::ImageCreateFlags,
     pub format: vk::Format,
     pub extent: [u32; 3],
     pub tiling: vk::ImageTiling,
@@ -41,7 +41,7 @@ impl ImageDesc {
         Self {
             image_type,
             usage: vk::ImageUsageFlags::default(),
-            flags: vk::ImageCreateFlags::empty(), //vk::ImageCreateFlags::MUTABLE_FORMAT, //TODO: CUBE_COMPATIBLE
+            flags: vk::ImageCreateFlags::empty(),
             format,
             extent,
             tiling: vk::ImageTiling::OPTIMAL,
@@ -57,6 +57,19 @@ impl ImageDesc {
 
     pub fn new_3d(format: vk::Format, extent: [u32; 3]) -> Self {
         Self::new(format, ImageType::Tex3d, extent)
+    }
+
+    pub fn new_cube(format: vk::Format, width: u32) -> Self {
+        Self {
+            image_type: ImageType::Cube,
+            usage: vk::ImageUsageFlags::default(),
+            flags: vk::ImageCreateFlags::CUBE_COMPATIBLE,
+            format,
+            extent: [width, width, 1],
+            tiling: vk::ImageTiling::OPTIMAL,
+            mip_levels: 1,
+            array_elements: 6,
+        }
     }
 
     pub fn image_type(mut self, image_type: ImageType) -> Self {

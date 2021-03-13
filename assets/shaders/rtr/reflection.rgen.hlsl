@@ -42,7 +42,8 @@
 [[vk::binding(6)]] RWTexture2D<float4> out1_tex;
 [[vk::binding(7)]] Texture3D<float4> csgi2_direct_tex;
 [[vk::binding(8)]] Texture3D<float4> csgi2_indirect_tex;
-[[vk::binding(9)]] cbuffer _ {
+[[vk::binding(9)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -210,9 +211,8 @@ void main() {
 
             out0_tex[px] = float4(total_radiance, primary_hit.ray_t);
         } else {
-            //out0_tex[px] = float4(0.0.xxx, SKY_DIST);
-            //out0_tex[px] = float4(0.5.xxx, SKY_DIST);
-            out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
+            //out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
+            out0_tex[px] = float4(sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb, SKY_DIST);
         }
     } else {
         out0_tex[px] = float4(0.0.xxx, -SKY_DIST);

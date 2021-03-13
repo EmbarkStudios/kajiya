@@ -750,9 +750,12 @@ impl VickiRenderClient {
             )
             .unwrap();
 
+        let sky_cube = crate::renderers::sky::render_sky_cube(rg);
+
         let csgi2_volume = self.csgi2.render(
             frame_state.camera_matrices.eye_position(),
             rg,
+            &sky_cube,
             self.bindless_descriptor_set,
             &tlas,
         );
@@ -824,6 +827,7 @@ impl VickiRenderClient {
             rg,
             &gbuffer_depth,
             &reprojection_map,
+            &sky_cube,
             self.bindless_descriptor_set,
             &tlas,
             &csgi2_volume,
@@ -846,6 +850,7 @@ impl VickiRenderClient {
             &mut debug_out_tex,
             &csgi_volume,
             &csgi2_volume,
+            &sky_cube,
             self.bindless_descriptor_set,
         );
 
