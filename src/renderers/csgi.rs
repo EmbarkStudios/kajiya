@@ -39,6 +39,7 @@ impl CsgiRenderer {
         &mut self,
         eye_position: Vec3,
         rg: &mut rg::TemporalRenderGraph,
+        sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
     ) -> CsgiVolume {
@@ -122,6 +123,7 @@ impl CsgiRenderer {
             "/assets/shaders/csgi/sweep_volume.hlsl",
         )
         .read(&cascade0_integr)
+        .read(sky_cube)
         .write(&mut cascade0)
         .write(&mut cascade0_suppressed)
         .constants(CSGI_SLICE_DIRS)

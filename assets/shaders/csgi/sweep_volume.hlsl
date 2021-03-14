@@ -12,9 +12,10 @@
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> integr_tex;
-[[vk::binding(1)]] RWTexture3D<float4> csgi_cascade0_tex;
-[[vk::binding(2)]] RWTexture3D<float4> csgi_cascade0_suppressed_tex;
-[[vk::binding(3)]] cbuffer _ {
+[[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(2)]] RWTexture3D<float4> csgi_cascade0_tex;
+[[vk::binding(3)]] RWTexture3D<float4> csgi_cascade0_suppressed_tex;
+[[vk::binding(4)]] cbuffer _ {
     float4 CSGI_SLICE_DIRS[16];
 }
 
@@ -23,7 +24,7 @@ void main(uint2 px_2d : SV_DispatchThreadID, uint idx_within_group: SV_GroupInde
     const uint grid_idx = px_2d.x / GI_VOLUME_DIMS;
     px_2d.x %= GI_VOLUME_DIMS;
 
-    float3 atmosphere_color = atmosphere_default(-CSGI_SLICE_DIRS[grid_idx].xyz, SUN_DIRECTION);
+    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, -CSGI_SLICE_DIRS[grid_idx].xyz, 0).rgb;
 
     {[loop]
     for (uint slice_z = 0; slice_z < GI_VOLUME_DIMS; ++slice_z) {

@@ -822,6 +822,7 @@ impl VickiRenderClient {
         let csgi_volume = self.csgi.render(
             frame_state.camera_matrices.eye_position(),
             rg,
+            &convolved_sky_cube,
             self.bindless_descriptor_set,
             &tlas,
         );
