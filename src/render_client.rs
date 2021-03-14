@@ -1,5 +1,5 @@
-use crate::asset::mesh::PackedTriMesh;
 use crate::asset::mesh::{AssetRef, GpuImage};
+use crate::{asset::mesh::PackedTriMesh, renderers::rtdgi::RtdgiRenderer};
 use crate::{
     asset::mesh::PackedVertex,
     backend::{self, image::*, shader::*, RenderBackend},
@@ -103,6 +103,7 @@ pub struct VickiRenderClient {
 
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
+    pub rtdgi: RtdgiRenderer,
     pub csgi: CsgiRenderer,
     pub csgi2: Csgi2Renderer,
 
@@ -487,6 +488,7 @@ impl VickiRenderClient {
             rtr: RtrRenderer::new(backend.device.as_ref()),
             csgi: CsgiRenderer::default(),
             csgi2: Csgi2Renderer::default(),
+            rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
 
             debug_mode: RenderDebugMode::None,
 
@@ -833,6 +835,16 @@ impl VickiRenderClient {
             &csgi2_volume,
         );
 
+        let rtdgi = self.rtdgi.render(
+            rg,
+            &gbuffer_depth,
+            &reprojection_map,
+            &sky_cube,
+            self.bindless_descriptor_set,
+            &tlas,
+            &csgi2_volume,
+        );
+
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(
             vk::Format::R16G16B16A16_SFLOAT,
             gbuffer_depth.gbuffer.desc().extent_2d(),
@@ -845,6 +857,7 @@ impl VickiRenderClient {
             &sun_shadow_mask,
             &ssgi_tex,
             &rtr,
+            &rtdgi,
             &lit,
             &mut accum_img,
             &mut debug_out_tex,

@@ -419,6 +419,7 @@ pub fn light_gbuffer(
     sun_shadow_mask: &Handle<Image>,
     ssgi: &Handle<Image>,
     rtr: &Handle<Image>,
+    rtdgi: &Handle<Image>,
     base_light: &Handle<Image>,
     output: &mut Handle<Image>,
     debug_output: &mut Handle<Image>,
@@ -436,6 +437,7 @@ pub fn light_gbuffer(
     .read(sun_shadow_mask)
     .read(ssgi)
     .read(rtr)
+    .read(rtdgi)
     .read(base_light)
     .write(output)
     .write(debug_output)

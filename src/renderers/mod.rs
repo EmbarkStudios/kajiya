@@ -1,10 +1,14 @@
 use std::cell::{Ref, RefCell};
 
-use slingshot::{rg, Image};
+use slingshot::{
+    rg::{self, GetOrCreateTemporal},
+    Image,
+};
 
 pub mod csgi;
 pub mod csgi2;
 pub mod half_res;
+pub mod rtdgi;
 pub mod rtr;
 pub mod sky;
 pub mod ssgi;
@@ -43,5 +47,37 @@ impl GbufferDepth {
         }
 
         Ref::map(self.half_depth.borrow(), |res| res.as_ref().unwrap())
+    }
+}
+
+pub struct PingPongTemporalResource {
+    pub output_tex: rg::TemporalResourceKey,
+    pub history_tex: rg::TemporalResourceKey,
+}
+
+impl PingPongTemporalResource {
+    pub fn new(name: &str) -> Self {
+        Self {
+            output_tex: format!("{}:0", name).as_str().into(),
+            history_tex: format!("{}:1", name).as_str().into(),
+        }
+    }
+
+    pub fn get_output_and_history(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        desc: slingshot::ImageDesc,
+    ) -> (rg::Handle<Image>, rg::Handle<Image>) {
+        let output_tex = rg
+            .get_or_create_temporal(self.output_tex.clone(), desc)
+            .unwrap();
+
+        let history_tex = rg
+            .get_or_create_temporal(self.history_tex.clone(), desc)
+            .unwrap();
+
+        std::mem::swap(&mut self.output_tex, &mut self.history_tex);
+
+        (output_tex, history_tex)
     }
 }

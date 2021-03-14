@@ -1,6 +1,8 @@
 struct Csgi2LookupParams {
     bool use_linear_fetch;
     bool use_bent_normal;
+    bool sample_directional_radiance;
+    float3 directional_radiance_direction;
     float3 bent_normal;
 
     static Csgi2LookupParams make_default() {
@@ -8,19 +10,27 @@ struct Csgi2LookupParams {
         res.use_linear_fetch = true;
         res.use_bent_normal = false;
         res.bent_normal = 0;
+        res.sample_directional_radiance = false;
         return res;
     }
 
-    Csgi2LookupParams with_bent_normal(float3 n) {
+    Csgi2LookupParams with_bent_normal(float3 v) {
         Csgi2LookupParams res = this;
         res.use_bent_normal = true;
-        res.bent_normal = n;
+        res.bent_normal = v;
         return res;
     }
 
-    Csgi2LookupParams with_linear_fetch(bool l) {
+    Csgi2LookupParams with_linear_fetch(bool v) {
         Csgi2LookupParams res = this;
-        res.use_linear_fetch = l;
+        res.use_linear_fetch = v;
+        return res;
+    }
+
+    Csgi2LookupParams with_sample_directional_radiance(float3 v) {
+        Csgi2LookupParams res = this;
+        res.sample_directional_radiance = true;
+        res.directional_radiance_direction = v;
         return res;
     }
 };
@@ -64,7 +74,16 @@ float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
         for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
         //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
             const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
-            float wt = saturate(dot(normalize(slice_dir), normal));
+            float wt;
+
+            if (params.sample_directional_radiance) {
+                wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
+                wt = pow(wt, 50.0);
+            } else {
+                wt = saturate(dot(normalize(slice_dir), normal));
+            }
+
+            //wt = normalize(slice_dir).x > 0.99 ? 1.0 : 0.0;
             //wt *= wt;
             
             if (params.use_linear_fetch) {
@@ -84,5 +103,5 @@ float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
         }
     }
 
-    return total_gi / max(1.0, total_gi_wt);
+    return total_gi / max(1e-50, total_gi_wt);
 }

@@ -13,24 +13,27 @@
 #include "inc/color.hlsl"
 
 #define USE_SURFEL_GI 0
-#define USE_SSGI 1
+#define USE_SSGI 0
 #define USE_CSGI 0
 #define USE_CSGI2 1
 #define USE_RTR 1
+#define USE_RTDGI 1
+#define USE_RTDGI_CONTROL_VARIATES 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
-[[vk::binding(5)]] Texture2D<float4> base_light_tex;
-[[vk::binding(6)]] RWTexture2D<float4> output_tex;
-[[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_cascade0_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(10)]] Texture3D<float4> csgi2_indirect_tex;
-[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
+[[vk::binding(6)]] Texture2D<float4> base_light_tex;
+[[vk::binding(7)]] RWTexture2D<float4> output_tex;
+[[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(9)]] Texture3D<float4> csgi_cascade0_tex;
+[[vk::binding(10)]] Texture3D<float4> csgi2_direct_tex;
+[[vk::binding(11)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(12)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(13)]] cbuffer _ {
     float4 output_tex_size;
     float4 CSGI_SLICE_DIRS[16];
     float4 CSGI_SLICE_CENTERS[16];
@@ -143,6 +146,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gi_irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
     #endif
 
+    float3 csgi2_irradiance = 0;
     #if USE_CSGI2
     {
         // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
@@ -150,14 +154,24 @@ void main(in uint2 px : SV_DispatchThreadID) {
         float3 to_eye = get_eye_position() - pt_ws.xyz;
         float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
         
-        gi_irradiance = lookup_csgi2(
+        csgi2_irradiance = lookup_csgi2(
             pt_ws.xyz,
             gbuffer.normal,
             Csgi2LookupParams::make_default()
-                .with_bent_normal(pseudo_bent_normal)
+                //.with_sample_directional_radiance(gbuffer.normal)
+                //.with_bent_normal(pseudo_bent_normal)
         );
+        gi_irradiance = csgi2_irradiance;
     }
     #endif
+
+    #if USE_RTDGI
+        //gi_irradiance = max(0.0, csgi2_irradiance + rtdgi_tex[px / 2].rgb);
+        gi_irradiance = rtdgi_tex[px / 2].rgb;
+        //gi_irradiance = csgi2_irradiance;
+        //gi_irradiance = abs(rtdgi_tex[px / 2].rgb);
+    #endif
+
 
     #if USE_SSGI
         float4 ssgi = ssgi_tex[px];

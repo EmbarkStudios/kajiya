@@ -2,42 +2,10 @@ use rg::TemporalRenderGraph;
 use slingshot::{
     ash::vk,
     backend::image::*,
-    rg::{self, GetOrCreateTemporal, SimpleRenderPass},
+    rg::{self, SimpleRenderPass},
 };
 
-use super::GbufferDepth;
-
-struct PingPongTemporalResource {
-    output_tex: rg::TemporalResourceKey,
-    history_tex: rg::TemporalResourceKey,
-}
-
-impl PingPongTemporalResource {
-    fn new(name: &str) -> Self {
-        Self {
-            output_tex: format!("{}:0", name).as_str().into(),
-            history_tex: format!("{}:1", name).as_str().into(),
-        }
-    }
-
-    fn get_output_and_history(
-        &mut self,
-        rg: &mut TemporalRenderGraph,
-        desc: ImageDesc,
-    ) -> (rg::Handle<Image>, rg::Handle<Image>) {
-        let output_tex = rg
-            .get_or_create_temporal(self.output_tex.clone(), desc)
-            .unwrap();
-
-        let history_tex = rg
-            .get_or_create_temporal(self.history_tex.clone(), desc)
-            .unwrap();
-
-        std::mem::swap(&mut self.output_tex, &mut self.history_tex);
-
-        (output_tex, history_tex)
-    }
-}
+use super::{GbufferDepth, PingPongTemporalResource};
 
 pub struct SsgiRenderer {
     ssgi_tex: PingPongTemporalResource,
