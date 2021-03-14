@@ -33,11 +33,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
             float sample_depth = half_depth_tex[sample_px];
 
-            float wt = exp2(-0.4 * skip * sqrt(x*x + y*y));
-            wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 4);
-            wt *= exp2(-15.0 * abs(depth / sample_depth - 1.0));
+            if (sample_depth != 0) {
+                float wt = exp2(-0.4 * skip * sqrt(x*x + y*y));
+                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 4);
+                wt *= exp2(-15.0 * abs(depth / sample_depth - 1.0));
 
-            sum += float4(hit0_tex[sample_px].rgb, 1) * wt;
+                sum += float4(hit0_tex[sample_px].rgb, 1) * wt;
+            }
         }
     }
 
