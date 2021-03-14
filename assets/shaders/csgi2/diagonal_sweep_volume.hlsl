@@ -17,7 +17,7 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
     float4 val = direct_tex[offset + vx];
     //val.a = sqrt(val.a);
     val.rgb /= max(0.01, val.a);
-    return val;
+    return max(0.0, val);
 }
 
 float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {

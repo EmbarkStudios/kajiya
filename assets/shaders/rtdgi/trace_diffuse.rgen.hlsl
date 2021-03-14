@@ -132,7 +132,7 @@ void main() {
         outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
         outgoing_ray.Origin = refl_ray_origin;
         outgoing_ray.TMin = 0;
-        outgoing_ray.TMax = 0.75;
+        outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * 4.0;
 
         control_variate = lookup_csgi2(
             ray_hit_ws,

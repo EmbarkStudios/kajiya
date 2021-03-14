@@ -103,5 +103,5 @@ float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
         }
     }
 
-    return total_gi / max(1e-50, total_gi_wt);
+    return total_gi / max(1e-20, total_gi_wt);
 }
