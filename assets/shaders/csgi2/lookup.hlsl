@@ -2,6 +2,7 @@ struct Csgi2LookupParams {
     bool use_linear_fetch;
     bool use_bent_normal;
     bool sample_directional_radiance;
+    bool direct_light_only;
     float3 directional_radiance_direction;
     float3 bent_normal;
 
@@ -11,6 +12,7 @@ struct Csgi2LookupParams {
         res.use_bent_normal = false;
         res.bent_normal = 0;
         res.sample_directional_radiance = false;
+        res.direct_light_only = false;
         return res;
     }
 
@@ -33,6 +35,12 @@ struct Csgi2LookupParams {
         res.directional_radiance_direction = v;
         return res;
     }
+
+    Csgi2LookupParams with_direct_light_only(bool v) {
+        Csgi2LookupParams res = this;
+        res.direct_light_only = true;
+        return res;
+    }
 };
 
 
@@ -44,7 +52,11 @@ float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
     float3 vol_pos = pos - volume_center;
 
     // Normal bias
-    vol_pos += (normal * normal_offset_scale) * CSGI2_VOXEL_SIZE;
+    if (!params.direct_light_only) {
+        vol_pos += (normal * normal_offset_scale) * CSGI2_VOXEL_SIZE;
+    } else {
+        vol_pos += (normal * 1e-3) * CSGI2_VOXEL_SIZE;
+    }
 
     float3 total_gi = 0;
     float total_gi_wt = 0;
@@ -70,34 +82,42 @@ float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
 
     const int3 gi_vx = int3(vol_pos / CSGI2_VOXEL_SIZE + CSGI2_VOLUME_DIMS / 2);
     if (all(gi_vx >= 0) && all(gi_vx < CSGI2_VOLUME_DIMS)) {
-        //const uint gi_slice_idx = 0; {
-        for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
-        //for (uint gi_slice_idx = 0; gi_slice_idx < 6; ++gi_slice_idx) {
-            const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
-            float wt;
+        if (!params.direct_light_only) {
+            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_INDIRECT_COUNT; ++gi_slice_idx) {
+                const float3 slice_dir = float3(CSGI2_INDIRECT_DIRS[gi_slice_idx]);
+                float wt;
 
-            if (params.sample_directional_radiance) {
-                wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
-                wt = pow(wt, 50.0);
-            } else {
-                wt = saturate(dot(normalize(slice_dir), normal));
-            }
+                if (params.sample_directional_radiance) {
+                    wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
+                    wt = pow(wt, 50.0);
+                } else {
+                    wt = saturate(dot(normalize(slice_dir), normal));
+                }
 
-            //wt = normalize(slice_dir).x > 0.99 ? 1.0 : 0.0;
-            //wt *= wt;
-            
-            if (params.use_linear_fetch) {
-                float3 gi_uv = (vol_pos / CSGI2_VOXEL_SIZE / (CSGI2_VOLUME_DIMS / 2)) * 0.5 + 0.5;
+                //wt = normalize(slice_dir).x > 0.99 ? 1.0 : 0.0;
+                //wt *= wt;
+                
+                if (params.use_linear_fetch) {
+                    float3 gi_uv = (vol_pos / CSGI2_VOXEL_SIZE / (CSGI2_VOLUME_DIMS / 2)) * 0.5 + 0.5;
 
-                if (all(gi_uv == saturate(gi_uv))) {
-                    gi_uv = clamp(gi_uv, 0.5 / CSGI2_VOLUME_DIMS, 1.0 - (0.5 / CSGI2_VOLUME_DIMS));
-                    gi_uv.x /= CSGI2_INDIRECT_COUNT;
-                    gi_uv.x += float(gi_slice_idx) / CSGI2_INDIRECT_COUNT;
-                    total_gi += csgi2_indirect_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb * wt;
+                    if (all(gi_uv == saturate(gi_uv))) {
+                        gi_uv = clamp(gi_uv, 0.5 / CSGI2_VOLUME_DIMS, 1.0 - (0.5 / CSGI2_VOLUME_DIMS));
+                        gi_uv.x /= CSGI2_INDIRECT_COUNT;
+                        gi_uv.x += float(gi_slice_idx) / CSGI2_INDIRECT_COUNT;
+                        total_gi += csgi2_indirect_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb * wt;
+                        total_gi_wt += wt;
+                    }
+                } else {
+                    total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb * wt;
                     total_gi_wt += wt;
                 }
-            } else {
-                total_gi += csgi2_indirect_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)].rgb * wt;
+            }
+        } else {
+            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI2_SLICE_COUNT; ++gi_slice_idx) {
+                const float3 slice_dir = float3(CSGI2_SLICE_DIRS[gi_slice_idx]);
+                float wt = saturate(dot(normalize(-slice_dir), normal));
+                float4 radiance_alpha = csgi2_direct_tex[gi_vx + int3(CSGI2_VOLUME_DIMS * gi_slice_idx, 0, 0)];
+                total_gi += radiance_alpha.rgb / max(1e-5, radiance_alpha.a) * wt;
                 total_gi_wt += wt;
             }
         }

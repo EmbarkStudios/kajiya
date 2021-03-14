@@ -1,3 +1,5 @@
+#define USE_RTDGI_CONTROL_VARIATES 1
+
 static const uint CSGI2_SLICE_COUNT = 6;
 static const uint CSGI2_INDIRECT_COUNT = 6 + 8;
 
@@ -10,7 +12,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
 #define CSGI2_SCENE_SPONZA 4
 #define CSGI2_SCENE_MISC 5
 
-#define CSGI2_SCENE CSGI2_SCENE_BATTLE
+#define CSGI2_SCENE CSGI2_SCENE_MISC
 
 #if CSGI2_SCENE == CSGI2_SCENE_BATTLE
     #define CSGI2_VOLUME_CENTER float3(-15, 4.0, 8)
@@ -31,7 +33,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
     static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.16;
 #else
     #define CSGI2_VOLUME_CENTER float3(0, 0, 0)
-    static const float CSGI2_VOLUME_SIZE = 8;
+    static const float CSGI2_VOLUME_SIZE = 12;
 #endif
 
 //static const float CSGI2_VOLUME_SCALE = CSGI2_VOLUME_SIZE / CSGI2_VOLUME_DIMS;

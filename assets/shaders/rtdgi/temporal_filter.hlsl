@@ -75,11 +75,15 @@ void main(uint2 px: SV_DispatchThreadID) {
 
         float3 normal = mul(frame_constants.view_constants.view_to_world, float4(half_view_normal_tex[px].rgb, 0)).xyz;
 
-        spatial_input = max(0.0, res.rgb + lookup_csgi2(
-            ray_hit_ws,
-            normal,
-            Csgi2LookupParams::make_default()
-        ));
+        spatial_input = res.rgb;
+
+        #if USE_RTDGI_CONTROL_VARIATES
+            spatial_input = max(0.0, spatial_input + lookup_csgi2(
+                ray_hit_ws,
+                normal,
+                Csgi2LookupParams::make_default()
+            ));
+        #endif
     }
 
     output_tex[px] = float4(spatial_input, 1);

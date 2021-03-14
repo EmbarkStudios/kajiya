@@ -13,8 +13,8 @@
 
 #define USE_CSGI2 1
 #define USE_TEMPORAL_JITTER 1
+#define USE_SHORT_RAYS_ONLY 1
 #define ROUGHNESS_BIAS 0.5
-#define USE_CONTROL_VARIATES 1
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -132,7 +132,12 @@ void main() {
         outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
         outgoing_ray.Origin = refl_ray_origin;
         outgoing_ray.TMin = 0;
-        outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * 4.0;
+
+        #if USE_SHORT_RAYS_ONLY
+            outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * 4.0;
+        #else
+            outgoing_ray.TMax = SKY_DIST;
+        #endif
 
         control_variate = lookup_csgi2(
             ray_hit_ws,
@@ -174,18 +179,19 @@ void main() {
                 total_radiance += csgi * gbuffer.albedo;
             }
         } else {
-            float3 far_gi = lookup_csgi2(
-                outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI2_VOXEL_SIZE.x),
-                //outgoing_ray.Direction,
-                gbuffer.normal,
-                //0.0.xxx,
-                Csgi2LookupParams::make_default().with_sample_directional_radiance(outgoing_ray.Direction)
-            );
+            #if USE_SHORT_RAYS_ONLY
+                const float3 far_gi = lookup_csgi2(
+                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI2_VOXEL_SIZE.x),
+                    //outgoing_ray.Direction,
+                    gbuffer.normal,
+                    //0.0.xxx,
+                    Csgi2LookupParams::make_default().with_sample_directional_radiance(outgoing_ray.Direction)
+                );
+            #else
+                const float3 far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+            #endif
 
-            //far_gi = control_variate;
-
-            //total_radiance = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
-            #if USE_CONTROL_VARIATES
+            #if USE_RTDGI_CONTROL_VARIATES
                 out0_tex[px] = float4(far_gi - control_variate, 1);
             #else
                 out0_tex[px] = float4(far_gi, 1);
@@ -194,7 +200,7 @@ void main() {
             return;
         }
 
-        #if USE_CONTROL_VARIATES
+        #if USE_RTDGI_CONTROL_VARIATES
             float3 out_value = total_radiance - control_variate;
         #else
             float3 out_value = total_radiance;

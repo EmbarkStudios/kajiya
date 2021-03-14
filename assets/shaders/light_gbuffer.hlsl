@@ -18,7 +18,6 @@
 #define USE_CSGI2 1
 #define USE_RTR 1
 #define USE_RTDGI 1
-#define USE_RTDGI_CONTROL_VARIATES 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -231,11 +230,22 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = base_light_tex[px].xyz;
 
     //debug_out = gi_irradiance;
-    //debug_out = gbuffer.normal;
+    //debug_out = gbuffer.metalness;
 
-#if 0
-    debug_out = bindless_textures[0][px / 16].rgb;
-#endif
+    #if 0
+        debug_out = lookup_csgi2(
+            pt_ws.xyz,
+            gbuffer.normal,
+            Csgi2LookupParams::make_default()
+                .with_direct_light_only(true)
+                //.with_sample_directional_radiance(gbuffer.normal)
+                //.with_bent_normal(pseudo_bent_normal)
+        );
+    #endif
+
+    #if 0
+        debug_out = bindless_textures[0][px / 16].rgb;
+    #endif
 
     debug_out_tex[px] = float4(debug_out, 1.0);
 }

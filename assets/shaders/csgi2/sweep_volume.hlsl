@@ -91,14 +91,15 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             float scatter_wt = 0.0;
 
             const float4 center_direct_s = sample_direct_from(vx, direct_dir_idx);
+            const float3 center_indirect_s =
+                0 == slice_z
+                ? atmosphere_color
+                : sample_indirect_from(vx + slice_dir, direct_dir_idx, subray).rgb;
 
-            if (center_direct_s.a == 1) {
-                scatter = center_direct_s.rgb;
-                scatter_wt = 1;
-            } else {
-                scatter = 0 == slice_z ? atmosphere_color : sample_indirect_from(vx + slice_dir, direct_dir_idx, subray).rgb;
-                scatter_wt += 1;
+            scatter = lerp(center_indirect_s, center_direct_s.rgb, center_direct_s.a);
+            scatter_wt += 1;
 
+            if (center_direct_s.a != 1) {
                 [unroll]
                 for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
                     const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
@@ -117,6 +118,11 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                     neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_direct_s.a);
 
                     float wt = weights[tangent_i];
+
+                    // TODO: is this right? It does fix the case of bounce on the side of 336_lrm
+                    wt *= (1 - center_opacity_t);
+                    wt *= (1 - center_direct_s.a);
+
                     scatter += neighbor_radiance * wt;
                     scatter_wt += wt;
                 }
