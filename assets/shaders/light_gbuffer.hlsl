@@ -30,18 +30,12 @@
 [[vk::binding(6)]] Texture2D<float4> base_light_tex;
 [[vk::binding(7)]] RWTexture2D<float4> output_tex;
 [[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi_cascade0_tex;
-[[vk::binding(10)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(11)]] Texture3D<float4> csgi2_indirect_tex;
-[[vk::binding(12)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(9)]] Texture3D<float4> csgi2_direct_tex;
+[[vk::binding(10)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 output_tex_size;
-    float4 CSGI_SLICE_DIRS[16];
-    float4 CSGI_SLICE_CENTERS[16];
 };
-
-#include "csgi/common.hlsl"
-#include "csgi/lookup.hlsl"
 
 #include "csgi2/common.hlsl"
 #include "csgi2/lookup.hlsl"
@@ -141,10 +135,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if USE_SURFEL_GI
         gi_irradiance = base_light_tex[px].xyz;
-    #endif
-
-    #if USE_CSGI
-        gi_irradiance = lookup_csgi(pt_ws.xyz, gbuffer.normal, CsgiLookupParams::make_default());
     #endif
 
     float3 csgi2_irradiance = 0;

@@ -197,7 +197,8 @@ void main() {
                     //outgoing_ray.Direction,
                     gbuffer.normal,
                     //0.0.xxx,
-                    Csgi2LookupParams::make_default().with_sample_directional_radiance(outgoing_ray.Direction)
+                    Csgi2LookupParams::make_default()
+                        .with_sample_directional_radiance(outgoing_ray.Direction)
                 );
             #else
                 const float3 far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;

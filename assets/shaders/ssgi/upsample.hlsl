@@ -7,7 +7,7 @@
 [[vk::binding(2)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 
-float4 process_sample(float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
+float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
     if (depth != 0.0)
     {
         float depth_diff = 1.0 - (center_depth / depth);
@@ -21,6 +21,7 @@ float4 process_sample(float4 ssgi, float depth, float3 normal, float center_dept
         float w = 1;
         w *= depth_factor;  // TODO: differentials
         w *= normal_factor;
+        w *= exp(-dot(soffset, soffset));
 
         w_sum += w;
         return ssgi * w;
@@ -50,7 +51,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 float depth = depth_tex[sample_pix * 2];
                 float4 ssgi = ssgi_tex[sample_pix];
                 float3 normal = unpack_normal_11_10_11(gbuffer_tex[sample_pix * 2].y);
-                result += process_sample(ssgi, depth, normal, center_depth, center_normal, w_sum);
+                result += process_sample(float2(x, y), ssgi, depth, normal, center_depth, center_normal, w_sum);
             }
         }
     } else {

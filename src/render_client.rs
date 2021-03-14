@@ -8,7 +8,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderer::*,
-    renderers::{csgi::CsgiRenderer, csgi2::Csgi2Renderer, rtr::*, ssgi::*, GbufferDepth},
+    renderers::{csgi2::Csgi2Renderer, rtr::*, ssgi::*, GbufferDepth},
     rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
     FrameState,
@@ -104,7 +104,6 @@ pub struct VickiRenderClient {
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub rtdgi: RtdgiRenderer,
-    pub csgi: CsgiRenderer,
     pub csgi2: Csgi2Renderer,
 
     pub debug_mode: RenderDebugMode,
@@ -486,7 +485,6 @@ impl VickiRenderClient {
 
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
-            csgi: CsgiRenderer::default(),
             csgi2: Csgi2Renderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
 
@@ -806,9 +804,10 @@ impl VickiRenderClient {
         let reprojection_map =
             crate::render_passes::calculate_reprojection_map(rg, &gbuffer_depth.depth);
 
-        let ssgi_tex = self
-            .ssgi
-            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
+        /*let ssgi_tex = self
+        .ssgi
+        .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);*/
+        let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
         let sun_shadow_mask =
             crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
@@ -818,14 +817,6 @@ impl VickiRenderClient {
             frame_state.window_cfg.dims(),
         ));
         crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
-
-        let csgi_volume = self.csgi.render(
-            frame_state.camera_matrices.eye_position(),
-            rg,
-            &convolved_sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
 
         let rtr = self.rtr.render(
             rg,
@@ -863,13 +854,10 @@ impl VickiRenderClient {
             &lit,
             &mut accum_img,
             &mut debug_out_tex,
-            &csgi_volume,
             &csgi2_volume,
             &sky_cube,
             self.bindless_descriptor_set,
         );
-
-        csgi_volume.render_debug(rg, &gbuffer_depth, &mut debug_out_tex);
 
         let mut post =
             crate::render_passes::post_process(rg, &debug_out_tex, self.bindless_descriptor_set);

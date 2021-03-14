@@ -27,7 +27,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
     static const float CSGI2_VOLUME_SIZE = 24.0;
 #elif CSGI2_SCENE == CSGI2_SCENE_VIZIERS
     #define CSGI2_VOLUME_CENTER float3(0, 15, 0)
-    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * (1.0 / 5);
+    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * (1.0 / 4);
 #elif CSGI2_SCENE == CSGI2_SCENE_SPONZA
     #define CSGI2_VOLUME_CENTER float3(0, 0, 0)
     static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.16;

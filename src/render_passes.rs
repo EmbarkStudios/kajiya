@@ -5,15 +5,7 @@ use slingshot::{
     backend::ray_tracing::RayTracingAcceleration,
 };
 
-use crate::{
-    backend::image::ImageViewDesc,
-    backend::shader::*,
-    renderers::{
-        csgi::{self, CSGI_SLICE_DIRS},
-        csgi2,
-    },
-    rg::*,
-};
+use crate::{backend::image::ImageViewDesc, backend::shader::*, renderers::csgi2, rg::*};
 
 pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
     let mut pass = rg.add_pass("clear depth");
@@ -423,7 +415,6 @@ pub fn light_gbuffer(
     base_light: &Handle<Image>,
     output: &mut Handle<Image>,
     debug_output: &mut Handle<Image>,
-    csgi_volume: &csgi::CsgiVolume,
     csgi2_volume: &csgi2::Csgi2Volume,
     sky_cube: &Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
@@ -441,15 +432,10 @@ pub fn light_gbuffer(
     .read(base_light)
     .write(output)
     .write(debug_output)
-    .read(&csgi_volume.cascade0)
     .read(&csgi2_volume.direct_cascade0)
     .read(&csgi2_volume.indirect_cascade0)
     .read(sky_cube)
-    .constants((
-        gbuffer.desc().extent_inv_extent_2d(),
-        CSGI_SLICE_DIRS,
-        csgi_volume.volume_centers,
-    ))
+    .constants((gbuffer.desc().extent_inv_extent_2d(),))
     .raw_descriptor_set(1, bindless_descriptor_set)
     .dispatch(gbuffer.desc().extent);
 }

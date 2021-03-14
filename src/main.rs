@@ -296,7 +296,7 @@ fn main() -> anyhow::Result<()> {
                 {
                     ui.drag_int(
                         im_str!("Trace subdivision"),
-                        &mut render_client.csgi.trace_subdiv,
+                        &mut render_client.csgi2.trace_subdiv,
                     )
                     .min(0)
                     .max(5)
@@ -304,7 +304,7 @@ fn main() -> anyhow::Result<()> {
 
                     ui.drag_int(
                         im_str!("Neighbors per frame"),
-                        &mut render_client.csgi.neighbors_per_frame,
+                        &mut render_client.csgi2.neighbors_per_frame,
                     )
                     .min(1)
                     .max(9)

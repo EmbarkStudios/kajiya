@@ -42,7 +42,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 wt *= exp2(-15.0 * abs(depth / sample_depth - 1.0));
 
                 // Preserve edges in value
-                wt *= exp2(-8.0 * abs(calculate_luma(sample_val - center_val)));
+                // Helps with shadows, but fails to reduce high variance noise
+                // TODO: variance-guided
+                //wt *= exp2(-8.0 * abs(calculate_luma(sample_val - center_val)));
 
                 sum += float4(sample_val, 1) * wt;
             }
