@@ -753,11 +753,12 @@ impl VickiRenderClient {
             .unwrap();
 
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
+        let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
         let csgi2_volume = self.csgi2.render(
             frame_state.camera_matrices.eye_position(),
             rg,
-            &sky_cube,
+            &convolved_sky_cube,
             self.bindless_descriptor_set,
             &tlas,
         );

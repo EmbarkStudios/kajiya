@@ -28,5 +28,11 @@ float3x3 build_orthonormal_basis(float3 n) {
     );
 }
 
+float3 uniform_sample_cone(float2 urand, float cos_theta_max) {
+    float cos_theta = (1.0 - urand.x) + urand.x * cos_theta_max;
+    float sin_theta = sqrt(saturate(1.0 - cos_theta * cos_theta));
+    float phi = urand.y * M_TAU;
+    return float3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
+}
 
 #endif

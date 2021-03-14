@@ -25,7 +25,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float depth = half_depth_tex[px];
     float3 center_val = hit0_tex[px].rgb;
 
-    int k = 0;
+    int k = 3;
     int skip = 2;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {

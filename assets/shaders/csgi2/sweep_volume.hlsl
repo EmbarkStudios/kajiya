@@ -39,8 +39,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     const uint indirect_dir_idx = direct_dir_idx;
     const int3 slice_dir = CSGI2_SLICE_DIRS[direct_dir_idx];
 
-    // HACK: avoid the horizon due to high brightnes at sunset. TODO: convolve sky
-    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz + float3(0.0, 0.05, 0.0), 0).rgb;
+    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
 
     const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 
