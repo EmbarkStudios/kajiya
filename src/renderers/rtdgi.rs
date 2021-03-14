@@ -169,6 +169,22 @@ impl RtdgiRenderer {
         .constants((spatial_filtered_tex.desc().extent_inv_extent_2d(),))
         .dispatch(spatial_filtered_tex.desc().extent);
 
-        spatial_filtered_tex.into()
+        let mut upsampled_tex = rg.create(
+            gbuffer_depth
+                .gbuffer
+                .desc()
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+        SimpleRenderPass::new_compute(
+            rg.add_pass("rtdgi upsample"),
+            "/assets/shaders/ssgi/upsample.hlsl",
+        )
+        .read(&spatial_filtered_tex)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&gbuffer_depth.gbuffer)
+        .write(&mut upsampled_tex)
+        .dispatch(upsampled_tex.desc().extent);
+
+        upsampled_tex.into()
     }
 }

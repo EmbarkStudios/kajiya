@@ -19,6 +19,8 @@
 #define USE_RTR 1
 #define USE_RTDGI 1
 
+#define SSGI_INTENSITY_BIAS 0.3
+
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> sun_shadow_mask_tex;
@@ -166,7 +168,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if USE_RTDGI
         //gi_irradiance = max(0.0, csgi2_irradiance + rtdgi_tex[px / 2].rgb);
-        gi_irradiance = rtdgi_tex[px / 2].rgb;
+        gi_irradiance = rtdgi_tex[px].rgb;
         //gi_irradiance = csgi2_irradiance;
         //gi_irradiance = abs(rtdgi_tex[px / 2].rgb);
     #endif
@@ -179,7 +181,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // If simply masking with the AO term, it tends to over-darken.
         // Reduce some of the occlusion, but for energy conservation, also reduce
         // the light added.
-        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), 0.3);
+        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), SSGI_INTENSITY_BIAS);
 
         total_radiance +=
             (gi_irradiance * biased_ssgi.a + biased_ssgi.rgb)
@@ -229,7 +231,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
     //debug_out = base_light_tex[px].xyz;
 
-    //debug_out = gi_irradiance;
+    debug_out = gi_irradiance;
     //debug_out = gbuffer.metalness;
 
     #if 0

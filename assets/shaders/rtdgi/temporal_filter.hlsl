@@ -78,10 +78,16 @@ void main(uint2 px: SV_DispatchThreadID) {
         spatial_input = res.rgb;
 
         #if USE_RTDGI_CONTROL_VARIATES
+            // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
+            // Note: point-lookup doesn't leak, so multiple bounces should be fine
+            float3 to_eye = get_eye_position() - ray_hit_ws;
+            float3 pseudo_bent_normal = normalize(normalize(to_eye) + normal);
+
             spatial_input = max(0.0, spatial_input + lookup_csgi2(
                 ray_hit_ws,
                 normal,
                 Csgi2LookupParams::make_default()
+                    .with_bent_normal(pseudo_bent_normal)
             ));
         #endif
     }

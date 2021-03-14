@@ -14,7 +14,9 @@
 #define USE_CSGI2 1
 #define USE_TEMPORAL_JITTER 1
 #define USE_SHORT_RAYS_ONLY 1
+#define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 #define ROUGHNESS_BIAS 0.5
+#define SUPPRESS_GI_FOR_NEAR_HITS 0
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -134,16 +136,23 @@ void main() {
         outgoing_ray.TMin = 0;
 
         #if USE_SHORT_RAYS_ONLY
-            outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * 4.0;
+            outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * SHORT_RAY_SIZE_VOXEL_CELLS;
         #else
             outgoing_ray.TMax = SKY_DIST;
         #endif
 
-        control_variate = lookup_csgi2(
-            ray_hit_ws,
-            gbuffer.normal,
-            Csgi2LookupParams::make_default().with_sample_directional_radiance(outgoing_ray.Direction)
-        );
+        {
+            float3 to_eye = get_eye_position() - ray_hit_ws;
+            float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
+
+            control_variate = lookup_csgi2(
+                ray_hit_ws,
+                gbuffer.normal,
+                Csgi2LookupParams::make_default()
+                    .with_sample_directional_radiance(outgoing_ray.Direction)
+                    .with_bent_normal(pseudo_bent_normal)
+            );
+        }
 
         out1_tex[px] = float4(outgoing_ray.Direction, clamp(brdf_sample.pdf, 1e-5, 1e5));
 
@@ -175,8 +184,11 @@ void main() {
             total_radiance += brdf_value * light_radiance;
 
             if (USE_CSGI2) {
-                float3 csgi = lookup_csgi2(primary_hit.position, gbuffer.normal, Csgi2LookupParams::make_default().with_linear_fetch(false));
-                total_radiance += csgi * gbuffer.albedo;
+                // Don't sample GI for very close hits, as that easily results in leaks
+                if (!SUPPRESS_GI_FOR_NEAR_HITS || primary_hit.ray_t > CSGI2_VOXEL_SIZE.x) {
+                    float3 csgi = lookup_csgi2(primary_hit.position, gbuffer.normal, Csgi2LookupParams::make_default().with_linear_fetch(false));
+                    total_radiance += csgi * gbuffer.albedo;
+                }
             }
         } else {
             #if USE_SHORT_RAYS_ONLY
