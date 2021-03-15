@@ -25,7 +25,7 @@
 
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
-#define USE_RAY_JITTER 1
+#define USE_RAY_JITTER 0
 #define RAY_JITTER_AMOUNT 0.75
 #define ACCUM_HYSTERESIS 0.05
 
@@ -66,7 +66,7 @@ void main() {
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;
-        const float blend_factor = 1.0;
+        const float blend_factor = ACCUM_HYSTERESIS;
     #endif
 
     float3 vx_trace_offset;

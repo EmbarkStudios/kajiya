@@ -66,6 +66,7 @@ impl RtdgiRenderer {
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi2::Csgi2Volume,
+        ssao_tex: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
@@ -165,8 +166,12 @@ impl RtdgiRenderer {
         .read(&hit1_tex)
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
+        .read(ssao_tex)
         .write(&mut spatial_filtered_tex)
-        .constants((spatial_filtered_tex.desc().extent_inv_extent_2d(),))
+        .constants((
+            spatial_filtered_tex.desc().extent_inv_extent_2d(),
+            super::rtr::SPATIAL_RESOLVE_OFFSETS,
+        ))
         .dispatch(spatial_filtered_tex.desc().extent);
 
         let mut upsampled_tex = rg.create(
@@ -177,12 +182,16 @@ impl RtdgiRenderer {
         );
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi upsample"),
-            "/assets/shaders/ssgi/upsample.hlsl",
+            "/assets/shaders/rtdgi/upsample.hlsl",
         )
         .read(&spatial_filtered_tex)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&gbuffer_depth.gbuffer)
+        .read(&*half_view_normal_tex)
+        .read(&*half_depth_tex)
+        .read(ssao_tex)
         .write(&mut upsampled_tex)
+        .constants((super::rtr::SPATIAL_RESOLVE_OFFSETS,))
         .dispatch(upsampled_tex.desc().extent);
 
         upsampled_tex.into()

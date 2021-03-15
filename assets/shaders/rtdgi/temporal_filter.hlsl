@@ -63,6 +63,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     history_output_tex[px] = LINEAR_TO_WORKING(res);
 
+    //res = center;
+
     float3 spatial_input = 0;
     {
         const uint2 hi_px = px * 2;

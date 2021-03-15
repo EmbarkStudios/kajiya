@@ -5,7 +5,13 @@
 [[vk::binding(0)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
+[[vk::binding(3)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(4)]] Texture2D<float> half_depth_tex;
+[[vk::binding(5)]] Texture2D<float4> ssao_tex;
+[[vk::binding(6)]] RWTexture2D<float4> output_tex;
+[[vk::binding(7)]] cbuffer _ {
+    int4 spatial_resolve_offsets[16 * 4 * 8];
+};
 
 float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
     if (depth != 0.0)

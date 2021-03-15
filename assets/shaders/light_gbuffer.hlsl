@@ -161,9 +161,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #endif
 
 
+    const float4 ssgi = ssgi_tex[px];
     #if USE_SSGI
-        float4 ssgi = ssgi_tex[px];
-
         // HACK: need directionality in GI so that it can be properly masked.
         // If simply masking with the AO term, it tends to over-darken.
         // Reduce some of the occlusion, but for energy conservation, also reduce
@@ -208,7 +207,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.metalness;
-    //debug_out = (ssgi.a * 0.01 + ssgi.rgb);
+    //debug_out = pow(ssgi.a, 4);
 
     #if 0
         debug_out = lookup_csgi2(

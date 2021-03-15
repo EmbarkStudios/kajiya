@@ -21,7 +21,7 @@
 
 static const float temporal_rotations[] = { 60.0, 300.0, 180.0, 240.0, 120.0, 0.0 };
 static const float temporal_offsets[] = { 0.0, 0.5, 0.25, 0.75 };
-static const uint ssgi_half_sample_count = 16;
+static const uint ssgi_half_sample_count = 8;
 
 float fast_sqrt(float x) {
     return asfloat(0x1fbd1df5 + (asuint(x) >> 1u));
@@ -70,7 +70,7 @@ float integrate_arc(float h1, float h2, float n) {
 }
 
 float update_horizion_angle(float prev, float cur) {
-#if 1
+#if 0
     float t = min(1.0, 0.5 / float(ssgi_half_sample_count));
     return cur > prev ? cur : lerp(prev, cur, t);
 #else
@@ -165,7 +165,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
 
     float4 col = 0.0.xxxx;
-    float ao_radius = 0.2;
+    float ao_radius = 0.08;
 
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     float3 v_vs = -normalize(view_ray_context.ray_dir_vs());

@@ -12,9 +12,11 @@
 [[vk::binding(1)]] Texture2D<float4> hit1_tex;
 [[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(3)]] Texture2D<float> half_depth_tex;
-[[vk::binding(4)]] RWTexture2D<float4> output_tex;
-[[vk::binding(5)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float4> ssao_tex;
+[[vk::binding(5)]] RWTexture2D<float4> output_tex;
+[[vk::binding(6)]] cbuffer _ {
     float4 output_tex_size;
+    int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
 [numthreads(8, 8, 1)]
@@ -24,32 +26,69 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 center_normal_vs = half_view_normal_tex[px].rgb;
     float depth = half_depth_tex[px];
     float3 center_val = hit0_tex[px].rgb;
+    float center_ssao = ssao_tex[px * 2].a;
 
+    float ex = 0;
+    float ex2 = 0;
+
+    #define USE_POISSON 0
+
+    #if !USE_POISSON
+
+    float spatial_sharpness = 0.25;//lerp(0.5, 0.25, saturate(center_ssao));
     int k = 3;
     int skip = 2;
+
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
             const int2 sample_offset = int2(x, y) * skip;
+    #else
+
+    const bool SHUFFLE_SUBPIXELS = true;
+    const int sample_count = 16;
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
+    const int filter_idx = 3;
+
+    {
+        for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+    #endif
+
             const int2 sample_px = px + sample_offset;
 
             float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
             float sample_depth = half_depth_tex[sample_px];
             float3 sample_val = hit0_tex[sample_px].rgb;
+            float sample_ssao = ssao_tex[sample_px * 2].a;
 
             if (sample_depth != 0) {
-                float wt = exp2(-0.4 * sqrt(float(dot(sample_offset, sample_offset))));
-                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 4);
-                wt *= exp2(-15.0 * abs(depth / sample_depth - 1.0));
+                float wt = 1;
 
-                // Preserve edges in value
-                // Helps with shadows, but fails to reduce high variance noise
-                // TODO: variance-guided
-                //wt *= exp2(-8.0 * abs(calculate_luma(sample_val - center_val)));
+                //wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
+                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 4);
+                wt *= exp2(-200.0 * abs(center_normal_vs.z * (depth / sample_depth - 1.0)));
+                wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
 
                 sum += float4(sample_val, 1) * wt;
+                
+                float luma = calculate_luma(sample_val);
+                ex += luma * wt;
+                ex2 += luma * luma * wt;
             }
         }
     }
 
-    output_tex[px] = float4(sum.rgb / max(1e-5, sum.a), 1.0);
+    float3 center_sample = hit0_tex[px].rgb;
+    float norm_factor = 1.0 / max(1e-5, sum.a);
+
+    float3 filtered = sum.rgb * norm_factor;
+    ex *= norm_factor;
+    ex2 *= norm_factor;
+    float variance = max(0.0, ex2 - ex * ex);
+    float rel_dev = sqrt(variance) / max(1e-5, ex);
+
+    //filtered = rel_dev;
+    //filtered = center_sample;
+
+    output_tex[px] = float4(filtered, 1.0);
 }

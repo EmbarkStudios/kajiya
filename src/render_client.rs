@@ -823,10 +823,10 @@ impl VickiRenderClient {
         let reprojection_map =
             crate::renderers::reprojection::calculate_reprojection_map(rg, &gbuffer_depth.depth);
 
-        /*let ssgi_tex = self
-        .ssgi
-        .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);*/
-        let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
+        let ssgi_tex = self
+            .ssgi
+            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
+        //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
         let sun_shadow_mask =
             crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
@@ -849,6 +849,7 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
             &tlas,
             &csgi2_volume,
+            &ssgi_tex,
         );
 
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(
