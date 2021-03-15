@@ -131,6 +131,8 @@ fn main() -> anyhow::Result<()> {
 
     let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 0.0, 8.0));
     //camera.fov = 65.0;
+    camera.look_smoothness = 20.0;
+    camera.move_smoothness = 10.0;
 
     // Mitsuba match
     /*let mut camera = camera::FirstPersonCamera::new(Vec3::new(-2.0, 4.0, 8.0));
@@ -141,6 +143,7 @@ fn main() -> anyhow::Result<()> {
 
     #[allow(unused_mut)]
     let mut camera = CameraConvergenceEnforcer::new(camera);
+    camera.convergence_sensitivity = 0.0;
 
     let mut mouse_state: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
@@ -181,6 +184,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut light_theta = -4.54;
     let mut light_phi = 1.48;
+    let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
 
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
@@ -241,17 +245,21 @@ fn main() -> anyhow::Result<()> {
         camera.update(&input_state);
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
-            render_client.render_mode = match render_client.render_mode {
-                RenderMode::Standard => RenderMode::Reference,
-                RenderMode::Reference => RenderMode::Standard,
+            match render_client.render_mode {
+                RenderMode::Standard => {
+                    camera.convergence_sensitivity = 1.0;
+                    render_client.render_mode = RenderMode::Reference;
+                }
+                RenderMode::Reference => {
+                    camera.convergence_sensitivity = 0.0;
+                    render_client.render_mode = RenderMode::Standard;
+                }
             };
         }
 
         if (mouse_state.button_mask & 1) != 0 {
-            light_theta +=
-                (mouse_state.delta.x / window_cfg.width as f32) * std::f32::consts::PI * -2.0;
-            light_phi +=
-                (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI * 0.5;
+            light_theta += (mouse_state.delta.x / window_cfg.width as f32) * -std::f32::consts::TAU;
+            light_phi += (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI;
         }
 
         // Reset accumulation of the path tracer whenever the camera moves
@@ -259,12 +267,15 @@ fn main() -> anyhow::Result<()> {
             render_client.reset_reference_accumulation = true;
         }
 
+        let sun_direction = spherical_to_cartesian(light_theta, light_phi);
+        sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.01).normalize();
+
         let frame_state = FrameState {
             camera_matrices: camera.calc_matrices(),
             window_cfg,
             input: input_state,
             //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
-            sun_direction: spherical_to_cartesian(light_theta, light_phi),
+            sun_direction: sun_direction_interp,
         };
 
         if keyboard.was_just_pressed(VirtualKeyCode::Tab) {

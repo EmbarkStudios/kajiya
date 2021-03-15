@@ -45,6 +45,8 @@ pub struct FirstPersonCamera {
     pub move_smoothness: f32,
     pub look_smoothness: f32,
     pub move_speed: f32,
+
+    interp_move_vec: Vec3,
 }
 
 pub struct FirstPersonCameraInput {
@@ -85,8 +87,14 @@ impl From<&InputState> for FirstPersonCameraInput {
             move_vec += Vec3::unit_y() * 1.0;
         }
 
+        move_vec *= 0.25;
+
         if input_state.keys.is_down(VirtualKeyCode::LControl) {
             move_vec *= 0.1;
+        }
+
+        if input_state.keys.is_down(VirtualKeyCode::LShift) {
+            move_vec *= 10.0;
         }
 
         FirstPersonCameraInput {
@@ -144,7 +152,8 @@ impl FirstPersonCamera {
     }
 
     fn translate(&mut self, local_v: Vec3) {
-        let rotation = self.calc_rotation_quat();
+        //let rotation = self.calc_rotation_quat();
+        let rotation = self.interp_rot;
         self.position += rotation * local_v * self.move_speed;
         //println!("self.position: {:?}", self.position);
     }
@@ -171,6 +180,7 @@ impl FirstPersonCamera {
             move_smoothness: 1.0,
             look_smoothness: 1.0,
             move_speed: 0.2,
+            interp_move_vec: Vec3::zero(),
         }
     }
 }
@@ -181,8 +191,21 @@ impl Camera for FirstPersonCamera {
     fn update<InputType: Into<Self::InputType>>(&mut self, input: InputType) {
         let input = input.into();
 
+        let move_input_interp = 1.0 - (-input.dt * 5.0).exp();
+        self.interp_move_vec = self.interp_move_vec.lerp(input.move_vec, move_input_interp);
+        self.interp_move_vec *= Vec3::select(
+            input.move_vec.cmpeq(Vec3::zero()),
+            Vec3::zero(),
+            Vec3::one(),
+        );
+        self.interp_move_vec *= Vec3::select(
+            input.move_vec.signum().cmpeq(self.interp_move_vec.signum()),
+            Vec3::one(),
+            -Vec3::one(),
+        );
+
         let move_dist = input.dt * 60.0;
-        self.translate(input.move_vec * move_dist);
+        self.translate(self.interp_move_vec * move_dist);
 
         self.rotate_pitch(input.pitch_delta);
         self.rotate_yaw(input.yaw_delta);
@@ -262,6 +285,7 @@ pub struct CameraConvergenceEnforcer<CameraType: Camera> {
     frozen_matrices: CameraMatrices,
     prev_error: f32,
     is_converged: bool,
+    pub convergence_sensitivity: f32,
 }
 
 #[allow(dead_code)]
@@ -274,6 +298,7 @@ impl<CameraType: Camera> CameraConvergenceEnforcer<CameraType> {
             frozen_matrices: matrices,
             prev_error: -1.0,
             is_converged: true,
+            convergence_sensitivity: 1.0,
         }
     }
 
@@ -311,7 +336,11 @@ impl<CameraType: Camera> Camera for CameraConvergenceEnforcer<CameraType> {
             })
             .sum();
 
-        if error > 1e-5 || error > self.prev_error * 1.05 + 1e-5 {
+        if error > 1e-5 * self.convergence_sensitivity
+            || error
+                > self.prev_error * (1.0 + 0.05 * self.convergence_sensitivity)
+                    + 1e-5 * self.convergence_sensitivity
+        {
             self.frozen_matrices = new_matrices;
             self.is_converged = false;
         } else {
