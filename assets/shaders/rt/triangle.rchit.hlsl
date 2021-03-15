@@ -56,7 +56,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
 
     const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
-    //normal = surf_normal;
+    normal = surf_normal;
 
     float2 uv0 = asfloat(vertices.Load2(ind.x * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv1 = asfloat(vertices.Load2(ind.y * sizeof(float2) + mesh.vertex_uv_offset));
@@ -73,6 +73,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float3 albedo = albedo_tex.SampleLevel(sampler_llr, albedo_uv, albedo_lod).xyz * float4(material.base_color_mult).xyz;
+    //albedo *= 0.75;
 
     float2 spec_uv = transform_material_uv(material, uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];

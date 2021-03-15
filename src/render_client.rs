@@ -1,4 +1,3 @@
-use crate::asset::mesh::{AssetRef, GpuImage};
 use crate::{asset::mesh::PackedTriMesh, renderers::rtdgi::RtdgiRenderer};
 use crate::{
     asset::mesh::PackedVertex,
@@ -12,6 +11,10 @@ use crate::{
     rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
     FrameState,
+};
+use crate::{
+    asset::mesh::{AssetRef, GpuImage},
+    renderers::taa::TaaRenderer,
 };
 use backend::buffer::{Buffer, BufferDesc};
 use glam::{Vec2, Vec3};
@@ -101,10 +104,13 @@ pub struct VickiRenderClient {
     frame_idx: u32,
     prev_camera_matrices: Option<CameraMatrices>,
 
+    supersample_offsets: Vec<Vec2>,
+
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub rtdgi: RtdgiRenderer,
     pub csgi2: Csgi2Renderer,
+    pub taa: TaaRenderer,
 
     pub debug_mode: RenderDebugMode,
 
@@ -462,6 +468,16 @@ impl VickiRenderClient {
             &vertex_buffer,
         );
 
+        let supersample_offsets = (0..16)
+            .map(|i| {
+                Vec2::new(
+                    radical_inverse(i % 16 + 1, 2) - 0.5,
+                    radical_inverse(i % 16 + 1, 3) - 0.5,
+                )
+            })
+            .collect();
+        //let supersample_offsets = vec![Vec2::new(0.0, -0.5), Vec2::new(0.0, 0.5)];
+
         Ok(Self {
             raster_simple_render_pass,
 
@@ -483,10 +499,13 @@ impl VickiRenderClient {
             frame_idx: 0u32,
             prev_camera_matrices: None,
 
+            supersample_offsets,
+
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             csgi2: Csgi2Renderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
+            taa: TaaRenderer::new(backend.device.as_ref()),
 
             debug_mode: RenderDebugMode::None,
 
@@ -812,12 +831,6 @@ impl VickiRenderClient {
         let sun_shadow_mask =
             crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
 
-        let mut lit = rg.create(ImageDesc::new_2d(
-            vk::Format::R16G16B16A16_SFLOAT,
-            frame_state.window_cfg.dims(),
-        ));
-        crate::render_passes::clear_color(rg, &mut lit, [0.0, 0.0, 0.0, 0.0]);
-
         let rtr = self.rtr.render(
             rg,
             &gbuffer_depth,
@@ -851,7 +864,6 @@ impl VickiRenderClient {
             &ssgi_tex,
             &rtr,
             &rtdgi,
-            &lit,
             &mut accum_img,
             &mut debug_out_tex,
             &csgi2_volume,
@@ -859,8 +871,10 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
         );
 
+        let anti_aliased = self.taa.render(rg, &debug_out_tex, &reprojection_map);
+
         let mut post =
-            crate::render_passes::post_process(rg, &debug_out_tex, self.bindless_descriptor_set);
+            crate::render_passes::post_process(rg, &anti_aliased, self.bindless_descriptor_set);
 
         self.render_ui(rg, &mut post);
 
@@ -868,10 +882,6 @@ impl VickiRenderClient {
             post,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
-        /*rg.export(
-            lit,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        )*/
     }
 
     fn prepare_render_graph_reference(
@@ -910,13 +920,6 @@ impl VickiRenderClient {
             self.bindless_descriptor_set,
             &tlas,
         );
-
-        /*let mut lit = crate::render_passes::normalize_accum(
-            rg,
-            &accum_img,
-            vk::Format::R16G16B16A16_SFLOAT,
-            self.bindless_descriptor_set,
-        );*/
 
         let mut lit =
             crate::render_passes::post_process(rg, &accum_img, self.bindless_descriptor_set);
@@ -1002,15 +1005,40 @@ impl RenderClient<FrameState> for VickiRenderClient {
         let width = frame_state.window_cfg.width;
         let height = frame_state.window_cfg.height;
 
+        let mut view_constants = ViewConstants::builder(
+            frame_state.camera_matrices,
+            self.prev_camera_matrices
+                .unwrap_or(frame_state.camera_matrices),
+            width,
+            height,
+        )
+        .build();
+
+        // Re-shuffle the jitter sequence if we've just used it up
+        /*if 0 == self.frame_idx % self.samples.len() as u32 && self.frame_idx > 0 {
+            use rand::{rngs::SmallRng, seq::SliceRandom, SeedableRng};
+            let mut rng = SmallRng::seed_from_u64(self.frame_idx as u64);
+
+            let prev_sample = self.samples.last().copied();
+            loop {
+                // Will most likely shuffle only once. Re-shuffles if the first sample
+                // in the new sequence is the same as the last sample in the last.
+                self.samples.shuffle(&mut rng);
+                if self.samples.first().copied() != prev_sample {
+                    break;
+                }
+            }
+        }*/
+
+        if self.render_mode == RenderMode::Standard {
+            let supersample_offset =
+                self.supersample_offsets[self.frame_idx as usize % self.supersample_offsets.len()];
+            self.taa.current_supersample_offset = supersample_offset;
+            view_constants.set_pixel_offset(supersample_offset, width, height);
+        }
+
         dynamic_constants.push(&FrameConstants {
-            view_constants: ViewConstants::builder(
-                frame_state.camera_matrices,
-                self.prev_camera_matrices
-                    .unwrap_or(frame_state.camera_matrices),
-                width,
-                height,
-            )
-            .build(),
+            view_constants,
             mouse: gen_shader_mouse_state(&frame_state),
             sun_direction: [
                 frame_state.sun_direction.x,
@@ -1069,4 +1097,19 @@ fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
             1.0
         },
     ]
+}
+
+fn radical_inverse(mut n: u32, base: u32) -> f32 {
+    let mut val = 0.0f32;
+    let inv_base = 1.0f32 / base as f32;
+    let mut inv_bi = inv_base;
+
+    while n > 0 {
+        let d_i = n % base;
+        val += d_i as f32 * inv_bi;
+        n = (n as f32 * inv_base) as u32;
+        inv_bi *= inv_base;
+    }
+
+    val
 }

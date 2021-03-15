@@ -14,10 +14,19 @@
 };
 
 #define USE_TONEMAP 1
-#define USE_TIGHT_BLUR 1
+#define USE_TIGHT_BLUR 0
 #define USE_DITHER 1
+#define USE_SHARPEN 1
 
 static const float glare_amount = 0.07;
+
+float sharpen_remap(float l) {
+    return sqrt(l);
+}
+
+float sharpen_inv_remap(float l) {
+    return l * l;
+}
 
 float triangle_remap(float n) {
     float origin = n * 2.0 - 1.0;
@@ -51,6 +60,40 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 glare = rev_blur_pyramid_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
 #endif
 
+    float3 col = input_tex[px].rgb;
+
+    // TODO: move to its own pass
+#if USE_SHARPEN
+    static const float sharpen_amount = 0.3;
+
+	float neighbors = 0;
+	float wt_sum = 0;
+
+	const int2 dim_offsets[] = { int2(1, 0), int2(0, 1) };
+
+	float center = sharpen_remap(calculate_luma(col.rgb));
+    float2 wts;
+
+	for (int dim = 0; dim < 2; ++dim) {
+		int2 n0coord = px + dim_offsets[dim];
+		int2 n1coord = px - dim_offsets[dim];
+
+		float n0 = sharpen_remap(calculate_luma(input_tex[n0coord].rgb));
+		float n1 = sharpen_remap(calculate_luma(input_tex[n1coord].rgb));
+		float wt = max(0, 1.0 - 6.0 * (abs(center - n0) + abs(center - n1)));
+        wt = min(wt, sharpen_amount * wt * 1.25);
+        
+		neighbors += n0 * wt;
+		neighbors += n1 * wt;
+		wt_sum += wt * 2;
+	}
+
+    float sharpened_luma = max(0, center * (wt_sum + 1) - neighbors);
+    sharpened_luma = sharpen_inv_remap(sharpened_luma);
+
+	col.rgb *= max(0.0, sharpened_luma / max(1e-5, calculate_luma(col.rgb)));
+#endif
+
 #if USE_TIGHT_BLUR
     float3 tight_glare = 0.0; {
         static const int k = 1;
@@ -69,9 +112,9 @@ void main(uint2 px: SV_DispatchThreadID) {
         tight_glare /= wt_sum;
     }
 
-    float3 col = lerp(tight_glare, glare, glare_amount);
+    col = lerp(tight_glare, glare, glare_amount);
 #else
-    float3 col = lerp(input_tex[px].rgb, glare, glare_amount);
+    col = lerp(col, glare, glare_amount);
 #endif
 
     //col *= 0.3;

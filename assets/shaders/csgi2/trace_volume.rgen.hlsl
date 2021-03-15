@@ -24,7 +24,8 @@
 //float4 CSGI2_SLICE_CENTERS[CSGI2_SLICE_COUNT];
 
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
-#define USE_RAY_JITTER 0
+// Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
+#define USE_RAY_JITTER 1
 #define RAY_JITTER_AMOUNT 0.75
 #define ACCUM_HYSTERESIS 0.05
 

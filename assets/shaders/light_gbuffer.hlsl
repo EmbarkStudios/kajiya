@@ -12,9 +12,7 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
-#define USE_SURFEL_GI 0
 #define USE_SSGI 0
-#define USE_CSGI 0
 #define USE_CSGI2 1
 #define USE_RTR 1
 #define USE_RTDGI 1
@@ -27,13 +25,12 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-[[vk::binding(6)]] Texture2D<float4> base_light_tex;
-[[vk::binding(7)]] RWTexture2D<float4> output_tex;
-[[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(10)]] Texture3D<float4> csgi2_indirect_tex;
-[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(6)]] RWTexture2D<float4> output_tex;
+[[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi2_direct_tex;
+[[vk::binding(9)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(11)]] cbuffer _ {
     float4 output_tex_size;
 };
 
@@ -70,6 +67,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     if (all(gbuffer_packed == 0.0.xxxx)) {
         #if 1
             float3 output = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+            if (dot(outgoing_ray.Direction, SUN_DIRECTION) > 0.999958816) { // cos(0.52 degrees)
+                // TODO: what's the correct value?
+                output += SUN_COLOR * 200;
+            }
         #else
             float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
             //float3 output = outgoing_ray.Direction * 0.5 + 0.5;
@@ -133,10 +134,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float3 gi_irradiance = 0.0.xxx;
 
-    #if USE_SURFEL_GI
-        gi_irradiance = base_light_tex[px].xyz;
-    #endif
-
     float3 csgi2_irradiance = 0;
     #if USE_CSGI2
     {
@@ -156,7 +153,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
     #endif
 
-    #if USE_RTDGI
+    #if USE_CSGI2 && USE_RTDGI
         //gi_irradiance = max(0.0, csgi2_irradiance + rtdgi_tex[px / 2].rgb);
         gi_irradiance = rtdgi_tex[px].rgb;
         //gi_irradiance = csgi2_irradiance;
@@ -190,10 +187,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     output_tex[px] = float4(total_radiance, 1.0);
 
     float3 debug_out = total_radiance;
-        //base_light_tex[px].xyz * ssgi.a + ssgi.rgb,
-        //base_light_tex[px].xyz,
-        //ssgi.rgb,
-        //lerp(ssgi.rgb, base_light_tex[px].xyz, ssgi.a) + ssgi.rgb,
     
     #if 0
         float4 pos_vs = mul(frame_constants.view_constants.world_to_view, pt_ws);
@@ -208,13 +201,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = rtr_tex[px].www * 0.2;
     //debug_out = rtr_tex[px].xyz;
 
-    //debug_out = base_light_tex[px].xyz;
-    
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
     //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
     //debug_out = bent_normal_dir * 0.5 + 0.5;
     //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
-    //debug_out = base_light_tex[px].xyz;
 
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.metalness;

@@ -412,7 +412,6 @@ pub fn light_gbuffer(
     ssgi: &Handle<Image>,
     rtr: &Handle<Image>,
     rtdgi: &Handle<Image>,
-    base_light: &Handle<Image>,
     output: &mut Handle<Image>,
     debug_output: &mut Handle<Image>,
     csgi2_volume: &csgi2::Csgi2Volume,
@@ -429,7 +428,6 @@ pub fn light_gbuffer(
     .read(ssgi)
     .read(rtr)
     .read(rtdgi)
-    .read(base_light)
     .write(output)
     .write(debug_output)
     .read(&csgi2_volume.direct_cascade0)

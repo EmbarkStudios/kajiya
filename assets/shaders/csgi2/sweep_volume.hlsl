@@ -111,8 +111,12 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                     float3 neighbor_radiance = 0 == slice_z ? atmosphere_color : sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
                     
                     neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_s.rgb, direct_neighbor_s.a);
-                    // HACK: ad-hoc scale for off-axis contributions
-                    neighbor_radiance = lerp(neighbor_radiance, 0.25*direct_neighbor_t.rgb, direct_neighbor_t.a);
+                    #if 0
+                        // HACK: ad-hoc scale for off-axis contributions
+                        neighbor_radiance = lerp(neighbor_radiance, 0.25*direct_neighbor_t.rgb, direct_neighbor_t.a);
+                    #else
+                        neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_t.rgb, direct_neighbor_t.a);
+                    #endif
                     neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_opacity_t);
                     neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_direct_s.a);
 
@@ -121,6 +125,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                     // TODO: is this right? It does fix the case of bounce on the side of 336_lrm
                     wt *= (1 - center_opacity_t);
                     wt *= (1 - center_direct_s.a);
+                    //wt *= (1 - 0.75 * direct_neighbor_t.a);
 
                     scatter += neighbor_radiance * wt;
                     scatter_wt += wt;

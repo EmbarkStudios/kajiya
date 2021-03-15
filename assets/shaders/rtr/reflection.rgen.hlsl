@@ -15,6 +15,7 @@
 #define USE_HEAVY_BIAS 0
 
 #define USE_CSGI2 1
+#define SUPPRESS_GI_FOR_NEAR_HITS 0
 
 // Strongly reduces roughness of secondary hits
 #define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
@@ -200,8 +201,10 @@ void main() {
                 total_radiance += brdf_value * light_radiance;
 
                 if (USE_CSGI2) {
-                    float3 csgi = lookup_csgi2(primary_hit.position, gbuffer.normal, Csgi2LookupParams::make_default().with_linear_fetch(false));
-                    total_radiance += csgi * gbuffer.albedo;
+                    if (!SUPPRESS_GI_FOR_NEAR_HITS || primary_hit.ray_t > CSGI2_VOXEL_SIZE.x) {
+                        float3 csgi = lookup_csgi2(primary_hit.position, gbuffer.normal, Csgi2LookupParams::make_default().with_linear_fetch(false));
+                        total_radiance += csgi * gbuffer.albedo;
+                    }
                 }
             }
 

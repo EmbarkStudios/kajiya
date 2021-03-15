@@ -12,6 +12,7 @@ pub mod rtr;
 pub mod sky;
 pub mod ssgi;
 pub mod surfel_gi;
+pub mod taa;
 
 pub struct GbufferDepth {
     pub gbuffer: rg::Handle<Image>,
