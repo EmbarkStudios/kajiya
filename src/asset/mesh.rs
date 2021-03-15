@@ -171,7 +171,7 @@ fn load_gltf_material(
             ))
         })
         .unwrap_or((
-            MeshMaterialMap::Placeholder([127, 127, 0, 255]),
+            MeshMaterialMap::Placeholder([127, 127, 255, 255]),
             DEFAULT_MAP_TRANSFORM,
         ));
 

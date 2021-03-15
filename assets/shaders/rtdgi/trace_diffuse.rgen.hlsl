@@ -194,9 +194,7 @@ void main() {
             #if USE_SHORT_RAYS_ONLY
                 const float3 far_gi = lookup_csgi2(
                     outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI2_VOXEL_SIZE.x),
-                    //outgoing_ray.Direction,
-                    gbuffer.normal,
-                    //0.0.xxx,
+                    0.0.xxx,    // don't offset by any normal
                     Csgi2LookupParams::make_default()
                         .with_sample_directional_radiance(outgoing_ray.Direction)
                 );

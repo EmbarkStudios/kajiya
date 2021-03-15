@@ -22,4 +22,4 @@ rem cargo run --bin bake --release -- --scene "assets/meshes3/cozy-room/scene.gl
 rem cargo run --bin bake --release -- --scene "assets/meshes3/kitchen-interior/scene.gltf" --scale 0.75 -o kitchen-interior
 rem cargo run --bin bake --release -- --scene "assets/meshes3/gas_stations_fixed/scene.gltf" --scale 0.01 -o gas_stations
 rem cargo run --bin bake --release -- --scene "assets/meshes3/viziers_observation_deck/scene.gltf" --scale 0.01 -o viziers
-cargo run --bin bake --release -- --scene "assets/meshes3/baba_yagas_hut/scene.gltf" --scale 0.333 -o baba_yagas_hut
+rem cargo run --bin bake --release -- --scene "assets/meshes3/baba_yagas_hut/scene.gltf" --scale 0.333 -o baba_yagas_hut

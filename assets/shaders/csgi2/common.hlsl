@@ -12,7 +12,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
 #define CSGI2_SCENE_SPONZA 4
 #define CSGI2_SCENE_MISC 5
 
-#define CSGI2_SCENE CSGI2_SCENE_BATTLE
+#define CSGI2_SCENE CSGI2_SCENE_MISC
 
 #if CSGI2_SCENE == CSGI2_SCENE_BATTLE
     #define CSGI2_VOLUME_CENTER float3(-15, 4.0, 0 /*8*/)
@@ -20,7 +20,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
 #elif CSGI2_SCENE == CSGI2_SCENE_CORNELL_BOX
     #define CSGI2_VOLUME_CENTER float3(0, 1.0, 0)
     //static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.04;
-    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.08;
+    static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.1;
 #elif CSGI2_SCENE == CSGI2_SCENE_GAS_STATIONS
     //#define CSGI2_VOLUME_CENTER float3(2, 8, 6)
     #define CSGI2_VOLUME_CENTER float3(9, 2, 2)
@@ -33,7 +33,7 @@ static const uint CSGI2_VOLUME_DIMS = 64;
     static const float CSGI2_VOLUME_SIZE = CSGI2_VOLUME_DIMS * 0.16;
 #else
     #define CSGI2_VOLUME_CENTER float3(0, 0, 0)
-    static const float CSGI2_VOLUME_SIZE = 16;
+    static const float CSGI2_VOLUME_SIZE = 8;
 #endif
 
 //static const float CSGI2_VOLUME_SCALE = CSGI2_VOLUME_SIZE / CSGI2_VOLUME_DIMS;
