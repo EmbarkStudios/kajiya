@@ -7,6 +7,7 @@ use slingshot::{
 
 pub mod csgi2;
 pub mod half_res;
+pub mod reprojection;
 pub mod rtdgi;
 pub mod rtr;
 pub mod sky;

@@ -252,7 +252,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //center = decode(input_tex[px].rgb);
     center = rgb_to_ycbcr(center);
 
-    const float n_deviations = 1.5;
+    const float n_deviations = 1.5 * lerp(1.0, 0.5, reproj.w);
 	float3 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	float3 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
 

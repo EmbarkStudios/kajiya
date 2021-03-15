@@ -129,7 +129,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = neutral_tonemap(col);
     //col = 1-exp(-col);
 
-    //col = lerp(calculate_luma(col), col, 1.05);
+    col = saturate(lerp(calculate_luma(col), col, 1.05));
     col = pow(col, 1.03);
 #endif
 

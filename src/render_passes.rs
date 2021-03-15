@@ -498,21 +498,6 @@ pub fn trace_sun_shadow_mask(
     output_img
 }
 
-pub fn calculate_reprojection_map(rg: &mut RenderGraph, depth: &Handle<Image>) -> Handle<Image> {
-    let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
-
-    SimpleRenderPass::new_compute(
-        rg.add_pass("reprojection map"),
-        "/assets/shaders/calculate_reprojection_map.hlsl",
-    )
-    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-    .write(&mut output_tex)
-    .constants(output_tex.desc().extent_inv_extent_2d())
-    .dispatch(output_tex.desc().extent);
-
-    output_tex
-}
-
 fn blur_downsample_2x2(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
     let mut output = rg.create(
         input

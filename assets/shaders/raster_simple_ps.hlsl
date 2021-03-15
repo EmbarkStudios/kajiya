@@ -31,7 +31,7 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
     float3 albedo = albedo_tex.Sample(sampler_llr, albedo_uv).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
-    //albedo *= 0.75;
+    albedo *= 0.75;
 
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];

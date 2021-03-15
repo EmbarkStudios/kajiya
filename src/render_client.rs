@@ -821,7 +821,7 @@ impl VickiRenderClient {
         };
 
         let reprojection_map =
-            crate::render_passes::calculate_reprojection_map(rg, &gbuffer_depth.depth);
+            crate::renderers::reprojection::calculate_reprojection_map(rg, &gbuffer_depth.depth);
 
         /*let ssgi_tex = self
         .ssgi

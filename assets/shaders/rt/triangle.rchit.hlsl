@@ -73,7 +73,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float3 albedo = albedo_tex.SampleLevel(sampler_llr, albedo_uv, albedo_lod).xyz * float4(material.base_color_mult).xyz;
-    //albedo *= 0.75;
+    albedo *= 0.75;
 
     float2 spec_uv = transform_material_uv(material, uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];

@@ -92,6 +92,8 @@ void main(uint2 px: SV_DispatchThreadID) {
         #endif
     }
 
+    //spatial_input *= reproj.z;    // debug validity
+
     output_tex[px] = float4(spatial_input, 1);
     //history_output_tex[px] = reproj.w;
 }
