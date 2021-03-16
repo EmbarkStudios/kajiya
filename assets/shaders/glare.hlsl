@@ -117,8 +117,25 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = lerp(col, glare, glare_amount);
 #endif
 
-    col *= 1.5;
+    //col *= 1.5;
     //col *= 500;
+
+#if 0
+    float luminances[16];
+    float2 avg_luminance = 0.0;
+    [unroll] for (int y = 0, lum_idx = 0; y < 4; ++y) {
+        [unroll] for (int x = 0; x < 4; ++x) {
+            float2 uv = float2((x + 0.5) / 4.0, (y + 0.5) / 4.0);
+            uv = lerp(uv, 0.5.xx, 0.75);
+            const float luminance = log2(calculate_luma(
+                blur_pyramid_tex.SampleLevel(sampler_lnc, uv, 6).rgb
+            ));
+            luminances[lum_idx++] = luminance;
+            avg_luminance += float2(luminance, 1);
+        }
+    }
+    col *= 0.2 / max(0.01, exp2(avg_luminance.x / avg_luminance.y));
+#endif
 
     //col /= 2;
     //col *= 2;

@@ -110,8 +110,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //const uint sample_count = 16;
     const uint sample_count = BORROW_SAMPLES ? clamp(filter_size * 128, 6, 16) : 1;
 
+    // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
+    const float error_adjusted_filter_size = min(filter_size * 2, filter_size + history_error / 8);
+
     // Choose one of a few pre-baked sample sets based on the footprint
-    const uint filter_idx = uint(clamp(filter_size * 8, 0, 7));
+    const uint filter_idx = uint(clamp(error_adjusted_filter_size * 8, 0, 7));
     //output_tex[px] = float4((filter_idx / 7.0).xxx, 0);
     //return;
 
@@ -210,7 +213,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     ray_len_accum = max(0.0, -10 * log2(ray_len_accum));
 
     float3 out_color = contrib_accum.rgb;
-    float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex);
+    float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);
+    //float relative_error = max(0.0, ex2 - ex * ex);
     
     relative_error = relative_error * 0.5 + 0.5 * WaveActiveMax(relative_error);
     //relative_error = WaveActiveMax(relative_error);

@@ -66,6 +66,8 @@ impl RtdgiRenderer {
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi2::Csgi2Volume,
+
+        // TODO: calculate specialized SSAO
         ssao_tex: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
@@ -191,7 +193,10 @@ impl RtdgiRenderer {
         .read(&*half_depth_tex)
         .read(ssao_tex)
         .write(&mut upsampled_tex)
-        .constants((super::rtr::SPATIAL_RESOLVE_OFFSETS,))
+        .constants((
+            upsampled_tex.desc().extent_inv_extent_2d(),
+            super::rtr::SPATIAL_RESOLVE_OFFSETS,
+        ))
         .dispatch(upsampled_tex.desc().extent);
 
         upsampled_tex.into()

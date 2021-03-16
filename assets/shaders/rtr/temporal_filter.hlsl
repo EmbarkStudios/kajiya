@@ -17,14 +17,57 @@
 };
 SamplerState sampler_lnc;
 
-//#define LINEAR_TO_WORKING(x) sqrt(x)
-//#define WORKING_TO_LINEAR(x) ((x)*(x))
+#define ENCODING_SCHEME 4
 
-#define LINEAR_TO_WORKING(x) x
-#define WORKING_TO_LINEAR(x) x
+#if 0 == ENCODING_SCHEME
+float4 linear_to_working(float4 x) {
+    return sqrt(x);
+}
+float4 working_to_linear(float4 x) {
+    return ((x)*(x));
+}
+#endif
 
-//#define LINEAR_TO_WORKING(v) float4(rgb_to_ycbcr(v.rgb), v.a)
-//#define WORKING_TO_LINEAR(v) float4(ycbcr_to_rgb(v.rgb), v.a)
+#if 1 == ENCODING_SCHEME
+float4 linear_to_working(float4 v) {
+    return log(1+sqrt(v));
+}
+float4 working_to_linear(float4 v) {
+    v = exp(v) - 1.0;
+    return v * v;
+}
+#endif
+
+#if 2 == ENCODING_SCHEME
+float4 linear_to_working(float4 x) {
+    return x;
+}
+float4 working_to_linear(float4 x) {
+    return x;
+}
+#endif
+
+#if 3 == ENCODING_SCHEME
+float4 linear_to_working(float4 v) {
+    return float4(ycbcr_to_rgb(v.rgb), v.a);
+}
+float4 working_to_linear(float4 v) {
+    return float4(rgb_to_ycbcr(v.rgb), v.a);
+}
+#endif
+
+#if 4 == ENCODING_SCHEME
+float4 linear_to_working(float4 v) {
+    v.rgb = sqrt(max(0.0, v.rgb));
+    v.rgb = rgb_to_ycbcr(v.rgb);
+    return v;
+}
+float4 working_to_linear(float4 v) {
+    v.rgb = ycbcr_to_rgb(v.rgb);
+    v.rgb *= v.rgb;
+    return v;
+}
+#endif
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
@@ -36,7 +79,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         return;
     #endif
 
-    const float4 center = WORKING_TO_LINEAR(input_tex[px]);
+    const float4 center = linear_to_working(input_tex[px]);
 
     float refl_ray_length = clamp(ray_len_tex[px], 0, 1e3);
 
@@ -56,11 +99,11 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float4 reproj = reprojection_tex[px];
 
-    float4 history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
-    float4 history1 = history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0);
+    float4 history0 = linear_to_working(history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0));
+    float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0));
 
-    history0 = WORKING_TO_LINEAR(history0);
-    history1 = WORKING_TO_LINEAR(history1);
+    float4 history0_reproj = reprojection_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+    float4 history1_reproj = reprojection_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0);
 
 #if 1
 	float4 vsum = 0.0.xxxx;
@@ -70,7 +113,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = WORKING_TO_LINEAR(input_tex[px + int2(x, y) * 1]);
+            float4 neigh = linear_to_working(input_tex[px + int2(x, y) * 1]);
 			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
@@ -100,7 +143,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = WORKING_TO_LINEAR(input_tex[px + int2(x, y) * 1]);
+            float4 neigh = linear_to_working(input_tex[px + int2(x, y) * 1]);
 			nmin = min(nmin, neigh);
             nmax = max(nmax, neigh);
 
@@ -125,6 +168,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     float h1_score = 0;
 #endif
 
+    //const float reproj_penalty = 1000;
+    //history0 = lerp(center, history0, exp2(-reproj_penalty * length(history0_reproj.xy - reproj.xy)));
+    //history1 = lerp(center, history1, exp2(-reproj_penalty * length(history1_reproj.xy - reproj.xy)));
+
     const float score_sum = h0_score + h1_score;
     h0_score /= score_sum;
     h1_score /= score_sum;
@@ -138,7 +185,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float target_sample_count = 24;//lerp(8, 24, saturate(0.3 * center.w));
     float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / target_sample_count, reproj.z));
     
-    output_tex[px] = max(0.0.xxxx, LINEAR_TO_WORKING(res));
+    output_tex[px] = max(0.0.xxxx, working_to_linear(res));
     //output_tex[px].w = h0_score / (h0_score + h1_score);
     //output_tex[px] = reproj.w;
 }

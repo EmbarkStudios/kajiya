@@ -8,6 +8,8 @@
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 
+#define USE_SSAO_STEERING 1
+
 [[vk::binding(0)]] Texture2D<float4> hit0_tex;
 [[vk::binding(1)]] Texture2D<float4> hit1_tex;
 [[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
@@ -22,16 +24,19 @@
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     float4 sum = 0;
-
-    float3 center_normal_vs = half_view_normal_tex[px].rgb;
-    float depth = half_depth_tex[px];
-    float3 center_val = hit0_tex[px].rgb;
-    float center_ssao = ssao_tex[px * 2].a;
-
     float ex = 0;
     float ex2 = 0;
 
-    #define USE_POISSON 0
+    float3 center_normal_vs = half_view_normal_tex[px].rgb;
+    float center_depth = half_depth_tex[px];
+    float3 center_val = hit0_tex[px].rgb;
+    float center_ssao = ssao_tex[px * 2].a;
+
+    const float2 uv = get_uv(px, output_tex_size);
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
+    const float filter_radius_ss = center_ssao * 0.5 * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
+
+    #define USE_POISSON 1
 
     #if !USE_POISSON
 
@@ -44,10 +49,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const int2 sample_offset = int2(x, y) * skip;
     #else
 
-    const bool SHUFFLE_SUBPIXELS = true;
     const int sample_count = 16;
-    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
-    const int filter_idx = 3;
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
+
+    // 1..7
+    const uint filter_idx = 1 + uint(clamp(filter_radius_ss * 7.0, 0.0, 6.0));
 
     {
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
@@ -66,8 +72,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
                 //wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
                 wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 4);
-                wt *= exp2(-200.0 * abs(center_normal_vs.z * (depth / sample_depth - 1.0)));
-                wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
+                wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
+
+                #if USE_SSAO_STEERING
+                    wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
+                #endif
 
                 sum += float4(sample_val, 1) * wt;
                 
@@ -89,6 +98,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //filtered = rel_dev;
     //filtered = center_sample;
+    //filtered = filter_idx / 7.0;
 
-    output_tex[px] = float4(filtered, 1.0);
+    output_tex[px] = float4(filtered, rel_dev);
 }
