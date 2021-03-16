@@ -5,7 +5,7 @@
 void main(int2 px: SV_DispatchThreadID) {
 	float3 col = input_tex[px].rgb;
     //float luminance = clamp(dot(float3(0.2126, 0.7152, 0.0722), col), 1e-8, 1e8);
-    //float luminance = clamp(dot(float3(0.2126, 0.7152, 0.0722), col), 0.1, 2.0);
-    float luminance = clamp(dot(float3(0.2126, 0.7152, 0.0722), col), 0.3, 1e8);
+    float luminance = clamp(dot(float3(0.2126, 0.7152, 0.0722), col), 0.05, 1e8);
+    //float luminance = clamp(dot(float3(0.2126, 0.7152, 0.0722), col), 0.3, 1e8);
 	output_tex[px] = float2(log(luminance), luminance);
 }

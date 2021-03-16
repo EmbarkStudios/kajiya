@@ -37,9 +37,7 @@ impl DynamicConstants {
         let t_size = size_of::<T>();
         assert!(self.frame_offset_bytes + t_size < DYNAMIC_CONSTANTS_SIZE_BYTES);
 
-        let buffer_offset =
-            self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES + self.frame_offset_bytes;
-
+        let buffer_offset = self.current_offset() as usize;
         let dst = &mut self.buffer.allocation.mapped_slice_mut().unwrap()
             [buffer_offset..buffer_offset + t_size];
 

@@ -121,7 +121,6 @@ impl Renderer {
         render_client: &mut dyn RenderClient<FrameState>,
         frame_state: &FrameState,
     ) {
-        self.dynamic_constants.advance_frame();
         let frame_constants_offset = self.dynamic_constants.current_offset();
         render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
 
@@ -200,10 +199,11 @@ impl Renderer {
         }
 
         self.dynamic_constants.flush(&self.backend.device.raw);
+        self.dynamic_constants.advance_frame();
 
         let submit_info = vk::SubmitInfo::builder()
             .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
-            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT])
+            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
             .command_buffers(std::slice::from_ref(&cb.raw));
 
         unsafe {
@@ -211,6 +211,7 @@ impl Renderer {
                 .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
                 .expect("reset_fences");
 
+            //println!("queue_submit");
             raw_device
                 .queue_submit(
                     self.backend.device.universal_queue.raw,

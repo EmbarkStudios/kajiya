@@ -73,19 +73,21 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float3 albedo = albedo_tex.SampleLevel(sampler_llr, albedo_uv, albedo_lod).xyz * float4(material.base_color_mult).xyz;
-    albedo *= 0.75;
 
     float2 spec_uv = transform_material_uv(material, uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     float spec_lod = compute_texture_lod(spec_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, spec_uv, spec_lod);
+    float metalness = metalness_roughness.z * material.metalness_factor;
+
+    albedo *= lerp(0.75, 1.0, metalness);
 
     GbufferData gbuffer;
     gbuffer.albedo = albedo;
     gbuffer.normal = normal;
     gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
-    gbuffer.metalness = metalness_roughness.z * material.metalness_factor;
+    gbuffer.metalness = metalness;
 
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //gbuffer.metalness = 1;

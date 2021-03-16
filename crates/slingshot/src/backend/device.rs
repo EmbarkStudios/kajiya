@@ -136,8 +136,7 @@ pub struct Device {
     pub(crate) ray_tracing_pipeline_ext: khr::RayTracingPipeline,
     // pub(crate) ray_query_ext: khr::RayQuery,
     pub(crate) ray_tracing_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
-    frame0: Mutex<Arc<DeviceFrame>>,
-    frame1: Mutex<Arc<DeviceFrame>>,
+    frames: [Mutex<Arc<DeviceFrame>>; 2],
 }
 unsafe impl Send for Device {}
 unsafe impl Sync for Device {}
@@ -319,6 +318,7 @@ impl Device {
 
             let frame0 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
             let frame1 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
+            //let frame2 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
 
             let immutable_samplers = Self::create_samplers(&device);
             let cmd_ext = CmdExt {
@@ -348,8 +348,11 @@ impl Device {
                 ray_tracing_pipeline_ext,
                 // ray_query_ext,
                 ray_tracing_pipeline_properties,
-                frame0: Mutex::new(Arc::new(frame0)),
-                frame1: Mutex::new(Arc::new(frame1)),
+                frames: [
+                    Mutex::new(Arc::new(frame0)),
+                    Mutex::new(Arc::new(frame1)),
+                    //Mutex::new(Arc::new(frame2)),
+                ],
             }))
         }
     }
@@ -411,7 +414,7 @@ impl Device {
     }
 
     pub fn current_frame(&self) -> Arc<DeviceFrame> {
-        self.frame0.lock().clone()
+        self.frames[0].lock().clone()
     }
 
     pub fn defer_release(&self, resource: impl DeferredRelease) {
@@ -447,6 +450,7 @@ impl Device {
                 )
                 .expect("queue submit failed.");
 
+            println!("device_wait_idle");
             self.raw.device_wait_idle().unwrap();
         }
     }
@@ -454,15 +458,21 @@ impl Device {
     pub fn finish_frame(&self, frame: Arc<DeviceFrame>) {
         drop(frame);
 
-        let mut frame0 = self.frame0.lock();
-        let mut frame1 = self.frame1.lock();
-
+        let mut frame0 = self.frames[0].lock();
         let frame0: &mut DeviceFrame = Arc::get_mut(&mut frame0).unwrap_or_else(|| {
             panic!("Unable to finish frame: frame data is being held by user code")
         });
-        let frame1: &mut DeviceFrame = Arc::get_mut(&mut frame1).unwrap();
 
-        std::mem::swap(frame0, frame1);
+        {
+            let mut frame1 = self.frames[1].lock();
+            let frame1: &mut DeviceFrame = Arc::get_mut(&mut frame1).unwrap();
+
+            //let mut frame2 = self.frames[2].lock();
+            //let frame2: &mut DeviceFrame = Arc::get_mut(&mut frame2).unwrap();
+
+            std::mem::swap(frame0, frame1);
+            //std::mem::swap(frame1, frame2);
+        }
 
         // Wait for the the GPU to be done with the previously submitted frame,
         // so that we can access its data again
@@ -513,6 +523,7 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
+            println!("device_wait_idle");
             let _ = self.raw.device_wait_idle();
         }
     }

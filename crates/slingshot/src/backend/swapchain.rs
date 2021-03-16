@@ -56,11 +56,12 @@ impl Swapchain {
                 .get_physical_device_surface_capabilities(device.pdevice.raw, surface.raw)
         }?;
 
-        let mut desired_image_count = surface_capabilities.min_image_count + 1;
+        let mut desired_image_count = 3; //surface_capabilities.min_image_count + 1;
         if surface_capabilities.max_image_count > 0
             && desired_image_count > surface_capabilities.max_image_count
         {
             desired_image_count = surface_capabilities.max_image_count;
+            panic!("desired_image_count > surface_capabilities.max_image_count");
         }
 
         //dbg!(&surface_capabilities);
@@ -149,6 +150,8 @@ impl Swapchain {
             })
             .collect();
 
+        assert_eq!(desired_image_count, images.len() as u32);
+
         let semaphores = (0..images.len())
             .map(|_| {
                 unsafe {
@@ -210,7 +213,7 @@ impl Swapchain {
 
     pub fn present_image(&self, image: SwapchainImage, wait_semaphores: &[vk::Semaphore]) {
         let present_info = vk::PresentInfoKHR::builder()
-            .wait_semaphores(&wait_semaphores)
+            .wait_semaphores(wait_semaphores)
             .swapchains(std::slice::from_ref(&self.raw))
             .image_indices(std::slice::from_ref(&image.image_index));
 

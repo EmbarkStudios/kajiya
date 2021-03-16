@@ -89,14 +89,18 @@ fn main() -> anyhow::Result<()> {
         vsync: !opt.no_vsync,
     };
 
+    let primary_monitor = event_loop.get_primary_monitor();
+
     let window = Arc::new(
         WindowBuilder::new()
             .with_title("kajiya")
-            .with_decorations(false)
+            .with_resizable(false)
+            //.with_decorations(false)
             .with_dimensions(winit::dpi::LogicalSize::new(
                 window_cfg.width as f64,
                 window_cfg.height as f64,
             ))
+            .with_fullscreen(Some(primary_monitor))
             .build(&event_loop)
             .expect("window"),
     );
@@ -232,6 +236,7 @@ fn main() -> anyhow::Result<()> {
         let dt_duration = now - last_frame_instant;
         last_frame_instant = now;
         let dt = dt_duration.as_secs_f32();
+        //println!("dt: {}", dt);
 
         keyboard.update(std::mem::take(&mut keyboard_events), dt);
         mouse_state.update(&new_mouse_state);

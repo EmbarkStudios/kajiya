@@ -660,13 +660,13 @@ pub fn post_process(
     let mut output = rg.create(input.desc().format(vk::Format::B10G11R11_UFLOAT_PACK32));
     let blur_pyramid_mip_count: u32 = blur_pyramid.desc().mip_levels as _;
 
-    let blurred_luminance = edge_preserving_filter_luminance(rg, input);
+    //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
 
     SimpleRenderPass::new_compute(rg.add_pass("glare"), "/assets/shaders/glare.hlsl")
         .read(input)
         .read(&blur_pyramid)
         .read(&rev_blur_pyramid)
-        .read(&blurred_luminance)
+        //.read(&blurred_luminance)
         .write(&mut output)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .constants((output.desc().extent_inv_extent_2d(), blur_pyramid_mip_count))

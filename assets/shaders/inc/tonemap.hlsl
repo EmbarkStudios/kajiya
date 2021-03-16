@@ -6,7 +6,7 @@ float tonemap_curve(float v) {
 }
 
 float tonemap_curve(float v, float lin_part) {
-    #if 0
+    #if 1
         float c = v + v*v + 0.5*v*v*v;
         return c / (1.0 + c);
     #elif 0

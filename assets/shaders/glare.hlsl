@@ -7,9 +7,9 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> blur_pyramid_tex;
 [[vk::binding(2)]] Texture2D<float4> rev_blur_pyramid_tex;
-[[vk::binding(3)]] Texture2D<float2> filtered_luminance_tex;
-[[vk::binding(4)]] RWTexture2D<float4> output_tex;
-[[vk::binding(5)]] cbuffer _ {
+//[[vk::binding(3)]] Texture2D<float2> filtered_luminance_tex;
+[[vk::binding(3)]] RWTexture2D<float4> output_tex;
+[[vk::binding(4)]] cbuffer _ {
     float4 output_tex_size;
     uint blur_pyramid_mip_count;
 };
@@ -20,6 +20,7 @@
 #define USE_SHARPEN 1
 
 static const float glare_amount = 0.07;
+//static const float glare_amount = 0.0;
 
 float sharpen_remap(float l) {
     return sqrt(l);
@@ -167,7 +168,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 
 #if USE_TONEMAP
-    float filtered_luminance = exp(filtered_luminance_tex[px].x);
+
+    /*float filtered_luminance = exp(filtered_luminance_tex[px].x);
     float filtered_luminance_high = filtered_luminance_tex[px].y;
 
     float avg_luminance = 0;
@@ -178,13 +180,15 @@ void main(uint2 px: SV_DispatchThreadID) {
     }
     avg_luminance = exp(avg_luminance / (10 * 10));
 
-    #if 1
-        float avg_mult = 0.333 / avg_luminance;
-        float mult = 0.333 / filtered_luminance;
+    const float lum_scale = 0.4;*/
+    #if 0
+        float avg_mult = lum_scale * 0.333 / avg_luminance;
+        float mult = lum_scale * 0.333 / filtered_luminance;
         float relative_mult = mult / avg_mult;
-        float max_compression = 1.0;
-        relative_mult = local_tmo_constrain(relative_mult, max_compression);
-        float remapped_mult = relative_mult * avg_mult;
+        float max_compression = 0.5;
+        float relative_shift = 1.1;
+        relative_mult = local_tmo_constrain(relative_mult / relative_shift, max_compression);
+        float remapped_mult = relative_mult * avg_mult * relative_shift;
         remapped_mult = lerp(remapped_mult, avg_mult, 0.1);
         col *= remapped_mult;
 
@@ -193,6 +197,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     #else
         //float filtered_luminance = filtered_luminance_tex[px].g;
         //col *= 0.333 / filtered_luminance;
+        //col *= lum_scale * 0.333 / avg_luminance;
 
         //col /= 2;
         //col *= 2;

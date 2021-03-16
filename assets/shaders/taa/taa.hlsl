@@ -275,5 +275,13 @@ void main(uint2 px: SV_DispatchThreadID) {
 		float3 result = encode(center);
 	#endif
 
+    if (all(0 == px)) {
+        result.x = int(history_tex[uint2(0, 0)].x + 1) % 255;
+    }
+
+    if (px.y > 0 && px.y < 40) {
+        result = int(history_tex[uint2(0, 0)].x) == px.x / 6;
+    }
+
     output_tex[px] = float4(result, 1);
 }
