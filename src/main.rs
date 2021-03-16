@@ -295,9 +295,13 @@ fn main() -> anyhow::Result<()> {
                     let gpu_stats = gpu_profiler::get_stats();
                     ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
 
+                    let mut sum = 0.0;
                     for (name, ms) in gpu_stats.get_ordered_name_ms() {
                         ui.text(format!("{}: {:.3}ms", name, ms));
+                        sum += ms;
                     }
+
+                    ui.text(format!("total: {:.3}ms", sum));
                 }
 
                 if ui

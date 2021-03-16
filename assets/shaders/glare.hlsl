@@ -7,8 +7,9 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> blur_pyramid_tex;
 [[vk::binding(2)]] Texture2D<float4> rev_blur_pyramid_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float2> filtered_luminance_tex;
+[[vk::binding(4)]] RWTexture2D<float4> output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
     uint blur_pyramid_mip_count;
 };
@@ -35,6 +36,33 @@ float triangle_remap(float n) {
     v -= sign(origin);
     return v;
 }
+
+float local_tmo_constrain(float x, float max_compression) {
+    #define local_tmo_constrain_mode 2
+
+    #if local_tmo_constrain_mode == 0
+        return exp(tanh(log(x) / max_compression) * max_compression);
+    #elif local_tmo_constrain_mode == 1
+
+        x = log(x);
+        float s = sign(x);
+        x = sqrt(abs(x));
+        x = tanh(x / max_compression) * max_compression;
+        x = exp(x * x * s);
+
+        return x;
+    #elif local_tmo_constrain_mode == 2
+        float k = 3.0 * max_compression;
+        x = 1.0 / x;
+        x = tonemap_curve(x / k, 0.2) * k;
+        x = 1.0 / x;
+        x = tonemap_curve(x / k, 0.2) * k;
+        return x;
+    #else
+        return x;
+    #endif
+}
+
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
@@ -137,14 +165,43 @@ void main(uint2 px: SV_DispatchThreadID) {
     col *= 0.2 / max(0.01, exp2(avg_luminance.x / avg_luminance.y));
 #endif
 
-    //col /= 2;
-    //col *= 2;
-    //col *= 4;
-    //col *= 16;
 
 #if USE_TONEMAP
-    col = neutral_tonemap(col);
-    //col = 1-exp(-col);
+    float filtered_luminance = exp(filtered_luminance_tex[px].x);
+    float filtered_luminance_high = filtered_luminance_tex[px].y;
+
+    float avg_luminance = 0;
+    for (float y = 0.05; y < 1.0; y += 0.1) {
+        for (float x = 0.05; x < 1.0; x += 0.1) {
+            avg_luminance += filtered_luminance_tex[int2(output_tex_size.xy * float2(x, y))].x;
+        }
+    }
+    avg_luminance = exp(avg_luminance / (10 * 10));
+
+    #if 1
+        float avg_mult = 0.333 / avg_luminance;
+        float mult = 0.333 / filtered_luminance;
+        float relative_mult = mult / avg_mult;
+        float max_compression = 1.0;
+        relative_mult = local_tmo_constrain(relative_mult, max_compression);
+        float remapped_mult = relative_mult * avg_mult;
+        remapped_mult = lerp(remapped_mult, avg_mult, 0.1);
+        col *= remapped_mult;
+
+        float lin_part = clamp(remapped_mult * (0.8 * filtered_luminance - 0.2 * filtered_luminance_high), 0.0, 0.5);
+        col.rgb = neutral_tonemap(col.rgb, lin_part);
+    #else
+        //float filtered_luminance = filtered_luminance_tex[px].g;
+        //col *= 0.333 / filtered_luminance;
+
+        //col /= 2;
+        //col *= 2;
+        //col *= 4;
+        //col *= 16;
+
+        col = neutral_tonemap(col, 0.2);
+        //col = 1-exp(-col);
+    #endif
 
     col = saturate(lerp(calculate_luma(col), col, 1.05));
     col = pow(col, 1.03);
@@ -160,6 +217,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     col += dither / 256.0;
 #endif
+
+    //col = filtered_luminance;
 
     output_tex[px] = float4(col, 1);
 }

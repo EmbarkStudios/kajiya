@@ -614,6 +614,41 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &Handle<Image>) -> Han
     output
 }
 
+fn edge_preserving_filter_luminance(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
+    let mut lum_tex = rg.create(input.desc().format(vk::Format::R16G16_SFLOAT));
+
+    SimpleRenderPass::new_compute(
+        rg.add_pass("log luminance"),
+        "/assets/shaders/tonemap/extract_log_luminance.hlsl",
+    )
+    .read(&input)
+    .write(&mut lum_tex)
+    .dispatch(lum_tex.desc().extent);
+
+    let mut input = &lum_tex;
+    let mut input_next: Option<_> = None;
+
+    for i in 0..7 {
+        let mut output = rg.create(input.desc().format(vk::Format::R16G16_SFLOAT));
+        let px_skip: u32 = 1 << (6 - i);
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("a-trous"),
+            "/assets/shaders/tonemap/luminance-a-trous.hlsl",
+        )
+        .read(&input)
+        .read(&lum_tex)
+        .write(&mut output)
+        .constants((input.desc().extent_inv_extent_2d(), px_skip))
+        .dispatch(output.desc().extent);
+
+        input_next = Some(output);
+        input = input_next.as_ref().unwrap();
+    }
+
+    input_next.unwrap()
+}
+
 pub fn post_process(
     rg: &mut RenderGraph,
     input: &Handle<Image>,
@@ -625,10 +660,13 @@ pub fn post_process(
     let mut output = rg.create(input.desc().format(vk::Format::B10G11R11_UFLOAT_PACK32));
     let blur_pyramid_mip_count: u32 = blur_pyramid.desc().mip_levels as _;
 
+    let blurred_luminance = edge_preserving_filter_luminance(rg, input);
+
     SimpleRenderPass::new_compute(rg.add_pass("glare"), "/assets/shaders/glare.hlsl")
         .read(input)
         .read(&blur_pyramid)
         .read(&rev_blur_pyramid)
+        .read(&blurred_luminance)
         .write(&mut output)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .constants((output.desc().extent_inv_extent_2d(), blur_pyramid_mip_count))
