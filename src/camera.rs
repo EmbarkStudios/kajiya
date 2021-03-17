@@ -191,7 +191,7 @@ impl Camera for FirstPersonCamera {
     fn update<InputType: Into<Self::InputType>>(&mut self, input: InputType) {
         let input = input.into();
 
-        let move_input_interp = 1.0 - (-input.dt * 5.0).exp();
+        let move_input_interp = 1.0 - (-input.dt * 30.0 / self.move_smoothness.max(1e-5)).exp();
         self.interp_move_vec = self.interp_move_vec.lerp(input.move_vec, move_input_interp);
         self.interp_move_vec *= Vec3::select(
             input.move_vec.cmpeq(Vec3::zero()),

@@ -56,7 +56,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
 
     const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
-    normal = surf_normal;
+    //normal = surf_normal;
 
     float2 uv0 = asfloat(vertices.Load2(ind.x * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv1 = asfloat(vertices.Load2(ind.y * sizeof(float2) + mesh.vertex_uv_offset));
@@ -80,7 +80,45 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, spec_uv, spec_lod);
     float metalness = metalness_roughness.z * material.metalness_factor;
 
-    albedo *= lerp(0.75, 1.0, metalness);
+    //albedo *= lerp(0.75, 1.0, metalness);
+
+#if 0
+    float4 v_tangent_packed0 =
+        mesh.vertex_tangent_offset != 0
+            ? asfloat(vertices.Load4(ind.x * sizeof(float4) + mesh.vertex_tangent_offset))
+            : float4(1, 0, 0, 1);            
+    float4 v_tangent_packed1 =
+        mesh.vertex_tangent_offset != 0
+            ? asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_tangent_offset))
+            : float4(1, 0, 0, 1);            
+    float4 v_tangent_packed2 =
+        mesh.vertex_tangent_offset != 0
+            ? asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_tangent_offset))
+            : float4(1, 0, 0, 1);            
+
+    float3 tangent0 = v_tangent_packed0.xyz;
+    float3 bitangent0 = normalize(cross(v0.normal, tangent0) * v_tangent_packed0.w);
+
+    float3 tangent1 = v_tangent_packed1.xyz;
+    float3 bitangent1 = normalize(cross(v1.normal, tangent1) * v_tangent_packed1.w);
+
+    float3 tangent2 = v_tangent_packed2.xyz;
+    float3 bitangent2 = normalize(cross(v2.normal, tangent2) * v_tangent_packed2.w);
+
+    float3 tangent = tangent0 * barycentrics.x + tangent1 * barycentrics.y + tangent2 * barycentrics.z;
+    float3 bitangent = bitangent0 * barycentrics.x + bitangent1 * barycentrics.y + bitangent2 * barycentrics.z;
+
+    float2 normal_uv = transform_material_uv(material, uv, 0);
+    Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
+    float normal_lod = 1;//compute_texture_lod(normal_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float3 ts_normal = normal_tex.SampleLevel(sampler_llr, normal_uv, normal_lod).xyz * 2.0 - 1.0;
+
+    if (dot(bitangent, bitangent) > 0.0) {
+        float3x3 tbn = float3x3(tangent, bitangent, normal);
+        normal = mul(ts_normal, tbn);
+    }
+    normal = normalize(normal);
+#endif
 
     GbufferData gbuffer;
     gbuffer.albedo = albedo;

@@ -272,7 +272,9 @@ void main() {
             }
         }
 
-        radiance_sample_count_packed += float4(total_radiance, 1.0);
+        if (all(total_radiance >= 0.0)) {
+            radiance_sample_count_packed += float4(total_radiance, 1.0);
+        }
     }
 
     float4 cur = radiance_sample_count_packed;

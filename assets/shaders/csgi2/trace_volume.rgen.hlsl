@@ -27,7 +27,8 @@
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
 #define USE_RAY_JITTER 0
 #define RAY_JITTER_AMOUNT 0.75
-#define ACCUM_HYSTERESIS 0.05
+//#define ACCUM_HYSTERESIS 0.05
+#define ACCUM_HYSTERESIS 0.25
 
 #define USE_MULTIBOUNCE 1
 

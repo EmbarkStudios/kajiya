@@ -71,7 +71,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 float wt = 1;
 
                 //wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
-                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 4);
+                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 20);
                 wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
                 #if USE_SSAO_STEERING

@@ -135,8 +135,11 @@ fn main() -> anyhow::Result<()> {
 
     let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 0.0, 8.0));
     //camera.fov = 65.0;
-    camera.look_smoothness = 20.0;
-    camera.move_smoothness = 10.0;
+    //camera.look_smoothness = 20.0;
+    //camera.move_smoothness = 20.0;
+
+    camera.look_smoothness = 3.0;
+    camera.move_smoothness = 3.0;
 
     // Mitsuba match
     /*let mut camera = camera::FirstPersonCamera::new(Vec3::new(-2.0, 4.0, 8.0));
@@ -273,7 +276,7 @@ fn main() -> anyhow::Result<()> {
         }
 
         let sun_direction = spherical_to_cartesian(light_theta, light_phi);
-        sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.01).normalize();
+        sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
         let frame_state = FrameState {
             camera_matrices: camera.calc_matrices(),

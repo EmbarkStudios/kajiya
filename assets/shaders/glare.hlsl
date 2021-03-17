@@ -146,7 +146,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = lerp(col, glare, glare_amount);
 #endif
 
-    //col *= 1.5;
+    col *= 3;
     //col *= 500;
 
 #if 0
