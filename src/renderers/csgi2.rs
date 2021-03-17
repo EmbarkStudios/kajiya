@@ -3,8 +3,7 @@
 use std::sync::Arc;
 
 use glam::Vec3;
-use rg::GetOrCreateTemporal;
-use slingshot::{
+use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
     backend::{
         image::*,
@@ -16,6 +15,7 @@ use slingshot::{
     rg::{self, BindRgRef, IntoRenderPassPipelineBinding, SimpleRenderPass},
     vk_sync::AccessType,
 };
+use rg::GetOrCreateTemporal;
 
 const VOLUME_DIMS: u32 = 64;
 

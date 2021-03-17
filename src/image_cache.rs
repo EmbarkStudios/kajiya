@@ -2,7 +2,7 @@ use std::{hash::Hash, sync::Arc};
 
 use crate::asset::{image::RawRgba8Image, mesh::TexParams};
 use image::{imageops::FilterType, DynamicImage, GenericImageView};
-use slingshot::{ash::vk, Device, Image, ImageDesc, ImageSubResourceData};
+use kajiya_backend::{ash::vk, Device, Image, ImageDesc, ImageSubResourceData};
 use turbosloth::*;
 
 #[derive(Clone)]

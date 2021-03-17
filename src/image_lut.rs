@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use slingshot::vk_sync;
-use slingshot::{backend::image::*, rg};
+use kajiya_backend::vk_sync;
+use kajiya_backend::{backend::image::*, rg};
 
 pub trait ComputeImageLut {
-    fn create(&mut self, device: &slingshot::Device) -> Image;
+    fn create(&mut self, device: &kajiya_backend::Device) -> Image;
     fn compute(&mut self, rg: &mut rg::RenderGraph, img: &mut rg::Handle<Image>);
 }
 
@@ -14,7 +14,7 @@ pub struct ImageLut {
 }
 
 impl ImageLut {
-    pub fn new(device: &slingshot::Device, mut computer: Box<dyn ComputeImageLut>) -> Self {
+    pub fn new(device: &kajiya_backend::Device, mut computer: Box<dyn ComputeImageLut>) -> Self {
         Self {
             image: Arc::new(computer.create(device)),
             computer,

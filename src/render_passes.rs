@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use slingshot::{
+use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
     backend::ray_tracing::RayTracingAcceleration,
 };

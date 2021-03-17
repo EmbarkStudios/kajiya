@@ -1,4 +1,4 @@
-use slingshot::{
+use kajiya_backend::{
     ash::vk,
     backend::image::*,
     rg::{self, SimpleRenderPass},

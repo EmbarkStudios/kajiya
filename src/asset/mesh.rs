@@ -4,7 +4,7 @@
 use byteorder::{ByteOrder, NativeEndian, WriteBytesExt};
 use glam::{Mat4, Vec3};
 use gltf::texture::TextureTransform;
-use slingshot::bytes::into_byte_vec;
+use kajiya_backend::bytes::into_byte_vec;
 /*use render_core::{
     constants::MAX_VERTEX_STREAMS,
     device::RenderDevice,
@@ -650,7 +650,7 @@ impl<T> Ord for AssetRef<T> {
 // TODO: use `rkyv` instead
 def_asset! {
     GpuImage {
-        format { slingshot::ash::vk::Format }
+        format { kajiya_backend::ash::vk::Format }
         extent { [u32; 3] }
         mips { Vec(Vec(u8)) }
     }

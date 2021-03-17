@@ -38,7 +38,7 @@ smol = "1.2.5"
 structopt = "0.3"
 thiserror = "1.0"
 turbosloth = "0.2.0"
-slingshot = { path = "crates/slingshot" }
+kajiya-backend = { path = "crates/kajiya-backend" }
 # winit = "0.21"  # 0.22 panics in NSight with this error: https://github.com/rust-windowing/winit/issues/1585
 winit = "=0.19.5"
 

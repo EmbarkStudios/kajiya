@@ -1,6 +1,6 @@
 use std::cell::{Ref, RefCell};
 
-use slingshot::{
+use kajiya_backend::{
     rg::{self, GetOrCreateTemporal},
     Image,
 };
@@ -67,7 +67,7 @@ impl PingPongTemporalResource {
     pub fn get_output_and_history(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        desc: slingshot::ImageDesc,
+        desc: kajiya_backend::ImageDesc,
     ) -> (rg::Handle<Image>, rg::Handle<Image>) {
         let output_tex = rg
             .get_or_create_temporal(self.output_tex.clone(), desc)

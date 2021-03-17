@@ -1,5 +1,5 @@
 [package]
-name = "slingshot"
+name = "kajiya-backend"
 version = "0.1.0"
 authors = ["Tomasz Stachowiak <h3@h3.gd>"]
 edition = "2018"

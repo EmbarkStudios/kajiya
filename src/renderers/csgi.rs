@@ -1,12 +1,12 @@
 // Cone sweep global illumination prototype
 
 use glam::Vec3;
-use rg::GetOrCreateTemporal;
-use slingshot::{
+use kajiya_backend::{
     ash::vk,
     backend::{image::*, ray_tracing::RayTracingAcceleration},
     rg::{self, SimpleRenderPass},
 };
+use rg::GetOrCreateTemporal;
 
 const VOLUME_DIMS: u32 = 32;
 type VolumeCenters = [[f32; 4]; SLICE_COUNT];

@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use glam::Vec2;
-use rg::GetOrCreateTemporal;
-use slingshot::{
+use kajiya_backend::{
     ash::vk,
     backend::{buffer::*, image::*, ray_tracing::RayTracingAcceleration},
     rg::{self, SimpleRenderPass},
     vk_sync, Device,
 };
+use rg::GetOrCreateTemporal;
 
 use super::{csgi2, GbufferDepth, PingPongTemporalResource};
 

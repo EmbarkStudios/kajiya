@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 use std::mem::size_of;
 
-use rg::GetOrCreateTemporal;
-use slingshot::{
+use kajiya_backend::{
     ash::vk,
     backend::{
         buffer::{Buffer, BufferDesc},
@@ -11,6 +10,7 @@ use slingshot::{
     },
     rg::{self, SimpleRenderPass},
 };
+use rg::GetOrCreateTemporal;
 use vk::BufferUsageFlags;
 
 use super::GbufferDepth;

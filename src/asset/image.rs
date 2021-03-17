@@ -1,7 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use image::{imageops::FilterType, DynamicImage, GenericImageView as _};
-use slingshot::{ash::vk, file::LoadFile, ImageDesc};
+use kajiya_backend::{ash::vk, file::LoadFile, ImageDesc};
 use turbosloth::*;
 
 pub struct RawRgba8Image {

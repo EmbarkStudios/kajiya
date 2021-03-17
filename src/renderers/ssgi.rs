@@ -1,9 +1,9 @@
-use rg::TemporalRenderGraph;
-use slingshot::{
+use kajiya_backend::{
     ash::vk,
     backend::image::*,
     rg::{self, SimpleRenderPass},
 };
+use rg::TemporalRenderGraph;
 
 use super::{GbufferDepth, PingPongTemporalResource};
 

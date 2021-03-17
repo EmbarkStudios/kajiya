@@ -61,7 +61,7 @@ fn main() -> Result<()> {
 
     /*{
         let image = GpuImage::Proto {
-            format: slingshot::ash::vk::Format::R32G32B32A32_SFLOAT,
+            format: kajiya_backend::ash::vk::Format::R32G32B32A32_SFLOAT,
             extent: [128, 128, 1],
             mips: vec![vec![1], vec![1, 2], vec![1, 2, 3]],
         };

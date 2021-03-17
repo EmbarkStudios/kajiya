@@ -1,18 +1,18 @@
-use slingshot::{
+use kajiya_backend::{
     ash::vk,
     rg::{BindRgRef, IntoRenderPassPipelineBinding},
     vk_sync::AccessType,
     ImageDesc,
 };
 #[allow(unused_imports)]
-use slingshot::{ash::vk::ImageUsageFlags, backend::image::*};
+use kajiya_backend::{ash::vk::ImageUsageFlags, backend::image::*};
 
 use crate::image_lut::ComputeImageLut;
 
 pub struct BrdfFgLutComputer;
 
 impl ComputeImageLut for BrdfFgLutComputer {
-    fn create(&mut self, device: &slingshot::Device) -> slingshot::Image {
+    fn create(&mut self, device: &kajiya_backend::Device) -> kajiya_backend::Image {
         device
             .create_image(
                 ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, [64, 64])
@@ -24,8 +24,8 @@ impl ComputeImageLut for BrdfFgLutComputer {
 
     fn compute(
         &mut self,
-        rg: &mut slingshot::rg::RenderGraph,
-        img: &mut slingshot::rg::Handle<slingshot::Image>,
+        rg: &mut kajiya_backend::rg::RenderGraph,
+        img: &mut kajiya_backend::rg::Handle<kajiya_backend::Image>,
     ) {
         let mut pass = rg.add_pass("brdf_fg lut");
 

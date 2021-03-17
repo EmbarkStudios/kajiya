@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use slingshot::{
+use kajiya_backend::{
     ash::{self, version::DeviceV1_0, vk},
     Device, Image, ImageDesc, ImageViewDesc,
 };

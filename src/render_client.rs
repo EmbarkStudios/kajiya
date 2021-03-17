@@ -18,11 +18,7 @@ use crate::{
 };
 use backend::buffer::{Buffer, BufferDesc};
 use glam::{Vec2, Vec3};
-#[allow(unused_imports)]
-use log::{debug, error, info, trace, warn};
-use parking_lot::Mutex;
-use rg::GetOrCreateTemporal;
-use slingshot::{
+use kajiya_backend::{
     ash::{
         version::DeviceV1_0,
         vk::{self, ImageView},
@@ -38,6 +34,10 @@ use slingshot::{
     rspirv_reflect,
     vk_sync::{self, AccessType},
 };
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
+use parking_lot::Mutex;
+use rg::GetOrCreateTemporal;
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
 use winit::VirtualKeyCode;
 
@@ -322,7 +322,7 @@ impl BufferBuilder {
         data_start
     }
 
-    fn upload(self, device: &slingshot::Device, target: &mut Buffer, target_offset: u64) {
+    fn upload(self, device: &kajiya_backend::Device, target: &mut Buffer, target_offset: u64) {
         let target = target.raw;
 
         // TODO: share a common staging buffer, don't leak
@@ -385,7 +385,7 @@ impl BufferBuilder {
 }
 
 fn load_gpu_image_asset(
-    device: Arc<slingshot::Device>,
+    device: Arc<kajiya_backend::Device>,
     asset: AssetRef<GpuImage::Flat>,
 ) -> Arc<Image> {
     let asset =
@@ -514,7 +514,7 @@ impl VickiRenderClient {
     }
 
     fn write_descriptor_set_buffer(
-        device: &slingshot::ash::Device,
+        device: &kajiya_backend::ash::Device,
         set: vk::DescriptorSet,
         dst_binding: u32,
         buffer: &Buffer,
