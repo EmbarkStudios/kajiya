@@ -1,8 +1,8 @@
 use anyhow::Result;
 
+use kajiya::asset::mesh::{GpuImage, PackedTriMesh};
 use memmap2::MmapOptions;
 use std::fs::File;
-use vicki::asset::mesh::{GpuImage, PackedTriMesh};
 
 fn main() -> Result<()> {
     {

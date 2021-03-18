@@ -108,7 +108,7 @@ fn main() -> anyhow::Result<()> {
     let lazy_cache = LazyCache::create();
 
     let render_backend = RenderBackend::new(&*window, &window_cfg, !opt.no_debug)?;
-    let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
+    let mut render_client = render_client::KajiyaRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
     let mut renderer = kajiya_rg::renderer::Renderer::new(render_backend)?;

@@ -1,5 +1,5 @@
+use kajiya::asset::mesh::{pack_triangle_mesh, GpuImage, LoadGltfScene, PackedTriMesh};
 use std::{collections::HashSet, fs::File, path::PathBuf};
-use vicki::asset::mesh::{pack_triangle_mesh, GpuImage, LoadGltfScene, PackedTriMesh};
 
 use turbosloth::*;
 

@@ -38,7 +38,7 @@ pub fn set_up_logging() -> anyhow::Result<()> {
         // field which defaults to the module path but can be overwritten with the `target`
         // parameter:
         // `info!(target="special_target", "This log message is about special_target");`
-        .level_for("vicki::device", log::LevelFilter::Trace)
+        .level_for("kajiya::device", log::LevelFilter::Trace)
         // output to stdout
         .chain(std::io::stdout());
 

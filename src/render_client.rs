@@ -80,7 +80,7 @@ pub enum RenderDebugMode {
     Csgi2VoxelGrid,
 }
 
-pub struct VickiRenderClient {
+pub struct KajiyaRenderClient {
     device: Arc<device::Device>,
     raster_simple_render_pass: Arc<RenderPass>,
     pub reset_reference_accumulation: bool,
@@ -406,7 +406,7 @@ fn load_gpu_image_asset(
     Arc::new(device.create_image(desc, initial_data).unwrap())
 }
 
-impl VickiRenderClient {
+impl KajiyaRenderClient {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
@@ -739,7 +739,7 @@ impl VickiRenderClient {
     }
 }
 
-impl VickiRenderClient {
+impl KajiyaRenderClient {
     fn prepare_render_graph_standard(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
@@ -971,7 +971,7 @@ lazy_static::lazy_static! {
     .collect();
 }
 
-impl RenderClient<FrameState> for VickiRenderClient {
+impl RenderClient<FrameState> for KajiyaRenderClient {
     fn prepare_render_graph(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
