@@ -168,17 +168,17 @@ fn main() -> anyhow::Result<()> {
     render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, 2.5));
     render_client.add_instance(mesh, Vec3::new(1.5, 0.0, 2.5));*/
 
-    /*let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
+    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
     let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));*/
+    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));
 
     let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
     let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
-    /*render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
+    //render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
+    let inst0 = render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, 2.5));
-    render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));*/
+    render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));
 
     render_client.build_ray_tracing_top_level_acceleration();
 
@@ -192,6 +192,8 @@ fn main() -> anyhow::Result<()> {
     let mut light_theta = -4.54;
     let mut light_phi = 1.48;
     let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
+
+    let mut time_since_start = 0f64;
 
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
@@ -239,7 +241,13 @@ fn main() -> anyhow::Result<()> {
         let dt_duration = now - last_frame_instant;
         last_frame_instant = now;
         let dt = dt_duration.as_secs_f32();
+        time_since_start += dt as f64;
         //println!("dt: {}", dt);
+
+        render_client.set_instance_transform(
+            inst0,
+            Vec3::new(-2.0 + time_since_start.sin() as f32, opt.y_offset, -2.5),
+        );
 
         keyboard.update(std::mem::take(&mut keyboard_events), dt);
         mouse_state.update(&new_mouse_state);

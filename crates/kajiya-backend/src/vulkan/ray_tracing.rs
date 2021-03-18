@@ -1,4 +1,6 @@
-use crate::MAX_DESCRIPTOR_SETS;
+use std::sync::Arc;
+
+use crate::{dynamic_constants::DynamicConstants, MAX_DESCRIPTOR_SETS};
 
 use super::{
     device::Device,
@@ -36,15 +38,15 @@ pub struct RayTracingGeometryDesc {
 }
 
 #[derive(Clone)]
-pub struct RayTracingInstanceDesc<'a> {
-    pub blas: &'a RayTracingAcceleration,
+pub struct RayTracingInstanceDesc {
+    pub blas: Arc<RayTracingAcceleration>,
     pub position: Vec3,
     pub mesh_index: u32,
 }
 
 #[derive(Clone)]
-pub struct RayTracingTopAccelerationDesc<'a> {
-    pub instances: Vec<RayTracingInstanceDesc<'a>>,
+pub struct RayTracingTopAccelerationDesc {
+    pub instances: Vec<RayTracingInstanceDesc>,
 }
 
 #[derive(Clone, Debug)]
@@ -61,7 +63,8 @@ pub struct RayTracingShaderTableDesc {
 
 pub struct RayTracingAcceleration {
     pub raw: vk::AccelerationStructureKHR,
-    _buffer: super::buffer::Buffer,
+    backing_buffer: super::buffer::Buffer,
+    scratch_buffer: super::buffer::Buffer,
 }
 
 impl Device {
@@ -139,7 +142,7 @@ impl Device {
 
     pub fn create_ray_tracing_top_acceleration(
         &self,
-        desc: &RayTracingTopAccelerationDesc<'_>,
+        desc: &RayTracingTopAccelerationDesc,
     ) -> Result<RayTracingAcceleration> {
         //log::trace!("Creating ray tracing top acceleration: {:?}", desc);
 
@@ -335,9 +338,166 @@ impl Device {
 
             Ok(RayTracingAcceleration {
                 raw: accel_raw,
-                _buffer: accel_buffer,
+                backing_buffer: accel_buffer,
+                scratch_buffer,
             })
         }
+    }
+
+    pub fn fill_ray_tracing_instance_buffer(
+        &self,
+        dynamic_constants: &mut DynamicConstants,
+        instances: &[RayTracingInstanceDesc],
+    ) -> vk::DeviceAddress {
+        let instance_buffer_address = dynamic_constants.current_device_address(self);
+        for desc in instances {
+            let blas_address = unsafe {
+                self.acceleration_structure_ext
+                    .get_acceleration_structure_device_address(
+                        self.raw.handle(),
+                        &ash::vk::AccelerationStructureDeviceAddressInfoKHR::builder()
+                            .acceleration_structure(desc.blas.raw)
+                            .build(),
+                    )
+            };
+
+            let transform: [f32; 12] = [
+                1.0,
+                0.0,
+                0.0,
+                desc.position.x,
+                0.0,
+                1.0,
+                0.0,
+                desc.position.y,
+                0.0,
+                0.0,
+                1.0,
+                desc.position.z,
+            ];
+
+            dynamic_constants.push(&GeometryInstance::new(
+                transform,
+                desc.mesh_index, /* instance id */
+                0xff,
+                0,
+                /*ash::vk::GeometryInstanceFlagsKHR::TRIANGLE_FACING_CULL_DISABLE
+                | */
+                ash::vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE,
+                blas_address,
+            ));
+        }
+
+        instance_buffer_address
+    }
+
+    pub fn rebuild_ray_tracing_top_acceleration(
+        &self,
+        cb: vk::CommandBuffer,
+        instance_buffer_address: vk::DeviceAddress,
+        instance_count: usize,
+        tlas: &RayTracingAcceleration,
+    ) -> Result<()> {
+        let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
+            .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
+            .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
+                instances: ash::vk::AccelerationStructureGeometryInstancesDataKHR::builder()
+                    .data(ash::vk::DeviceOrHostAddressConstKHR {
+                        device_address: instance_buffer_address,
+                    })
+                    .build(),
+            })
+            .build();
+
+        let build_range_infos = vec![ash::vk::AccelerationStructureBuildRangeInfoKHR::builder()
+            .primitive_count(instance_count as _)
+            .build()];
+
+        let geometry_info = ash::vk::AccelerationStructureBuildGeometryInfoKHR::builder()
+            .ty(ash::vk::AccelerationStructureTypeKHR::TOP_LEVEL)
+            .flags(ash::vk::BuildAccelerationStructureFlagsKHR::PREFER_FAST_TRACE)
+            .geometries(std::slice::from_ref(&geometry))
+            .mode(vk::BuildAccelerationStructureModeKHR::BUILD)
+            .build();
+
+        let max_primitive_counts = [instance_count as u32];
+
+        // Create top-level acceleration structure
+
+        self.rebuild_ray_tracing_acceleration(
+            cb,
+            geometry_info,
+            &build_range_infos,
+            &max_primitive_counts,
+            tlas,
+        )
+    }
+
+    fn rebuild_ray_tracing_acceleration(
+        &self,
+        cb: vk::CommandBuffer,
+        mut geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
+        build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
+        max_primitive_counts: &[u32],
+        accel: &RayTracingAcceleration,
+    ) -> Result<()> {
+        let memory_requirements = unsafe {
+            self.acceleration_structure_ext
+                .get_acceleration_structure_build_sizes(
+                    self.raw.handle(),
+                    vk::AccelerationStructureBuildTypeKHR::DEVICE,
+                    &geometry_info,
+                    &max_primitive_counts,
+                )
+        };
+
+        assert!(
+            memory_requirements.acceleration_structure_size as usize
+                <= accel.backing_buffer.desc.size,
+            "todo: backing"
+        );
+
+        assert!(
+            memory_requirements.build_scratch_size as usize <= accel.scratch_buffer.desc.size,
+            "todo: scratch"
+        );
+
+        unsafe {
+            geometry_info.dst_acceleration_structure = accel.raw;
+            geometry_info.scratch_data = ash::vk::DeviceOrHostAddressKHR {
+                device_address: self.raw.get_buffer_device_address(
+                    &ash::vk::BufferDeviceAddressInfo::builder().buffer(accel.scratch_buffer.raw),
+                ),
+            };
+
+            self.acceleration_structure_ext
+                .cmd_build_acceleration_structures(
+                    cb,
+                    std::slice::from_ref(&geometry_info),
+                    std::slice::from_ref(&build_range_infos),
+                );
+
+            self.raw.cmd_pipeline_barrier(
+                cb,
+                ash::vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                ash::vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR,
+                ash::vk::DependencyFlags::empty(),
+                &[ash::vk::MemoryBarrier::builder()
+                    .src_access_mask(
+                        ash::vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
+                            | ash::vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
+                    )
+                    .dst_access_mask(
+                        ash::vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
+                            | ash::vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR,
+                    )
+                    .build()],
+                &[],
+                &[],
+            );
+        }
+
+        Ok(())
     }
 
     fn create_ray_tracing_shader_table(
@@ -759,3 +919,5 @@ impl GeometryInstance {
         self.instance_sbt_offset_and_flags |= flags << 24;
     }
 }
+
+struct RayTracingAccelerationInstanceBufferBuilder {}

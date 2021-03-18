@@ -85,6 +85,13 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         }
     }
 
+    pub fn rt_acceleration<ViewType: GpuViewType>(
+        &self,
+        resource: Ref<RayTracingAcceleration, ViewType>,
+    ) -> &RayTracingAcceleration {
+        self.rt_acceleration_from_raw_handle::<ViewType>(resource.handle)
+    }
+
     pub(crate) fn rt_acceleration_from_raw_handle<ViewType: GpuViewType>(
         &self,
         handle: GraphRawResourceHandle,

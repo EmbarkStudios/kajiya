@@ -33,6 +33,10 @@ impl DynamicConstants {
         (self.frame_parity * DYNAMIC_CONSTANTS_SIZE_BYTES + self.frame_offset_bytes) as u32
     }
 
+    pub fn current_device_address(&self, device: &crate::Device) -> vk::DeviceAddress {
+        self.buffer.device_address(device) + self.current_offset() as vk::DeviceAddress
+    }
+
     pub fn push<T: Copy>(&mut self, t: &T) -> u32 {
         let t_size = size_of::<T>();
         assert!(self.frame_offset_bytes + t_size < DYNAMIC_CONSTANTS_SIZE_BYTES);

@@ -207,6 +207,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.metalness;
+    //debug_out = gbuffer.albedo;
     //debug_out = pow(ssgi.a, 4);
 
     #if 0

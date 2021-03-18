@@ -32,7 +32,7 @@ use kajiya_rg::{self as rg, renderer::*, RetiredRenderGraph};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
-use rg::GetOrCreateTemporal;
+use rg::{GetOrCreateTemporal, TemporalRenderGraph};
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 use winit::VirtualKeyCode;
@@ -86,7 +86,7 @@ pub struct KajiyaRenderClient {
     pub reset_reference_accumulation: bool,
     //cube_index_buffer: Arc<Buffer>,
     meshes: Vec<UploadedTriMesh>,
-    mesh_blas: Vec<RayTracingAcceleration>,
+    mesh_blas: Vec<Arc<RayTracingAcceleration>>,
     instances: Vec<MeshInstance>,
     tlas: Option<Arc<RayTracingAcceleration>>,
     mesh_buffer: Mutex<Arc<Buffer>>,
@@ -699,7 +699,7 @@ impl KajiyaRenderClient {
             index_count: mesh.indices.len() as _,
         });
 
-        self.mesh_blas.push(blas);
+        self.mesh_blas.push(Arc::new(blas));
 
         MeshHandle(mesh_idx)
     }
@@ -713,6 +713,10 @@ impl KajiyaRenderClient {
         handle
     }
 
+    pub fn set_instance_transform(&mut self, inst: InstanceHandle, pos: Vec3) {
+        self.instances[inst.0].position = pos;
+    }
+
     pub fn build_ray_tracing_top_level_acceleration(&mut self) {
         let tlas = self
             .device
@@ -722,7 +726,7 @@ impl KajiyaRenderClient {
                     .instances
                     .iter()
                     .map(|inst| RayTracingInstanceDesc {
-                        blas: &self.mesh_blas[inst.mesh.0],
+                        blas: self.mesh_blas[inst.mesh.0].clone(),
                         position: inst.position,
                         mesh_index: inst.mesh.0 as u32,
                     })
@@ -740,15 +744,57 @@ impl KajiyaRenderClient {
 }
 
 impl KajiyaRenderClient {
+    fn prepare_top_level_acceleration(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+    ) -> rg::Handle<RayTracingAcceleration> {
+        let mut tlas = rg.import(
+            self.tlas.as_ref().unwrap().clone(),
+            vk_sync::AccessType::AnyShaderReadOther,
+        );
+
+        let instances = self
+            .instances
+            .iter()
+            .map(|inst| RayTracingInstanceDesc {
+                blas: self.mesh_blas[inst.mesh.0].clone(),
+                position: inst.position,
+                mesh_index: inst.mesh.0 as u32,
+            })
+            .collect::<Vec<_>>();
+
+        let mut pass = rg.add_pass("rebuild tlas");
+        let tlas_ref = pass.write(&mut tlas, AccessType::TransferWrite);
+
+        pass.render(move |api| {
+            //let device = &api.device().raw;
+            let resources = &mut api.resources;
+            let instance_buffer_address = resources
+                .execution_params
+                .device
+                .fill_ray_tracing_instance_buffer(resources.dynamic_constants, &instances);
+            let tlas = api.resources.rt_acceleration(tlas_ref);
+
+            let cb = api.cb;
+            api.device()
+                .rebuild_ray_tracing_top_acceleration(
+                    cb.raw,
+                    instance_buffer_address,
+                    instances.len(),
+                    tlas,
+                )
+                .expect("rebuild_ray_tracing_top_acceleration");
+        });
+
+        tlas
+    }
+
     fn prepare_render_graph_standard(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
-        let tlas = rg.import(
-            self.tlas.as_ref().unwrap().clone(),
-            vk_sync::AccessType::AnyShaderReadOther,
-        );
+        let tlas = self.prepare_top_level_acceleration(rg);
 
         let mut accum_img = rg
             .get_or_create_temporal(
@@ -906,10 +952,7 @@ impl KajiyaRenderClient {
             crate::render_passes::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
-        let tlas = rg.import(
-            self.tlas.as_ref().unwrap().clone(),
-            vk_sync::AccessType::AnyShaderReadOther,
-        );
+        let tlas = self.prepare_top_level_acceleration(rg);
 
         crate::render_passes::reference_path_trace(
             rg,
