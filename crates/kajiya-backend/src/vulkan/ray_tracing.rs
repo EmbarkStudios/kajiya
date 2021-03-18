@@ -60,7 +60,7 @@ pub struct RayTracingShaderTableDesc {
 }
 
 pub struct RayTracingAcceleration {
-    pub(crate) raw: vk::AccelerationStructureKHR,
+    pub raw: vk::AccelerationStructureKHR,
     _buffer: super::buffer::Buffer,
 }
 
@@ -369,7 +369,7 @@ impl Device {
 
         let create_binding_table = |entry_offset: u32,
                                     entry_count: u32|
-         -> Result<Option<crate::backend::buffer::Buffer>> {
+         -> Result<Option<crate::vulkan::buffer::Buffer>> {
             if 0 == entry_count {
                 return Ok(None);
             }

@@ -6,6 +6,8 @@ mod resource;
 mod resource_registry;
 mod temporal;
 
+pub mod renderer;
+
 pub use graph::*;
 pub use hl::*;
 pub use pass_api::*;

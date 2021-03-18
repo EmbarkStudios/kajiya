@@ -488,7 +488,6 @@ pub struct RenderPassAttachmentDesc {
     pub samples: vk::SampleCountFlags,
 }
 
-#[allow(dead_code)]
 impl RenderPassAttachmentDesc {
     pub fn new(format: vk::Format) -> Self {
         Self {

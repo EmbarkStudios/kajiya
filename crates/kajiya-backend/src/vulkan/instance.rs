@@ -30,11 +30,12 @@ impl DeviceBuilder {
     }
 }
 
-#[allow(dead_code)]
 pub struct Instance {
     pub(crate) entry: ash::Entry,
     pub(crate) raw: ash::Instance,
+    #[allow(dead_code)]
     pub(crate) debug_callback: Option<vk::DebugReportCallbackEXT>,
+    #[allow(dead_code)]
     #[allow(deprecated)]
     pub(crate) debug_loader: Option<ext::DebugReport>,
 }

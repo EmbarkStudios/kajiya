@@ -37,7 +37,8 @@ impl BufferDesc {
 }
 
 impl Device {
-    pub(crate) fn create_buffer_impl(
+    // TODO: not pub.
+    pub fn create_buffer_impl(
         &self,
         desc: BufferDesc,
         extra_usage: vk::BufferUsageFlags,

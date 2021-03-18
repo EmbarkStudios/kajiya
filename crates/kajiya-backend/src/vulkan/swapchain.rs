@@ -56,12 +56,11 @@ impl Swapchain {
                 .get_physical_device_surface_capabilities(device.pdevice.raw, surface.raw)
         }?;
 
-        let mut desired_image_count = 3; //surface_capabilities.min_image_count + 1;
+        let mut desired_image_count = surface_capabilities.min_image_count + 1;
         if surface_capabilities.max_image_count > 0
             && desired_image_count > surface_capabilities.max_image_count
         {
             desired_image_count = surface_capabilities.max_image_count;
-            panic!("desired_image_count > surface_capabilities.max_image_count");
         }
 
         //dbg!(&surface_capabilities);

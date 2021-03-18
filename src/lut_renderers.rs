@@ -1,11 +1,8 @@
-use kajiya_backend::{
-    ash::vk,
-    rg::{BindRgRef, IntoRenderPassPipelineBinding},
-    vk_sync::AccessType,
-    ImageDesc,
-};
+use kajiya_backend::{ash::vk, vk_sync::AccessType, ImageDesc};
+use kajiya_rg::{BindRgRef, IntoRenderPassPipelineBinding};
+
 #[allow(unused_imports)]
-use kajiya_backend::{ash::vk::ImageUsageFlags, backend::image::*};
+use kajiya_backend::{ash::vk::ImageUsageFlags, vulkan::image::*};
 
 use crate::image_lut::ComputeImageLut;
 
@@ -24,8 +21,8 @@ impl ComputeImageLut for BrdfFgLutComputer {
 
     fn compute(
         &mut self,
-        rg: &mut kajiya_backend::rg::RenderGraph,
-        img: &mut kajiya_backend::rg::Handle<kajiya_backend::Image>,
+        rg: &mut kajiya_rg::RenderGraph,
+        img: &mut kajiya_rg::Handle<kajiya_backend::Image>,
     ) {
         let mut pass = rg.add_pass("brdf_fg lut");
 

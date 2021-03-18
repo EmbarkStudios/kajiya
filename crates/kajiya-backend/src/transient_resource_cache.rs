@@ -1,4 +1,4 @@
-use crate::backend::{
+use crate::vulkan::{
     buffer::{Buffer, BufferDesc},
     image::{Image, ImageDesc},
 };

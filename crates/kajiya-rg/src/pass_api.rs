@@ -1,24 +1,25 @@
 use std::{cell::UnsafeCell, sync::Arc};
 
 use arrayvec::ArrayVec;
-use ash::{version::DeviceV1_0, vk};
 
 use super::{
     Buffer, GpuRt, GpuSrv, GpuUav, GraphRawResourceHandle, Image, Ref, ResourceRegistry,
     RgComputePipelineHandle, RgRasterPipelineHandle, RgRtPipelineHandle,
 };
-use crate::{
-    backend::shader::FramebufferCacheKey,
-    backend::shader::ShaderPipelineCommon,
-    backend::shader::MAX_COLOR_ATTACHMENTS,
-    backend::{
+
+use kajiya_backend::{
+    ash::{version::DeviceV1_0, vk},
+    chunky_list::TempList,
+    dynamic_constants::DynamicConstants,
+    vulkan::shader::FramebufferCacheKey,
+    vulkan::shader::ShaderPipelineCommon,
+    vulkan::shader::MAX_COLOR_ATTACHMENTS,
+    vulkan::{
         device::{CommandBuffer, Device},
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
         shader::{ComputePipeline, RasterPipeline},
     },
-    chunky_list::TempList,
-    dynamic_constants::DynamicConstants,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
@@ -254,7 +255,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
 
     pub fn begin_render_pass(
         &mut self,
-        render_pass: &crate::backend::shader::RenderPass,
+        render_pass: &kajiya_backend::vulkan::shader::RenderPass,
         dims: [u32; 2],
         color_attachments: &[(Ref<Image, GpuRt>, &ImageViewDesc)],
         depth_attachment: Option<(Ref<Image, GpuRt>, &ImageViewDesc)>,
@@ -383,9 +384,7 @@ impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_pa
 }
 
 pub struct BoundRasterPipeline<'api, 'a, 'exec_params, 'constants> {
-    #[allow(dead_code)]
     api: &'api RenderPassApi<'a, 'exec_params, 'constants>,
-    #[allow(dead_code)]
     pipeline: Arc<RasterPipeline>,
 }
 

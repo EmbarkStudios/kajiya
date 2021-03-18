@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
     let mut render_client = render_client::VickiRenderClient::new(&render_backend)?;
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
-    let mut renderer = renderer::Renderer::new(render_backend)?;
+    let mut renderer = kajiya_rg::renderer::Renderer::new(render_backend)?;
     let mut last_error_text = None;
 
     {

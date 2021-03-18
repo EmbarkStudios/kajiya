@@ -5,21 +5,20 @@ use std::sync::Arc;
 use glam::Vec3;
 use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
-    backend::{
+    vk_sync::AccessType,
+    vulkan::{
         image::*,
         ray_tracing::RayTracingAcceleration,
         shader::{
             PipelineShader, PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage,
         },
     },
-    rg::{self, BindRgRef, IntoRenderPassPipelineBinding, SimpleRenderPass},
-    vk_sync::AccessType,
 };
-use rg::GetOrCreateTemporal;
+use kajiya_rg::{
+    self as rg, BindRgRef, GetOrCreateTemporal, IntoRenderPassPipelineBinding, SimpleRenderPass,
+};
 
 const VOLUME_DIMS: u32 = 64;
-
-use super::GbufferDepth;
 
 pub struct Csgi2Renderer {
     pub trace_subdiv: i32,
@@ -43,7 +42,7 @@ pub struct Csgi2Volume {
 impl Csgi2Renderer {
     pub fn render(
         &mut self,
-        eye_position: Vec3,
+        _eye_position: Vec3,
         rg: &mut rg::TemporalRenderGraph,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,

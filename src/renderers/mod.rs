@@ -1,9 +1,7 @@
 use std::cell::{Ref, RefCell};
 
-use kajiya_backend::{
-    rg::{self, GetOrCreateTemporal},
-    Image,
-};
+use kajiya_backend::Image;
+use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
 pub mod csgi2;
 pub mod half_res;

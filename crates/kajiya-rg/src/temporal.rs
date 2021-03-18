@@ -4,9 +4,8 @@ use std::{
 };
 
 use anyhow::Context;
-use vk_sync::AccessType;
 
-use crate::{Device, Image, ImageDesc};
+use kajiya_backend::{vk_sync::AccessType, Device, Image, ImageDesc};
 
 use super::{
     Buffer, BufferDesc, ExportableGraphResource, ExportedHandle, Handle, RenderGraph, Resource,
@@ -52,7 +51,7 @@ pub(crate) enum ExportedResourceHandle {
 pub(crate) enum TemporalResourceState {
     Inert {
         resource: TemporalResource,
-        access_type: vk_sync::AccessType,
+        access_type: AccessType,
     },
     Imported {
         resource: TemporalResource,

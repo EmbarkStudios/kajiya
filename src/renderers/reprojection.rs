@@ -1,30 +1,9 @@
-use std::sync::Arc;
-
-use glam::Vec2;
 use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
-    backend::{buffer::*, image::*, ray_tracing::RayTracingAcceleration},
-    rg::{self, SimpleRenderPass},
-    vk_sync::{self, AccessType},
-    Device,
+    vk_sync::AccessType,
+    vulkan::image::*,
 };
-use rg::GetOrCreateTemporal;
-
-/*        let mut cascade0_integr = rg
-            .get_or_create_temporal(
-                "csgi.cascade0_integr",
-                ImageDesc::new_3d(
-                    vk::Format::R16G16B16A16_SFLOAT,
-                    [
-                        VOLUME_DIMS * SLICE_COUNT as u32,
-                        9 * VOLUME_DIMS,
-                        VOLUME_DIMS,
-                    ],
-                )
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            )
-            .unwrap();
-*/
+use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
 
 pub fn copy_depth(
     rg: &mut rg::RenderGraph,

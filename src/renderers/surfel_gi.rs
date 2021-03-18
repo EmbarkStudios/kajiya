@@ -3,14 +3,13 @@ use std::mem::size_of;
 
 use kajiya_backend::{
     ash::vk,
-    backend::{
+    vulkan::{
         buffer::{Buffer, BufferDesc},
         image::*,
         ray_tracing::RayTracingAcceleration,
     },
-    rg::{self, SimpleRenderPass},
 };
-use rg::GetOrCreateTemporal;
+use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
 use vk::BufferUsageFlags;
 
 use super::GbufferDepth;

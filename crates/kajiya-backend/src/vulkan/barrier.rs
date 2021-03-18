@@ -62,14 +62,13 @@ impl ImageBarrier {
 }
 
 // From vk_sync
-#[allow(dead_code)]
-pub(crate) struct AccessInfo {
-    pub(crate) stage_mask: vk::PipelineStageFlags,
-    pub(crate) access_mask: vk::AccessFlags,
-    pub(crate) image_layout: vk::ImageLayout,
+pub struct AccessInfo {
+    pub stage_mask: vk::PipelineStageFlags,
+    pub access_mask: vk::AccessFlags,
+    pub image_layout: vk::ImageLayout,
 }
 
-pub(crate) fn get_access_info(access_type: AccessType) -> AccessInfo {
+pub fn get_access_info(access_type: AccessType) -> AccessInfo {
     match access_type {
         AccessType::Nothing => AccessInfo {
             stage_mask: vk::PipelineStageFlags::empty(),

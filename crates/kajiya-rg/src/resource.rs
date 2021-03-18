@@ -1,5 +1,5 @@
-use crate::backend::ray_tracing::RayTracingAcceleration;
-pub use crate::backend::{
+use kajiya_backend::vulkan::ray_tracing::RayTracingAcceleration;
+pub use kajiya_backend::vulkan::{
     buffer::{Buffer, BufferDesc},
     image::*,
 };
@@ -9,16 +9,14 @@ use super::resource_registry::{AnyRenderResource, AnyRenderResourceRef};
 
 pub trait Resource {
     type Desc: ResourceDesc;
-    type Impl;
 
-    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl;
+    fn borrow_resource(res: &AnyRenderResource) -> &Self;
 }
 
 impl Resource for Image {
     type Desc = ImageDesc;
-    type Impl = crate::backend::image::Image; // TODO: nuke
 
-    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
+    fn borrow_resource(res: &AnyRenderResource) -> &Self {
         match res.borrow() {
             AnyRenderResourceRef::Image(img) => img,
             _ => unimplemented!(),
@@ -28,9 +26,8 @@ impl Resource for Image {
 
 impl Resource for Buffer {
     type Desc = BufferDesc;
-    type Impl = crate::backend::buffer::Buffer; // TODO: nuke
 
-    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
+    fn borrow_resource(res: &AnyRenderResource) -> &Self {
         match res.borrow() {
             AnyRenderResourceRef::Buffer(buffer) => buffer,
             _ => unimplemented!(),
@@ -43,9 +40,8 @@ pub struct RayTracingAccelerationDesc;
 
 impl Resource for RayTracingAcceleration {
     type Desc = RayTracingAccelerationDesc;
-    type Impl = crate::backend::ray_tracing::RayTracingAcceleration; // TODO: nuke
 
-    fn borrow_resource(res: &AnyRenderResource) -> &Self::Impl {
+    fn borrow_resource(res: &AnyRenderResource) -> &Self {
         match res.borrow() {
             AnyRenderResourceRef::RayTracingAcceleration(inner) => inner,
             _ => unimplemented!(),
@@ -140,7 +136,6 @@ impl<ResType: Resource> PartialEq for Handle<ResType> {
 }
 
 impl<ResType: Resource> Handle<ResType> {
-    #[allow(dead_code)]
     pub fn desc(&self) -> &<ResType as Resource>::Desc {
         &self.desc
     }
@@ -164,7 +159,6 @@ pub struct Ref<ResType: Resource, ViewType: GpuViewType> {
 }
 
 impl<ResType: Resource, ViewType: GpuViewType> Ref<ResType, ViewType> {
-    #[allow(dead_code)]
     pub fn desc(&self) -> &<ResType as Resource>::Desc {
         &self.desc
     }

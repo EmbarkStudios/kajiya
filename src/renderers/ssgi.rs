@@ -1,11 +1,6 @@
-use kajiya_backend::{
-    ash::vk,
-    backend::image::*,
-    rg::{self, SimpleRenderPass},
-};
-use rg::TemporalRenderGraph;
-
 use super::{GbufferDepth, PingPongTemporalResource};
+use kajiya_backend::{ash::vk, vulkan::image::*};
+use kajiya_rg::{self as rg, SimpleRenderPass, TemporalRenderGraph};
 
 pub struct SsgiRenderer {
     ssgi_tex: PingPongTemporalResource,

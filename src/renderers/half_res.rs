@@ -1,8 +1,5 @@
-use kajiya_backend::{
-    ash::vk,
-    backend::image::*,
-    rg::{self, SimpleRenderPass},
-};
+use kajiya_backend::{ash::vk, vulkan::image::*};
+use kajiya_rg::{self as rg, SimpleRenderPass};
 
 pub fn extract_half_res_gbuffer_view_normal_rgba8(
     rg: &mut rg::RenderGraph,

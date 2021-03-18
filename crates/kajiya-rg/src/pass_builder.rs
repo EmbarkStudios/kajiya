@@ -1,15 +1,19 @@
+use crate::RenderPassApi;
+
 use super::{
-    graph::{RecordedPass, RenderGraph},
+    graph::{
+        PassResourceAccessType, PassResourceRef, RecordedPass, RenderGraph, RgComputePipeline,
+        RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle, RgRtPipeline,
+        RgRtPipelineHandle, TypeEquals,
+    },
     resource::*,
-    PassResourceAccessType, PassResourceRef, RenderPassApi, RgComputePipeline,
-    RgComputePipelineHandle, RgRasterPipeline, RgRasterPipelineHandle, RgRtPipeline,
-    RgRtPipelineHandle, TypeEquals,
 };
 
-use crate::backend::{ray_tracing::RayTracingPipelineDesc, shader::*};
+use kajiya_backend::{
+    vk_sync::{self, AccessType},
+    vulkan::{ray_tracing::RayTracingPipelineDesc, shader::*},
+};
 use std::{marker::PhantomData, path::Path};
-
-pub use vk_sync::AccessType;
 
 pub struct PassBuilder<'rg> {
     pub(crate) rg: &'rg mut RenderGraph,
@@ -24,7 +28,6 @@ impl<'s> Drop for PassBuilder<'s> {
     }
 }
 
-#[allow(dead_code)]
 impl<'rg> PassBuilder<'rg> {
     pub fn create<Desc: ResourceDesc>(
         &mut self,

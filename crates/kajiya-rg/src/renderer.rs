@@ -1,22 +1,24 @@
 use crate::{
-    backend::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
-    rg,
-    rg::CompiledRenderGraph,
-    rg::{
-        ExportedTemporalRenderGraphState, RenderGraphExecutionParams, RetiredRenderGraph,
-        TemporalRenderGraph, TemporalRenderGraphState,
-    },
+    CompiledRenderGraph, ExportedHandle, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
+    RenderGraphExecutionParams, RetiredRenderGraph, TemporalRenderGraph, TemporalRenderGraphState,
+    TemporalResourceState,
+};
+use kajiya_backend::{
+    ash::{version::DeviceV1_0, vk},
+    dynamic_constants::*,
+    gpu_allocator::MemoryLocation,
+    pipeline_cache::*,
+    rspirv_reflect,
     transient_resource_cache::TransientResourceCache,
+    vk_sync,
+    vulkan::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
     Device,
 };
-use crate::{dynamic_constants::*, pipeline_cache::*};
-use ash::{version::DeviceV1_0, vk};
-use backend::buffer::{Buffer, BufferDesc};
-use gpu_allocator::MemoryLocation;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
+use vulkan::buffer::{Buffer, BufferDesc};
 
 enum TemporalRg {
     Inert(TemporalRenderGraphState),
@@ -39,7 +41,7 @@ pub struct Renderer {
     present_shader: ComputePipeline,
 
     compiled_rg: Option<CompiledRenderGraph>,
-    rg_output_tex: Option<rg::ExportedHandle<Image>>,
+    rg_output_tex: Option<ExportedHandle<Image>>,
     temporal_rg_state: TemporalRg,
 }
 
@@ -68,7 +70,7 @@ pub trait RenderClient<FrameState: 'static> {
         &mut self,
         rg: &mut TemporalRenderGraph,
         frame_state: &FrameState,
-    ) -> rg::ExportedHandle<Image>;
+    ) -> ExportedHandle<Image>;
 
     fn prepare_frame_constants(
         &mut self,
@@ -81,7 +83,7 @@ pub trait RenderClient<FrameState: 'static> {
 
 impl Renderer {
     pub fn new(backend: RenderBackend) -> anyhow::Result<Self> {
-        let present_shader = backend::presentation::create_present_compute_shader(&*backend.device);
+        let present_shader = vulkan::presentation::create_present_compute_shader(&*backend.device);
 
         let dynamic_constants = DynamicConstants::new({
             backend
@@ -319,7 +321,7 @@ impl Renderer {
 
         rg.predefined_descriptor_set_layouts.insert(
             2,
-            rg::PredefinedDescriptorSet {
+            PredefinedDescriptorSet {
                 bindings: FRAME_CONSTANTS_LAYOUT.clone(),
             },
         );
@@ -352,10 +354,10 @@ impl Renderer {
                     #[allow(clippy::map_entry)]
                     if !self_temporal_rg_state.resources.contains_key(&res_key) {
                         let res = match res {
-                            res @ rg::TemporalResourceState::Inert { .. } => res,
-                            rg::TemporalResourceState::Imported { resource, .. }
-                            | rg::TemporalResourceState::Exported { resource, .. } => {
-                                rg::TemporalResourceState::Inert {
+                            res @ TemporalResourceState::Inert { .. } => res,
+                            TemporalResourceState::Imported { resource, .. }
+                            | TemporalResourceState::Exported { resource, .. } => {
+                                TemporalResourceState::Inert {
                                     resource,
                                     access_type: vk_sync::AccessType::Nothing,
                                 }

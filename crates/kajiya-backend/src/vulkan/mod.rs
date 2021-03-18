@@ -7,7 +7,6 @@ pub mod physical_device;
 pub mod presentation;
 pub mod profiler;
 pub mod ray_tracing;
-pub mod resource_storage;
 pub mod shader;
 pub mod surface;
 pub mod swapchain;

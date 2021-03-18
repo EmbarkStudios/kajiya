@@ -14,10 +14,9 @@ use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use std::{collections::HashMap, sync::Arc};
 
-#[allow(dead_code)]
 pub struct Queue {
-    pub(crate) raw: vk::Queue,
-    pub(crate) family: QueueFamily,
+    pub raw: vk::Queue,
+    pub family: QueueFamily,
 }
 
 pub trait DeferredRelease: Copy {
@@ -56,7 +55,7 @@ pub struct DeviceFrame {
 
 pub struct CommandBuffer {
     pub raw: vk::CommandBuffer,
-    pub(crate) submit_done_fence: vk::Fence,
+    pub submit_done_fence: vk::Fence,
     //pool: vk::CommandPool,
 }
 
@@ -127,15 +126,17 @@ pub struct Device {
     pub raw: ash::Device,
     pub(crate) pdevice: Arc<PhysicalDevice>,
     pub(crate) instance: Arc<super::instance::Instance>,
-    pub(crate) universal_queue: Queue,
+    pub universal_queue: Queue,
     pub(crate) global_allocator: Arc<Mutex<VulkanAllocator>>,
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) cmd_ext: CmdExt,
     pub(crate) setup_cb: Mutex<CommandBuffer>,
-    pub(crate) acceleration_structure_ext: khr::AccelerationStructure,
-    pub(crate) ray_tracing_pipeline_ext: khr::RayTracingPipeline,
-    // pub(crate) ray_query_ext: khr::RayQuery,
-    pub(crate) ray_tracing_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+
+    pub acceleration_structure_ext: khr::AccelerationStructure,
+    pub ray_tracing_pipeline_ext: khr::RayTracingPipeline,
+    // pub ray_query_ext: khr::RayQuery,
+    pub ray_tracing_pipeline_properties: vk::PhysicalDeviceRayTracingPipelinePropertiesKHR,
+
     frames: [Mutex<Arc<DeviceFrame>>; 2],
 }
 unsafe impl Send for Device {}

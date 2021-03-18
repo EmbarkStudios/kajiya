@@ -1,29 +1,28 @@
 use crate::{asset::mesh::PackedTriMesh, renderers::rtdgi::RtdgiRenderer};
 use crate::{
     asset::mesh::PackedVertex,
-    backend::{self, image::*, shader::*, RenderBackend},
     camera::CameraMatrices,
     dynamic_constants::DynamicConstants,
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
-    renderer::*,
     renderers::{csgi2::Csgi2Renderer, rtr::*, ssgi::*, GbufferDepth},
-    rg::{self, RetiredRenderGraph},
     viewport::ViewConstants,
+    vulkan::{self, image::*, shader::*, RenderBackend},
     FrameState,
 };
 use crate::{
     asset::mesh::{AssetRef, GpuImage},
     renderers::taa::TaaRenderer,
 };
-use backend::buffer::{Buffer, BufferDesc};
 use glam::{Vec2, Vec3};
 use kajiya_backend::{
     ash::{
         version::DeviceV1_0,
         vk::{self, ImageView},
     },
-    backend::{
+    rspirv_reflect,
+    vk_sync::{self, AccessType},
+    vulkan::{
         device,
         ray_tracing::{
             RayTracingAcceleration, RayTracingBottomAccelerationDesc, RayTracingGeometryDesc,
@@ -31,14 +30,14 @@ use kajiya_backend::{
             RayTracingTopAccelerationDesc,
         },
     },
-    rspirv_reflect,
-    vk_sync::{self, AccessType},
 };
+use kajiya_rg::{self as rg, renderer::*, RetiredRenderGraph};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use rg::GetOrCreateTemporal;
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
+use vulkan::buffer::{Buffer, BufferDesc};
 use winit::VirtualKeyCode;
 
 #[repr(C)]
@@ -505,7 +504,7 @@ impl VickiRenderClient {
             rtr: RtrRenderer::new(backend.device.as_ref()),
             csgi2: Csgi2Renderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
-            taa: TaaRenderer::new(backend.device.as_ref()),
+            taa: TaaRenderer::new(),
 
             debug_mode: RenderDebugMode::None,
 
@@ -746,7 +745,7 @@ impl VickiRenderClient {
 impl VickiRenderClient {
     fn prepare_render_graph_standard(
         &mut self,
-        rg: &mut crate::rg::TemporalRenderGraph,
+        rg: &mut rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
         let tlas = rg.import(
@@ -887,7 +886,7 @@ impl VickiRenderClient {
 
     fn prepare_render_graph_reference(
         &mut self,
-        rg: &mut crate::rg::TemporalRenderGraph,
+        rg: &mut rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
         let mut accum_img = rg
@@ -933,7 +932,7 @@ impl VickiRenderClient {
         )
     }
 
-    fn render_ui(&mut self, rg: &mut crate::rg::RenderGraph, target_img: &mut rg::Handle<Image>) {
+    fn render_ui(&mut self, rg: &mut rg::RenderGraph, target_img: &mut rg::Handle<Image>) {
         if let Some((ui_renderer, image)) = self.ui_frame.take() {
             let mut ui_tex = rg.import(image, AccessType::Nothing);
             let mut pass = rg.add_pass("render ui");
@@ -978,7 +977,7 @@ lazy_static::lazy_static! {
 impl RenderClient<FrameState> for VickiRenderClient {
     fn prepare_render_graph(
         &mut self,
-        rg: &mut crate::rg::TemporalRenderGraph,
+        rg: &mut rg::TemporalRenderGraph,
         frame_state: &FrameState,
     ) -> rg::ExportedHandle<Image> {
         rg.predefined_descriptor_set_layouts.insert(

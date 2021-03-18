@@ -121,6 +121,7 @@ impl FirstPersonCamera {
         }
     }
 
+    #[allow(dead_code)]
     pub fn look_at(&mut self, target: Vec3) {
         let q = Mat4::look_at_rh(self.position, target, Vec3::unit_y())
             .to_scale_rotation_translation()

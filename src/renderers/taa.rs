@@ -1,15 +1,7 @@
-use std::sync::Arc;
-
+use super::PingPongTemporalResource;
 use glam::Vec2;
-use kajiya_backend::{
-    ash::vk,
-    backend::{buffer::*, image::*, ray_tracing::RayTracingAcceleration},
-    rg::{self, SimpleRenderPass},
-    vk_sync, Device,
-};
-use rg::GetOrCreateTemporal;
-
-use super::{csgi2, GbufferDepth, PingPongTemporalResource};
+use kajiya_backend::{ash::vk, vulkan::image::*};
+use kajiya_rg::{self as rg, SimpleRenderPass};
 
 pub struct TaaRenderer {
     temporal_tex: PingPongTemporalResource,
@@ -17,7 +9,7 @@ pub struct TaaRenderer {
 }
 
 impl TaaRenderer {
-    pub fn new(device: &Device) -> Self {
+    pub fn new() -> Self {
         Self {
             temporal_tex: PingPongTemporalResource::new("taa"),
             current_supersample_offset: Vec2::zero(),

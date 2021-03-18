@@ -2,10 +2,12 @@ use std::sync::Arc;
 
 use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
-    backend::ray_tracing::RayTracingAcceleration,
+    vk_sync::AccessType,
+    vulkan::ray_tracing::RayTracingAcceleration,
 };
+use kajiya_rg::*;
 
-use crate::{backend::image::ImageViewDesc, backend::shader::*, renderers::csgi2, rg::*};
+use crate::{renderers::csgi2, vulkan::image::ImageViewDesc, vulkan::shader::*};
 
 pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
     let mut pass = rg.add_pass("clear depth");

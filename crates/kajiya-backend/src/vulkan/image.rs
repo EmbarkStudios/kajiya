@@ -7,7 +7,6 @@ use parking_lot::Mutex;
 use std::collections::HashMap;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ImageType {
     Tex1d = 0,
     Tex1dArray = 1,
@@ -35,7 +34,6 @@ fn mip_count_1d(extent: u32) -> u16 {
     (32 - extent.leading_zeros()) as u16
 }
 
-#[allow(dead_code)]
 impl ImageDesc {
     pub fn new(format: vk::Format, image_type: ImageType, extent: [u32; 3]) -> Self {
         Self {
@@ -156,12 +154,11 @@ pub struct ImageSubResourceData<'a> {
     pub slice_pitch: usize,
 }
 
-#[allow(dead_code)]
 pub struct Image {
     pub raw: vk::Image,
     pub desc: ImageDesc,
     pub views: Mutex<HashMap<ImageViewDesc, vk::ImageView>>,
-    allocation: gpu_allocator::SubAllocation,
+    //allocation: gpu_allocator::SubAllocation,
 }
 unsafe impl Send for Image {}
 unsafe impl Sync for Image {}
@@ -199,7 +196,6 @@ pub struct ImageViewDesc {
 }
 
 impl ImageViewDesc {
-    #[allow(dead_code)]
     pub fn builder() -> ImageViewDescBuilder {
         Default::default()
     }
@@ -343,7 +339,7 @@ impl Device {
         ImageHandle(handle)*/
         Ok(Image {
             raw: image,
-            allocation,
+            //allocation,
             desc,
             views: Default::default(),
         })

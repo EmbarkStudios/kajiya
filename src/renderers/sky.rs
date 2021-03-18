@@ -1,8 +1,5 @@
-use kajiya_backend::{
-    ash::vk,
-    backend::image::*,
-    rg::{self, SimpleRenderPass},
-};
+use kajiya_backend::{ash::vk, vulkan::image::*};
+use kajiya_rg::{self as rg, SimpleRenderPass};
 
 pub fn render_sky_cube(rg: &mut rg::RenderGraph) -> rg::Handle<Image> {
     let width = 32;

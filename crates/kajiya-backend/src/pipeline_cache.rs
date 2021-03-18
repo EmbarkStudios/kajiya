@@ -1,8 +1,8 @@
-use crate::backend::{
+use crate::shader_compiler::{CompileShader, CompiledShader};
+use crate::vulkan::{
     ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
     shader::*,
 };
-use crate::shader_compiler::{CompileShader, CompiledShader};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
@@ -286,7 +286,7 @@ impl PipelineCache {
 
     pub fn prepare_frame(
         &mut self,
-        device: &Arc<crate::backend::device::Device>,
+        device: &Arc<crate::vulkan::device::Device>,
     ) -> anyhow::Result<()> {
         self.invalidate_stale_pipelines();
         self.parallel_compile_shaders()?;

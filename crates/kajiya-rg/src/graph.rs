@@ -3,33 +3,34 @@
 use super::{
     pass_builder::PassBuilder,
     resource::*,
-    resource_registry::AnyRenderResourceRef,
-    resource_registry::RegistryResource,
-    resource_registry::{AnyRenderResource, ResourceRegistry},
+    resource_registry::{
+        AnyRenderResource, AnyRenderResourceRef, RegistryResource, ResourceRegistry,
+    },
     RenderPassApi,
 };
 
-use crate::{
-    backend::barrier::get_access_info,
-    backend::barrier::image_aspect_mask_from_access_type_and_format,
-    backend::barrier::record_image_barrier,
-    backend::barrier::ImageBarrier,
-    backend::device::{CommandBuffer, Device},
-    backend::image::ImageViewDesc,
-    backend::shader::ComputePipelineDesc,
-    backend::shader::PipelineShader,
-    backend::{
+use kajiya_backend::{
+    ash::{version::DeviceV1_0, vk},
+    dynamic_constants::DynamicConstants,
+    gpu_profiler,
+    pipeline_cache::{
+        ComputePipelineHandle, PipelineCache, RasterPipelineHandle, RtPipelineHandle,
+    },
+    rspirv_reflect,
+    transient_resource_cache::TransientResourceCache,
+    vk_sync,
+    vulkan::{
+        barrier::{
+            get_access_info, image_aspect_mask_from_access_type_and_format, record_image_barrier,
+            ImageBarrier,
+        },
+        device::{CommandBuffer, Device},
+        image::ImageViewDesc,
         profiler::VkProfilerData,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::RasterPipelineDesc,
+        shader::{ComputePipelineDesc, PipelineShader, RasterPipelineDesc},
     },
-    dynamic_constants::DynamicConstants,
-    pipeline_cache::ComputePipelineHandle,
-    pipeline_cache::PipelineCache,
-    pipeline_cache::{RasterPipelineHandle, RtPipelineHandle},
-    transient_resource_cache::TransientResourceCache,
 };
-use ash::{version::DeviceV1_0, vk};
 use parking_lot::Mutex;
 use std::{
     collections::HashMap,
@@ -672,7 +673,7 @@ impl CompiledRenderGraph {
 
         for (pass_idx, pass) in self.rg.passes.into_iter().enumerate() {
             let vk_query_idx = {
-                let query_id = crate::gpu_profiler::create_gpu_query(pass.name.as_str(), pass_idx);
+                let query_id = gpu_profiler::create_gpu_query(pass.name.as_str(), pass_idx);
                 let vk_query_idx = params.profiler_data.get_query_id(query_id);
 
                 unsafe {
@@ -806,7 +807,7 @@ impl RetiredRenderGraph {
     pub fn exported_resource<Res: Resource>(
         &self,
         handle: ExportedHandle<Res>,
-    ) -> (&Res::Impl, vk_sync::AccessType) {
+    ) -> (&Res, vk_sync::AccessType) {
         let reg_resource = &self.resources[handle.raw.id as usize];
         (
             <Res as Resource>::borrow_resource(&reg_resource.resource),

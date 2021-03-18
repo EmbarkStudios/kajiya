@@ -1,28 +1,25 @@
-use ash::vk;
-
 use super::{
     graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle,
     RgRasterPipelineHandle, RgRtPipelineHandle,
 };
-use crate::{
-    backend::image::ImageViewDesc,
-    backend::shader::ComputePipeline,
-    backend::{
-        ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
-        shader::RasterPipeline,
-    },
+use kajiya_backend::{
+    ash::vk,
     dynamic_constants::DynamicConstants,
-    pipeline_cache::ComputePipelineHandle,
-    pipeline_cache::{RasterPipelineHandle, RtPipelineHandle},
+    pipeline_cache::{ComputePipelineHandle, RasterPipelineHandle, RtPipelineHandle},
+    vk_sync,
+    vulkan::{
+        ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
+        shader::{ComputePipeline, RasterPipeline},
+    },
 };
 use std::sync::Arc;
 
 pub enum AnyRenderResource {
-    OwnedImage(crate::backend::image::Image),
-    ImportedImage(Arc<crate::backend::image::Image>),
-    OwnedBuffer(crate::backend::buffer::Buffer),
-    ImportedBuffer(Arc<crate::backend::buffer::Buffer>),
-    ImportedRayTracingAcceleration(Arc<crate::backend::ray_tracing::RayTracingAcceleration>),
+    OwnedImage(Image),
+    ImportedImage(Arc<Image>),
+    OwnedBuffer(Buffer),
+    ImportedBuffer(Arc<Buffer>),
+    ImportedRayTracingAcceleration(Arc<RayTracingAcceleration>),
 }
 
 impl AnyRenderResource {
@@ -40,9 +37,9 @@ impl AnyRenderResource {
 }
 
 pub enum AnyRenderResourceRef<'a> {
-    Image(&'a crate::backend::image::Image),
-    Buffer(&'a crate::backend::buffer::Buffer),
-    RayTracingAcceleration(&'a crate::backend::ray_tracing::RayTracingAcceleration),
+    Image(&'a Image),
+    Buffer(&'a Buffer),
+    RayTracingAcceleration(&'a RayTracingAcceleration),
 }
 
 pub(crate) struct RegistryResource {

@@ -1,13 +1,15 @@
-use ash::vk;
-use vk_sync::AccessType;
-
-use crate::{
-    backend::{
+use kajiya_backend::{
+    ash::vk,
+    dynamic_constants,
+    vk_sync::AccessType,
+    vulkan::{
         image::*,
+        ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
         shader::{PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
     },
-    Image,
 };
+
+use crate::Image;
 
 use super::{
     BindRgRef, Buffer, GpuSrv, GpuUav, Handle, PassBuilder, Ref, RenderPassApi, RenderPassBinding,
@@ -17,7 +19,7 @@ use super::{
 trait ConstBlob {
     fn push_self(
         self: Box<Self>,
-        dynamic_constants: &mut crate::dynamic_constants::DynamicConstants,
+        dynamic_constants: &mut dynamic_constants::DynamicConstants,
     ) -> u32;
 }
 
@@ -27,7 +29,7 @@ where
 {
     fn push_self(
         self: Box<Self>,
-        dynamic_constants: &mut crate::dynamic_constants::DynamicConstants,
+        dynamic_constants: &mut dynamic_constants::DynamicConstants,
     ) -> u32 {
         dynamic_constants.push(self.as_ref())
     }
@@ -160,8 +162,7 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
 
         let pipeline = pass.register_ray_tracing_pipeline(
             &shaders,
-            crate::backend::ray_tracing::RayTracingPipelineDesc::default()
-                .max_pipeline_ray_recursion_depth(1),
+            RayTracingPipelineDesc::default().max_pipeline_ray_recursion_depth(1),
         );
 
         Self {
@@ -170,11 +171,7 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
         }
     }
 
-    pub fn trace_rays(
-        mut self,
-        tlas: &Handle<crate::backend::ray_tracing::RayTracingAcceleration>,
-        extent: [u32; 3],
-    ) {
+    pub fn trace_rays(mut self, tlas: &Handle<RayTracingAcceleration>, extent: [u32; 3]) {
         let tlas_ref = self.pass.read(tlas, AccessType::AnyShaderReadOther);
         let mut state = self.state;
 
@@ -193,7 +190,7 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
 
     pub fn trace_rays_indirect(
         mut self,
-        tlas: &Handle<crate::backend::ray_tracing::RayTracingAcceleration>,
+        tlas: &Handle<RayTracingAcceleration>,
         args_buffer: &Handle<Buffer>,
         args_buffer_offset: u64,
     ) {
