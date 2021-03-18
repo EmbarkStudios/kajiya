@@ -7,7 +7,10 @@ use kajiya_backend::{
 };
 use kajiya_rg::*;
 
-use crate::{renderers::csgi2, vulkan::image::ImageViewDesc, vulkan::shader::*};
+use crate::{
+    renderers::csgi2,
+    vulkan::{image::ImageViewDesc, shader::*},
+};
 
 pub fn clear_depth(rg: &mut RenderGraph, img: &mut Handle<Image>) {
     let mut pass = rg.add_pass("clear depth");

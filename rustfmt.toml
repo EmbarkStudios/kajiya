@@ -1,0 +1,2 @@
+# imports_granularity = "Crate"
+merge_imports = true
