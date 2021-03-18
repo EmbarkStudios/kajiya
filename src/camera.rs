@@ -87,7 +87,7 @@ impl From<&InputState> for FirstPersonCameraInput {
             move_vec += Vec3::unit_y() * 1.0;
         }
 
-        move_vec *= 0.25;
+        move_vec *= 0.5;
 
         if input_state.keys.is_down(VirtualKeyCode::LControl) {
             move_vec *= 0.1;
