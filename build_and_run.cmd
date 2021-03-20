@@ -3,7 +3,7 @@
 set SMOL_THREADS=64
 rem cargo run --bin kajiya --release -- --scene %* --width 1920 --height 1080
 
-cargo run --bin kajiya --release -- --scene 336_lrm --y-offset=-0.001 --width 1920 --height 1080
+cargo run --bin kajiya --release -- --scene sponza --y-offset=-0.001 --width 1920 --height 1080
 rem --width 2560 --height 1440
 rem --no-vsync
 rem

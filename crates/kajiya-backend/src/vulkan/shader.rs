@@ -563,6 +563,7 @@ pub struct FramebufferCache {
     entries: Mutex<HashMap<FramebufferCacheKey, vk::Framebuffer>>,
     attachment_desc: ArrayVec<[RenderPassAttachmentDesc; MAX_COLOR_ATTACHMENTS + 1]>,
     render_pass: vk::RenderPass,
+    color_attachment_count: usize,
 }
 
 impl FramebufferCache {
@@ -585,6 +586,7 @@ impl FramebufferCache {
             entries: Default::default(),
             attachment_desc,
             render_pass,
+            color_attachment_count: color_attachments.len(),
         }
     }
 
@@ -872,16 +874,22 @@ pub fn create_raster_pipeline(
             max_depth_bounds: 1.0,
             ..Default::default()
         };
-        let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
-            blend_enable: 0,
-            src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
-            dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
-            color_blend_op: vk::BlendOp::ADD,
-            src_alpha_blend_factor: vk::BlendFactor::ZERO,
-            dst_alpha_blend_factor: vk::BlendFactor::ZERO,
-            alpha_blend_op: vk::BlendOp::ADD,
-            color_write_mask: vk::ColorComponentFlags::all(),
-        }];
+
+        let color_attachment_count = desc.render_pass.framebuffer_cache.color_attachment_count;
+
+        let color_blend_attachment_states = vec![
+            vk::PipelineColorBlendAttachmentState {
+                blend_enable: 0,
+                src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
+                dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
+                color_blend_op: vk::BlendOp::ADD,
+                src_alpha_blend_factor: vk::BlendFactor::ZERO,
+                dst_alpha_blend_factor: vk::BlendFactor::ZERO,
+                alpha_blend_op: vk::BlendOp::ADD,
+                color_write_mask: vk::ColorComponentFlags::all(),
+            };
+            color_attachment_count
+        ];
         let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
             .attachments(&color_blend_attachment_states);
 

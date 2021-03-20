@@ -313,6 +313,7 @@ pub fn raster_meshes(
     render_pass: Arc<RenderPass>,
     depth_img: &mut Handle<Image>,
     color_img: &mut Handle<Image>,
+    velocity_img: &mut Handle<Image>,
     mesh_data: RasterMeshesData<'_>,
 ) {
     let mut pass = rg.add_pass("raster simple");
@@ -335,7 +336,7 @@ pub fn raster_meshes(
         RasterPipelineDesc::builder()
             .render_pass(render_pass.clone())
             .face_cull(true)
-            .push_constants_bytes(16),
+            .push_constants_bytes(7 * std::mem::size_of::<u32>()),
     );
 
     let meshes: Vec<UploadedTriMesh> = mesh_data.meshes.to_vec();
@@ -343,6 +344,7 @@ pub fn raster_meshes(
 
     let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
+    let velocity_ref = pass.raster(velocity_img, AccessType::ColorAttachmentWrite);
 
     let vertex_buffer = mesh_data.vertex_buffer.clone();
     let bindless_descriptor_set = mesh_data.bindless_descriptor_set;
@@ -353,7 +355,10 @@ pub fn raster_meshes(
         api.begin_render_pass(
             &*render_pass,
             [width, height],
-            &[(color_ref, &ImageViewDesc::default())],
+            &[
+                (color_ref, &ImageViewDesc::default()),
+                (velocity_ref, &ImageViewDesc::default()),
+            ],
             Some((
                 depth_ref,
                 &ImageViewDesc::builder()
@@ -391,13 +396,19 @@ pub fn raster_meshes(
                     instance.position.x,
                     instance.position.y,
                     instance.position.z,
+                    instance.prev_position.x,
+                    instance.prev_position.y,
+                    instance.prev_position.z,
                 );
 
                 pipeline.push_constants(
                     cb.raw,
                     vk::ShaderStageFlags::ALL_GRAPHICS,
                     0,
-                    std::slice::from_raw_parts(&push_constants as *const _ as *const u8, 16),
+                    std::slice::from_raw_parts(
+                        &push_constants as *const _ as *const u8,
+                        std::mem::size_of_val(&push_constants),
+                    ),
                 );
 
                 raw_device.cmd_draw_indexed(cb.raw, mesh.index_count, 1, 0, 0, 0);

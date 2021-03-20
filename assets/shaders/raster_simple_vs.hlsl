@@ -6,6 +6,7 @@
 struct {
     uint mesh_index;
     float instance_position[3];
+    float prev_instance_position[3];
 } push_constants;
 
 struct VsOut {
@@ -16,7 +17,8 @@ struct VsOut {
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
     [[vk::location(4)]] float3 tangent: TEXCOORD4;
     [[vk::location(5)]] float3 bitangent: TEXCOORD5;
-    [[vk::location(6)]] float3 pos: TEXCOORD6;
+    [[vk::location(6)]] float3 vs_pos: TEXCOORD6;
+    [[vk::location(7)]] float3 prev_vs_pos: TEXCOORD7;
 };
 
 VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
@@ -46,6 +48,10 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(ws_pos, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
+    float3 prev_ws_pos = v.position + float3(push_constants.prev_instance_position);
+    float4 prev_vs_pos = mul(frame_constants.view_constants.world_to_view, float4(prev_ws_pos, 1.0));
+    //float4 prev_cs_pos = mul(frame_constants.view_constants.view_to_sample, prev_vs_pos);
+
     vsout.position = cs_pos;
     vsout.color = 1.0;
     vsout.uv = uv;
@@ -54,7 +60,8 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     vsout.tangent = v_tangent_packed.xyz;
     vsout.bitangent = normalize(cross(v.normal, vsout.tangent) * v_tangent_packed.w);
 
-    vsout.pos = vs_pos.xyz / vs_pos.w;
+    vsout.vs_pos = vs_pos.xyz / vs_pos.w;
+    vsout.prev_vs_pos = prev_vs_pos.xyz / prev_vs_pos.w;
 
     return vsout;
 }

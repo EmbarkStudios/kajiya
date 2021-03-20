@@ -59,6 +59,7 @@ pub fn copy_depth(
 pub fn calculate_reprojection_map(
     rg: &mut rg::TemporalRenderGraph,
     depth: &rg::Handle<Image>,
+    velocity_img: &rg::Handle<Image>,
 ) -> rg::Handle<Image> {
     let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
@@ -77,6 +78,7 @@ pub fn calculate_reprojection_map(
     )
     .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
     .read_aspect(&prev_depth, vk::ImageAspectFlags::DEPTH)
+    .read(velocity_img)
     .write(&mut output_tex)
     .constants(output_tex.desc().extent_inv_extent_2d())
     .dispatch(output_tex.desc().extent);

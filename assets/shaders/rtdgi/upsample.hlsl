@@ -62,6 +62,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         const float rel_std_dev = ssgi_tex[px].a;
         //const int sample_count = int(lerp(6, 16, saturate(rel_std_dev)));
         const int sample_count = 8;
+        //const int sample_count = 1;
         const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
         // 0..6

@@ -3,8 +3,9 @@
 
 [[vk::binding(0)]] Texture2D<float> depth_tex;
 [[vk::binding(1)]] Texture2D<float> prev_depth_tex;
-[[vk::binding(2)]] RWTexture2D<float4> output_tex;
-[[vk::binding(3)]] cbuffer _ {
+[[vk::binding(2)]] Texture2D<float2> velocity_tex;
+[[vk::binding(3)]] RWTexture2D<float4> output_tex;
+[[vk::binding(4)]] cbuffer _ {
     float4 output_tex_size;
 };
 
@@ -36,7 +37,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     prev_cs_cur_depth /= prev_cs_cur_depth.w;
 
-    const float2 prev_uv = cs_to_uv(prev_cs_cur_depth.xy);
+    float2 prev_uv = cs_to_uv(prev_cs_cur_depth.xy);
+    if (depth_tex[px] != 0.0) {
+        prev_uv += velocity_tex[px];
+    }
     const float2 uv_diff = prev_uv - uv;
 
     float validity = all(prev_cs_cur_depth.xy == clamp(
@@ -62,6 +66,8 @@ void main(uint2 px: SV_DispatchThreadID) {
             }
         }
     }
+
+    // TODO: validity with velocity
     validity *= max_depth_validity;
 
     float2 texel_center_offset = abs(0.5 - frac(prev_uv * output_tex_size.xy));

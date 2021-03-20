@@ -71,6 +71,7 @@ const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 325;
 #[derive(Clone, Copy)]
 pub struct MeshInstance {
     pub position: Vec3,
+    pub prev_position: Vec3,
     pub mesh: MeshHandle,
 }
 
@@ -411,10 +412,12 @@ impl KajiyaRenderClient {
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
-                color_attachments: &[RenderPassAttachmentDesc::new(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                )
-                .garbage_input()],
+                color_attachments: &[
+                    // gbuffer
+                    RenderPassAttachmentDesc::new(vk::Format::R32G32B32A32_SFLOAT).garbage_input(),
+                    // velocity
+                    RenderPassAttachmentDesc::new(vk::Format::R16G16_SFLOAT).garbage_input(),
+                ],
                 depth_attachment: Some(RenderPassAttachmentDesc::new(
                     vk::Format::D24_UNORM_S8_UINT,
                 )),
@@ -708,6 +711,7 @@ impl KajiyaRenderClient {
         let handle = InstanceHandle(self.instances.len());
         self.instances.push(MeshInstance {
             position: pos,
+            prev_position: pos,
             mesh,
         });
         handle
@@ -822,7 +826,9 @@ impl KajiyaRenderClient {
             &tlas,
         );
 
-        let gbuffer_depth = {
+        let gbuffer_depth;
+        let velocity_img;
+        {
             let mut depth_img = rg.create(ImageDesc::new_2d(
                 vk::Format::D24_UNORM_S8_UINT,
                 frame_state.window_cfg.dims(),
@@ -835,12 +841,18 @@ impl KajiyaRenderClient {
             ));
             crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
+            let mut mesh_velocity_img = rg.create(ImageDesc::new_2d(
+                vk::Format::R16G16_SFLOAT,
+                frame_state.window_cfg.dims(),
+            ));
+
             if self.debug_mode != RenderDebugMode::Csgi2VoxelGrid {
                 crate::render_passes::raster_meshes(
                     rg,
                     self.raster_simple_render_pass.clone(),
                     &mut depth_img,
                     &mut gbuffer,
+                    &mut mesh_velocity_img,
                     RasterMeshesData {
                         meshes: self.meshes.as_slice(),
                         instances: self.instances.as_slice(),
@@ -859,11 +871,15 @@ impl KajiyaRenderClient {
                 );
             }
 
-            GbufferDepth::new(gbuffer, depth_img)
-        };
+            gbuffer_depth = GbufferDepth::new(gbuffer, depth_img);
+            velocity_img = mesh_velocity_img;
+        }
 
-        let reprojection_map =
-            crate::renderers::reprojection::calculate_reprojection_map(rg, &gbuffer_depth.depth);
+        let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
+            rg,
+            &gbuffer_depth.depth,
+            &velocity_img,
+        );
 
         let ssgi_tex = self
             .ssgi
@@ -989,6 +1005,12 @@ impl KajiyaRenderClient {
             .dispatch(target_img.desc().extent);
         }
     }
+
+    pub fn store_prev_mesh_transforms(&mut self) {
+        for inst in &mut self.instances {
+            inst.prev_position = inst.position;
+        }
+    }
 }
 
 lazy_static::lazy_static! {
@@ -1073,6 +1095,7 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
         if self.render_mode == RenderMode::Standard {
             let supersample_offset =
                 self.supersample_offsets[self.frame_idx as usize % self.supersample_offsets.len()];
+            //Vec2::zero();
             self.taa.current_supersample_offset = supersample_offset;
             view_constants.set_pixel_offset(supersample_offset, width, height);
         }

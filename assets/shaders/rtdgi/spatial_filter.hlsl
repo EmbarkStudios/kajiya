@@ -11,12 +11,11 @@
 #define USE_SSAO_STEERING 1
 
 [[vk::binding(0)]] Texture2D<float4> hit0_tex;
-[[vk::binding(1)]] Texture2D<float4> hit1_tex;
-[[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(3)]] Texture2D<float> half_depth_tex;
-[[vk::binding(4)]] Texture2D<float4> ssao_tex;
-[[vk::binding(5)]] RWTexture2D<float4> output_tex;
-[[vk::binding(6)]] cbuffer _ {
+[[vk::binding(1)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(2)]] Texture2D<float> half_depth_tex;
+[[vk::binding(3)]] Texture2D<float4> ssao_tex;
+[[vk::binding(4)]] RWTexture2D<float4> output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
@@ -27,10 +26,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float ex = 0;
     float ex2 = 0;
 
-    float3 center_normal_vs = half_view_normal_tex[px].rgb;
-    float center_depth = half_depth_tex[px];
-    float3 center_val = hit0_tex[px].rgb;
-    float center_ssao = ssao_tex[px * 2].a;
+    const float3 center_normal_vs = half_view_normal_tex[px].rgb;
+    const float center_depth = half_depth_tex[px];
+    const float4 center_val_valid_packed = hit0_tex[px];
+    const float3 center_val = center_val_valid_packed.rgb;
+    const float center_valid = center_val_valid_packed.a;
+    const float center_ssao = ssao_tex[px * 2].a;
 
     const float2 uv = get_uv(px, output_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
@@ -50,10 +51,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #else
 
     const int sample_count = 16;
+    //const int sample_count = 1;
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
     // 1..7
-    const uint filter_idx = 1 + uint(clamp(filter_radius_ss * 7.0, 0.0, 6.0));
+    const uint filter_idx =
+        center_valid > 0.5
+            ? 1 + uint(clamp(filter_radius_ss * 7.0, 0.0, 6.0))
+            : 7;
 
     {
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
@@ -62,10 +67,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
             const int2 sample_px = px + sample_offset;
 
-            float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
-            float sample_depth = half_depth_tex[sample_px];
-            float3 sample_val = hit0_tex[sample_px].rgb;
-            float sample_ssao = ssao_tex[sample_px * 2].a;
+            const float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
+            const float sample_depth = half_depth_tex[sample_px];
+            const float3 sample_val = hit0_tex[sample_px].rgb;
+            const float sample_ssao = ssao_tex[sample_px * 2].a;
 
             if (sample_depth != 0) {
                 float wt = 1;

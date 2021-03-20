@@ -13,17 +13,23 @@ struct PsIn {
     [[vk::location(3)]] nointerpolation uint material_id: TEXCOORD3;
     [[vk::location(4)]] float3 tangent: TEXCOORD4;
     [[vk::location(5)]] float3 bitangent: TEXCOORD5;
-    [[vk::location(6)]] float3 pos: TEXCOORD6;
+    [[vk::location(6)]] float3 vs_pos: TEXCOORD6;
+    [[vk::location(7)]] float3 prev_vs_pos: TEXCOORD7;
 };
 
 [[vk::push_constant]]
 struct {
     uint mesh_index;
     float instance_position[3];
+    float prev_instance_position[3];
 } push_constants;
 
+struct PsOut {
+    float4 gbuffer: SV_TARGET0;
+    float2 velocity: SV_TARGET1;
+};
 
-float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
+PsOut main(PsIn ps) {
     Mesh mesh = meshes[push_constants.mesh_index];
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * sizeof(MeshMaterial));
 
@@ -54,8 +60,8 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
 
     if (!true) {
         // Derive normal from depth
-        float3 d1 = ddx(ps.pos);
-        float3 d2 = ddy(ps.pos);
+        float3 d1 = ddx(ps.vs_pos);
+        float3 d2 = ddy(ps.vs_pos);
         normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
     }
 
@@ -68,5 +74,16 @@ float4 main(PsIn ps/*, float4 cs_pos: SV_Position*/): SV_TARGET {
     gbuffer.normal = normal;
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
-    return asfloat(gbuffer.pack().data0);
+
+    PsOut ps_out;
+    ps_out.gbuffer = asfloat(gbuffer.pack().data0);
+
+    float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.vs_pos, 1));
+    float4 prev_cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.prev_vs_pos, 1));
+    float2 uv_pos = cs_to_uv(cs_pos.xy / cs_pos.w);
+    float2 prev_uv_pos = cs_to_uv(prev_cs_pos.xy / prev_cs_pos.w);
+
+    ps_out.velocity = prev_uv_pos - uv_pos;
+
+    return ps_out;
 }

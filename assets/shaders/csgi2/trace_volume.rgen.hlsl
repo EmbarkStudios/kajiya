@@ -28,7 +28,9 @@
 #define USE_RAY_JITTER 0
 #define RAY_JITTER_AMOUNT 0.75
 //#define ACCUM_HYSTERESIS 0.05
-#define ACCUM_HYSTERESIS 0.25
+//#define ACCUM_HYSTERESIS 0.15
+//#define ACCUM_HYSTERESIS 0.25
+#define ACCUM_HYSTERESIS 1.0
 
 #define USE_MULTIBOUNCE 1
 
@@ -61,8 +63,11 @@ void main() {
 
     #if USE_RAY_JITTER
         const float jitter_amount = RAY_JITTER_AMOUNT;
-        const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
-        const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
+        //const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
+        //const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
+        float2 jitter_urand = hammersley(frame_constants.frame_index % 8, 8);
+        const float offset_x = jitter_urand.x;
+        const float offset_y = jitter_urand.y;
         const float blend_factor = ACCUM_HYSTERESIS;
     #else
         const float offset_x = 0.0;

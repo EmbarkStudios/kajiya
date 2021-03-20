@@ -55,9 +55,9 @@ float local_tmo_constrain(float x, float max_compression) {
     #elif local_tmo_constrain_mode == 2
         float k = 3.0 * max_compression;
         x = 1.0 / x;
-        x = tonemap_curve(x / k, 0.2) * k;
+        x = tonemap_curve(x / k) * k;
         x = 1.0 / x;
-        x = tonemap_curve(x / k, 0.2) * k;
+        x = tonemap_curve(x / k) * k;
         return x;
     #else
         return x;
@@ -146,7 +146,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = lerp(col, glare, glare_amount);
 #endif
 
-    //col *= 3;
+    col *= 8;
     //col *= 500;
 
 #if 0
@@ -204,7 +204,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         //col *= 4;
         //col *= 16;
 
-        col = neutral_tonemap(col, 0.2);
+        col = neutral_tonemap(col);
         //col = 1-exp(-col);
     #endif
 
