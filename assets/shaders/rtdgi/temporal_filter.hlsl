@@ -102,7 +102,10 @@ void main(uint2 px: SV_DispatchThreadID) {
         for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
                 float4 history = history_tex[history_px + int2(x, y)];
-                history_dist = min(history_dist, abs(control_variate_luma - history.a));
+                //history_dist = min(history_dist, abs(control_variate_luma - history.a));
+                //float dist = abs(control_variate_luma - history.a);
+                float dist = abs(control_variate_luma - history.a) / max(1e-5, control_variate_luma + history.a);
+                history_dist = min(history_dist, dist);
             }
         }
     }
@@ -117,7 +120,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     //const float invalid = smoothstep(0.0, 10.0, history_dist / max(1e-5, min(history.a, control_variate_luma)));
     
-    const float light_stability = 1.0 - 0.8 * smoothstep(0.0, 0.01, history_dist);
+    const float light_stability = 1.0 - 0.8 * smoothstep(0.1, 0.5, history_dist);
     //const float light_stability = 1.0 - step(0.01, history_dist);
     //const float light_stability = 1;
 
@@ -148,7 +151,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         //
         // Note that this would prevent any changes in lighting, except exponential blending here
         // will slowly blend it over time, with speed similar to if control variates weren't used.
-        history.rgb -= cv_diff * reproj_validity_dilated;
+        history.rgb -= cv_diff * reproj_validity_dilated * 0.9;
     }
 
 	float4 clamped_history = clamp(history, nmin, nmax);

@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 use byteorder::{ByteOrder, NativeEndian, WriteBytesExt};
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Quat, Vec3};
 use gltf::texture::TextureTransform;
 use kajiya_backend::bytes::into_byte_vec;
 /*use render_core::{
@@ -206,12 +206,17 @@ fn load_gltf_material(
 pub struct LoadGltfScene {
     pub path: PathBuf,
     pub scale: f32,
+    pub rotation: Quat,
 }
 
 impl Hash for LoadGltfScene {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.path.hash(state);
         self.scale.to_ne_bytes().hash(state);
+        self.rotation.x.to_ne_bytes().hash(state);
+        self.rotation.y.to_ne_bytes().hash(state);
+        self.rotation.z.to_ne_bytes().hash(state);
+        self.rotation.w.to_ne_bytes().hash(state);
     }
 }
 
@@ -325,7 +330,11 @@ impl LazyWorker for LoadGltfScene {
                 }
             };
 
-            let xform = Mat4::from_scale(Vec3::splat(self.scale));
+            let xform = Mat4::from_scale_rotation_translation(
+                Vec3::splat(self.scale),
+                self.rotation,
+                Vec3::zero(),
+            );
             for node in scene.nodes() {
                 iter_gltf_node_tree(&node, xform, &mut process_node);
             }

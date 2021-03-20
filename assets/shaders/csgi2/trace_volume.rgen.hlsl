@@ -34,6 +34,9 @@
 
 #define USE_MULTIBOUNCE 1
 
+// HACK; TODO: find all the energy loss
+#define MULTIBOUNCE_SCALE 1.25
+
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx) {
@@ -178,7 +181,7 @@ void main() {
                             primary_hit.position,
                             gbuffer_normal,
                             Csgi2LookupParams::make_default().with_linear_fetch(false)
-                        ) * bounce_albedo;
+                        ) * bounce_albedo * MULTIBOUNCE_SCALE;
                     }
                 }
             }

@@ -174,11 +174,16 @@ fn main() -> anyhow::Result<()> {
 
     let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
     let mesh = render_client.add_mesh(mesh);
-    let inst0 = render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
+    render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
     /*let inst0 = render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, 2.5));
     render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));*/
+
+    let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    let car_mesh = render_client.add_mesh(car_mesh);
+    let mut car_pos = Vec3::unit_y() * -0.01;
+    let car_inst = render_client.add_instance(car_mesh, car_pos);
 
     render_client.build_ray_tracing_top_level_acceleration();
 
@@ -257,12 +262,10 @@ fn main() -> anyhow::Result<()> {
 
         render_client.store_prev_mesh_transforms();
 
-        if keyboard.is_down(VirtualKeyCode::LControl) {
-            render_client.set_instance_transform(
-                inst0,
-                //Vec3::new(-2.0 + time_since_start.sin() as f32, opt.y_offset, -2.5),
-                Vec3::new(-2.0 + mouse_state.pos.x / 100.0 - 10.0, opt.y_offset, -2.5),
-            );
+        if keyboard.is_down(VirtualKeyCode::Z) {
+            car_pos.x += mouse_state.delta.x / 100.0;
+
+            render_client.set_instance_transform(car_inst, car_pos);
         }
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {

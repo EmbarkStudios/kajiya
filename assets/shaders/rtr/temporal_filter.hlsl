@@ -130,7 +130,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float box_size = 1;
 
-    const float n_deviations = 2;
+    const float n_deviations = 3;
 	float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
 #else

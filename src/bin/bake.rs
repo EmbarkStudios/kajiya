@@ -1,3 +1,4 @@
+use glam::Quat;
 use kajiya::asset::mesh::{pack_triangle_mesh, GpuImage, LoadGltfScene, PackedTriMesh};
 use std::{collections::HashSet, fs::File, path::PathBuf};
 
@@ -27,6 +28,8 @@ fn main() -> Result<()> {
         let mesh = LoadGltfScene {
             path: opt.scene,
             scale: opt.scale,
+            //rotation: Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
+            rotation: Quat::identity(),
         }
         .into_lazy();
 

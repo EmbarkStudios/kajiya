@@ -147,6 +147,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     col *= 8;
+    //col *= 16;
     //col *= 500;
 
 #if 0
