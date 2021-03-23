@@ -51,25 +51,26 @@ void main(in uint2 px : SV_DispatchThreadID) {
     if (center_depth != 0.0) {
         float3 center_normal_vs = mul(frame_constants.view_constants.world_to_view, float4(unpack_normal_11_10_11(gbuffer_tex[px].y), 0)).xyz;
         const float center_ssao = ssao_tex[px].a;
+        const float rel_std_dev = ssgi_tex[px].a;
 
         const float2 uv = get_uv(px, output_tex_size);
         const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
+        //const float filter_radius_ss = center_ssao * lerp(0.5, 2.0, saturate(20 * rel_std_dev)) * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
         const float filter_radius_ss = center_ssao * 0.5 * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
 
         w_sum = 0.0;
         result = 0.0.xxxx;
 
-        const float rel_std_dev = ssgi_tex[px].a;
         //const int sample_count = int(lerp(6, 16, saturate(rel_std_dev)));
         const int sample_count = 8;
         //const int sample_count = 1;
         const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
-        // 0..6
-        const uint filter_idx = uint(clamp(filter_radius_ss * 7.0, 0.0, 6.0));
+        const uint filter_idx = uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0));
 
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+            // Swizzle as .yx to avoid using the same samples as the previous filter
+            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].yx;
 
             int2 sample_px = px / 2 + sample_offset;
 

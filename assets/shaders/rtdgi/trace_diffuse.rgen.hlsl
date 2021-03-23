@@ -16,7 +16,7 @@
 #define USE_SHORT_RAYS_ONLY 1
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 #define ROUGHNESS_BIAS 0.5
-#define SUPPRESS_GI_FOR_NEAR_HITS 0
+#define SUPPRESS_GI_FOR_NEAR_HITS 1
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -87,6 +87,8 @@ void main() {
     const float3 ray_hit_ws = view_ray_context.ray_hit_ws();
     const float3 ray_hit_vs = view_ray_context.ray_hit_vs();
     const float3 refl_ray_origin = ray_hit_ws - ray_dir_ws * (length(ray_hit_vs) + length(ray_hit_ws)) * 1e-4;
+
+    const float3 primary_hit_normal = gbuffer.normal;
 
     // Hack for shading normals facing away from the outgoing ray's direction:
     // We flip the outgoing ray along the shading normal, so that the reflection's curvature
@@ -184,11 +186,34 @@ void main() {
             total_radiance += brdf_value * light_radiance;
 
             if (USE_CSGI2) {
-                // Don't sample GI for very close hits, as that easily results in leaks
-                if (!SUPPRESS_GI_FOR_NEAR_HITS || primary_hit.ray_t > CSGI2_VOXEL_SIZE.x) {
-                    float3 csgi = lookup_csgi2(primary_hit.position, gbuffer.normal, Csgi2LookupParams::make_default().with_linear_fetch(false));
-                    total_radiance += csgi * gbuffer.albedo;
+                const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
+
+                Csgi2LookupParams lookup_params =
+                    Csgi2LookupParams::make_default()
+                        .with_bent_normal(pseudo_bent_normal)
+                        //.with_linear_fetch(false)
+                        ;
+
+                if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= CSGI2_VOXEL_SIZE.x) {
+                    float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
+
+                    // Suppression in open corners causes excessive darkening,
+                    // and doesn't prevent that many leaks. This strikes a balance.
+                    const float normal_agreement = dot(primary_hit_normal, gbuffer.normal);
+                    max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
+
+                    lookup_params = lookup_params
+                        .with_max_normal_offset_scale(max_normal_offset / CSGI2_VOXEL_SIZE.x);
                 }
+
+                float3 csgi = lookup_csgi2(
+                    primary_hit.position,
+                    gbuffer.normal,
+                    lookup_params
+                );
+
+                //if (primary_hit.ray_t > CSGI2_VOXEL_SIZE.x)
+                total_radiance += csgi * gbuffer.albedo;
             }
         } else {
             #if USE_SHORT_RAYS_ONLY

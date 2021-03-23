@@ -74,21 +74,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     return;
 #endif
 
-#if 0
-    static const float glare_falloff = 1.25;
-    float3 glare = 0; {
-        float wt_sum = 1;
-        for (uint mip = 0; mip < blur_pyramid_mip_count; ++mip) {
-            float wt = 1.0 / pow(glare_falloff, mip);
-            glare += blur_pyramid_tex.SampleLevel(sampler_lnc, uv, mip).rgb * wt;
-            wt_sum += wt;
-        }
-        glare /= wt_sum;
-    }
-#else
     float3 glare = rev_blur_pyramid_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
-#endif
-
     float3 col = input_tex[px].rgb;
 
     // TODO: move to its own pass
@@ -146,7 +132,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = lerp(col, glare, glare_amount);
 #endif
 
-    col *= 8;
+    //col /= 2;
+    //col *= 8;
     //col *= 16;
     //col *= 500;
 

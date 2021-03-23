@@ -262,6 +262,13 @@ fn main() -> anyhow::Result<()> {
 
         render_client.store_prev_mesh_transforms();
 
+        // Reset accumulation of the path tracer whenever the camera moves
+        if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
+            && render_client.render_mode == RenderMode::Reference
+        {
+            render_client.reset_reference_accumulation = true;
+        }
+
         if keyboard.is_down(VirtualKeyCode::Z) {
             car_pos.x += mouse_state.delta.x / 100.0;
 
@@ -284,11 +291,6 @@ fn main() -> anyhow::Result<()> {
         if (mouse_state.button_mask & 1) != 0 {
             light_theta += (mouse_state.delta.x / window_cfg.width as f32) * -std::f32::consts::TAU;
             light_phi += (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI;
-        }
-
-        // Reset accumulation of the path tracer whenever the camera moves
-        if !camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back) {
-            render_client.reset_reference_accumulation = true;
         }
 
         let sun_direction = spherical_to_cartesian(light_theta, light_phi);

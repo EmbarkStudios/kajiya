@@ -2,9 +2,12 @@ struct Csgi2LookupParams {
     bool use_linear_fetch;
     bool use_bent_normal;
     bool sample_directional_radiance;
+    bool sample_specular;
     bool direct_light_only;
     float3 directional_radiance_direction;
+    float directional_radiance_phong_exponent;
     float3 bent_normal;
+    float max_normal_offset_scale;
 
     static Csgi2LookupParams make_default() {
         Csgi2LookupParams res;
@@ -12,7 +15,10 @@ struct Csgi2LookupParams {
         res.use_bent_normal = false;
         res.bent_normal = 0;
         res.sample_directional_radiance = false;
+        res.sample_specular = false;
+        res.directional_radiance_phong_exponent = 50.0;
         res.direct_light_only = false;
+        res.max_normal_offset_scale = 2.0;
         return res;
     }
 
@@ -36,9 +42,28 @@ struct Csgi2LookupParams {
         return res;
     }
 
+    Csgi2LookupParams with_sample_specular(float3 v) {
+        Csgi2LookupParams res = this;
+        res.sample_specular = true;
+        res.directional_radiance_direction = v;
+        return res;
+    }
+
+    Csgi2LookupParams with_directional_radiance_phong_exponent(float v) {
+        Csgi2LookupParams res = this;
+        res.directional_radiance_phong_exponent = v;
+        return res;
+    }
+
     Csgi2LookupParams with_direct_light_only(bool v) {
         Csgi2LookupParams res = this;
         res.direct_light_only = true;
+        return res;
+    }
+
+    Csgi2LookupParams with_max_normal_offset_scale(float v) {
+        Csgi2LookupParams res = this;
+        res.max_normal_offset_scale = v;
         return res;
     }
 };
@@ -47,7 +72,11 @@ struct Csgi2LookupParams {
 float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
     const float3 volume_center = CSGI2_VOLUME_CENTER;
 
-    const float normal_offset_scale = params.use_linear_fetch ? 1.51 : 1.01;
+    const float normal_offset_scale = min(
+        params.use_linear_fetch ? 1.51 : 1.01,
+        params.max_normal_offset_scale
+    );
+
     //const float normal_offset_scale = 1.01;
     float3 vol_pos = pos - volume_center;
 
@@ -89,7 +118,11 @@ float3 lookup_csgi2(float3 pos, float3 normal, Csgi2LookupParams params) {
 
                 if (params.sample_directional_radiance) {
                     wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
-                    wt = pow(wt, 50.0);
+                    wt = pow(wt, params.directional_radiance_phong_exponent);
+                } else if (params.sample_specular && params.directional_radiance_phong_exponent > 0.1) {
+                    wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
+                    wt = pow(wt, params.directional_radiance_phong_exponent);
+                    wt *= saturate(dot(normalize(slice_dir), normal));
                 } else {
                     wt = saturate(dot(normalize(slice_dir), normal));
                 }

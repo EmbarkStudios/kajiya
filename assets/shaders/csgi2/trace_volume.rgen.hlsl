@@ -27,6 +27,7 @@
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
 #define USE_RAY_JITTER 0
 #define RAY_JITTER_AMOUNT 0.75
+//#define RAY_JITTER_AMOUNT 1.0
 //#define ACCUM_HYSTERESIS 0.05
 //#define ACCUM_HYSTERESIS 0.15
 //#define ACCUM_HYSTERESIS 0.25
@@ -35,7 +36,7 @@
 #define USE_MULTIBOUNCE 1
 
 // HACK; TODO: find all the energy loss
-#define MULTIBOUNCE_SCALE 1.25
+#define MULTIBOUNCE_SCALE 1.0
 
 static const float SKY_DIST = 1e5;
 
@@ -68,7 +69,7 @@ void main() {
         const float jitter_amount = RAY_JITTER_AMOUNT;
         //const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         //const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
-        float2 jitter_urand = hammersley(frame_constants.frame_index % 8, 8);
+        float2 jitter_urand = hammersley(frame_constants.frame_index % 4, 8);
         const float offset_x = jitter_urand.x;
         const float offset_y = jitter_urand.y;
         const float blend_factor = ACCUM_HYSTERESIS;
@@ -128,7 +129,8 @@ void main() {
                     ));
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-                gbuffer.roughness = 1.0;
+                //gbuffer.roughness = lerp(gbuffer.roughness, 1.0, 0.2);
+                gbuffer.roughness = 1;
 
                 const float3 gbuffer_normal = primary_hit.gbuffer_packed.unpack_normal();
 
@@ -177,10 +179,16 @@ void main() {
                     #endif
 
                     if (USE_MULTIBOUNCE) {
+                        const float phong_exponent =
+                            lerp(1.0, clamp(2.0 / pow(gbuffer.roughness, 2) - 2, 1.0, 50.0), gbuffer.metalness);
+
                         total_radiance += lookup_csgi2(
                             primary_hit.position,
                             gbuffer_normal,
-                            Csgi2LookupParams::make_default().with_linear_fetch(false)
+                            Csgi2LookupParams::make_default()
+                                .with_linear_fetch(false)
+                                //.with_sample_specular(reflect(outgoing_ray.Direction, gbuffer.normal))
+                                //.with_directional_radiance_phong_exponent(phong_exponent)
                         ) * bounce_albedo * MULTIBOUNCE_SCALE;
                     }
                 }

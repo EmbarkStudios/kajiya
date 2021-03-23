@@ -147,7 +147,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             gbuffer.normal,
             Csgi2LookupParams::make_default()
                 //.with_sample_directional_radiance(gbuffer.normal)
-                //.with_bent_normal(pseudo_bent_normal)
+                .with_bent_normal(pseudo_bent_normal)
         );
         gi_irradiance = csgi2_irradiance;
     }
@@ -197,7 +197,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
             smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
     #endif
 
-    //debug_out = rtr_tex[px].www * 0.2;
+    //debug_out = rtr_tex[px].www * 0.001;
+    //debug_out = rtr_tex[px].www;
     //debug_out = rtr_tex[px].xyz;
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;

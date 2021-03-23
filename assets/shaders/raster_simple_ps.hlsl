@@ -67,7 +67,7 @@ PsOut main(PsIn ps) {
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //metalness = 1;
-    //roughness = 0.6;
+    //roughness = 0.2;
 
     GbufferData gbuffer;
     gbuffer.albedo = albedo;

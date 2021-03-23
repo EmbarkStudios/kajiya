@@ -89,18 +89,28 @@ void main(uint2 px: SV_DispatchThreadID) {
     
     float2 uv = get_uv(px, output_tex_size);
     
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth_tex[px]);
+    const float center_depth = depth_tex[px];
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
     const float3 reflector_vs = view_ray_context.ray_hit_vs();
-    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs() * refl_ray_length;
+    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs();
 
-    const float4 reflection_hit_cs = mul(frame_constants.view_constants.view_to_clip, float4(reflection_hit_vs, 1));
+    const float4 reflection_hit_cs = mul(frame_constants.view_constants.view_to_sample, float4(reflection_hit_vs, 1));
     const float4 prev_hit_cs = mul(frame_constants.view_constants.clip_to_prev_clip, reflection_hit_cs);
     const float2 hit_prev_uv = cs_to_uv(prev_hit_cs.xy / prev_hit_cs.w);
 
     float4 reproj = reprojection_tex[px];
 
     float4 history0 = linear_to_working(history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0));
+    float history0_valid = 1;
+    /*if (any(abs((uv + reproj.xy) * 2 - 1) > 0.99)) {
+        history0_valid = 0;
+    }*/
+
     float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0));
+    float history1_valid = 1;
+    /*if (any(abs(hit_prev_uv * 2 - 1) > 0.99)) {
+        history1_valid = 0;
+    }*/
 
     float4 history0_reproj = reprojection_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     float4 history1_reproj = reprojection_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0);
@@ -113,8 +123,14 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = linear_to_working(input_tex[px + int2(x, y) * 1]);
-			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
+            const int2 sample_px = px + int2(x, y) * 1;
+            const float sample_depth = depth_tex[sample_px];
+
+            float4 neigh = linear_to_working(input_tex[sample_px]);
+			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
+
+            //w *= exp2(-200.0 * abs(/*center_normal_vs.z **/ (center_depth / sample_depth - 1.0)));
+
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
 			wsum += w;
@@ -129,10 +145,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     //dev = max(dev, 0.1);
 
     float box_size = 1;
-
-    const float n_deviations = 3;
-	float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
-	float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
+    const float n_deviations = 3 * lerp(2.0, 1.0, saturate(length(reproj.xy))) * reproj.z;
+	//float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
+	//float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
+	float4 nmin = center - dev * box_size * n_deviations;
+	float4 nmax = center + dev * box_size * n_deviations;
 #else
 	float4 vsum = 0.0.xxxx;
 	float wsum = 0.0;
@@ -156,13 +173,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 ex = vsum / wsum;
 #endif
     
-    float h0diff = length(history0.xyz - ex.xyz);
-    float h1diff = length(history1.xyz - ex.xyz);
+    float h0diff = length(history0.xyz - center.xyz);
+    float h1diff = length(history1.xyz - center.xyz);
     float hdiff_scl = max(1e-10, max(h0diff, h1diff));
 
 #if USE_DUAL_REPROJECTION
-    float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl));
-    float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl));
+    float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
+    float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
 #else
     float h0_score = 1;
     float h1_score = 0;
@@ -173,17 +190,35 @@ void main(uint2 px: SV_DispatchThreadID) {
     //history1 = lerp(center, history1, exp2(-reproj_penalty * length(history1_reproj.xy - reproj.xy)));
 
     const float score_sum = h0_score + h1_score;
-    h0_score /= score_sum;
-    h1_score /= score_sum;
+    if (score_sum > 1e-50) {
+        h0_score /= score_sum;
+        h1_score /= score_sum;
+    } else {
+        h0_score = 1;
+        h1_score = 0;
+    }
 
-    float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
-    //float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
+    float4 clamped_history0 = clamp(history0, nmin, nmax);
+    float4 clamped_history1 = clamp(history1, nmin, nmax);
+    //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
+    float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
+
+    //float sample_count = history0.w * h0_score + history1.w * h1_score;
+    //sample_count *= reproj.z;
+
+    //clamped_history = lerp(center, clamped_history, reproj.z);
+    //clamped_history = center;
 
     //clamped_history = history0;
     //clamped_history.w = history0.w;
 
     float target_sample_count = 24;//lerp(8, 24, saturate(0.3 * center.w));
+    //float target_sample_count = clamp(sample_count, 1, 24);//lerp(8, 24, saturate(0.3 * center.w));
+
     float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / target_sample_count, reproj.z));
+    //res.w = sample_count + 1;
+
+    //res.w = calculate_luma(working_to_linear(dev).rgb / max(1e-5, working_to_linear(ex).rgb));
     
     output_tex[px] = max(0.0.xxxx, working_to_linear(res));
     //output_tex[px].w = h0_score / (h0_score + h1_score);

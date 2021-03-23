@@ -30,11 +30,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float center_depth = half_depth_tex[px];
     const float4 center_val_valid_packed = hit0_tex[px];
     const float3 center_val = center_val_valid_packed.rgb;
-    const float center_valid = center_val_valid_packed.a;
+    const float center_validity = center_val_valid_packed.a;
     const float center_ssao = ssao_tex[px * 2].a;
+    const float rel_std_dev = abs(center_validity);
 
     const float2 uv = get_uv(px, output_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
+    //const float filter_radius_ss = center_ssao * lerp(0.5, 2.0, saturate(20 * rel_std_dev)) * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
     const float filter_radius_ss = center_ssao * 0.5 * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
 
     #define USE_POISSON 1
@@ -54,10 +56,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //const int sample_count = 1;
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
-    // 1..7
+    const bool input_gi_stable = center_validity >= 0.0;
     const uint filter_idx =
-        center_valid > 0.5
-            ? 1 + uint(clamp(filter_radius_ss * 7.0, 0.0, 6.0))
+        input_gi_stable
+            ? uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0))
             : 7;
 
     {
@@ -99,11 +101,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     ex *= norm_factor;
     ex2 *= norm_factor;
     float variance = max(0.0, ex2 - ex * ex);
-    float rel_dev = sqrt(variance) / max(1e-5, ex);
+    float rel_dev = sqrt(variance);// / max(1e-5, ex);
 
     //filtered = rel_dev;
     //filtered = center_sample;
     //filtered = filter_idx / 7.0;
 
-    output_tex[px] = float4(filtered, rel_dev);
+    output_tex[px] = float4(filtered, /*rel_dev*/rel_std_dev);
 }

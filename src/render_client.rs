@@ -66,7 +66,7 @@ pub struct MeshHandle(pub usize);
 pub struct InstanceHandle(pub usize);
 
 const MAX_GPU_MESHES: usize = 1024;
-const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 325;
+const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 512;
 
 #[derive(Clone, Copy)]
 pub struct MeshInstance {

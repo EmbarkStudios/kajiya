@@ -91,6 +91,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float filter_size = filter_spread * gbuffer.roughness * 16;
 
     const float4 reprojection_params = reprojection_tex[px];
+
     float history_error = lerp(
         2.0,
         history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).w,

@@ -111,7 +111,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     }
     //history_dist = WaveActiveMin(history_dist);
 
-    const float3 cv_history = cv_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0).rgb;
+    const float4 cv_history_dev_packed = cv_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+    const float3 cv_history = cv_history_dev_packed.rgb;
+    const float dev_history = cv_history_dev_packed.a;
 
     history_dist = min(history_dist, WaveReadLaneAt(history_dist, WaveGetLaneIndex() ^ 1));
     history_dist = min(history_dist, WaveReadLaneAt(history_dist, WaveGetLaneIndex() ^ 8));
@@ -159,8 +161,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 16.0, reproj_validity_dilated * light_stability));
 
+    const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
+
     history_output_tex[px] = float4(res, control_variate_luma);
-    cv_history_output_tex[px] = float4(control_variate, 1.0);
+    cv_history_output_tex[px] = float4(control_variate, smoothed_dev);
 
     float3 spatial_input;
     if (USE_RTDGI_CONTROL_VARIATES) {
@@ -176,10 +180,12 @@ void main(uint2 px: SV_DispatchThreadID) {
     //spatial_input = 1-light_stability;
     //spatial_input = control_variate_luma;
     //spatial_input = abs(cv_diff);
+    //spatial_input = abs(dev.rgb);
+    //spatial_input = smoothed_dev;
 
     // TODO: adaptively sample according to abs(res)
     //spatial_input = abs(res);
 
-    output_tex[px] = float4(spatial_input, light_stability);
+    output_tex[px] = float4(spatial_input, smoothed_dev * (light_stability > 0.5 ? 1.0 : -1.0));
     //history_output_tex[px] = reproj.w;
 }
