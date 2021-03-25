@@ -919,5 +919,3 @@ impl GeometryInstance {
         self.instance_sbt_offset_and_flags |= flags << 24;
     }
 }
-
-struct RayTracingAccelerationInstanceBufferBuilder {}

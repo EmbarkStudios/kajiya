@@ -6,7 +6,7 @@ use kajiya_backend::{
     vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration},
     Device,
 };
-use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
+use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{csgi2, GbufferDepth, PingPongTemporalResource};
 

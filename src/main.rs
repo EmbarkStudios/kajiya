@@ -198,8 +198,6 @@ fn main() -> anyhow::Result<()> {
     let mut light_phi = 1.48;
     let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
 
-    let mut time_since_start = 0f64;
-
     let mut last_frame_instant = std::time::Instant::now();
     let mut running = true;
     while running {
@@ -246,8 +244,6 @@ fn main() -> anyhow::Result<()> {
         let dt_duration = now - last_frame_instant;
         last_frame_instant = now;
         let dt = dt_duration.as_secs_f32();
-        time_since_start += dt as f64;
-        //println!("dt: {}", dt);
 
         keyboard.update(std::mem::take(&mut keyboard_events), dt);
         mouse_state.update(&new_mouse_state);

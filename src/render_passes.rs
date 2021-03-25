@@ -474,26 +474,6 @@ pub fn reference_path_trace(
     .trace_rays(tlas, output_img.desc().extent);
 }
 
-pub fn normalize_accum(
-    rg: &mut RenderGraph,
-    input: &Handle<Image>,
-    fmt: vk::Format,
-    bindless_descriptor_set: vk::DescriptorSet,
-) -> Handle<Image> {
-    let mut output = rg.create((*input.desc()).format(fmt));
-
-    SimpleRenderPass::new_compute(
-        rg.add_pass("normalize accum"),
-        "/assets/shaders/normalize_accum.hlsl",
-    )
-    .read(input)
-    .write(&mut output)
-    .raw_descriptor_set(1, bindless_descriptor_set)
-    .dispatch(input.desc().extent);
-
-    output
-}
-
 pub fn trace_sun_shadow_mask(
     rg: &mut RenderGraph,
     depth_img: &Handle<Image>,
@@ -512,22 +492,6 @@ pub fn trace_sun_shadow_mask(
     .trace_rays(tlas, output_img.desc().extent);
 
     output_img
-}
-
-fn blur_downsample_2x2(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
-    let mut output = rg.create(
-        input
-            .desc()
-            .half_res()
-            .format(vk::Format::B10G11R11_UFLOAT_PACK32),
-    );
-
-    SimpleRenderPass::new_compute(rg.add_pass("blur0"), "/assets/shaders/blur.hlsl")
-        .read(input)
-        .write(&mut output)
-        .dispatch(output.desc().extent);
-
-    output
 }
 
 pub fn blur_pyramid(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
@@ -630,6 +594,7 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &Handle<Image>) -> Han
     output
 }
 
+#[allow(dead_code)]
 fn edge_preserving_filter_luminance(rg: &mut RenderGraph, input: &Handle<Image>) -> Handle<Image> {
     let mut lum_tex = rg.create(input.desc().format(vk::Format::R16G16_SFLOAT));
 

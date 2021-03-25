@@ -32,7 +32,7 @@ use kajiya_rg::{self as rg, renderer::*, RetiredRenderGraph};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
-use rg::{GetOrCreateTemporal, TemporalRenderGraph};
+use rg::GetOrCreateTemporal;
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 use winit::VirtualKeyCode;
