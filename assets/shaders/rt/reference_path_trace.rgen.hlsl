@@ -286,6 +286,6 @@ void main() {
         float lrp = cur.w / max(1.0, tsc);
         cur.rgb /= max(1.0, cur.w);
 
-        output_tex[px] = float4(lerp(prev.rgb, cur.rgb, lrp), max(1, tsc));
+        output_tex[px] = float4(max(0.0.xxx, lerp(prev.rgb, cur.rgb, lrp)), max(1, tsc));
     }
 }

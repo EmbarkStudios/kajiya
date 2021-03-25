@@ -3,9 +3,9 @@ use crate::{
     camera::CameraMatrices,
     dynamic_constants::DynamicConstants,
     image_lut::{ComputeImageLut, ImageLut},
-    render_passes::{RasterMeshesData, UploadedTriMesh},
     renderers::{
-        csgi::CsgiRenderer, rtdgi::RtdgiRenderer, rtr::*, ssgi::*, taa::TaaRenderer, GbufferDepth,
+        csgi::CsgiRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*, ssgi::*,
+        taa::TaaRenderer,
     },
     viewport::ViewConstants,
     vulkan::{self, image::*, shader::*, RenderBackend},
@@ -32,7 +32,6 @@ use kajiya_rg::{self as rg, renderer::*, RetiredRenderGraph};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
-use rg::GetOrCreateTemporal;
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 use winit::VirtualKeyCode;
@@ -83,25 +82,30 @@ pub enum RenderDebugMode {
 
 pub struct KajiyaRenderClient {
     device: Arc<device::Device>,
-    raster_simple_render_pass: Arc<RenderPass>,
-    pub reset_reference_accumulation: bool,
-    //cube_index_buffer: Arc<Buffer>,
-    meshes: Vec<UploadedTriMesh>,
-    mesh_blas: Vec<Arc<RayTracingAcceleration>>,
-    instances: Vec<MeshInstance>,
-    tlas: Option<Arc<RayTracingAcceleration>>,
-    mesh_buffer: Mutex<Arc<Buffer>>,
-    vertex_buffer: Mutex<Arc<Buffer>>,
+
+    pub(super) raster_simple_render_pass: Arc<RenderPass>,
+    pub(super) bindless_descriptor_set: vk::DescriptorSet,
+    pub(super) meshes: Vec<UploadedTriMesh>,
+    pub(super) instances: Vec<MeshInstance>,
+    pub(super) vertex_buffer: Mutex<Arc<Buffer>>,
     vertex_buffer_written: u64,
-    bindless_descriptor_set: vk::DescriptorSet,
+
+    mesh_buffer: Mutex<Arc<Buffer>>,
+
+    mesh_blas: Vec<Arc<RayTracingAcceleration>>,
+    tlas: Option<Arc<RayTracingAcceleration>>,
+
     bindless_images: Vec<Arc<Image>>,
-    image_luts: Vec<ImageLut>,
     next_bindless_image_id: usize,
-    pub render_mode: RenderMode,
+
+    image_luts: Vec<ImageLut>,
     frame_idx: u32,
     prev_camera_matrices: Option<CameraMatrices>,
 
     supersample_offsets: Vec<Vec2>,
+
+    pub render_mode: RenderMode,
+    pub reset_reference_accumulation: bool,
 
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
@@ -748,7 +752,7 @@ impl KajiyaRenderClient {
 }
 
 impl KajiyaRenderClient {
-    fn prepare_top_level_acceleration(
+    pub(super) fn prepare_top_level_acceleration(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
     ) -> rg::Handle<RayTracingAcceleration> {
@@ -791,220 +795,6 @@ impl KajiyaRenderClient {
         });
 
         tlas
-    }
-
-    fn prepare_render_graph_standard(
-        &mut self,
-        rg: &mut rg::TemporalRenderGraph,
-        frame_state: &FrameState,
-    ) -> rg::ExportedHandle<Image> {
-        let tlas = self.prepare_top_level_acceleration(rg);
-
-        let mut accum_img = rg
-            .get_or_create_temporal(
-                "root.accum",
-                ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                    [frame_state.window_cfg.width, frame_state.window_cfg.height],
-                )
-                .usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
-            )
-            .unwrap();
-
-        let sky_cube = crate::renderers::sky::render_sky_cube(rg);
-        let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
-
-        let csgi_volume = self.csgi.render(
-            frame_state.camera_matrices.eye_position(),
-            rg,
-            &convolved_sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
-
-        let gbuffer_depth;
-        let velocity_img;
-        {
-            let mut depth_img = rg.create(ImageDesc::new_2d(
-                vk::Format::D24_UNORM_S8_UINT,
-                frame_state.window_cfg.dims(),
-            ));
-            crate::render_passes::clear_depth(rg, &mut depth_img);
-
-            let mut gbuffer = rg.create(ImageDesc::new_2d(
-                vk::Format::R32G32B32A32_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ));
-            crate::render_passes::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
-
-            let mut mesh_velocity_img = rg.create(ImageDesc::new_2d(
-                vk::Format::R16G16_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ));
-
-            if self.debug_mode != RenderDebugMode::CsgiVoxelGrid {
-                crate::render_passes::raster_meshes(
-                    rg,
-                    self.raster_simple_render_pass.clone(),
-                    &mut depth_img,
-                    &mut gbuffer,
-                    &mut mesh_velocity_img,
-                    RasterMeshesData {
-                        meshes: self.meshes.as_slice(),
-                        instances: self.instances.as_slice(),
-                        vertex_buffer: self.vertex_buffer.lock().clone(),
-                        bindless_descriptor_set: self.bindless_descriptor_set,
-                    },
-                );
-            }
-
-            if self.debug_mode == RenderDebugMode::CsgiVoxelGrid {
-                csgi_volume.debug_raster_voxel_grid(
-                    rg,
-                    self.raster_simple_render_pass.clone(),
-                    &mut depth_img,
-                    &mut gbuffer,
-                    &mut mesh_velocity_img,
-                );
-            }
-
-            gbuffer_depth = GbufferDepth::new(gbuffer, depth_img);
-            velocity_img = mesh_velocity_img;
-        }
-
-        let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
-            rg,
-            &gbuffer_depth.depth,
-            &velocity_img,
-        );
-
-        let ssgi_tex = self
-            .ssgi
-            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
-        //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
-
-        let sun_shadow_mask =
-            crate::render_passes::trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
-
-        let rtr = self.rtr.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &csgi_volume,
-        );
-
-        let rtdgi = self.rtdgi.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &csgi_volume,
-            &ssgi_tex,
-        );
-
-        let mut debug_out_tex = rg.create(ImageDesc::new_2d(
-            vk::Format::R16G16B16A16_SFLOAT,
-            gbuffer_depth.gbuffer.desc().extent_2d(),
-        ));
-
-        crate::render_passes::light_gbuffer(
-            rg,
-            &gbuffer_depth.gbuffer,
-            &gbuffer_depth.depth,
-            &sun_shadow_mask,
-            &ssgi_tex,
-            &rtr,
-            &rtdgi,
-            &mut accum_img,
-            &mut debug_out_tex,
-            &csgi_volume,
-            &sky_cube,
-            self.bindless_descriptor_set,
-        );
-
-        let anti_aliased = self.taa.render(rg, &debug_out_tex, &reprojection_map);
-
-        let mut post =
-            crate::render_passes::post_process(rg, &anti_aliased, self.bindless_descriptor_set);
-
-        self.render_ui(rg, &mut post);
-
-        rg.export(
-            post,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        )
-    }
-
-    fn prepare_render_graph_reference(
-        &mut self,
-        rg: &mut rg::TemporalRenderGraph,
-        frame_state: &FrameState,
-    ) -> rg::ExportedHandle<Image> {
-        let mut accum_img = rg
-            .get_or_create_temporal(
-                "refpt.accum",
-                ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                    [frame_state.window_cfg.width, frame_state.window_cfg.height],
-                )
-                .usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
-            )
-            .unwrap();
-
-        if self.reset_reference_accumulation {
-            self.reset_reference_accumulation = false;
-            crate::render_passes::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
-        }
-
-        let tlas = self.prepare_top_level_acceleration(rg);
-
-        crate::render_passes::reference_path_trace(
-            rg,
-            &mut accum_img,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
-
-        let mut lit =
-            crate::render_passes::post_process(rg, &accum_img, self.bindless_descriptor_set);
-
-        self.render_ui(rg, &mut lit);
-
-        rg.export(
-            lit,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        )
-    }
-
-    fn render_ui(&mut self, rg: &mut rg::RenderGraph, target_img: &mut rg::Handle<Image>) {
-        if let Some((ui_renderer, image)) = self.ui_frame.take() {
-            let mut ui_tex = rg.import(image, AccessType::Nothing);
-            let mut pass = rg.add_pass("render ui");
-
-            pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
-            pass.render(move |api| ui_renderer(api.cb.raw));
-
-            rg::SimpleRenderPass::new_compute(
-                rg.add_pass("blit ui"),
-                "/assets/shaders/blit_ui.hlsl",
-            )
-            .read(&ui_tex)
-            .write(target_img)
-            .dispatch(target_img.desc().extent);
-        }
     }
 
     pub fn store_prev_mesh_transforms(&mut self) {
@@ -1120,25 +910,6 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
 }
-
-/*// Vertices: bits 0, 1, 2, map to +/- X, Y, Z
-fn cube_indices() -> Vec<u32> {
-    let mut res = Vec::with_capacity(6 * 2 * 3);
-
-    for (ndim, dim0, dim1) in [(1, 2, 4), (2, 4, 1), (4, 1, 2)].iter().copied() {
-        for (nbit, dim0, dim1) in [(0, dim1, dim0), (ndim, dim0, dim1)].iter().copied() {
-            res.push(nbit);
-            res.push(nbit + dim0);
-            res.push(nbit + dim1);
-
-            res.push(nbit + dim1);
-            res.push(nbit + dim0);
-            res.push(nbit + dim0 + dim1);
-        }
-    }
-
-    res
-}*/
 
 fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
     let pos = frame_state.input.mouse.pos

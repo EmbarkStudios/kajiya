@@ -25,8 +25,8 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-[[vk::binding(6)]] RWTexture2D<float4> output_tex;
-[[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(6)]] RWTexture2D<float4> temporal_output_tex;
+[[vk::binding(7)]] RWTexture2D<float4> output_tex;
 [[vk::binding(8)]] Texture3D<float4> csgi_direct_tex;
 [[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex;
 [[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
@@ -59,7 +59,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if 0
         ruv.x *= output_tex_size.x / output_tex_size.y;
-        output_tex[px] = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0]
+        temporal_output_tex[px] = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0]
             .SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
         return;
     #endif
@@ -76,9 +76,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
             //float3 output = outgoing_ray.Direction * 0.5 + 0.5;
         #endif
+        temporal_output_tex[px] = float4(output, 1);
         output_tex[px] = float4(output, 1);
-        debug_out_tex[px] = float4(output, 1);
-        //output_tex[px] = float4(0.1.xxx, 1.0);
+        //temporal_output_tex[px] = float4(0.1.xxx, 1.0);
         return;
     }
 
@@ -184,9 +184,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
 
-    output_tex[px] = float4(total_radiance, 1.0);
+    temporal_output_tex[px] = float4(total_radiance, 1.0);
 
-    float3 debug_out = total_radiance;
+    float3 output = total_radiance;
     
     #if 0
         float4 pos_vs = mul(frame_constants.view_constants.world_to_view, pt_ws);
@@ -194,30 +194,30 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
 
-        debug_out +=
+        output +=
             smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
     #endif
 
     //float ex = calculate_luma(rtr_tex[px].xyz);
     //float ex2 = rtr_tex[px].w;
-    //debug_out = 1e-1 * abs(ex * ex - ex2) / max(1e-8, ex);
+    //output = 1e-1 * abs(ex * ex - ex2) / max(1e-8, ex);
 
-    //debug_out = rtr_tex[px].www * 0.01;
-    //debug_out = rtr_tex[px].xyz;
+    //output = rtr_tex[px].www * 0.01;
+    //output = rtr_tex[px].xyz;
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
-    //debug_out = pow((bent_normal_dir) * 0.5 + 0.5, 2);
-    //debug_out = bent_normal_dir * 0.5 + 0.5;
-    //debug_out = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
+    //output = pow((bent_normal_dir) * 0.5 + 0.5, 2);
+    //output = bent_normal_dir * 0.5 + 0.5;
+    //output = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
 
-    //debug_out = gi_irradiance;
-    //debug_out = gbuffer.metalness;
-    //debug_out = gbuffer.roughness;
-    //debug_out = gbuffer.albedo;
-    //debug_out = pow(ssgi.a, 4);
+    //output = gi_irradiance;
+    //output = gbuffer.metalness;
+    //output = gbuffer.roughness;
+    //output = gbuffer.albedo;
+    //output = pow(ssgi.a, 4);
 
     #if 0
-        debug_out = lookup_csgi(
+        output = lookup_csgi(
             pt_ws.xyz,
             gbuffer.normal,
             CsgiLookupParams::make_default()
@@ -228,8 +228,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #endif
 
     #if 0
-        debug_out = bindless_textures[BINDLESS_LUT_BRDF_FG][px / 16].rgb;
+        output = bindless_textures[BINDLESS_LUT_BRDF_FG][px / 16].rgb;
     #endif
 
-    debug_out_tex[px] = float4(debug_out, 1.0);
+    output_tex[px] = float4(output, 1.0);
 }

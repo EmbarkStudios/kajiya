@@ -4,10 +4,16 @@ use kajiya_backend::Image;
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
 pub mod csgi;
+pub mod deferred;
 pub mod half_res;
+pub mod imageops;
+pub mod post;
+pub mod raster_meshes;
+pub mod reference;
 pub mod reprojection;
 pub mod rtdgi;
 pub mod rtr;
+pub mod shadows;
 pub mod sky;
 pub mod ssgi;
 pub mod taa;
