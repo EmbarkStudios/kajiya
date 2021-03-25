@@ -25,13 +25,13 @@
 
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
-#define USE_RAY_JITTER 0
+#define USE_RAY_JITTER 1
 #define RAY_JITTER_AMOUNT 0.75
 //#define RAY_JITTER_AMOUNT 1.0
 //#define ACCUM_HYSTERESIS 0.05
 //#define ACCUM_HYSTERESIS 0.15
-//#define ACCUM_HYSTERESIS 0.25
-#define ACCUM_HYSTERESIS 1.0
+#define ACCUM_HYSTERESIS 0.25
+//#define ACCUM_HYSTERESIS 1.0
 
 #define USE_MULTIBOUNCE 1
 
@@ -70,8 +70,8 @@ void main() {
         //const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         //const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         float2 jitter_urand = hammersley(frame_constants.frame_index % 4, 8);
-        const float offset_x = jitter_urand.x;
-        const float offset_y = jitter_urand.y;
+        const float offset_x = jitter_urand.x * jitter_amount;
+        const float offset_y = jitter_urand.y * jitter_amount;
         const float blend_factor = ACCUM_HYSTERESIS;
     #else
         const float offset_x = 0.0;

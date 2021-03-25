@@ -40,7 +40,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
             float4 neigh = (input_tex[px + int2(x, y) * 2]);
-			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
+			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
 			wsum += w;
@@ -51,9 +51,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 ex2 = vsum2 / wsum;
 	float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
 
-    float box_size = lerp(reproj.w, 1.0, 0.5);
+    float box_size = 1;//lerp(reproj.w, 1.0, 0.5);
 
-    const float n_deviations = 3.0;
+    const float n_deviations = 5.0;
 	float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
 #else
@@ -158,8 +158,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 	float4 clamped_history = clamp(history, nmin, nmax);
     //clamped_history = center;
+    //float4 clamped_history = history;
 
-    float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 16.0, reproj_validity_dilated * light_stability));
+    float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(2.0, 6.0, reproj_validity_dilated * light_stability));
 
     const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
 
@@ -186,6 +187,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     // TODO: adaptively sample according to abs(res)
     //spatial_input = abs(res);
 
-    output_tex[px] = float4(spatial_input, smoothed_dev * (light_stability > 0.5 ? 1.0 : -1.0));
+    //output_tex[px] = float4(spatial_input, smoothed_dev * (light_stability > 0.5 ? 1.0 : -1.0));
+    output_tex[px] = float4(spatial_input, light_stability);
     //history_output_tex[px] = reproj.w;
 }

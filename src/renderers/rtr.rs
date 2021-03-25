@@ -8,13 +8,13 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
 
-use super::{csgi2, GbufferDepth};
+use super::{csgi2, GbufferDepth, PingPongTemporalResource};
 
-use blue_noise_sampler::spp16::*;
+use blue_noise_sampler::spp64::*;
 
 pub struct RtrRenderer {
-    filtered_output_tex: rg::TemporalResourceKey,
-    history_tex: rg::TemporalResourceKey,
+    temporal_tex: PingPongTemporalResource,
+    temporal2_tex: PingPongTemporalResource,
 
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
@@ -44,8 +44,8 @@ fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
 impl RtrRenderer {
     pub fn new(device: &Device) -> Self {
         Self {
-            filtered_output_tex: "rtr.0".into(),
-            history_tex: "rtr.1".into(),
+            temporal_tex: PingPongTemporalResource::new("rtr.temporal"),
+            temporal2_tex: PingPongTemporalResource::new("rtr.temporal2"),
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
@@ -132,19 +132,9 @@ impl RtrRenderer {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
-        let history_tex = rg
-            .get_or_create_temporal(
-                self.history_tex.clone(),
-                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
-            )
-            .unwrap();
-
-        let mut filtered_output_tex = rg
-            .get_or_create_temporal(
-                self.filtered_output_tex.clone(),
-                Self::temporal_tex_desc(gbuffer_desc.extent_2d()),
-            )
-            .unwrap();
+        let (mut temporal_output_tex, history_tex) = self
+            .temporal_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
         let mut ray_len_tex = rg.create(
             gbuffer_desc
@@ -172,8 +162,6 @@ impl RtrRenderer {
         ))
         .dispatch(resolved_tex.desc().extent);
 
-        std::mem::swap(&mut self.filtered_output_tex, &mut self.history_tex);
-
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection temporal"),
             "/assets/shaders/rtr/temporal_filter.hlsl",
@@ -183,11 +171,28 @@ impl RtrRenderer {
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&ray_len_tex)
         .read(reprojection_map)
-        .write(&mut filtered_output_tex)
-        .constants(filtered_output_tex.desc().extent_inv_extent_2d())
+        .write(&mut temporal_output_tex)
+        .constants(temporal_output_tex.desc().extent_inv_extent_2d())
         .dispatch(resolved_tex.desc().extent);
 
-        filtered_output_tex.into()
+        let (mut temporal2_output_tex, history2_tex) = self
+            .temporal2_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("reflection temporal2"),
+            "/assets/shaders/rtr/temporal_filter2.hlsl",
+        )
+        .read(&temporal_output_tex)
+        .read(&history2_tex)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&ray_len_tex)
+        .read(reprojection_map)
+        .write(&mut temporal2_output_tex)
+        .constants(temporal2_output_tex.desc().extent_inv_extent_2d())
+        .dispatch(resolved_tex.desc().extent);
+
+        temporal2_output_tex.into()
     }
 }
 

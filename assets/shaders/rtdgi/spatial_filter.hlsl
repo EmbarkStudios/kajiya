@@ -32,7 +32,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 center_val = center_val_valid_packed.rgb;
     const float center_validity = center_val_valid_packed.a;
     const float center_ssao = ssao_tex[px * 2].a;
-    const float rel_std_dev = abs(center_validity);
+    const float rel_std_dev = 1;//abs(center_validity);
 
     const float2 uv = get_uv(px, output_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
@@ -44,8 +44,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #if !USE_POISSON
 
     float spatial_sharpness = 0.25;//lerp(0.5, 0.25, saturate(center_ssao));
-    int k = 3;
-    int skip = 2;
+    int k = 2;
+    int skip = 3;
 
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
@@ -56,15 +56,15 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //const int sample_count = 1;
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
-    const bool input_gi_stable = center_validity >= 0.0;
+    const bool input_gi_stable = center_validity >= 0.5;
     const uint filter_idx =
-        input_gi_stable
+        /*input_gi_stable
             ? uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0))
-            : 7;
+            : 7;*/3;
 
     {
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy * 2;
     #endif
 
             const int2 sample_px = px + sample_offset;
@@ -77,7 +77,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
             if (sample_depth != 0) {
                 float wt = 1;
 
-                //wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
+                #if !USE_POISSON
+                    wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
+                #endif
+
                 wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 20);
                 wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
@@ -107,5 +110,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //filtered = center_sample;
     //filtered = filter_idx / 7.0;
 
-    output_tex[px] = float4(filtered, /*rel_dev*/rel_std_dev);
+    //output_tex[px] = float4(filtered, /*rel_dev*/rel_std_dev);
+    output_tex[px] = float4(filtered, /*rel_dev*/center_validity);
 }

@@ -17,8 +17,6 @@
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
-#if 1
-
 float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
     if (depth != 0.0)
     {
@@ -68,7 +66,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         const uint filter_idx = uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0));
 
-        for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+        // TODO: not using sample 0 removes pixellation, but potentially loses small detail
+        for (uint sample_i = 1; sample_i < sample_count + 1; ++sample_i) {
+
             // Swizzle as .yx to avoid using the same samples as the previous filter
             const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].yx;
 
@@ -76,7 +76,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
             float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
             float sample_depth = half_depth_tex[sample_px];
-            float3 sample_val = ssgi_tex[sample_px].rgb;
+            float4 sample_val = ssgi_tex[sample_px];
             float sample_ssao = ssao_tex[sample_px * 2].a;
 
             if (sample_depth != 0) {
@@ -90,7 +90,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                     wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
                 #endif
 
-                result += float4(sample_val, 1) * wt;
+                result += sample_val * wt;
                 w_sum += wt;
             }
         }
@@ -104,65 +104,3 @@ void main(in uint2 px : SV_DispatchThreadID) {
         output_tex[px] = ssgi_tex[px / 2];
     }
 }
-
-#else
-
-float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
-    if (depth != 0.0)
-    {
-        float depth_diff = 1.0 - (center_depth / depth);
-        float depth_factor = exp2(-200.0 * abs(depth_diff));
-
-        float normal_factor = max(0.0, dot(normal, center_normal));
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
-
-        float w = 1;
-        w *= depth_factor;  // TODO: differentials
-        w *= normal_factor;
-        w *= exp(-dot(soffset, soffset));
-
-        w_sum += w;
-        return ssgi * w;
-    } else {
-        return 0.0.xxxx;
-    }
-}
-
-[numthreads(8, 8, 1)]
-void main(in uint2 px : SV_DispatchThreadID) {
-
-    float4 result = 0.0.xxxx;
-    float w_sum = 0.0;
-
-    float center_depth = depth_tex[px];
-    if (center_depth != 0.0) {
-        float3 center_normal = unpack_normal_11_10_11(gbuffer_tex[px].y);
-
-    	float4 center_ssgi = 0.0.xxxx;
-        w_sum = 0.0;
-        result = center_ssgi;
-
-        const int kernel_half_size = 1;
-        for (int y = -kernel_half_size; y <= kernel_half_size; ++y) {
-            for (int x = -kernel_half_size; x <= kernel_half_size; ++x) {
-                int2 sample_px = px / 2 + int2(x, y) * 1;
-                float depth = depth_tex[sample_px * 2];
-                float4 ssgi = ssgi_tex[sample_px];
-                float3 normal = unpack_normal_11_10_11(gbuffer_tex[sample_px * 2].y);
-                result += process_sample(float2(x, y), ssgi, depth, normal, center_depth, center_normal, w_sum);
-            }
-        }
-    } else {
-        result = 0.0.xxxx;
-    }
-
-    if (w_sum > 1e-6) {
-        output_tex[px] = result / w_sum;
-    } else {
-        output_tex[px] = ssgi_tex[px / 2];
-    }
-}
-
-#endif

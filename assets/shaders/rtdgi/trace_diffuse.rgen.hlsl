@@ -65,8 +65,19 @@ static const float SKY_DIST = 1e5;
 
 [shader("raygeneration")]
 void main() {
+    uint2 hi_px_subpixels[4] = {
+        uint2(0, 0),
+        uint2(1, 1),
+        uint2(1, 0),
+        uint2(0, 1),
+    };
+
     const uint2 px = DispatchRaysIndex().xy;
+
+    // TODO: jitter half-res buffers too; otherwise this is ineffective
+    //const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
     const uint2 hi_px = px * 2;
+    
     float depth = depth_tex[hi_px];
 
     if (0.0 == depth) {

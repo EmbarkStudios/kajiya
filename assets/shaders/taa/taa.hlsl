@@ -259,7 +259,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float blend_factor = 1.0;
     
 	#if 1
-		float3 clamped_history = clamp(history, nmin, nmax);
+        float3 clamped_history = clamp(history, nmin, nmax);
+		//float3 clamped_history = history;//clamp(history, nmin, nmax);
         blend_factor = lerp(1.0, 1.0 / 12.0, reproj.z);
 
         // "Anti-flicker"

@@ -92,11 +92,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float4 reprojection_params = reprojection_tex[px];
 
-    float history_error = lerp(
-        2.0,
-        history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).w,
-        reprojection_params.z
-    );
+    float history_error;
+    {
+        float4 history = history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).w;
+        float ex = calculate_luma(history.xyz);
+        float ex2 = history.w;
+        history_error = abs(ex * ex - ex2) / max(1e-8, ex);
+    }
+    //history_error = lerp(2.0, history_error, reprojection_params.z);
 
     const uint wave_mask = WaveActiveBallot(true).x;
     if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 2)) {
@@ -106,13 +109,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
         filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
     }
 
+    // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
+    const float error_adjusted_filter_size = min(filter_size * 4, filter_size + history_error * 0.5);
+
     //const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
     //sample_count = WaveActiveMax(sample_count);
     //const uint sample_count = 16;
-    const uint sample_count = BORROW_SAMPLES ? clamp(filter_size * 128, 6, 16) : 1;
-
-    // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
-    const float error_adjusted_filter_size = min(filter_size * 2, filter_size + history_error / 8);
+    const uint sample_count = BORROW_SAMPLES ? clamp(error_adjusted_filter_size * 128, 6, 16) : 1;
 
     // Choose one of a few pre-baked sample sets based on the footprint
     const uint filter_idx = uint(clamp(error_adjusted_filter_size * 8, 0, 7));
@@ -129,7 +132,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz;
 
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-        const int2 sample_px = px / 2 + spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+        // TODO: precalculate temporal variants
+        int2 sample_px = px / 2 + spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
 
         float4 packed0 = hit0_tex[sample_px];
         if (packed0.w > 0) {
@@ -217,8 +221,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);
     //float relative_error = max(0.0, ex2 - ex * ex);
     
-    relative_error = relative_error * 0.5 + 0.5 * WaveActiveMax(relative_error);
+    //relative_error = relative_error * 0.5 + 0.5 * WaveActiveMax(relative_error);
     //relative_error = WaveActiveMax(relative_error);
+
+    relative_error = ex2;
 
     //out_color = sample_count / 16.0;
     //out_color = saturate(filter_idx / 7.0);

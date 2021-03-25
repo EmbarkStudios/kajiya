@@ -142,13 +142,14 @@ void main() {
     //rng = hash_combine2(hash1(rng), seed);
 
 #if 1
+    // Note: since this is pre-baked for various SPP, can run into undersampling
     const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
 
     float2 urand = float2(
         blue_noise_sampler(px.x, px.y, noise_offset, 0),
         blue_noise_sampler(px.x, px.y, noise_offset, 1)
     );
-#elif 0
+#elif 1
     // 256x256 blue noise
 
     const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
@@ -181,7 +182,7 @@ void main() {
 #endif
 
     if (brdf_sample.is_valid()) {
-        const bool use_short_ray = gbuffer.roughness > 0.25 && USE_SHORT_RAYS_FOR_ROUGH;
+        const bool use_short_ray = gbuffer.roughness > 0.55 && USE_SHORT_RAYS_FOR_ROUGH;
 
         RayDesc outgoing_ray;
         outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);

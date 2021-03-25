@@ -52,11 +52,14 @@ PsOut main(PsIn ps) {
     const float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, -0.5).xyz * 2.0 - 1.0;
 
     float3 normal = ps.normal;
-    if (dot(ps.bitangent, ps.bitangent) > 0.0) {
-        float3x3 tbn = float3x3(ps.tangent, ps.bitangent, ps.normal);
-        normal = mul(ts_normal, tbn);
+
+    if (true) {
+        if (dot(ps.bitangent, ps.bitangent) > 0.0) {
+            float3x3 tbn = float3x3(ps.tangent, ps.bitangent, ps.normal);
+            normal = mul(ts_normal, tbn);
+        }
+        normal = normalize(normal);
     }
-    normal = normalize(normal);
 
     if (!true) {
         // Derive normal from depth

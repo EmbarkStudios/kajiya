@@ -197,8 +197,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
             smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
     #endif
 
-    //debug_out = rtr_tex[px].www * 0.001;
-    //debug_out = rtr_tex[px].www;
+    //float ex = calculate_luma(rtr_tex[px].xyz);
+    //float ex2 = rtr_tex[px].w;
+    //debug_out = 1e-1 * abs(ex * ex - ex2) / max(1e-8, ex);
+
+    //debug_out = rtr_tex[px].www * 0.01;
     //debug_out = rtr_tex[px].xyz;
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
@@ -208,6 +211,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //debug_out = gi_irradiance;
     //debug_out = gbuffer.metalness;
+    //debug_out = gbuffer.roughness;
     //debug_out = gbuffer.albedo;
     //debug_out = pow(ssgi.a, 4);
 

@@ -14,6 +14,7 @@ use blue_noise_sampler::spp16::*;
 
 pub struct RtdgiRenderer {
     temporal_tex: PingPongTemporalResource,
+    temporal2_tex: PingPongTemporalResource,
     cv_temporal_tex: PingPongTemporalResource,
 
     ranking_tile_buf: Arc<Buffer>,
@@ -44,7 +45,8 @@ fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
 impl RtdgiRenderer {
     pub fn new(device: &Device) -> Self {
         Self {
-            temporal_tex: PingPongTemporalResource::new("rtdgi.final"),
+            temporal_tex: PingPongTemporalResource::new("rtdgi.temporal"),
+            temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             cv_temporal_tex: PingPongTemporalResource::new("rtdgi.cv"),
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
@@ -104,6 +106,43 @@ impl RtdgiRenderer {
         .read(&csgi_volume.indirect_cascade0)
         .write(&mut temporal_output_tex)
         .write(&mut cv_temporal_output_tex)
+        .write(&mut temporal_filtered_tex)
+        .constants((
+            temporal_output_tex.desc().extent_inv_extent_2d(),
+            gbuffer_depth.gbuffer.desc().extent_inv_extent_2d(),
+        ))
+        .dispatch(temporal_output_tex.desc().extent);
+
+        temporal_filtered_tex
+    }
+
+    fn temporal2(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        input_color: &rg::Handle<Image>,
+        gbuffer_depth: &GbufferDepth,
+        reprojection_map: &rg::Handle<Image>,
+    ) -> rg::Handle<Image> {
+        let (mut temporal_output_tex, history_tex) = self
+            .temporal2_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(input_color.desc().extent_2d()));
+
+        let mut temporal_filtered_tex = rg.create(
+            gbuffer_depth
+                .gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("rtdgi temporal2"),
+            "/assets/shaders/rtdgi/temporal_filter2.hlsl",
+        )
+        .read(&input_color)
+        .read(&history_tex)
+        .read(reprojection_map)
+        .write(&mut temporal_output_tex)
         .write(&mut temporal_filtered_tex)
         .constants((
             temporal_output_tex.desc().extent_inv_extent_2d(),
@@ -250,6 +289,8 @@ impl RtdgiRenderer {
         ))
         .dispatch(upsampled_tex.desc().extent);
 
-        upsampled_tex.into()
+        let filtered_tex = self.temporal2(rg, &upsampled_tex, gbuffer_depth, reprojection_map);
+
+        filtered_tex.into()
     }
 }
