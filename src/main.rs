@@ -109,6 +109,8 @@ fn main() -> anyhow::Result<()> {
 
     let render_backend = RenderBackend::new(&*window, &window_cfg, !opt.no_debug)?;
     let mut render_client = render_client::KajiyaRenderClient::new(&render_backend)?;
+
+    // BINDLESS_LUT_BRDF_FG
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
     let mut renderer = kajiya_rg::renderer::Renderer::new(render_backend)?;
@@ -130,7 +132,10 @@ fn main() -> anyhow::Result<()> {
         )
         .unwrap();
 
-        render_client.add_image(blue_noise_img);
+        let handle = render_client.add_image(blue_noise_img);
+
+        // BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0
+        assert_eq!(handle.0, 1);
     }
 
     let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 0.0, 8.0));

@@ -218,7 +218,7 @@ void main() {
                 if (path_length == 0) {
                     const uint noise_offset = frame_constants.frame_index;
 
-                    urand = bindless_textures[1][
+                    urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
                         (px + int2(noise_offset * 59, noise_offset * 37)) & 255
                     ].xyz * 255.0 / 256.0 + 0.5 / 256.0;
 

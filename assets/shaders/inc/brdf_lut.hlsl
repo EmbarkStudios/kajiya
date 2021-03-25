@@ -8,7 +8,7 @@ struct SpecularBrdfEnergyPreservation {
 
     static float2 sample_fg_lut(float ndotv, float roughness) {
         float2 uv = float2(ndotv, roughness) * BRDF_FG_LUT_UV_SCALE + BRDF_FG_LUT_UV_BIAS;
-        return bindless_textures[0].SampleLevel(sampler_lnc, uv, 0).xy;
+        return bindless_textures[BINDLESS_LUT_BRDF_FG].SampleLevel(sampler_lnc, uv, 0).xy;
     }
 
     static SpecularBrdfEnergyPreservation from_brdf_ndotv(SpecularBrdf brdf, float ndotv) {

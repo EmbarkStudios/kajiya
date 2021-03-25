@@ -868,6 +868,7 @@ impl KajiyaRenderClient {
                     self.raster_simple_render_pass.clone(),
                     &mut depth_img,
                     &mut gbuffer,
+                    &mut mesh_velocity_img,
                 );
             }
 

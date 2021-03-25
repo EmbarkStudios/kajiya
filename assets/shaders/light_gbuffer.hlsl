@@ -59,7 +59,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #if 0
         ruv.x *= output_tex_size.x / output_tex_size.y;
-        output_tex[px] = bindless_textures[1].SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
+        output_tex[px] = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0]
+            .SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
         return;
     #endif
 
@@ -227,7 +228,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #endif
 
     #if 0
-        debug_out = bindless_textures[0][px / 16].rgb;
+        debug_out = bindless_textures[BINDLESS_LUT_BRDF_FG][px / 16].rgb;
     #endif
 
     debug_out_tex[px] = float4(debug_out, 1.0);

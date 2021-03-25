@@ -204,7 +204,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 #if USE_DITHER
     const uint urand_idx = frame_constants.frame_index;
     // 256x256 blue noise
-    float dither = triangle_remap(bindless_textures[1][
+    float dither = triangle_remap(bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
         (px + int2(urand_idx * 59, urand_idx * 37)) & 255
     ].x);
 

@@ -154,7 +154,7 @@ void main() {
 
     const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
 
-    float2 urand = bindless_textures[1][
+    float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
         (px + int2(noise_offset * 59, noise_offset * 37)) & 255
     ].xy * 255.0 / 256.0 + 0.5 / 256.0;
 #else

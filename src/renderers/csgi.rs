@@ -167,7 +167,8 @@ impl CsgiVolume {
         rg: &mut rg::RenderGraph,
         render_pass: Arc<RenderPass>,
         depth_img: &mut rg::Handle<Image>,
-        color_img: &mut rg::Handle<Image>,
+        gbuffer_img: &mut rg::Handle<Image>,
+        velocity_img: &mut rg::Handle<Image>,
     ) {
         let mut pass = rg.add_pass("raster csgi voxels");
 
@@ -192,19 +193,23 @@ impl CsgiVolume {
         );
 
         let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
-        let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
+        let gbuffer_ref = pass.raster(gbuffer_img, AccessType::ColorAttachmentWrite);
+        let velocity_ref = pass.raster(velocity_img, AccessType::ColorAttachmentWrite);
         let grid_ref = pass.read(
             &self.direct_cascade0,
             AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
 
         pass.render(move |api| {
-            let [width, height, _] = color_ref.desc().extent;
+            let [width, height, _] = gbuffer_ref.desc().extent;
 
             api.begin_render_pass(
                 &*render_pass,
                 [width, height],
-                &[(color_ref, &ImageViewDesc::default())],
+                &[
+                    (gbuffer_ref, &ImageViewDesc::default()),
+                    (velocity_ref, &ImageViewDesc::default()),
+                ],
                 Some((
                     depth_ref,
                     &ImageViewDesc::builder()
