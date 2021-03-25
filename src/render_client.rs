@@ -5,7 +5,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     render_passes::{RasterMeshesData, UploadedTriMesh},
     renderers::{
-        csgi2::Csgi2Renderer, rtdgi::RtdgiRenderer, rtr::*, ssgi::*, taa::TaaRenderer, GbufferDepth,
+        csgi::CsgiRenderer, rtdgi::RtdgiRenderer, rtr::*, ssgi::*, taa::TaaRenderer, GbufferDepth,
     },
     viewport::ViewConstants,
     vulkan::{self, image::*, shader::*, RenderBackend},
@@ -78,7 +78,7 @@ pub struct MeshInstance {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RenderDebugMode {
     None,
-    Csgi2VoxelGrid,
+    CsgiVoxelGrid,
 }
 
 pub struct KajiyaRenderClient {
@@ -106,7 +106,7 @@ pub struct KajiyaRenderClient {
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub rtdgi: RtdgiRenderer,
-    pub csgi2: Csgi2Renderer,
+    pub csgi: CsgiRenderer,
     pub taa: TaaRenderer,
 
     pub debug_mode: RenderDebugMode,
@@ -502,7 +502,7 @@ impl KajiyaRenderClient {
 
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
-            csgi2: Csgi2Renderer::default(),
+            csgi: CsgiRenderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
             taa: TaaRenderer::new(),
 
@@ -818,7 +818,7 @@ impl KajiyaRenderClient {
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
-        let csgi2_volume = self.csgi2.render(
+        let csgi_volume = self.csgi.render(
             frame_state.camera_matrices.eye_position(),
             rg,
             &convolved_sky_cube,
@@ -846,7 +846,7 @@ impl KajiyaRenderClient {
                 frame_state.window_cfg.dims(),
             ));
 
-            if self.debug_mode != RenderDebugMode::Csgi2VoxelGrid {
+            if self.debug_mode != RenderDebugMode::CsgiVoxelGrid {
                 crate::render_passes::raster_meshes(
                     rg,
                     self.raster_simple_render_pass.clone(),
@@ -862,8 +862,8 @@ impl KajiyaRenderClient {
                 );
             }
 
-            if self.debug_mode == RenderDebugMode::Csgi2VoxelGrid {
-                csgi2_volume.debug_raster_voxel_grid(
+            if self.debug_mode == RenderDebugMode::CsgiVoxelGrid {
+                csgi_volume.debug_raster_voxel_grid(
                     rg,
                     self.raster_simple_render_pass.clone(),
                     &mut depth_img,
@@ -896,7 +896,7 @@ impl KajiyaRenderClient {
             &sky_cube,
             self.bindless_descriptor_set,
             &tlas,
-            &csgi2_volume,
+            &csgi_volume,
         );
 
         let rtdgi = self.rtdgi.render(
@@ -906,7 +906,7 @@ impl KajiyaRenderClient {
             &sky_cube,
             self.bindless_descriptor_set,
             &tlas,
-            &csgi2_volume,
+            &csgi_volume,
             &ssgi_tex,
         );
 
@@ -925,7 +925,7 @@ impl KajiyaRenderClient {
             &rtdgi,
             &mut accum_img,
             &mut debug_out_tex,
-            &csgi2_volume,
+            &csgi_volume,
             &sky_cube,
             self.bindless_descriptor_set,
         );

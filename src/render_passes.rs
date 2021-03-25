@@ -8,7 +8,7 @@ use kajiya_backend::{
 use kajiya_rg::*;
 
 use crate::{
-    renderers::csgi2,
+    renderers::csgi,
     vulkan::{image::ImageViewDesc, shader::*},
 };
 
@@ -430,7 +430,7 @@ pub fn light_gbuffer(
     rtdgi: &Handle<Image>,
     output: &mut Handle<Image>,
     debug_output: &mut Handle<Image>,
-    csgi2_volume: &csgi2::Csgi2Volume,
+    csgi_volume: &csgi::CsgiVolume,
     sky_cube: &Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) {
@@ -446,8 +446,8 @@ pub fn light_gbuffer(
     .read(rtdgi)
     .write(output)
     .write(debug_output)
-    .read(&csgi2_volume.direct_cascade0)
-    .read(&csgi2_volume.indirect_cascade0)
+    .read(&csgi_volume.direct_cascade0)
+    .read(&csgi_volume.indirect_cascade0)
     .read(sky_cube)
     .constants((gbuffer.desc().extent_inv_extent_2d(),))
     .raw_descriptor_set(1, bindless_descriptor_set)

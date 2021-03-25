@@ -16,7 +16,7 @@
 #define USE_SHORT_RAYS_FOR_ROUGH 1
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 
-#define USE_CSGI2 1
+#define USE_CSGI 1
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
 
 // Strongly reduces roughness of secondary hits
@@ -43,15 +43,15 @@
 [[vk::binding(4)]] StructuredBuffer<uint> sobol_buf;
 [[vk::binding(5)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(6)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(7)]] Texture3D<float4> csgi_direct_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex;
 [[vk::binding(9)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi2/common.hlsl"
-#include "../csgi2/lookup.hlsl"
+#include "../csgi/common.hlsl"
+#include "../csgi/lookup.hlsl"
 
 
 float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDimension)
@@ -190,7 +190,7 @@ void main() {
         outgoing_ray.TMin = 0;
 
         if (use_short_ray) {
-            outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * SHORT_RAY_SIZE_VOXEL_CELLS * lerp(4.0, 1.0, gbuffer.roughness);
+            outgoing_ray.TMax = CSGI_VOXEL_SIZE.x * SHORT_RAY_SIZE_VOXEL_CELLS * lerp(4.0, 1.0, gbuffer.roughness);
         } else {
             outgoing_ray.TMax = SKY_DIST;
         }
@@ -226,7 +226,7 @@ void main() {
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 total_radiance += brdf_value * light_radiance;
 
-                if (USE_CSGI2) {
+                if (USE_CSGI) {
                     const float gi_sample_roughness = lerp(gbuffer.roughness, 1.0, 0.5);
 
                     // https://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html
@@ -235,12 +235,12 @@ void main() {
 
                     // Tend towards sampling all directions near close hits, with the idea that in proximity
                     // to surfaces, the GI grid will have ugly pixelated values.
-                    phong_exponent = lerp(0.0, phong_exponent, saturate(primary_hit.ray_t / CSGI2_VOXEL_SIZE.x - 2.0));
+                    phong_exponent = lerp(0.0, phong_exponent, saturate(primary_hit.ray_t / CSGI_VOXEL_SIZE.x - 2.0));
 
                     const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
 
-                    Csgi2LookupParams lookup_params =
-                        Csgi2LookupParams::make_default()
+                    CsgiLookupParams lookup_params =
+                        CsgiLookupParams::make_default()
                             .with_sample_specular(reflect(outgoing_ray.Direction, gbuffer.normal))
                             .with_directional_radiance_phong_exponent(phong_exponent)
                             .with_bent_normal(pseudo_bent_normal)
@@ -249,7 +249,7 @@ void main() {
                             ;
 
                     // TODO: screen-space fetch if available?
-                    if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= CSGI2_VOXEL_SIZE.x) {
+                    if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= CSGI_VOXEL_SIZE.x) {
                         float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
 
                         // Suppression in open corners causes excessive darkening,
@@ -258,17 +258,17 @@ void main() {
                         max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
 
                         lookup_params = lookup_params
-                            .with_max_normal_offset_scale(max_normal_offset / CSGI2_VOXEL_SIZE.x)
+                            .with_max_normal_offset_scale(max_normal_offset / CSGI_VOXEL_SIZE.x)
                             ;
                     }
 
-                    float3 csgi = lookup_csgi2(
+                    float3 csgi = lookup_csgi(
                         primary_hit.position,
                         gbuffer.normal,
                             lookup_params
                     );
 
-                    //if (primary_hit.ray_t > CSGI2_VOXEL_SIZE.x)
+                    //if (primary_hit.ray_t > CSGI_VOXEL_SIZE.x)
                     total_radiance += csgi * gbuffer.albedo;
                 }
             }
@@ -279,10 +279,10 @@ void main() {
 
             float3 far_gi;
             if (use_short_ray) {
-                far_gi = lookup_csgi2(
-                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI2_VOXEL_SIZE.x),
+                far_gi = lookup_csgi(
+                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI_VOXEL_SIZE.x),
                     0.0.xxx,    // don't offset by any normal
-                    Csgi2LookupParams::make_default()
+                    CsgiLookupParams::make_default()
                         .with_sample_directional_radiance(outgoing_ray.Direction)
                 );
             } else {

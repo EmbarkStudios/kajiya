@@ -8,7 +8,7 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
-use super::{csgi2, GbufferDepth, PingPongTemporalResource};
+use super::{csgi, GbufferDepth, PingPongTemporalResource};
 
 use blue_noise_sampler::spp16::*;
 
@@ -67,7 +67,7 @@ impl RtdgiRenderer {
         input_color: &rg::Handle<Image>,
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
-        csgi_volume: &csgi2::Csgi2Volume,
+        csgi_volume: &csgi::CsgiVolume,
     ) -> rg::Handle<Image> {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
@@ -192,7 +192,7 @@ impl RtdgiRenderer {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        csgi_volume: &csgi2::Csgi2Volume,
+        csgi_volume: &csgi::CsgiVolume,
 
         // TODO: calculate specialized SSAO
         ssao_img: &rg::Handle<Image>,

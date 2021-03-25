@@ -11,7 +11,7 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 
-#define USE_CSGI2 1
+#define USE_CSGI 1
 #define USE_TEMPORAL_JITTER 1
 #define USE_SHORT_RAYS_ONLY 1
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
@@ -27,15 +27,15 @@
 [[vk::binding(4)]] StructuredBuffer<uint> sobol_buf;
 [[vk::binding(5)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(6)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(7)]] Texture3D<float4> csgi_direct_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex;
 [[vk::binding(9)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi2/common.hlsl"
-#include "../csgi2/lookup.hlsl"
+#include "../csgi/common.hlsl"
+#include "../csgi/lookup.hlsl"
 
 
 float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDimension)
@@ -149,7 +149,7 @@ void main() {
         outgoing_ray.TMin = 0;
 
         #if USE_SHORT_RAYS_ONLY
-            outgoing_ray.TMax = CSGI2_VOXEL_SIZE.x * SHORT_RAY_SIZE_VOXEL_CELLS;
+            outgoing_ray.TMax = CSGI_VOXEL_SIZE.x * SHORT_RAY_SIZE_VOXEL_CELLS;
         #else
             outgoing_ray.TMax = SKY_DIST;
         #endif
@@ -158,10 +158,10 @@ void main() {
             float3 to_eye = get_eye_position() - ray_hit_ws;
             float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
 
-            control_variate = lookup_csgi2(
+            control_variate = lookup_csgi(
                 ray_hit_ws,
                 gbuffer.normal,
-                Csgi2LookupParams::make_default()
+                CsgiLookupParams::make_default()
                     .with_sample_directional_radiance(outgoing_ray.Direction)
                     .with_bent_normal(pseudo_bent_normal)
             );
@@ -196,16 +196,16 @@ void main() {
             const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
             total_radiance += brdf_value * light_radiance;
 
-            if (USE_CSGI2) {
+            if (USE_CSGI) {
                 const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
 
-                Csgi2LookupParams lookup_params =
-                    Csgi2LookupParams::make_default()
+                CsgiLookupParams lookup_params =
+                    CsgiLookupParams::make_default()
                         .with_bent_normal(pseudo_bent_normal)
                         //.with_linear_fetch(false)
                         ;
 
-                if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= CSGI2_VOXEL_SIZE.x) {
+                if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= CSGI_VOXEL_SIZE.x) {
                     float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
 
                     // Suppression in open corners causes excessive darkening,
@@ -214,24 +214,24 @@ void main() {
                     max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
 
                     lookup_params = lookup_params
-                        .with_max_normal_offset_scale(max_normal_offset / CSGI2_VOXEL_SIZE.x);
+                        .with_max_normal_offset_scale(max_normal_offset / CSGI_VOXEL_SIZE.x);
                 }
 
-                float3 csgi = lookup_csgi2(
+                float3 csgi = lookup_csgi(
                     primary_hit.position,
                     gbuffer.normal,
                     lookup_params
                 );
 
-                //if (primary_hit.ray_t > CSGI2_VOXEL_SIZE.x)
+                //if (primary_hit.ray_t > CSGI_VOXEL_SIZE.x)
                 total_radiance += csgi * gbuffer.albedo;
             }
         } else {
             #if USE_SHORT_RAYS_ONLY
-                const float3 far_gi = lookup_csgi2(
-                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI2_VOXEL_SIZE.x),
+                const float3 far_gi = lookup_csgi(
+                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI_VOXEL_SIZE.x),
                     0.0.xxx,    // don't offset by any normal
-                    Csgi2LookupParams::make_default()
+                    CsgiLookupParams::make_default()
                         .with_sample_directional_radiance(outgoing_ray.Direction)
                 );
             #else

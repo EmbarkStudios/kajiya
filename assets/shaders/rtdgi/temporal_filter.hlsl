@@ -9,8 +9,8 @@
 [[vk::binding(3)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(5)]] Texture2D<float> half_depth_tex;
-[[vk::binding(6)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(6)]] Texture3D<float4> csgi_direct_tex;
+[[vk::binding(7)]] Texture3D<float4> csgi_indirect_tex;
 [[vk::binding(8)]] RWTexture2D<float4> history_output_tex;
 [[vk::binding(9)]] RWTexture2D<float4> cv_history_output_tex;
 [[vk::binding(10)]] RWTexture2D<float4> output_tex;
@@ -19,8 +19,8 @@
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi2/common.hlsl"
-#include "../csgi2/lookup.hlsl"
+#include "../csgi/common.hlsl"
+#include "../csgi/lookup.hlsl"
 
 
 [numthreads(8, 8, 1)]
@@ -87,10 +87,10 @@ void main(uint2 px: SV_DispatchThreadID) {
         float3 to_eye = get_eye_position() - ray_hit_ws;
         float3 pseudo_bent_normal = normalize(normalize(to_eye) + normal);
 
-        control_variate = lookup_csgi2(
+        control_variate = lookup_csgi(
             ray_hit_ws,
             normal,
-            Csgi2LookupParams::make_default()
+            CsgiLookupParams::make_default()
                 .with_bent_normal(pseudo_bent_normal)
         );
     }

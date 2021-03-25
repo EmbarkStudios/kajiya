@@ -20,12 +20,12 @@ use kajiya_rg::{
 
 const VOLUME_DIMS: u32 = 64;
 
-pub struct Csgi2Renderer {
+pub struct CsgiRenderer {
     pub trace_subdiv: i32,
     pub neighbors_per_frame: i32,
 }
 
-impl Default for Csgi2Renderer {
+impl Default for CsgiRenderer {
     fn default() -> Self {
         Self {
             trace_subdiv: 3,
@@ -34,12 +34,12 @@ impl Default for Csgi2Renderer {
     }
 }
 
-pub struct Csgi2Volume {
+pub struct CsgiVolume {
     pub direct_cascade0: rg::Handle<Image>,
     pub indirect_cascade0: rg::Handle<Image>,
 }
 
-impl Csgi2Renderer {
+impl CsgiRenderer {
     pub fn render(
         &mut self,
         _eye_position: Vec3,
@@ -47,10 +47,10 @@ impl Csgi2Renderer {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-    ) -> Csgi2Volume {
+    ) -> CsgiVolume {
         let mut direct_cascade0 = rg
             .get_or_create_temporal(
-                "csgi2.direct_cascade0",
+                "csgi.direct_cascade0",
                 ImageDesc::new_3d(
                     //vk::Format::B10G11R11_UFLOAT_PACK32,
                     vk::Format::R16G16B16A16_SFLOAT,
@@ -66,7 +66,7 @@ impl Csgi2Renderer {
 
         let mut indirect_cascade0 = rg
             .get_or_create_temporal(
-                "csgi2.indirect_cascade0",
+                "csgi.indirect_cascade0",
                 ImageDesc::new_3d(
                     //vk::Format::B10G11R11_UFLOAT_PACK32,
                     vk::Format::R16G16B16A16_SFLOAT,
@@ -82,7 +82,7 @@ impl Csgi2Renderer {
 
         let mut indirect_cascade_combined0 = rg
             .get_or_create_temporal(
-                "csgi2.indirect_cascade_combined0",
+                "csgi.indirect_cascade_combined0",
                 ImageDesc::new_3d(
                     //vk::Format::B10G11R11_UFLOAT_PACK32,
                     vk::Format::R16G16B16A16_SFLOAT,
@@ -93,8 +93,8 @@ impl Csgi2Renderer {
             .unwrap();
 
         /*SimpleRenderPass::new_compute(
-            rg.add_pass("csgi2 clear"),
-            "/assets/shaders/csgi2/clear_volume.hlsl",
+            rg.add_pass("csgi clear"),
+            "/assets/shaders/csgi/clear_volume.hlsl",
         )
         .write(&mut direct_cascade0)
         .dispatch(direct_cascade0.desc().extent);*/
@@ -102,8 +102,8 @@ impl Csgi2Renderer {
         let sweep_vx_count = VOLUME_DIMS >> self.trace_subdiv.clamp(0, 5);
 
         SimpleRenderPass::new_rt(
-            rg.add_pass("csgi2 trace"),
-            "/assets/shaders/csgi2/trace_volume.rgen.hlsl",
+            rg.add_pass("csgi trace"),
+            "/assets/shaders/csgi/trace_volume.rgen.hlsl",
             &[
                 "/assets/shaders/rt/triangle.rmiss.hlsl",
                 "/assets/shaders/rt/shadow.rmiss.hlsl",
@@ -124,8 +124,8 @@ impl Csgi2Renderer {
         );
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("csgi2 sweep"),
-            "/assets/shaders/csgi2/sweep_volume.hlsl",
+            rg.add_pass("csgi sweep"),
+            "/assets/shaders/csgi/sweep_volume.hlsl",
         )
         .read(&direct_cascade0)
         .read(sky_cube)
@@ -133,8 +133,8 @@ impl Csgi2Renderer {
         .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("csgi2 diagonal sweep"),
-            "/assets/shaders/csgi2/diagonal_sweep_volume.hlsl",
+            rg.add_pass("csgi diagonal sweep"),
+            "/assets/shaders/csgi/diagonal_sweep_volume.hlsl",
         )
         .read(&direct_cascade0)
         .read(sky_cube)
@@ -146,22 +146,22 @@ impl Csgi2Renderer {
         ]);
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("csgi2 subray combine"),
-            "/assets/shaders/csgi2/subray_combine.hlsl",
+            rg.add_pass("csgi subray combine"),
+            "/assets/shaders/csgi/subray_combine.hlsl",
         )
         .read(&indirect_cascade0)
         .read(&direct_cascade0)
         .write(&mut indirect_cascade_combined0)
         .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);
 
-        Csgi2Volume {
+        CsgiVolume {
             direct_cascade0,
             indirect_cascade0: indirect_cascade_combined0,
         }
     }
 }
 
-impl Csgi2Volume {
+impl CsgiVolume {
     pub fn debug_raster_voxel_grid(
         &self,
         rg: &mut rg::RenderGraph,
@@ -169,18 +169,18 @@ impl Csgi2Volume {
         depth_img: &mut rg::Handle<Image>,
         color_img: &mut rg::Handle<Image>,
     ) {
-        let mut pass = rg.add_pass("raster csgi2 voxels");
+        let mut pass = rg.add_pass("raster csgi voxels");
 
         let pipeline = pass.register_raster_pipeline(
             &[
                 PipelineShader {
-                    code: "/assets/shaders/csgi2/raster_voxels_vs.hlsl",
+                    code: "/assets/shaders/csgi/raster_voxels_vs.hlsl",
                     desc: PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
                         .build()
                         .unwrap(),
                 },
                 PipelineShader {
-                    code: "/assets/shaders/csgi2/raster_voxels_ps.hlsl",
+                    code: "/assets/shaders/csgi/raster_voxels_ps.hlsl",
                     desc: PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
                         .build()
                         .unwrap(),

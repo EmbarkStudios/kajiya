@@ -13,15 +13,15 @@
 #include "common.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0)]] Texture3D<float4> csgi2_indirect_tex;
-[[vk::binding(1)]] RWTexture3D<float4> csgi2_direct_tex;
+[[vk::binding(0)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(1)]] RWTexture3D<float4> csgi_direct_tex;
 [[vk::binding(2)]] cbuffer _ {
     uint SWEEP_VX_COUNT;
 }
 
 #include "lookup.hlsl"
 
-//float4 CSGI2_SLICE_CENTERS[CSGI2_SLICE_COUNT];
+//float4 CSGI_SLICE_CENTERS[CSGI_SLICE_COUNT];
 
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
@@ -41,8 +41,8 @@
 static const float SKY_DIST = 1e5;
 
 float3 vx_to_pos(float3 vx) {
-    const float3 volume_center = CSGI2_VOLUME_CENTER;
-    return (vx - (CSGI2_VOLUME_DIMS - 1.0) / 2.0) * CSGI2_VOXEL_SIZE + volume_center;
+    const float3 volume_center = CSGI_VOLUME_CENTER;
+    return (vx - (CSGI_VOLUME_DIMS - 1.0) / 2.0) * CSGI_VOXEL_SIZE + volume_center;
 }
 
 
@@ -50,10 +50,10 @@ float3 vx_to_pos(float3 vx) {
 void main() {
     uint3 dispatch_vx = DispatchRaysIndex().xyz;
 
-    const uint grid_idx = dispatch_vx.x / CSGI2_VOLUME_DIMS;
-    dispatch_vx.x %= CSGI2_VOLUME_DIMS;
+    const uint grid_idx = dispatch_vx.x / CSGI_VOLUME_DIMS;
+    dispatch_vx.x %= CSGI_VOLUME_DIMS;
 
-    const int3 slice_dir = CSGI2_SLICE_DIRS[grid_idx]; 
+    const int3 slice_dir = CSGI_SLICE_DIRS[grid_idx]; 
 
     int slice_z_start = int(dispatch_vx.z * SWEEP_VX_COUNT);
 
@@ -63,7 +63,7 @@ void main() {
     }
 
     uint rng = hash1(frame_constants.frame_index);
-    //uint dir_i = frame_constants.frame_index % CSGI2_NEIGHBOR_DIR_COUNT;
+    //uint dir_i = frame_constants.frame_index % CSGI_NEIGHBOR_DIR_COUNT;
 
     #if USE_RAY_JITTER
         const float jitter_amount = RAY_JITTER_AMOUNT;
@@ -96,7 +96,7 @@ void main() {
         vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
     }
 
-    const int3 output_offset = int3(CSGI2_VOLUME_DIMS * grid_idx, 0, 0);
+    const int3 output_offset = int3(CSGI_VOLUME_DIMS * grid_idx, 0, 0);
     int ray_length_int = SWEEP_VX_COUNT;
 
     while (ray_length_int > 0) {
@@ -182,10 +182,10 @@ void main() {
                         const float phong_exponent =
                             lerp(1.0, clamp(2.0 / pow(gbuffer.roughness, 2) - 2, 1.0, 50.0), gbuffer.metalness);
 
-                        total_radiance += lookup_csgi2(
+                        total_radiance += lookup_csgi(
                             primary_hit.position,
                             gbuffer_normal,
-                            Csgi2LookupParams::make_default()
+                            CsgiLookupParams::make_default()
                                 .with_linear_fetch(false)
                                 //.with_sample_specular(reflect(outgoing_ray.Direction, gbuffer.normal))
                                 //.with_directional_radiance_phong_exponent(phong_exponent)
@@ -198,15 +198,15 @@ void main() {
             ray_length_int -= cells_skipped_by_ray + 1;
 
             while (cells_skipped_by_ray-- > 0) {
-                csgi2_direct_tex[vx + output_offset] = lerp(csgi2_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
+                csgi_direct_tex[vx + output_offset] = lerp(csgi_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
                 vx += slice_dir;
             }
 
-            csgi2_direct_tex[vx + output_offset] = lerp(csgi2_direct_tex[vx + output_offset], float4(total_radiance, 1), blend_factor);
+            csgi_direct_tex[vx + output_offset] = lerp(csgi_direct_tex[vx + output_offset], float4(total_radiance, 1), blend_factor);
             vx += slice_dir;
         } else {
             while (ray_length_int-- > 0) {
-                csgi2_direct_tex[vx + output_offset] = lerp(csgi2_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
+                csgi_direct_tex[vx + output_offset] = lerp(csgi_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
                 vx += slice_dir;
             }
             

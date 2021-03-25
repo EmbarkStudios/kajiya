@@ -8,7 +8,7 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
-use super::{csgi2, GbufferDepth, PingPongTemporalResource};
+use super::{csgi, GbufferDepth, PingPongTemporalResource};
 
 use blue_noise_sampler::spp64::*;
 
@@ -67,7 +67,7 @@ impl RtrRenderer {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        csgi_volume: &csgi2::Csgi2Volume,
+        csgi_volume: &csgi::CsgiVolume,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 

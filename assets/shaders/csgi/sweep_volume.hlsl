@@ -8,11 +8,11 @@
 [[vk::binding(2)]] RWTexture3D<float4> indirect_tex;
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
-    if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
+    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
     }
 
-    const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     float4 val = direct_tex[offset + vx];
     //val.a = val.a * val.a;
     val.rgb /= max(0.01, val.a);
@@ -20,12 +20,12 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
 }
 
 float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
-    if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
+    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
     }
 
-    const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
+    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
 
     return float4(indirect_tex[offset + subray_offset + vx].rgb, 1);
 }
@@ -37,19 +37,19 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
     const uint direct_dir_idx = dispatch_vx.z;
     const uint indirect_dir_idx = direct_dir_idx;
-    const int3 slice_dir = CSGI2_SLICE_DIRS[direct_dir_idx];
+    const int3 slice_dir = CSGI_SLICE_DIRS[direct_dir_idx];
 
-    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
+    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
 
-    const int3 indirect_offset = int3(CSGI2_VOLUME_DIMS * indirect_dir_idx, 0, 0);
+    const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * indirect_dir_idx, 0, 0);
 
     static const uint TANGENT_COUNT = 4;
     uint tangent_dir_indices[TANGENT_COUNT];
     {for (uint i = 0; i < TANGENT_COUNT; ++i) {
-        tangent_dir_indices[i] = ((direct_dir_idx & uint(~1)) + 2 + i) % CSGI2_SLICE_COUNT;
+        tangent_dir_indices[i] = ((direct_dir_idx & uint(~1)) + 2 + i) % CSGI_SLICE_COUNT;
     }}
 
-    int slice_z_start = (direct_dir_idx & 1) ? (CSGI2_VOLUME_DIMS - 1) : 0; 
+    int slice_z_start = (direct_dir_idx & 1) ? (CSGI_VOLUME_DIMS - 1) : 0; 
 
     int3 initial_vx;
     if (direct_dir_idx < 2) {
@@ -85,7 +85,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
         int3 vx = initial_vx;
         {[loop]
-        for (uint slice_z = 0; slice_z < CSGI2_VOLUME_DIMS; ++slice_z, vx -= slice_dir) {
+        for (uint slice_z = 0; slice_z < CSGI_VOLUME_DIMS; ++slice_z, vx -= slice_dir) {
             float3 scatter = 0.0;
             float scatter_wt = 0.0;
 
@@ -102,7 +102,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 [unroll]
                 for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
                     const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
-                    const int3 tangent_dir = CSGI2_SLICE_DIRS[tangent_dir_idx];
+                    const int3 tangent_dir = CSGI_SLICE_DIRS[tangent_dir_idx];
 
                     const float center_opacity_t = sample_direct_from(vx, tangent_dir_idx).a;
                     const float4 direct_neighbor_t = sample_direct_from(vx + tangent_dir, tangent_dir_idx);
@@ -133,7 +133,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             }
 
             float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
-            const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
+            const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
             indirect_tex[subray_offset + vx + indirect_offset] = radiance;
         }}
     }

@@ -9,11 +9,11 @@
 #define USE_DEEP_OCCLUDE 1
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
-    if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
+    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
     }
 
-    const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     float4 val = direct_tex[offset + vx];
     //val.a = sqrt(val.a);
     val.rgb /= max(0.01, val.a);
@@ -21,49 +21,49 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
 }
 
 float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
-    if (any(vx < 0 || vx >= CSGI2_VOLUME_DIMS)) {
+    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
     }
 
-    const int3 offset = int3(CSGI2_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
+    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
 
     return float4(indirect_tex[offset + subray_offset + vx].rgb, 1);
 }
 
 [numthreads(8, 8, 1)]
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
-    const uint indirect_dir_idx = CSGI2_SLICE_COUNT + dispatch_vx.z;
-    const int3 indirect_dir = CSGI2_INDIRECT_DIRS[indirect_dir_idx];
+    const uint indirect_dir_idx = CSGI_SLICE_COUNT + dispatch_vx.z;
+    const int3 indirect_dir = CSGI_INDIRECT_DIRS[indirect_dir_idx];
     const uint dir_i_idx = 0 + (indirect_dir.x > 0 ? 1 : 0);
     const uint dir_j_idx = 2 + (indirect_dir.y > 0 ? 1 : 0);
     const uint dir_k_idx = 4 + (indirect_dir.z > 0 ? 1 : 0);
-    const int3 dir_i = CSGI2_SLICE_DIRS[dir_i_idx];
-    const int3 dir_j = CSGI2_SLICE_DIRS[dir_j_idx];
-    const int3 dir_k = CSGI2_SLICE_DIRS[dir_k_idx];
+    const int3 dir_i = CSGI_SLICE_DIRS[dir_i_idx];
+    const int3 dir_j = CSGI_SLICE_DIRS[dir_j_idx];
+    const int3 dir_k = CSGI_SLICE_DIRS[dir_k_idx];
 
-    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI2_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
+    float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
 
 #if 1
-    static const uint PLANE_COUNT = (CSGI2_VOLUME_DIMS - 1) * 3;
+    static const uint PLANE_COUNT = (CSGI_VOLUME_DIMS - 1) * 3;
 
     {[loop]
     for (uint plane_idx = 0; plane_idx < PLANE_COUNT; ++plane_idx) {
         const int sum_to = plane_idx;
-        const int extent = CSGI2_VOLUME_DIMS;
+        const int extent = CSGI_VOLUME_DIMS;
         const int xmin = max(0, sum_to - (extent-1) * 2);
         const int vx_x = dispatch_vx.x + xmin;
         const int ymin = max(0, sum_to - (extent - 1) - vx_x);
         const int vx_y = dispatch_vx.y + ymin;
         int3 vx = int3(vx_x, vx_y, plane_idx - vx_x - vx_y);
 
-        vx = indirect_dir > 0 ? (CSGI2_VOLUME_DIMS - vx - 1) : vx;
+        vx = indirect_dir > 0 ? (CSGI_VOLUME_DIMS - vx - 1) : vx;
 
         if (all(vx >= 0 && vx < extent))
         {
 #else
     {[loop]
-    for (uint slice_z = 0; slice_z < CSGI2_VOLUME_DIMS; ++slice_z) {
+    for (uint slice_z = 0; slice_z < CSGI_VOLUME_DIMS; ++slice_z) {
         const int3 vx = int3(dispatch_vx.xy, slice_z); {
 #endif
             const float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
@@ -128,8 +128,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 }
 
                 float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
-                const int3 subray_offset = int3(0, subray * CSGI2_VOLUME_DIMS, 0);
-                const int3 indirect_offset = int3(indirect_dir_idx * CSGI2_VOLUME_DIMS, 0, 0);
+                const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
+                const int3 indirect_offset = int3(indirect_dir_idx * CSGI_VOLUME_DIMS, 0, 0);
                 indirect_tex[subray_offset + vx + indirect_offset] = radiance;
             }
         }

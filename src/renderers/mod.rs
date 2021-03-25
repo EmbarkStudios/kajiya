@@ -3,7 +3,7 @@ use std::cell::{Ref, RefCell};
 use kajiya_backend::Image;
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
-pub mod csgi2;
+pub mod csgi;
 pub mod half_res;
 pub mod reprojection;
 pub mod rtdgi;

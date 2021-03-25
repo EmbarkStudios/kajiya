@@ -13,7 +13,7 @@
 #include "inc/color.hlsl"
 
 #define USE_SSGI 0
-#define USE_CSGI2 1
+#define USE_CSGI 1
 #define USE_RTR 1
 #define USE_RTDGI 1
 
@@ -27,15 +27,15 @@
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] RWTexture2D<float4> output_tex;
 [[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi2_direct_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi2_indirect_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_direct_tex;
+[[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex;
 [[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(11)]] cbuffer _ {
     float4 output_tex_size;
 };
 
-#include "csgi2/common.hlsl"
-#include "csgi2/lookup.hlsl"
+#include "csgi/common.hlsl"
+#include "csgi/lookup.hlsl"
 
 #include "inc/atmosphere.hlsl"
 #include "inc/sun.hlsl"
@@ -134,29 +134,29 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float3 gi_irradiance = 0.0.xxx;
 
-    float3 csgi2_irradiance = 0;
-    #if USE_CSGI2
+    float3 csgi_irradiance = 0;
+    #if USE_CSGI
     {
         // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
         // Note: point-lookup doesn't leak, so multiple bounces should be fine
         float3 to_eye = get_eye_position() - pt_ws.xyz;
         float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
         
-        csgi2_irradiance = lookup_csgi2(
+        csgi_irradiance = lookup_csgi(
             pt_ws.xyz,
             gbuffer.normal,
-            Csgi2LookupParams::make_default()
+            CsgiLookupParams::make_default()
                 //.with_sample_directional_radiance(gbuffer.normal)
                 .with_bent_normal(pseudo_bent_normal)
         );
-        gi_irradiance = csgi2_irradiance;
+        gi_irradiance = csgi_irradiance;
     }
     #endif
 
-    #if USE_CSGI2 && USE_RTDGI
-        //gi_irradiance = max(0.0, csgi2_irradiance + rtdgi_tex[px / 2].rgb);
+    #if USE_CSGI && USE_RTDGI
+        //gi_irradiance = max(0.0, csgi_irradiance + rtdgi_tex[px / 2].rgb);
         gi_irradiance = rtdgi_tex[px].rgb;
-        //gi_irradiance = csgi2_irradiance;
+        //gi_irradiance = csgi_irradiance;
         //gi_irradiance = abs(rtdgi_tex[px / 2].rgb);
     #endif
 
@@ -216,10 +216,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //debug_out = pow(ssgi.a, 4);
 
     #if 0
-        debug_out = lookup_csgi2(
+        debug_out = lookup_csgi(
             pt_ws.xyz,
             gbuffer.normal,
-            Csgi2LookupParams::make_default()
+            CsgiLookupParams::make_default()
                 .with_direct_light_only(true)
                 //.with_sample_directional_radiance(gbuffer.normal)
                 //.with_bent_normal(pseudo_bent_normal)
