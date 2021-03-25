@@ -48,7 +48,7 @@ struct SpecularBrdfEnergyPreservation {
                 ;*/
 
             float3 bounce_radiance = energy_loss_per_bounce * specular_albedo;
-            float3 albedo_inf_series = energy_loss_per_bounce * single_scatter / (1.0 - bounce_radiance);
+            float3 albedo_inf_series = bounce_radiance * single_scatter / (1.0 - bounce_radiance);
             float3 corrected = single_scatter + albedo_inf_series;
 
             SpecularBrdfEnergyPreservation res;
@@ -57,12 +57,17 @@ struct SpecularBrdfEnergyPreservation {
             res.preintegrated_transmission_fraction = 1 - corrected;
             return res;
         #elif 1
-            // The above, reformulated, tweaked
-            float Ess = fg.x + fg.y;
-            float3 Fss = single_scatter / Ess;
+            // The above, reformulated, and tweaked to reduce saturation for subsequent bounces,
+            // by assuming the scattering happens at more grazing angles, thus shifting towards F90.
+            //
+            // Gives a very close match to Eric Heitz's "Multiple-scattering microfacet BSDFs with the Smith model"
+            // when testing against a uniform grey background, and comparing against the Mitsuba implementation.
+
+            float e_ss = fg.x + fg.y;
+            float3 f_ss = single_scatter / e_ss;
             // Ad-hoc shift towards F90 for subsequent bounces
-            float3 Fss2 = lerp(Fss, 1.0, 0.4);
-            float3 bounce_radiance = (1.0 - Ess) * Fss2;
+            float3 f_ss_tail = lerp(f_ss, 1.0, 0.4);
+            float3 bounce_radiance = (1.0 - e_ss) * f_ss_tail;
             float3 mult = 1.0 + bounce_radiance / (1.0 - bounce_radiance);
 
             SpecularBrdfEnergyPreservation res;
@@ -74,11 +79,11 @@ struct SpecularBrdfEnergyPreservation {
             // https://blog.selfshadow.com/publications/turquin/ms_comp_final.pdf
             // https://github.com/materialx/MaterialX/blob/a409f8eeae18cc5428154d10d366ecb261094d17/libraries/pbrlib/genglsl/lib/mx_microfacet_specular.glsl#L122
 
-            float Ess = fg.x + fg.y;
-            //float3 Fss = specular_albedo;
-            float3 Fss = lerp(specular_albedo, 1.0, pow(max(0.0, 1.0 - ndotv), 5));
-            //float3 Fss = single_scatter;
-            float3 mult = 1.0 + Fss * (1.0 - Ess) / Ess;
+            float e_ss = fg.x + fg.y;
+            //float3 f_ss = specular_albedo;
+            float3 f_ss = lerp(specular_albedo, 1.0, pow(max(0.0, 1.0 - ndotv), 5));
+            //float3 f_ss = single_scatter;
+            float3 mult = 1.0 + f_ss * (1.0 - e_ss) / e_ss;
 
             SpecularBrdfEnergyPreservation res;
             res.preintegrated_reflection = single_scatter * mult;

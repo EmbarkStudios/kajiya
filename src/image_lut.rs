@@ -9,8 +9,9 @@ pub trait ComputeImageLut {
 }
 
 pub struct ImageLut {
-    pub(crate) image: Arc<Image>,
+    image: Arc<Image>,
     computer: Box<dyn ComputeImageLut>,
+    computed: bool,
 }
 
 impl ImageLut {
@@ -18,10 +19,15 @@ impl ImageLut {
         Self {
             image: Arc::new(computer.create(device)),
             computer,
+            computed: false,
         }
     }
 
-    pub fn compute(&mut self, rg: &mut rg::RenderGraph) {
+    pub fn compute_if_needed(&mut self, rg: &mut rg::RenderGraph) {
+        if self.computed {
+            return;
+        }
+
         let mut rg_image = rg.import(self.image.clone(), vk_sync::AccessType::Nothing);
 
         self.computer.compute(rg, &mut rg_image);
@@ -30,6 +36,13 @@ impl ImageLut {
             rg_image,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
+
+        self.computed = true;
+    }
+
+    /// Note: contains garbage until `compute_if_needed` is called.
+    pub fn backing_image(&self) -> Arc<Image> {
+        self.image.clone()
     }
 }
 

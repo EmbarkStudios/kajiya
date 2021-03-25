@@ -569,7 +569,7 @@ impl KajiyaRenderClient {
             self.image_luts
                 .last()
                 .unwrap()
-                .image
+                .backing_image()
                 .view(self.device.as_ref(), &ImageViewDesc::default()),
         );
 
@@ -1050,7 +1050,7 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
         );
 
         for image_lut in self.image_luts.iter_mut() {
-            image_lut.compute(rg);
+            image_lut.compute_if_needed(rg);
         }
 
         match self.render_mode {

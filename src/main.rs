@@ -60,6 +60,9 @@ struct Opt {
     no_vsync: bool,
 
     #[structopt(long)]
+    no_window_decorations: bool,
+
+    #[structopt(long)]
     no_debug: bool,
 }
 
@@ -89,18 +92,15 @@ fn main() -> anyhow::Result<()> {
         vsync: !opt.no_vsync,
     };
 
-    let primary_monitor = event_loop.get_primary_monitor();
-
     let window = Arc::new(
         WindowBuilder::new()
             .with_title("kajiya")
             .with_resizable(false)
-            //.with_decorations(false)
+            .with_decorations(!opt.no_window_decorations)
             .with_dimensions(winit::dpi::LogicalSize::new(
                 window_cfg.width as f64,
                 window_cfg.height as f64,
             ))
-            .with_fullscreen(Some(primary_monitor))
             .build(&event_loop)
             .expect("window"),
     );
