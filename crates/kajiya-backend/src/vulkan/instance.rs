@@ -65,7 +65,7 @@ impl Instance {
     }
 
     fn create(builder: DeviceBuilder) -> Result<Self> {
-        let entry = ash::Entry::new()?;
+        let entry = unsafe { ash::Entry::new()? };
         let instance_extensions = builder
             .required_extensions
             .iter()

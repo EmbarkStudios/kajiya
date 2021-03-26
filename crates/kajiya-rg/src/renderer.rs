@@ -201,7 +201,6 @@ impl Renderer {
             raw_device.end_command_buffer(cb.raw).unwrap();
         }
 
-        self.dynamic_constants.flush(&self.backend.device.raw);
         self.dynamic_constants.advance_frame();
 
         let submit_info = vk::SubmitInfo::builder()

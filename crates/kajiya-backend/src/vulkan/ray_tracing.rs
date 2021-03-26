@@ -155,7 +155,6 @@ impl Device {
                 let blas_address = unsafe {
                     self.acceleration_structure_ext
                         .get_acceleration_structure_device_address(
-                            self.raw.handle(),
                             &ash::vk::AccelerationStructureDeviceAddressInfoKHR::builder()
                                 .acceleration_structure(desc.blas.raw)
                                 .build(),
@@ -252,7 +251,6 @@ impl Device {
         let memory_requirements = unsafe {
             self.acceleration_structure_ext
                 .get_acceleration_structure_build_sizes(
-                    self.raw.handle(),
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &geometry_info,
                     &max_primitive_counts,
@@ -354,7 +352,6 @@ impl Device {
             let blas_address = unsafe {
                 self.acceleration_structure_ext
                     .get_acceleration_structure_device_address(
-                        self.raw.handle(),
                         &ash::vk::AccelerationStructureDeviceAddressInfoKHR::builder()
                             .acceleration_structure(desc.blas.raw)
                             .build(),
@@ -444,7 +441,6 @@ impl Device {
         let memory_requirements = unsafe {
             self.acceleration_structure_ext
                 .get_acceleration_structure_build_sizes(
-                    self.raw.handle(),
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &geometry_info,
                     &max_primitive_counts,

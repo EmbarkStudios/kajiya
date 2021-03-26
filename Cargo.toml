@@ -50,7 +50,6 @@ easy-parallel = "3.1.0"
 
 [patch.crates-io]
 # Official ray-tracing extensions
-ash = { git = "https://github.com/MaikKlein/ash.git", rev = "7fa182cc4330da8da98a7c023049162a4979d0bf" }
 rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 spirv_headers = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 

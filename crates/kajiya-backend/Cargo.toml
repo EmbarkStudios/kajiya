@@ -10,8 +10,8 @@ edition = "2018"
 anyhow = "1.0"
 arrayvec = "0.5"
 byte-slice-cast = "0.3"
-ash = "0.31"
-ash-window = "0.5"
+ash = "0.32"
+ash-window = "0.6"
 chrono = "0.4"
 #derive_builder = { git = "https://github.com/colin-kiegel/rust-derive-builder.git", rev = "44f629c", features = ["logging"] }   # dyn Error instead of String
 derive_builder = { version = "0.9", default-features = false }
@@ -20,7 +20,7 @@ fern = { version = "0.6", features = ["colored"] }
 futures = "0.3"
 glam = "0.12"
 gltf = "0.15"
-gpu-allocator = { version = "0.4.0", features = ["vulkan_device_address"] }
+gpu-allocator = { version = "0.6.0", features = ["vulkan_device_address"] }
 hassle-rs = "0.4"
 hotwatch = "0.4"
 lazy_static = "1.4"
