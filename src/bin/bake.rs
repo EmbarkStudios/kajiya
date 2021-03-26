@@ -24,6 +24,8 @@ fn main() -> Result<()> {
     let opt = Opt::from_args();
     let lazy_cache = LazyCache::create();
 
+    std::fs::create_dir_all("baked")?;
+
     {
         let mesh = LoadGltfScene {
             path: opt.scene,

@@ -721,6 +721,7 @@ impl KajiyaRenderClient {
         handle
     }
 
+    #[allow(dead_code)]
     pub fn set_instance_transform(&mut self, inst: InstanceHandle, pos: Vec3) {
         self.instances[inst.0].position = pos;
     }

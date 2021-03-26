@@ -1,0 +1,11 @@
+Model Information:
+* title:	Vizier's observation deck
+* source:	https://sketchfab.com/3d-models/viziers-observation-deck-6b444842b498499ea5d38e822bfceefc
+* author:	winion (https://sketchfab.com/winion)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Vizier's observation deck" (https://sketchfab.com/3d-models/viziers-observation-deck-6b444842b498499ea5d38e822bfceefc) by winion (https://sketchfab.com/winion) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

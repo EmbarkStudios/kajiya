@@ -53,9 +53,6 @@ struct Opt {
     #[structopt(long)]
     scene: String,
 
-    #[structopt(long, default_value = "0.0")]
-    y_offset: f32,
-
     #[structopt(long)]
     no_vsync: bool,
 
@@ -179,16 +176,16 @@ fn main() -> anyhow::Result<()> {
 
     let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
     let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(0.0, opt.y_offset, 0.0));
+    render_client.add_instance(mesh, Vec3::zero());
     /*let inst0 = render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, -2.5));
     render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, 2.5));
     render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));*/
 
-    let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
     let car_mesh = render_client.add_mesh(car_mesh);
     let mut car_pos = Vec3::unit_y() * -0.01;
-    let car_inst = render_client.add_instance(car_mesh, car_pos);
+    let car_inst = render_client.add_instance(car_mesh, car_pos);*/
 
     render_client.build_ray_tracing_top_level_acceleration();
 
@@ -270,11 +267,10 @@ fn main() -> anyhow::Result<()> {
             render_client.reset_reference_accumulation = true;
         }
 
-        if keyboard.is_down(VirtualKeyCode::Z) {
+        /*if keyboard.is_down(VirtualKeyCode::Z) {
             car_pos.x += mouse_state.delta.x / 100.0;
-
             render_client.set_instance_transform(car_inst, car_pos);
-        }
+        }*/
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
             match render_client.render_mode {
