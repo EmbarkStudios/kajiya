@@ -1,6 +1,6 @@
 # 💡 kajiya
 
-A real-time global illumination renderer. Primarily a toy written for fun to explore various algorithms. Uses Vulkan with ray-tracing extensions under the hood.
+A real-time global illumination renderer; primarily a toy written for fun to explore various algorithms. Uses Vulkan with ray-tracing extensions under the hood.
 
 Its general goal is to get as close as possible to path-traced reference at real-time rates in dynamic scenes, without any precomputed light transport, or manually placed light probes.
 
@@ -54,19 +54,27 @@ Hardware:
 
 There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:
 
-> `bake.cmd`
+```
+bake.cmd
+```
 
 When done, run the renderer demo via:
 
-> `build_and_run.cmd [scene_name]`
+```
+build_and_run.cmd [scene_name]
+```
 
 Where `[scene_name]` is one of the file names in `assets/scenes`, without the `.ron` extension, e.g.:
 
-> `build_and_run.cmd pica`
+```
+build_and_run.cmd pica
+```
 
 or
 
-> `cargo run --bin kajiya --release -- --scene pica --width 1920 --height 1080`
+```
+cargo run --bin kajiya --release -- --scene pica --width 1920 --height 1080
+```
 
 _Please note that the `smol` async runtime is used for baking and run-time shader compilation. There's no custom executor yet, so the `SMOL_THREADS` environment variable controls parallelism._
 
