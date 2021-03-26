@@ -2114,6 +2114,7 @@ dependencies = [
 [[package]]
 name = "turbosloth"
 version = "0.2.0"
+source = "git+https://github.com/h3r2tic/turbosloth.git?rev=92030af#92030af160fe7dcf4089fe728e8990b7eafe82fb"
 dependencies = [
  "async-trait",
  "futures-lite",

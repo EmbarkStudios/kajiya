@@ -252,33 +252,100 @@ impl PipelineCache {
         }
     }
 
-    // TODO: create pipelines right away too
-    pub fn parallel_compile_shaders(&mut self) -> anyhow::Result<()> {
-        let compute = self.compute_entries.values().filter_map(|entry| {
+    pub fn parallel_compile_shaders(
+        &mut self,
+        device: &Arc<crate::vulkan::device::Device>,
+    ) -> anyhow::Result<()> {
+        // Prepare build tasks for compute
+        let compute = self.compute_entries.iter().filter_map(|(&handle, entry)| {
             entry.pipeline.is_none().then(|| {
                 let task = entry.lazy_handle.eval(&self.lazy_cache);
-                smol::spawn(async move { task.await.map(|_| ()) })
+                smol::spawn(async move {
+                    task.await
+                        .map(|compiled| CompileTaskOutput::Compute { handle, compiled })
+                })
             })
         });
 
-        let raster = self.raster_entries.values().filter_map(|entry| {
+        // Prepare build tasks for raster
+        let raster = self.raster_entries.iter().filter_map(|(&handle, entry)| {
             entry.pipeline.is_none().then(|| {
                 let task = entry.lazy_handle.eval(&self.lazy_cache);
-                smol::spawn(async move { task.await.map(|_| ()) })
+                smol::spawn(async move {
+                    task.await
+                        .map(|compiled| CompileTaskOutput::Raster { handle, compiled })
+                })
             })
         });
 
-        let rt = self.rt_entries.values().filter_map(|entry| {
+        // Prepare build tasks for rt
+        let rt = self.rt_entries.iter().filter_map(|(&handle, entry)| {
             entry.pipeline.is_none().then(|| {
                 let task = entry.lazy_handle.eval(&self.lazy_cache);
-                smol::spawn(async move { task.await.map(|_| ()) })
+                smol::spawn(async move {
+                    task.await
+                        .map(|compiled| CompileTaskOutput::Rt { handle, compiled })
+                })
             })
         });
 
-        let shaders: Vec<_> = compute.chain(raster).chain(rt).collect();
+        // Gather all the build tasks together
+        let shader_tasks: Vec<_> = compute.chain(raster).chain(rt).collect();
 
-        if !shaders.is_empty() {
-            let _ = smol::block_on(futures::future::try_join_all(shaders))?;
+        if !shader_tasks.is_empty() {
+            // Compile all the things
+            let compiled: Vec<CompileTaskOutput> =
+                smol::block_on(futures::future::try_join_all(shader_tasks))?;
+
+            // Build pipelines from all compiled shaders
+            for compiled in compiled {
+                match compiled {
+                    CompileTaskOutput::Compute { handle, compiled } => {
+                        let entry = self.compute_entries.get_mut(&handle).unwrap();
+                        entry.pipeline = Some(Arc::new(create_compute_pipeline(
+                            &*device,
+                            &compiled.spirv,
+                            &entry.desc,
+                        )));
+                    }
+                    CompileTaskOutput::Raster { handle, compiled } => {
+                        let entry = self.raster_entries.get_mut(&handle).unwrap();
+
+                        let compiled_shaders = compiled
+                            .shaders
+                            .iter()
+                            .map(|shader| PipelineShader {
+                                code: shader.code.spirv.as_slice(),
+                                desc: shader.desc.clone(),
+                            })
+                            .collect::<Vec<_>>();
+
+                        // TODO: defer and handle the error
+                        entry.pipeline = Some(Arc::new(
+                            create_raster_pipeline(&*device, &compiled_shaders, &entry.desc)
+                                .expect("create_raster_pipeline"),
+                        ));
+                    }
+                    CompileTaskOutput::Rt { handle, compiled } => {
+                        let entry = self.rt_entries.get_mut(&handle).unwrap();
+
+                        let compiled_shaders = compiled
+                            .shaders
+                            .iter()
+                            .map(|shader| PipelineShader {
+                                code: shader.code.spirv.as_slice(),
+                                desc: shader.desc.clone(),
+                            })
+                            .collect::<Vec<_>>();
+
+                        // TODO: defer and handle the error
+                        entry.pipeline = Some(Arc::new(
+                            create_ray_tracing_pipeline(&*device, &compiled_shaders, &entry.desc)
+                                .expect("create_ray_tracing_pipeline"),
+                        ));
+                    }
+                }
+            }
         }
 
         Ok(())
@@ -289,59 +356,23 @@ impl PipelineCache {
         device: &Arc<crate::vulkan::device::Device>,
     ) -> anyhow::Result<()> {
         self.invalidate_stale_pipelines();
-        self.parallel_compile_shaders()?;
-
-        for entry in self.compute_entries.values_mut() {
-            if entry.pipeline.is_none() {
-                let compiled_shader = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
-
-                let pipeline =
-                    create_compute_pipeline(&*device, &compiled_shader.spirv, &entry.desc);
-
-                entry.pipeline = Some(Arc::new(pipeline));
-            }
-        }
-
-        for entry in self.raster_entries.values_mut() {
-            if entry.pipeline.is_none() {
-                let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
-                assert!(!entry.lazy_handle.is_stale());
-
-                let compiled_shaders = compiled_shaders
-                    .shaders
-                    .iter()
-                    .map(|shader| PipelineShader {
-                        code: shader.code.spirv.as_slice(),
-                        desc: shader.desc.clone(),
-                    })
-                    .collect::<Vec<_>>();
-
-                let pipeline = create_raster_pipeline(&*device, &compiled_shaders, &entry.desc)?;
-
-                entry.pipeline = Some(Arc::new(pipeline));
-            }
-        }
-
-        for entry in self.rt_entries.values_mut() {
-            if entry.pipeline.is_none() {
-                let compiled_shaders = smol::block_on(entry.lazy_handle.eval(&self.lazy_cache))?;
-
-                let compiled_shaders = compiled_shaders
-                    .shaders
-                    .iter()
-                    .map(|shader| PipelineShader {
-                        code: shader.code.spirv.as_slice(),
-                        desc: shader.desc.clone(),
-                    })
-                    .collect::<Vec<_>>();
-
-                let pipeline =
-                    create_ray_tracing_pipeline(&*device, &compiled_shaders, &entry.desc)?;
-
-                entry.pipeline = Some(Arc::new(pipeline));
-            }
-        }
+        self.parallel_compile_shaders(device)?;
 
         Ok(())
     }
+}
+
+enum CompileTaskOutput {
+    Compute {
+        handle: ComputePipelineHandle,
+        compiled: Arc<CompiledShader>,
+    },
+    Raster {
+        handle: RasterPipelineHandle,
+        compiled: Arc<CompiledPipelineShaders>,
+    },
+    Rt {
+        handle: RtPipelineHandle,
+        compiled: Arc<CompiledPipelineShaders>,
+    },
 }

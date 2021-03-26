@@ -185,7 +185,8 @@ fn compile_generic_shader_hlsl_impl(
         &[],
     )
     .map_err(|err| anyhow!("{}", err))?;
-    println!("dxc took {:?} for {}", t0.elapsed(), name);
+
+    println!("dxc took {:?} for {}", t0.elapsed(), name,);
 
     Ok(spirv)
 }
