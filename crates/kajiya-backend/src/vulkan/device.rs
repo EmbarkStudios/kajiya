@@ -258,10 +258,10 @@ impl Device {
                 .ray_tracing_pipeline_trace_rays_indirect(true)
                 .build();
 
-        #[cfg(feature = "ray-tracing")]
+        /*#[cfg(feature = "ray-tracing")]
         let mut ray_query_features = ash::vk::PhysicalDeviceRayQueryFeaturesKHR::builder()
             .ray_query(true)
-            .build();
+            .build();*/
 
         let mut get_buffer_device_address_features =
             ash::vk::PhysicalDeviceBufferDeviceAddressFeatures {
@@ -291,7 +291,7 @@ impl Device {
             let device_create_info = device_create_info
                 .push_next(&mut acceleration_structure_features)
                 .push_next(&mut ray_tracing_pipeline_features)
-                .push_next(&mut ray_query_features)
+                //.push_next(&mut ray_query_features)
                 .build();
 
             let device = instance
