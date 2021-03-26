@@ -44,7 +44,7 @@ It currently works on a very limited number of systems and hardware.
 
 Operating systems:
 * Windows
-* Linux is broken due to `winit`'s bugs, but should otherwise work too
+* Linux
 
 Hardware:
 * NVidia RTX cards
@@ -54,15 +54,13 @@ Hardware:
 
 There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:
 
-```
-bake.cmd
-```
+* Windows: `bake.cmd`
+* Linux: `./bake.sh`
 
 When done, run the renderer demo via:
 
-```
-build_and_run.cmd [scene_name]
-```
+* Windows: `build_and_run.cmd [scene_name]`
+* Linux: `./build_and_run.sh [scene_name]`
 
 Where `[scene_name]` is one of the file names in `assets/scenes`, without the `.ron` extension, e.g.:
 
