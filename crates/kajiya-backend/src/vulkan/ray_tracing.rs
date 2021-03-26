@@ -348,7 +348,8 @@ impl Device {
         instances: &[RayTracingInstanceDesc],
     ) -> vk::DeviceAddress {
         let instance_buffer_address = dynamic_constants.current_device_address(self);
-        for desc in instances {
+
+        dynamic_constants.push_from_iter(instances.iter().map(|desc| {
             let blas_address = unsafe {
                 self.acceleration_structure_ext
                     .get_acceleration_structure_device_address(
@@ -373,7 +374,7 @@ impl Device {
                 desc.position.z,
             ];
 
-            dynamic_constants.push(&GeometryInstance::new(
+            GeometryInstance::new(
                 transform,
                 desc.mesh_index, /* instance id */
                 0xff,
@@ -382,8 +383,8 @@ impl Device {
                 | */
                 ash::vk::GeometryInstanceFlagsKHR::FORCE_OPAQUE,
                 blas_address,
-            ));
-        }
+            )
+        }));
 
         instance_buffer_address
     }

@@ -3,11 +3,13 @@ use crate::vulkan;
 use ash::vk;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::mem::size_of;
+use std::mem::{align_of, size_of};
 use vulkan::buffer::Buffer;
 
 pub const DYNAMIC_CONSTANTS_SIZE_BYTES: usize = 1024 * 1024 * 16;
-pub const DYNAMIC_CONSTANTS_ALIGNMENT: usize = 64;
+
+// TODO: Must be >= `minUniformBufferOffsetAlignment`. In practice <= 256.
+pub const DYNAMIC_CONSTANTS_ALIGNMENT: usize = 256;
 
 pub struct DynamicConstants {
     pub buffer: Buffer,
@@ -50,6 +52,32 @@ impl DynamicConstants {
         let t_size_aligned =
             (t_size + DYNAMIC_CONSTANTS_ALIGNMENT - 1) & !(DYNAMIC_CONSTANTS_ALIGNMENT - 1);
         self.frame_offset_bytes += t_size_aligned;
+
+        buffer_offset as _
+    }
+
+    pub fn push_from_iter<T: Copy, Iter: Iterator<Item = T>>(&mut self, iter: Iter) -> u32 {
+        let t_size = size_of::<T>();
+        let t_align = align_of::<T>();
+
+        assert!(self.frame_offset_bytes + t_size < DYNAMIC_CONSTANTS_SIZE_BYTES);
+        assert!(DYNAMIC_CONSTANTS_ALIGNMENT % t_align == 0);
+
+        let buffer_offset = self.current_offset() as usize;
+        assert!(buffer_offset % t_align == 0);
+
+        let mut dst_offset = buffer_offset;
+        for t in iter {
+            let dst = &mut self.buffer.allocation.mapped_slice_mut().unwrap()
+                [dst_offset..dst_offset + t_size];
+            dst.copy_from_slice(as_byte_slice(&t));
+            dst_offset += t_size + t_align - 1;
+            dst_offset &= !(t_align - 1);
+        }
+
+        self.frame_offset_bytes += dst_offset - buffer_offset;
+        self.frame_offset_bytes += DYNAMIC_CONSTANTS_ALIGNMENT - 1;
+        self.frame_offset_bytes &= !(DYNAMIC_CONSTANTS_ALIGNMENT - 1);
 
         buffer_offset as _
     }
