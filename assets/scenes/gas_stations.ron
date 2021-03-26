@@ -1,0 +1,8 @@
+(
+    instances: [
+        (
+            position: (-4.5, -1, -1),
+            mesh: "gas_stations",
+        ),
+    ]
+)

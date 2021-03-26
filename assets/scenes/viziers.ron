@@ -1,0 +1,8 @@
+(
+    instances: [
+        (
+            position: (0, -11.25, 0),
+            mesh: "viziers",
+        ),
+    ]
+)

@@ -12,6 +12,7 @@ mod render_passes;
 mod renderers;
 mod viewport;
 
+use anyhow::Context;
 use asset::{image::LoadImage, mesh::*};
 use camera::*;
 use image_cache::*;
@@ -63,6 +64,17 @@ struct Opt {
     no_debug: bool,
 }
 
+#[derive(serde::Deserialize)]
+struct SceneDesc {
+    instances: Vec<SceneInstanceDesc>,
+}
+
+#[derive(serde::Deserialize)]
+struct SceneInstanceDesc {
+    position: [f32; 3],
+    mesh: String,
+}
+
 lazy_static::lazy_static! {
     static ref ASSET_MMAPS: Mutex<HashMap<String, memmap2::Mmap>> = Mutex::new(HashMap::new());
 }
@@ -80,6 +92,11 @@ pub fn mmapped_asset<T>(path: &str) -> anyhow::Result<&'static T> {
 fn main() -> anyhow::Result<()> {
     logging::set_up_logging()?;
     let opt = Opt::from_args();
+
+    let scene_file = format!("assets/scenes/{}.ron", opt.scene);
+    let scene_desc: SceneDesc = ron::de::from_reader(
+        File::open(&scene_file).with_context(|| format!("Opening scene file {}", scene_file))?,
+    )?;
 
     let mut event_loop = winit::EventsLoop::new();
 
@@ -135,7 +152,7 @@ fn main() -> anyhow::Result<()> {
         assert_eq!(handle.0, 1);
     }
 
-    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 0.0, 8.0));
+    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
     //camera.look_smoothness = 20.0;
     //camera.move_smoothness = 20.0;
@@ -160,27 +177,11 @@ fn main() -> anyhow::Result<()> {
     let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
     let mut new_mouse_state: MouseState = Default::default();
 
-    /*let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
-    let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, -2.5));
-    render_client.add_instance(mesh, Vec3::new(1.5, 0.0, -2.5));
-
-    let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
-    let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(-1.5, 0.0, 2.5));
-    render_client.add_instance(mesh, Vec3::new(1.5, 0.0, 2.5));*/
-
-    /*let mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/floor.mesh")?;
-    let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::new(0.0, 0.0, 0.0));*/
-
-    let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", opt.scene))?;
-    let mesh = render_client.add_mesh(mesh);
-    render_client.add_instance(mesh, Vec3::zero());
-    /*let inst0 = render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, -2.5));
-    render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, -2.5));
-    render_client.add_instance(mesh, Vec3::new(-2.0, opt.y_offset, 2.5));
-    render_client.add_instance(mesh, Vec3::new(2.0, opt.y_offset, 2.5));*/
+    for instance in scene_desc.instances {
+        let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", instance.mesh))?;
+        let mesh = render_client.add_mesh(mesh);
+        render_client.add_instance(mesh, instance.position.into());
+    }
 
     /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
     let car_mesh = render_client.add_mesh(car_mesh);

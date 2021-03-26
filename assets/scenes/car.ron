@@ -1,0 +1,12 @@
+(
+    instances: [
+        (
+            position: (0, -0.001, 0),
+            mesh: "336_lrm",
+        ),
+        (
+            position: (0, 0, 0),
+            mesh: "floor",
+        ),
+    ]
+)

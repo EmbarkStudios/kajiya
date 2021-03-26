@@ -1,0 +1,8 @@
+(
+    instances: [
+        (
+            position: (11, -3, -0.75),
+            mesh: "battle",
+        ),
+    ]
+)
