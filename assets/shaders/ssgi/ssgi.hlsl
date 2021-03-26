@@ -19,9 +19,24 @@
     float4 output_tex_size;
 };
 
+#if 1
+    // Micro-occlusion settings used for denoising
+    // TODO: fork the SSGI shader into just cheapo GTAO
+
+    static const uint SSGI_HALF_SAMPLE_COUNT = 8;
+    static const float SSGI_KERNEL_RADIUS = 0.1;
+    // TODO: better units (pxels? degrees?)
+    static const float MAX_KERNEL_RADIUS_CS = 0.4;
+#else
+    // Crazy settings for testing with the Cornell Box
+
+    static const uint SSGI_HALF_SAMPLE_COUNT = 32;
+    static const float SSGI_KERNEL_RADIUS = 5;
+    static const float MAX_KERNEL_RADIUS_CS = 100.0;
+#endif
+
 static const float temporal_rotations[] = { 60.0, 300.0, 180.0, 240.0, 120.0, 0.0 };
 static const float temporal_offsets[] = { 0.0, 0.5, 0.25, 0.75 };
-static const uint ssgi_half_sample_count = 8;
 
 float fast_sqrt(float x) {
     return asfloat(0x1fbd1df5 + (asuint(x) >> 1u));
@@ -31,8 +46,7 @@ float fast_sqrt(float x) {
 // Eberly's polynomial degree 1 - respect bounds
 // 4 VGPR, 12 FR (8 FR, 1 QR), 1 scalar
 // input [-1, 1] and output [0, M_PI]
-float fast_acos(float inX) 
-{ 
+float fast_acos(float inX) { 
     float x = abs(inX); 
     float res = -0.156583f * x + (M_FRAC_PI_2); 
     res *= fast_sqrt(1.0f - x); 
@@ -71,7 +85,8 @@ float integrate_arc(float h1, float h2, float n) {
 
 float update_horizion_angle(float prev, float cur) {
 #if 0
-    float t = min(1.0, 0.5 / float(ssgi_half_sample_count));
+    // Soft occlusion heuristic; useful for wider AO/GI; disabled because the currently used radius is tiny
+    float t = min(1.0, 0.5 / float(SSGI_HALF_SAMPLE_COUNT));
     return cur > prev ? cur : lerp(prev, cur, t);
 #else
     return cur > prev ? cur : prev;
@@ -88,7 +103,7 @@ float3 project_point_on_plane(float3 pt, float3 normal) {
     return pt - normal * dot(pt, normal);
 }
 
-float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_sample_vs, float4 sample_cs, float3 center_vs, float3 normal_vs, float3 v_vs, float ao_radius, float theta_cos_max, inout float4 color_accum) {
+float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_sample_vs, float4 sample_cs, float3 center_vs, float3 normal_vs, float3 v_vs, float kernel_radius, float theta_cos_max, inout float4 color_accum) {
     if (sample_cs.z > 0) {
         float4 sample_vs4 = mul(frame_constants.view_constants.sample_to_view, sample_cs);
         float3 sample_vs = sample_vs4.xyz / sample_vs4.w;
@@ -96,7 +111,7 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
         float sample_vs_offset_len = length(sample_vs_offset);
 
         float sample_theta_cos = dot(sample_vs_offset, v_vs) / sample_vs_offset_len;
-        if (sample_vs_offset_len < ao_radius) {
+        if (sample_vs_offset_len < kernel_radius) {
             bool sample_visible = sample_theta_cos >= theta_cos_max;
             float theta_cos_prev = theta_cos_max;
             float theta_delta = theta_cos_max;
@@ -111,6 +126,8 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
 
 #if 1
                 if (i > 0) {
+                    // Account for the sampled surface's normal, and how it's facing the center pixel
+
                     float3 p1 = prev_sample_vs * min(
                         intersect_dir_plane_onesided(prev_sample_vs, sample_normal_vs, sample_vs),
                         intersect_dir_plane_onesided(prev_sample_vs, normal_vs, center_vs)
@@ -119,22 +136,25 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
                     theta_cos_prev_trunc = clamp(dot(normalize(p1 - center_vs), v_vs), theta_cos_prev_trunc, theta_cos_max);
                 }
 #endif
-#if 1
-                n_angle *= -intsgn;
 
-                float h1 = fast_acos(theta_cos_prev_trunc);
-                float h2 = fast_acos(theta_cos_max);
+                {
+                    // Scale the lighting contribution by the cosine factor
 
-                float h1p = n_angle + max(h1 - n_angle, -M_FRAC_PI_2);
-                float h2p = n_angle + min(h2 - n_angle, M_FRAC_PI_2);
+                    n_angle *= -intsgn;
 
-                float inv_ao =
-                    integrate_half_arc(h1p, n_angle) -
-                    integrate_half_arc(h2p, n_angle);
-                    
-                lighting *= inv_ao;
-                lighting *= step(0.0, dot(-normalize(sample_vs_offset), sample_normal_vs));
-#endif
+                    float h1 = fast_acos(theta_cos_prev_trunc);
+                    float h2 = fast_acos(theta_cos_max);
+
+                    float h1p = n_angle + max(h1 - n_angle, -M_FRAC_PI_2);
+                    float h2p = n_angle + min(h2 - n_angle, M_FRAC_PI_2);
+
+                    float inv_ao =
+                        integrate_half_arc(h1p, n_angle) -
+                        integrate_half_arc(h2p, n_angle);
+                        
+                    lighting *= inv_ao;
+                    lighting *= step(0.0, dot(-normalize(sample_vs_offset), sample_normal_vs));
+                }
 
                 color_accum += float4(lighting, 1.0);
             }
@@ -165,7 +185,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
 
     float4 col = 0.0.xxxx;
-    float ao_radius = 0.08;
+    float kernel_radius = SSGI_KERNEL_RADIUS;
 
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     float3 v_vs = -normalize(view_ray_context.ray_dir_vs());
@@ -186,26 +206,26 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float2 cs_slice_dir = float2(cos(ss_angle) * input_tex_size.y / input_tex_size.x, sin(ss_angle));
 
-    float ao_radius_shrinkage;
+    float kernel_radius_shrinkage;
     {
         // Convert AO radius into world scale
-        float cs_ao_radius_rescale = ao_radius * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
-        cs_slice_dir *= cs_ao_radius_rescale;
+        float cs_kernel_radius_rescale = kernel_radius * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
+        cs_slice_dir *= cs_kernel_radius_rescale;
 
-        // TODO: better units (pxels? degrees?)
         // Calculate AO radius shrinkage (if camera is too close to a surface)
-        float max_ao_radius_cs = 0.4;
-        //float max_ao_radius_cs = 100;
-        ao_radius_shrinkage = min(1.0, max_ao_radius_cs / cs_ao_radius_rescale);
+        float max_kernel_radius_cs = MAX_KERNEL_RADIUS_CS;
+
+        //float max_kernel_radius_cs = 100;
+        kernel_radius_shrinkage = min(1.0, max_kernel_radius_cs / cs_kernel_radius_rescale);
     }
 
     // Shrink the AO radius
-    cs_slice_dir *= ao_radius_shrinkage;
-    ao_radius *= ao_radius_shrinkage;
+    cs_slice_dir *= kernel_radius_shrinkage;
+    kernel_radius *= kernel_radius_shrinkage;
 
     float3 center_vs = ray_hit_vs.xyz;
 
-    cs_slice_dir *= 1.0 / float(ssgi_half_sample_count);
+    cs_slice_dir *= 1.0 / float(SSGI_HALF_SAMPLE_COUNT);
     float2 vs_slice_dir = mul(float4(cs_slice_dir, 0, 0), frame_constants.view_constants.sample_to_view).xy;
     float3 slice_normal_vs = normalize(cross(v_vs, float3(vs_slice_dir, 0)));
 
@@ -226,7 +246,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     int2 prev_sample_coord0 = px;
     int2 prev_sample_coord1 = px;
 
-    for (uint i = 0; i < ssgi_half_sample_count; ++i) {
+    for (uint i = 0; i < SSGI_HALF_SAMPLE_COUNT; ++i) {
         {
             float t = float(i) + rand_offset;
 
@@ -237,7 +257,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             if (any(sample_px != prev_sample_coord0)) {
                 prev_sample_coord0 = sample_px;
                 sample_cs.z = half_depth_tex[sample_px];
-                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, ao_radius, theta_cos_max1, color_accum);
+                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius, theta_cos_max1, color_accum);
             }
         }
 
@@ -251,7 +271,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             if (any(sample_px != prev_sample_coord1)) {
                 prev_sample_coord1 = sample_px;
                 sample_cs.z = half_depth_tex[sample_px];
-                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, ao_radius, theta_cos_max2, color_accum);
+                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius, theta_cos_max2, color_accum);
             }
         }
     }
@@ -271,6 +291,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 bent_normal_dir = sin(bent_normal_angle) * cross(slice_normal_vs, normal_vs) + cos(bent_normal_angle) * normal_vs;
     bent_normal_dir = bent_normal_dir;*/
 
-    output_tex[px] = col;
+    output_tex[px] = max(0.0, col);
     //bent_normal_out_tex[px] = float4(bent_normal_dir, 0);// / slice_contrib_weight;
 }

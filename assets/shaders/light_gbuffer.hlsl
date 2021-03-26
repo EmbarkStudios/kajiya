@@ -214,7 +214,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = gbuffer.metalness;
     //output = gbuffer.roughness;
     //output = gbuffer.albedo;
-    //output = pow(ssgi.a, 4);
+    //output = ssgi.rgb;
 
     #if 0
         output = lookup_csgi(
