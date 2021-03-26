@@ -38,7 +38,7 @@ pub struct RenderBackend {
 
 impl RenderBackend {
     pub fn new(
-        window: &winit::Window,
+        window: &winit::window::Window,
         window_cfg: &crate::WindowConfig,
         graphics_debugging: bool,
     ) -> anyhow::Result<Self> {

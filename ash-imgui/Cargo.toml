@@ -7,6 +7,6 @@ publish = false
 
 [dependencies]
 ash = "0.31"
-imgui = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d" }
-arrayvec = "0.5.1"
-memoffset = "0.5"
+imgui = "0.7"
+arrayvec = "0.5"
+memoffset = "0.6"

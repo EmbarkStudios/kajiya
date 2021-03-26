@@ -34,7 +34,7 @@ use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
-use winit::VirtualKeyCode;
+use winit::event::VirtualKeyCode;
 
 #[repr(C)]
 #[derive(Copy, Clone)]

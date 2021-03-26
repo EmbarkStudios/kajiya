@@ -22,7 +22,11 @@ pub struct ImGuiBackend {
 }
 
 impl ImGuiBackend {
-    pub fn new(device: Arc<Device>, window: &winit::Window, imgui: &mut imgui::Context) -> Self {
+    pub fn new(
+        device: Arc<Device>,
+        window: &winit::window::Window,
+        imgui: &mut imgui::Context,
+    ) -> Self {
         setup_imgui_style(imgui);
 
         let mut imgui_platform = WinitPlatform::init(imgui);
@@ -113,9 +117,9 @@ impl ImGuiBackend {
 
     pub fn handle_event(
         &mut self,
-        window: &winit::Window,
+        window: &winit::window::Window,
         imgui: &mut imgui::Context,
-        event: &winit::Event,
+        event: &winit::event::Event<'_, ()>,
     ) {
         self.imgui_platform
             .handle_event(imgui.io_mut(), window, event);
@@ -123,7 +127,7 @@ impl ImGuiBackend {
 
     pub fn prepare_frame<'a>(
         &mut self,
-        window: &winit::Window,
+        window: &winit::window::Window,
         imgui: &'a mut imgui::Context,
         dt: f32,
     ) -> imgui::Ui<'a> {
@@ -134,7 +138,7 @@ impl ImGuiBackend {
         imgui.frame()
     }
 
-    pub fn prepare_render(&mut self, ui: &imgui::Ui, window: &winit::Window) {
+    pub fn prepare_render(&mut self, ui: &imgui::Ui, window: &winit::window::Window) {
         self.imgui_platform.prepare_render(ui, window);
     }
 

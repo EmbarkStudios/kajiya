@@ -26,8 +26,8 @@ gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "4298aac", features 
 hassle-rs = "0.4"
 hotwatch = "0.4"
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
-imgui = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d" }
-imgui-winit-support = { git = "https://github.com/Gekkio/imgui-rs.git", rev = "ffff82d", features = ["winit-19"] }
+imgui = "0.7"
+imgui-winit-support = "0.7"
 lazy_static = "1.4"
 log = "0.4"
 memmap2 = "0.2"
@@ -41,7 +41,8 @@ structopt = "0.3"
 thiserror = "1.0"
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 # winit = "0.21"  # 0.22 panics in NSight with this error: https://github.com/rust-windowing/winit/issues/1585
-winit = "=0.19.5"
+# winit = "=0.19.5"
+winit = "0.24"
 
 async-channel = "1.4.2"
 async-executor = "1.1.0"

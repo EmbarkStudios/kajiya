@@ -28,10 +28,13 @@ use memmap2::MmapOptions;
 use parking_lot::Mutex;
 use render_client::{RenderDebugMode, RenderMode};
 use std::{collections::HashMap, fs::File, sync::Arc};
-use turbosloth::*;
-use winit::{ElementState, Event, KeyboardInput, MouseButton, WindowBuilder, WindowEvent};
-
 use structopt::StructOpt;
+use turbosloth::*;
+use winit::{
+    event::{ElementState, Event, KeyboardInput, MouseButton, WindowEvent},
+    event_loop::{ControlFlow, EventLoop},
+    window::WindowBuilder,
+};
 
 pub struct FrameState {
     pub camera_matrices: CameraMatrices,
@@ -98,7 +101,7 @@ fn main() -> anyhow::Result<()> {
         File::open(&scene_file).with_context(|| format!("Opening scene file {}", scene_file))?,
     )?;
 
-    let mut event_loop = winit::EventsLoop::new();
+    let event_loop = EventLoop::new();
 
     let window_cfg = WindowConfig {
         width: opt.width,
@@ -111,7 +114,7 @@ fn main() -> anyhow::Result<()> {
             .with_title("kajiya")
             .with_resizable(false)
             .with_decorations(!opt.no_window_decorations)
-            .with_dimensions(winit::dpi::LogicalSize::new(
+            .with_inner_size(winit::dpi::LogicalSize::new(
                 window_cfg.width as f64,
                 window_cfg.height as f64,
             ))
@@ -202,210 +205,207 @@ fn main() -> anyhow::Result<()> {
     let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
 
     let mut last_frame_instant = std::time::Instant::now();
-    let mut running = true;
-    while running {
-        let mut events = Vec::new();
-        event_loop.poll_events(|event| {
-            imgui_backend
-                .lock()
-                .handle_event(window.as_ref(), &mut imgui, &event);
-            events.push(event);
-        });
 
-        for event in events.into_iter() {
-            #[allow(clippy::single_match)]
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => running = false,
-                    WindowEvent::KeyboardInput { input, .. } => {
-                        keyboard_events.push(input);
-                    }
-                    WindowEvent::CursorMoved { position, .. } => {
-                        new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
-                    }
-                    WindowEvent::MouseInput { state, button, .. } => {
-                        let button_id = match button {
-                            MouseButton::Left => 0,
-                            MouseButton::Middle => 1,
-                            MouseButton::Right => 2,
-                            _ => 0,
-                        };
+    event_loop.run(move |event, _, control_flow| {
+        imgui_backend
+            .lock()
+            .handle_event(window.as_ref(), &mut imgui, &event);
 
-                        if let ElementState::Pressed = state {
-                            new_mouse_state.button_mask |= 1 << button_id;
-                        } else {
-                            new_mouse_state.button_mask &= !(1 << button_id);
+        // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
+        // dispatched any events. This is ideal for games and similar applications.
+        *control_flow = ControlFlow::Poll;
+
+        match event {
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                WindowEvent::KeyboardInput { input, .. } => {
+                    keyboard_events.push(input);
+                }
+                WindowEvent::CursorMoved { position, .. } => {
+                    new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
+                }
+                WindowEvent::MouseInput { state, button, .. } => {
+                    let button_id = match button {
+                        MouseButton::Left => 0,
+                        MouseButton::Middle => 1,
+                        MouseButton::Right => 2,
+                        _ => 0,
+                    };
+
+                    if let ElementState::Pressed = state {
+                        new_mouse_state.button_mask |= 1 << button_id;
+                    } else {
+                        new_mouse_state.button_mask &= !(1 << button_id);
+                    }
+                }
+                _ => (),
+            },
+            Event::MainEventsCleared => {
+                // Application update code.
+
+                window.request_redraw();
+            }
+            Event::RedrawRequested(_) => {
+                let now = std::time::Instant::now();
+                let dt_duration = now - last_frame_instant;
+                last_frame_instant = now;
+                let dt = dt_duration.as_secs_f32();
+
+                keyboard.update(std::mem::take(&mut keyboard_events), dt);
+                mouse_state.update(&new_mouse_state);
+                new_mouse_state = mouse_state;
+
+                let input_state = InputState {
+                    mouse: mouse_state,
+                    keys: keyboard.clone(),
+                    dt,
+                };
+                camera.update(&input_state);
+
+                render_client.store_prev_mesh_transforms();
+
+                // Reset accumulation of the path tracer whenever the camera moves
+                if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
+                    && render_client.render_mode == RenderMode::Reference
+                {
+                    render_client.reset_reference_accumulation = true;
+                }
+
+                /*if keyboard.is_down(VirtualKeyCode::Z) {
+                    car_pos.x += mouse_state.delta.x / 100.0;
+                    render_client.set_instance_transform(car_inst, car_pos);
+                }*/
+
+                if keyboard.was_just_pressed(VirtualKeyCode::Space) {
+                    match render_client.render_mode {
+                        RenderMode::Standard => {
+                            camera.convergence_sensitivity = 1.0;
+                            render_client.render_mode = RenderMode::Reference;
+                        }
+                        RenderMode::Reference => {
+                            camera.convergence_sensitivity = 0.0;
+                            render_client.render_mode = RenderMode::Standard;
+                        }
+                    };
+                }
+
+                if (mouse_state.button_mask & 1) != 0 {
+                    light_theta +=
+                        (mouse_state.delta.x / window_cfg.width as f32) * -std::f32::consts::TAU;
+                    light_phi +=
+                        (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI;
+                }
+
+                let sun_direction = spherical_to_cartesian(light_theta, light_phi);
+                sun_direction_interp =
+                    Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
+
+                let frame_state = FrameState {
+                    camera_matrices: camera.calc_matrices(),
+                    window_cfg,
+                    input: InputState {
+                        mouse: mouse_state,
+                        keys: keyboard.clone(),
+                        dt,
+                    },
+                    //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
+                    sun_direction: sun_direction_interp,
+                };
+
+                if keyboard.was_just_pressed(VirtualKeyCode::Tab) {
+                    show_gui = !show_gui;
+                }
+
+                if show_gui {
+                    let (ui_draw_data, imgui_target_image) = {
+                        let mut imgui_backend = imgui_backend.lock();
+                        let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
+
+                        if imgui::CollapsingHeader::new(im_str!("GPU passes"))
+                            .default_open(true)
+                            .build(&ui)
+                        {
+                            let gpu_stats = gpu_profiler::get_stats();
+                            ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
+
+                            let mut sum = 0.0;
+                            for (name, ms) in gpu_stats.get_ordered_name_ms() {
+                                ui.text(format!("{}: {:.3}ms", name, ms));
+                                sum += ms;
+                            }
+
+                            ui.text(format!("total: {:.3}ms", sum));
+                        }
+
+                        if imgui::CollapsingHeader::new(im_str!("csgi"))
+                            .default_open(true)
+                            .build(&ui)
+                        {
+                            imgui::Drag::<i32>::new(im_str!("Trace subdivision"))
+                                .range(0..=5)
+                                .build(&ui, &mut render_client.csgi.trace_subdiv);
+
+                            imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
+                                .range(1..=9)
+                                .build(&ui, &mut render_client.csgi.neighbors_per_frame);
+                        }
+
+                        if imgui::CollapsingHeader::new(im_str!("debug"))
+                            .default_open(true)
+                            .build(&ui)
+                        {
+                            if ui.radio_button_bool(
+                                im_str!("none"),
+                                render_client.debug_mode == RenderDebugMode::None,
+                            ) {
+                                render_client.debug_mode = RenderDebugMode::None;
+                            }
+
+                            if ui.radio_button_bool(
+                                im_str!("csgi voxel grid"),
+                                render_client.debug_mode == RenderDebugMode::CsgiVoxelGrid,
+                            ) {
+                                render_client.debug_mode = RenderDebugMode::CsgiVoxelGrid;
+                            }
+                        }
+
+                        imgui_backend.prepare_render(&ui, &window);
+                        (ui.render(), imgui_backend.get_target_image().unwrap())
+                    };
+
+                    let ui_draw_data: &'static imgui::DrawData =
+                        unsafe { std::mem::transmute(ui_draw_data) };
+                    let imgui_backend = imgui_backend.clone();
+                    let gui_extent = [frame_state.window_cfg.width, frame_state.window_cfg.height];
+
+                    render_client.ui_frame = Some((
+                        Box::new(move |cb| {
+                            imgui_backend
+                                .lock()
+                                .render(gui_extent, ui_draw_data, cb)
+                                .expect("ui.render");
+                        }),
+                        imgui_target_image,
+                    ));
+                }
+
+                match renderer.prepare_frame(&mut render_client, &frame_state) {
+                    Ok(()) => {
+                        renderer.draw_frame(&mut render_client, &frame_state);
+                        last_error_text = None;
+                    }
+                    Err(e) => {
+                        let error_text = Some(format!("{:?}", e));
+                        if error_text != last_error_text {
+                            println!("{}", error_text.as_ref().unwrap());
+                            last_error_text = error_text;
                         }
                     }
-                    _ => (),
-                },
-                _ => (),
-            }
-        }
-
-        let now = std::time::Instant::now();
-        let dt_duration = now - last_frame_instant;
-        last_frame_instant = now;
-        let dt = dt_duration.as_secs_f32();
-
-        keyboard.update(std::mem::take(&mut keyboard_events), dt);
-        mouse_state.update(&new_mouse_state);
-        new_mouse_state = mouse_state;
-
-        let input_state = InputState {
-            mouse: mouse_state,
-            keys: keyboard.clone(),
-            dt,
-        };
-        camera.update(&input_state);
-
-        render_client.store_prev_mesh_transforms();
-
-        // Reset accumulation of the path tracer whenever the camera moves
-        if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
-            && render_client.render_mode == RenderMode::Reference
-        {
-            render_client.reset_reference_accumulation = true;
-        }
-
-        /*if keyboard.is_down(VirtualKeyCode::Z) {
-            car_pos.x += mouse_state.delta.x / 100.0;
-            render_client.set_instance_transform(car_inst, car_pos);
-        }*/
-
-        if keyboard.was_just_pressed(VirtualKeyCode::Space) {
-            match render_client.render_mode {
-                RenderMode::Standard => {
-                    camera.convergence_sensitivity = 1.0;
-                    render_client.render_mode = RenderMode::Reference;
-                }
-                RenderMode::Reference => {
-                    camera.convergence_sensitivity = 0.0;
-                    render_client.render_mode = RenderMode::Standard;
-                }
-            };
-        }
-
-        if (mouse_state.button_mask & 1) != 0 {
-            light_theta += (mouse_state.delta.x / window_cfg.width as f32) * -std::f32::consts::TAU;
-            light_phi += (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI;
-        }
-
-        let sun_direction = spherical_to_cartesian(light_theta, light_phi);
-        sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
-
-        let frame_state = FrameState {
-            camera_matrices: camera.calc_matrices(),
-            window_cfg,
-            input: input_state,
-            //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
-            sun_direction: sun_direction_interp,
-        };
-
-        if keyboard.was_just_pressed(VirtualKeyCode::Tab) {
-            show_gui = !show_gui;
-        }
-
-        if show_gui {
-            let (ui_draw_data, imgui_target_image) = {
-                let mut imgui_backend = imgui_backend.lock();
-                let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
-
-                if ui
-                    .collapsing_header(im_str!("GPU passes"))
-                    .default_open(true)
-                    .build()
-                {
-                    let gpu_stats = gpu_profiler::get_stats();
-                    ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
-
-                    let mut sum = 0.0;
-                    for (name, ms) in gpu_stats.get_ordered_name_ms() {
-                        ui.text(format!("{}: {:.3}ms", name, ms));
-                        sum += ms;
-                    }
-
-                    ui.text(format!("total: {:.3}ms", sum));
-                }
-
-                if ui
-                    .collapsing_header(im_str!("csgi"))
-                    .default_open(true)
-                    .build()
-                {
-                    ui.drag_int(
-                        im_str!("Trace subdivision"),
-                        &mut render_client.csgi.trace_subdiv,
-                    )
-                    .min(0)
-                    .max(5)
-                    .build();
-
-                    ui.drag_int(
-                        im_str!("Neighbors per frame"),
-                        &mut render_client.csgi.neighbors_per_frame,
-                    )
-                    .min(1)
-                    .max(9)
-                    .build();
-                }
-
-                if ui
-                    .collapsing_header(im_str!("debug"))
-                    .default_open(true)
-                    .build()
-                {
-                    if ui.radio_button_bool(
-                        im_str!("none"),
-                        render_client.debug_mode == RenderDebugMode::None,
-                    ) {
-                        render_client.debug_mode = RenderDebugMode::None;
-                    }
-
-                    if ui.radio_button_bool(
-                        im_str!("csgi voxel grid"),
-                        render_client.debug_mode == RenderDebugMode::CsgiVoxelGrid,
-                    ) {
-                        render_client.debug_mode = RenderDebugMode::CsgiVoxelGrid;
-                    }
-                }
-
-                imgui_backend.prepare_render(&ui, &window);
-                (ui.render(), imgui_backend.get_target_image().unwrap())
-            };
-
-            let ui_draw_data: &'static imgui::DrawData =
-                unsafe { std::mem::transmute(ui_draw_data) };
-            let imgui_backend = imgui_backend.clone();
-            let gui_extent = [frame_state.window_cfg.width, frame_state.window_cfg.height];
-
-            render_client.ui_frame = Some((
-                Box::new(move |cb| {
-                    imgui_backend
-                        .lock()
-                        .render(gui_extent, ui_draw_data, cb)
-                        .expect("ui.render");
-                }),
-                imgui_target_image,
-            ));
-        }
-
-        match renderer.prepare_frame(&mut render_client, &frame_state) {
-            Ok(()) => {
-                renderer.draw_frame(&mut render_client, &frame_state);
-                last_error_text = None;
-            }
-            Err(e) => {
-                let error_text = Some(format!("{:?}", e));
-                if error_text != last_error_text {
-                    println!("{}", error_text.as_ref().unwrap());
-                    last_error_text = error_text;
                 }
             }
+            _ => (),
         }
-    }
-
-    Ok(())
+    })
 }
 
 fn spherical_to_cartesian(theta: f32, phi: f32) -> Vec3 {

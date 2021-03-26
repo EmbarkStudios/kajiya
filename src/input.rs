@@ -2,7 +2,7 @@
 
 use crate::math::*;
 use std::collections::HashMap;
-pub use winit::{ElementState, KeyboardInput, VirtualKeyCode};
+pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 
 #[derive(Clone)]
 pub struct KeyState {
