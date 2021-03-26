@@ -12,7 +12,7 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
 
 * Hybrid rendering using a mixture of raster, compute, and ray-tracing
 * Dynamic global illumination
-    * Multi-bounce temporally recurrent voxel-based diffuse
+    * Multi-bounce temporally-recurrent voxel-based diffuse
     * Short-range ray-traced diffuse for high-frequency details
     * Single bounce specular, falling back to diffuse after the first hit
 * Sun with ray-traced shadows (not soft yet)
@@ -30,7 +30,7 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
 Not actively used:
 
 * Screen-space ambient occlusion (GTAO)
-    * Currently used as a cross-bilateral feature guide for GI denoising
+    * Currently plugged in as a cross-bilateral feature guide for GI denoising
 * Screen-space diffuse bounce based on GTAO
     * Still runs, but not displayed by default
 
