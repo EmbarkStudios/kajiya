@@ -170,7 +170,7 @@ impl Device {
                     vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
                     vk::KhrAccelerationStructureFn::name().as_ptr(),
                     vk::KhrRayTracingPipelineFn::name().as_ptr(),
-                    vk::KhrRayQueryFn::name().as_ptr(),
+                    //vk::KhrRayQueryFn::name().as_ptr(),
                 ]
                 .iter(),
             );
