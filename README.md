@@ -6,7 +6,7 @@ Its general goal is to get as close as possible to path-traced reference at real
 
 At the same time, `kajiya` does not aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
 
-![screenshot](docs/screenshot-pica.jpg)
+![screenshot](docs/screenshot.jpg)
 
 ## Features
 
@@ -67,13 +67,13 @@ build_and_run.cmd [scene_name]
 Where `[scene_name]` is one of the file names in `assets/scenes`, without the `.ron` extension, e.g.:
 
 ```
-build_and_run.cmd pica
+build_and_run.cmd battle
 ```
 
 or
 
 ```
-cargo run --bin kajiya --release -- --scene pica --width 1920 --height 1080
+cargo run --bin kajiya --release -- --scene battle --width 1920 --height 1080 --no-debug
 ```
 
 _Please note that the `smol` async runtime is used for baking and run-time shader compilation. There's no custom executor yet, so the `SMOL_THREADS` environment variable controls parallelism._
