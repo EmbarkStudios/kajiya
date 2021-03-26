@@ -37,7 +37,7 @@ float approx_fresnel(float3 wo, float3 wi) {
 }
 
 bool is_wave_alive(uint mask, uint idx) {
-    return (mask & (1 << idx)) != 0;
+    return (mask & (1u << idx)) != 0;
 }
 
 [numthreads(8, 8, 1)]
