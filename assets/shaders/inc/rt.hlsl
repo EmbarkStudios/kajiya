@@ -60,7 +60,7 @@ bool rt_is_shadowed(
     TraceRay(
         acceleration_structure,
         RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH | RAY_FLAG_SKIP_CLOSEST_HIT_SHADER,
-        0xff, 0, 0, 0, ray, shadow_payload
+        0xff, 0, 0, 1, ray, shadow_payload
     );
 
     return shadow_payload.is_shadowed;

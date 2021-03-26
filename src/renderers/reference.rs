@@ -15,10 +15,10 @@ pub fn reference_path_trace(
         rg.add_pass("reference pt"),
         "/assets/shaders/rt/reference_path_trace.rgen.hlsl",
         &[
-            "/assets/shaders/rt/triangle.rmiss.hlsl",
+            "/assets/shaders/rt/gbuffer.rmiss.hlsl",
             "/assets/shaders/rt/shadow.rmiss.hlsl",
         ],
-        &["/assets/shaders/rt/triangle.rchit.hlsl"],
+        &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
     )
     .write(output_img)
     .raw_descriptor_set(1, bindless_descriptor_set)

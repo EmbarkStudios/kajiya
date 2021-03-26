@@ -230,10 +230,10 @@ impl RtdgiRenderer {
             rg.add_pass("rtdgi trace"),
             "/assets/shaders/rtdgi/trace_diffuse.rgen.hlsl",
             &[
-                "/assets/shaders/rt/triangle.rmiss.hlsl",
+                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
                 "/assets/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/triangle.rchit.hlsl"],
+            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)

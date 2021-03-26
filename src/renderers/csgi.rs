@@ -105,10 +105,10 @@ impl CsgiRenderer {
             rg.add_pass("csgi trace"),
             "/assets/shaders/csgi/trace_volume.rgen.hlsl",
             &[
-                "/assets/shaders/rt/triangle.rmiss.hlsl",
+                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
                 "/assets/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/triangle.rchit.hlsl"],
+            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&indirect_cascade_combined0)
         .write(&mut direct_cascade0)

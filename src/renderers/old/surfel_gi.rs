@@ -227,10 +227,10 @@ impl SurfelGiRenderState {
             rg.add_pass("surfel gi trace"),
             "/assets/shaders/surfel_gi/trace_irradiance.rgen.hlsl",
             &[
-                "/assets/shaders/rt/triangle.rmiss.hlsl",
+                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
                 "/assets/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/triangle.rchit.hlsl"],
+            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&self.surfel_spatial_buf)
         .write(&mut self.surfel_irradiance_buf)

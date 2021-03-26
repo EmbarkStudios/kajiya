@@ -64,16 +64,5 @@ fn main() -> Result<()> {
         smol::block_on(futures::future::try_join_all(images)).expect("Failed to load mesh images");
     }
 
-    /*{
-        let image = GpuImage::Proto {
-            format: kajiya_backend::ash::vk::Format::R32G32B32A32_SFLOAT,
-            extent: [128, 128, 1],
-            mips: vec![vec![1], vec![1, 2], vec![1, 2, 3]],
-        };
-
-        let mut file = File::create("baked/derp.image")?;
-        image.flatten_into(&mut file);
-    }*/
-
     Ok(())
 }

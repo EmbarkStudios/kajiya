@@ -102,10 +102,10 @@ impl RtrRenderer {
             rg.add_pass("reflection trace"),
             "/assets/shaders/rtr/reflection.rgen.hlsl",
             &[
-                "/assets/shaders/rt/triangle.rmiss.hlsl",
+                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
                 "/assets/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/triangle.rchit.hlsl"],
+            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)

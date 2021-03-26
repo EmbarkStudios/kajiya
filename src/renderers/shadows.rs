@@ -15,7 +15,11 @@ pub fn trace_sun_shadow_mask(
     SimpleRenderPass::new_rt(
         rg.add_pass("trace shadow mask"),
         "/assets/shaders/rt/trace_sun_shadow_mask.rgen.hlsl",
-        &["/assets/shaders/rt/shadow.rmiss.hlsl"],
+        &[
+            // Duplicated because `rt.hlsl` hardcodes miss index to 1
+            "/assets/shaders/rt/shadow.rmiss.hlsl",
+            "/assets/shaders/rt/shadow.rmiss.hlsl",
+        ],
         &[],
     )
     .read_aspect(&depth_img, vk::ImageAspectFlags::DEPTH)
