@@ -156,9 +156,7 @@ impl KajiyaRenderClient {
 
         let anti_aliased = self.taa.render(rg, &debug_out_tex, &reprojection_map);
 
-        let mut post = post_process(rg, &anti_aliased, self.bindless_descriptor_set);
-
-        self.render_ui(rg, &mut post);
+        let post = post_process(rg, &anti_aliased, self.bindless_descriptor_set);
 
         rg.export(
             post,
@@ -195,9 +193,7 @@ impl KajiyaRenderClient {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let mut post = post_process(rg, &accum_img, self.bindless_descriptor_set);
-
-        self.render_ui(rg, &mut post);
+        let post = post_process(rg, &accum_img, self.bindless_descriptor_set);
 
         rg.export(
             post,
@@ -205,7 +201,7 @@ impl KajiyaRenderClient {
         )
     }
 
-    fn render_ui(&mut self, rg: &mut rg::RenderGraph, target_img: &mut rg::Handle<Image>) {
+    pub(super) fn render_ui(&mut self, rg: &mut rg::RenderGraph) -> rg::Handle<Image> {
         if let Some((ui_renderer, image)) = self.ui_frame.take() {
             let mut ui_tex = rg.import(image, AccessType::Nothing);
             let mut pass = rg.add_pass("render ui");
@@ -213,13 +209,11 @@ impl KajiyaRenderClient {
             pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
             pass.render(move |api| ui_renderer(api.cb.raw));
 
-            rg::SimpleRenderPass::new_compute(
-                rg.add_pass("blit ui"),
-                "/assets/shaders/blit_ui.hlsl",
-            )
-            .read(&ui_tex)
-            .write(target_img)
-            .dispatch(target_img.desc().extent);
+            ui_tex
+        } else {
+            let mut blank_img = rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]));
+            crate::renderers::imageops::clear_color(rg, &mut blank_img, [0.0f32; 4]);
+            blank_img
         }
     }
 }

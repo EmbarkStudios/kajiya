@@ -833,7 +833,7 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_state: &FrameState,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> RenderGraphOutput {
         rg.predefined_descriptor_set_layouts.insert(
             1,
             rg::PredefinedDescriptorSet {
@@ -845,10 +845,18 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
             image_lut.compute_if_needed(rg);
         }
 
-        match self.render_mode {
+        let main_img = match self.render_mode {
             RenderMode::Standard => self.prepare_render_graph_standard(rg, frame_state),
             RenderMode::Reference => self.prepare_render_graph_reference(rg, frame_state),
-        }
+        };
+
+        let ui_img = self.render_ui(rg);
+        let ui_img = rg.export(
+            ui_img,
+            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
+
+        RenderGraphOutput { main_img, ui_img }
     }
 
     fn prepare_frame_constants(

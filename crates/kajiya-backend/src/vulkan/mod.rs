@@ -72,8 +72,8 @@ impl RenderBackend {
             swapchain::SwapchainDesc {
                 format: select_surface_format(surface_formats).expect("suitable surface format"),
                 dims: vk::Extent2D {
-                    width: window_cfg.width,
-                    height: window_cfg.height,
+                    width: window.inner_size().width,
+                    height: window.inner_size().height,
                 },
                 vsync: window_cfg.vsync,
             },

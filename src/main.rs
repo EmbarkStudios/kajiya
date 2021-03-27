@@ -39,6 +39,7 @@ use winit::{
 pub struct FrameState {
     pub camera_matrices: CameraMatrices,
     pub window_cfg: WindowConfig,
+    //pub swapchain_extent: [u32; 2],
     pub input: InputState,
     pub sun_direction: Vec3,
 }
@@ -196,7 +197,8 @@ fn main() -> anyhow::Result<()> {
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
         imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
-    imgui_backend.create_graphics_resources([window_cfg.width, window_cfg.height]);
+    imgui_backend
+        .create_graphics_resources([window.inner_size().width, window.inner_size().height]);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));
     let mut show_gui = true;
 
@@ -303,6 +305,7 @@ fn main() -> anyhow::Result<()> {
                 let frame_state = FrameState {
                     camera_matrices: camera.calc_matrices(),
                     window_cfg,
+                    //swapchain_extent: [window.inner_size().width, window.inner_size().height],
                     input: InputState {
                         mouse: mouse_state,
                         keys: keyboard.clone(),
@@ -376,7 +379,7 @@ fn main() -> anyhow::Result<()> {
                     let ui_draw_data: &'static imgui::DrawData =
                         unsafe { std::mem::transmute(ui_draw_data) };
                     let imgui_backend = imgui_backend.clone();
-                    let gui_extent = [frame_state.window_cfg.width, frame_state.window_cfg.height];
+                    let gui_extent = [window.inner_size().width, window.inner_size().height];
 
                     render_client.ui_frame = Some((
                         Box::new(move |cb| {

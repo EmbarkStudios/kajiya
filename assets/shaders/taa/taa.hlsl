@@ -42,20 +42,17 @@ float3 encode(float3 a) {
     return encode_rgb(a);
 }
 
-float4 fetchHistory(float2 uv)
-{
-	return float4(decode(
+float3 fetch_history(float2 uv) {
+	return decode(
         history_tex.SampleLevel(sampler_lnc, uv, 0).xyz
-    ), 1);
+    );
 }
 
-float4 fetchHistoryPx(int2 pix)
-{
-	return float4(decode(history_tex[pix].xyz), 1);
+float3 fetch_history_px(int2 px) {
+	return decode(history_tex[px].xyz);
 }
 
-float3 CubicHermite (float3 A, float3 B, float3 C, float3 D, float t)
-{
+float3 cubic_hermite(float3 A, float3 B, float3 C, float3 D, float t) {
 	float t2 = t*t;
     float t3 = t*t*t;
     float3 a = -A/2.0 + (3.0*B)/2.0 - (3.0*C)/2.0 + D/2.0;
@@ -67,8 +64,7 @@ float3 CubicHermite (float3 A, float3 B, float3 C, float3 D, float t)
 }
 
 // https://www.shadertoy.com/view/MllSzX
-float3 BicubicHermiteTextureSample (float2 P)
-{
+float3 fetch_history_catmull_rom(float2 P) {
     float2 pixel = P * output_tex_size.xy + 0.5;
     float2 c_onePixel = output_tex_size.zw;
     float2 c_twoPixels = output_tex_size.zw * 2.0;
@@ -77,90 +73,32 @@ float3 BicubicHermiteTextureSample (float2 P)
     //pixel = floor(pixel) / output_tex_size.xy - float2(c_onePixel/2.0);
     int2 ipixel = int2(pixel) - 1;
     
-    float3 C00 = fetchHistoryPx(ipixel + int2(-1 ,-1)).rgb;
-    float3 C10 = fetchHistoryPx(ipixel + int2( 0        ,-1)).rgb;
-    float3 C20 = fetchHistoryPx(ipixel + int2( 1 ,-1)).rgb;
-    float3 C30 = fetchHistoryPx(ipixel + int2( 2,-1)).rgb;
+    float3 C00 = fetch_history_px(ipixel + int2(-1 ,-1));
+    float3 C10 = fetch_history_px(ipixel + int2( 0        ,-1));
+    float3 C20 = fetch_history_px(ipixel + int2( 1 ,-1));
+    float3 C30 = fetch_history_px(ipixel + int2( 2,-1));
     
-    float3 C01 = fetchHistoryPx(ipixel + int2(-1 , 0)).rgb;
-    float3 C11 = fetchHistoryPx(ipixel + int2( 0        , 0)).rgb;
-    float3 C21 = fetchHistoryPx(ipixel + int2( 1 , 0)).rgb;
-    float3 C31 = fetchHistoryPx(ipixel + int2( 2, 0)).rgb;    
+    float3 C01 = fetch_history_px(ipixel + int2(-1 , 0));
+    float3 C11 = fetch_history_px(ipixel + int2( 0        , 0));
+    float3 C21 = fetch_history_px(ipixel + int2( 1 , 0));
+    float3 C31 = fetch_history_px(ipixel + int2( 2, 0));    
     
-    float3 C02 = fetchHistoryPx(ipixel + int2(-1 , 1)).rgb;
-    float3 C12 = fetchHistoryPx(ipixel + int2( 0        , 1)).rgb;
-    float3 C22 = fetchHistoryPx(ipixel + int2( 1 , 1)).rgb;
-    float3 C32 = fetchHistoryPx(ipixel + int2( 2, 1)).rgb;    
+    float3 C02 = fetch_history_px(ipixel + int2(-1 , 1));
+    float3 C12 = fetch_history_px(ipixel + int2( 0        , 1));
+    float3 C22 = fetch_history_px(ipixel + int2( 1 , 1));
+    float3 C32 = fetch_history_px(ipixel + int2( 2, 1));    
     
-    float3 C03 = fetchHistoryPx(ipixel + int2(-1 , 2)).rgb;
-    float3 C13 = fetchHistoryPx(ipixel + int2( 0        , 2)).rgb;
-    float3 C23 = fetchHistoryPx(ipixel + int2( 1 , 2)).rgb;
-    float3 C33 = fetchHistoryPx(ipixel + int2( 2, 2)).rgb;    
+    float3 C03 = fetch_history_px(ipixel + int2(-1 , 2));
+    float3 C13 = fetch_history_px(ipixel + int2( 0        , 2));
+    float3 C23 = fetch_history_px(ipixel + int2( 1 , 2));
+    float3 C33 = fetch_history_px(ipixel + int2( 2, 2));    
     
-    float3 CP0X = CubicHermite(C00, C10, C20, C30, frc.x);
-    float3 CP1X = CubicHermite(C01, C11, C21, C31, frc.x);
-    float3 CP2X = CubicHermite(C02, C12, C22, C32, frc.x);
-    float3 CP3X = CubicHermite(C03, C13, C23, C33, frc.x);
+    float3 CP0X = cubic_hermite(C00, C10, C20, C30, frc.x);
+    float3 CP1X = cubic_hermite(C01, C11, C21, C31, frc.x);
+    float3 CP2X = cubic_hermite(C02, C12, C22, C32, frc.x);
+    float3 CP3X = cubic_hermite(C03, C13, C23, C33, frc.x);
     
-    return CubicHermite(CP0X, CP1X, CP2X, CP3X, frc.y);
-}
-
-float4 fetchHistoryCatmullRom(float2 uv)
-{
-    // The one below seems to smear a bit vertically; Use the brute force version for now.
-    return float4(BicubicHermiteTextureSample(uv), 1);
-
-    // note: entirely stolen from https://gist.github.com/TheRealMJP/c83b8c0f46b63f3a88a5986f4fa982b1
-    // Samples a texture with Catmull-Rom filtering, using 9 texture fetches instead of 16.
-    // See http://float3.ca/bicubic-filtering-in-fewer-taps/ for more details
-    float2 texelSize = output_tex_size.zw;
-
-    // We're going to sample a a 4x4 grid of texels surrounding the target UV coordinate. We'll do this by rounding
-    // down the sample location to get the exact center of our "starting" texel. The starting texel will be at
-    // location [1, 1] in the grid, where [0, 0] is the top left corner.
-    float2 samplePos = uv / texelSize;
-    float2 texPos1 = floor(samplePos - 0.5) + 0.5;
-
-    // Compute the fractional offset from our starting texel to our original sample location, which we'll
-    // feed into the Catmull-Rom spline function to get our filter weights.
-    float2 f = samplePos - texPos1;
-
-    // Compute the Catmull-Rom weights using the fractional offset that we calculated earlier.
-    // These equations are pre-expanded based on our knowledge of where the texels will be located,
-    // which lets us avoid having to evaluate a piece-wise function.
-    float2 w0 = f * ( -0.5 + f * (1.0 - 0.5*f));
-    float2 w1 = 1.0 + f * f * (-2.5 + 1.5*f);
-    float2 w2 = f * ( 0.5 + f * (2.0 - 1.5*f) );
-    float2 w3 = f * f * (-0.5 + 0.5 * f);
-
-    // Work out weighting factors and sampling offsets that will let us use bilinear filtering to
-    // simultaneously evaluate the middle 2 samples from the 4x4 grid.
-    float2 w12 = w1 + w2;
-    float2 offset12 = w2 / (w1 + w2);
-
-    // Compute the final UV coordinates we'll use for sampling the texture
-    float2 texPos0 = texPos1 - 1.0.xx;
-    float2 texPos3 = texPos1 + 2.0.xx;
-    float2 texPos12 = texPos1 + offset12;
-
-    texPos0 *= texelSize;
-    texPos3 *= texelSize;
-    texPos12 *= texelSize;
-
-    float4 result = 0.0.xxxx;
-    result += fetchHistory(float2(texPos0.x,  texPos0.y)) * w0.x * w0.y;
-    result += fetchHistory(float2(texPos12.x, texPos0.y)) * w12.x * w0.y;
-    result += fetchHistory(float2(texPos3.x,  texPos0.y)) * w3.x * w0.y;
-
-    result += fetchHistory(float2(texPos0.x,  texPos12.y)) * w0.x * w12.y;
-    result += fetchHistory(float2(texPos12.x, texPos12.y)) * w12.x * w12.y;
-    result += fetchHistory(float2(texPos3.x,  texPos12.y)) * w3.x * w12.y;
-
-    result += fetchHistory(float2(texPos0.x,  texPos3.y)) * w0.x * w3.y;
-    result += fetchHistory(float2(texPos12.x, texPos3.y)) * w12.x * w3.y;
-    result += fetchHistory(float2(texPos3.x,  texPos3.y)) * w3.x * w3.y;
-
-    return result;
+    return cubic_hermite(CP0X, CP1X, CP2X, CP3X, frc.y);
 }
 
 float mitchell_netravali(float x) {
@@ -207,13 +145,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     float2 history_uv = uv + reproj.xy * float2(1.0, 1.0);
 
 #if 1
-    float history_g = fetchHistoryCatmullRom(history_uv).y;
-    float3 history = fetchHistory(history_uv).rgb;
+    float history_g = fetch_history_catmull_rom(history_uv).y;
+    float3 history = fetch_history(history_uv);
     if (history.y > 1e-5) {
         history *= history_g / history.y;
     }
 #else
-    float3 history = fetchHistoryCatmullRom(history_uv).rgb;
+    float3 history = fetch_history_catmull_rom(history_uv);
 #endif
 
     history = rgb_to_ycbcr(history);

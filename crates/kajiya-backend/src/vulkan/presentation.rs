@@ -18,18 +18,20 @@ pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
                 DescriptorSetLayoutOpts::builder()
                     .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
             )])
-            .push_constants_bytes(2 * 4)
+            .push_constants_bytes(4 * std::mem::size_of::<u32>())
             .build()
             .unwrap(),
     )
 }
 
 pub fn blit_image_to_swapchain(
-    extent: [u32; 2],
+    main_tex_extent: [u32; 2],
+    swapchain_extent: [u32; 2],
     device: &Device,
     cb: &CommandBuffer,
     swapchain_image: &SwapchainImage,
-    present_source_image_view: vk::ImageView,
+    main_img_view: vk::ImageView,
+    ui_img_view: vk::ImageView,
     present_shader: &ComputePipeline,
 ) {
     record_image_barrier(
@@ -44,9 +46,14 @@ pub fn blit_image_to_swapchain(
         .with_discard(true),
     );
 
-    let source_image_info = vk::DescriptorImageInfo::builder()
+    let main_img_info = vk::DescriptorImageInfo::builder()
         .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        .image_view(present_source_image_view)
+        .image_view(main_img_view)
+        .build();
+
+    let ui_img_info = vk::DescriptorImageInfo::builder()
+        .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+        .image_view(ui_img_view)
         .build();
 
     let present_image_info = vk::DescriptorImageInfo::builder()
@@ -73,18 +80,14 @@ pub fn blit_image_to_swapchain(
                     .dst_binding(0)
                     .dst_array_element(0)
                     .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                    .image_info(std::slice::from_ref(&source_image_info))
+                    .image_info(std::slice::from_ref(&main_img_info))
                     .build(),
-                /*vk::WriteDescriptorSet::builder()
-                .dst_set(present_descriptor_set)
-                .dst_binding(1)
-                .dst_array_element(0)
-                .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                .image_info(&[vk::DescriptorImageInfo::builder()
-                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image_view(gui_texture_view)
-                    .build()])
-                .build(),*/
+                vk::WriteDescriptorSet::builder()
+                    .dst_binding(1)
+                    .dst_array_element(0)
+                    .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
+                    .image_info(std::slice::from_ref(&ui_img_info))
+                    .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_binding(2)
                     .dst_array_element(0)
@@ -94,17 +97,26 @@ pub fn blit_image_to_swapchain(
             ],
         );
 
-        let push_constants: (f32, f32) = (1.0 / extent[0] as f32, 1.0 / extent[1] as f32);
+        let push_constants: [f32; 4] = [
+            main_tex_extent[0] as f32,
+            main_tex_extent[1] as f32,
+            swapchain_extent[0] as f32,
+            swapchain_extent[1] as f32,
+        ];
+
         device.raw.cmd_push_constants(
             cb.raw,
             present_shader.pipeline_layout,
             vk::ShaderStageFlags::COMPUTE,
             0,
-            std::slice::from_raw_parts(&push_constants.0 as *const f32 as *const u8, 2 * 4),
+            crate::bytes::as_byte_slice(&push_constants),
         );
-        device
-            .raw
-            .cmd_dispatch(cb.raw, (extent[0] + 7) / 8, (extent[1] + 7) / 8, 1);
+        device.raw.cmd_dispatch(
+            cb.raw,
+            (swapchain_extent[0] + 7) / 8,
+            (swapchain_extent[1] + 7) / 8,
+            1,
+        );
     }
 
     record_image_barrier(

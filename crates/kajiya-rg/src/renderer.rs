@@ -41,7 +41,7 @@ pub struct Renderer {
     present_shader: ComputePipeline,
 
     compiled_rg: Option<CompiledRenderGraph>,
-    rg_output_tex: Option<ExportedHandle<Image>>,
+    rg_output: Option<RenderGraphOutput>,
     temporal_rg_state: TemporalRg,
 }
 
@@ -65,12 +65,17 @@ lazy_static::lazy_static! {
     .collect();
 }
 
+pub struct RenderGraphOutput {
+    pub main_img: ExportedHandle<Image>,
+    pub ui_img: ExportedHandle<Image>,
+}
+
 pub trait RenderClient<FrameState: 'static> {
     fn prepare_render_graph(
         &mut self,
         rg: &mut TemporalRenderGraph,
         frame_state: &FrameState,
-    ) -> ExportedHandle<Image>;
+    ) -> RenderGraphOutput;
 
     fn prepare_frame_constants(
         &mut self,
@@ -113,7 +118,7 @@ impl Renderer {
             present_shader,
 
             compiled_rg: None,
-            rg_output_tex: None,
+            rg_output: None,
 
             temporal_rg_state: Default::default(),
         })
@@ -126,6 +131,8 @@ impl Renderer {
     ) {
         let frame_constants_offset = self.dynamic_constants.current_offset();
         render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
+
+        let swapchain_extent = self.backend.swapchain.extent();
 
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
@@ -153,9 +160,7 @@ impl Renderer {
 
             current_frame.profiler_data.begin_frame(device, cb.raw);
 
-            if let Some((rg, rg_output_img)) =
-                self.compiled_rg.take().zip(self.rg_output_tex.take())
-            {
+            if let Some((rg, rg_output)) = self.compiled_rg.take().zip(self.rg_output.take()) {
                 let retired_rg = rg.execute(
                     RenderGraphExecutionParams {
                         device: &self.backend.device,
@@ -169,10 +174,16 @@ impl Renderer {
                     cb,
                 );
 
-                let (rg_output_img, rg_output_access_type) =
-                    retired_rg.exported_resource(rg_output_img);
+                let (main_img, main_img_access_type) =
+                    retired_rg.exported_resource(rg_output.main_img);
                 assert!(
-                    rg_output_access_type
+                    main_img_access_type
+                        == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
+                );
+
+                let (ui_img, ui_img_access_type) = retired_rg.exported_resource(rg_output.ui_img);
+                assert!(
+                    ui_img_access_type
                         == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
                 );
 
@@ -186,11 +197,13 @@ impl Renderer {
                 };
 
                 blit_image_to_swapchain(
-                    [rg_output_img.desc.extent[0], rg_output_img.desc.extent[1]],
+                    main_img.desc.extent_2d(),
+                    swapchain_extent,
                     &*self.backend.device,
                     cb,
                     &swapchain_image,
-                    rg_output_img.view(device, &ImageViewDesc::default()),
+                    main_img.view(device, &ImageViewDesc::default()),
+                    ui_img.view(device, &ImageViewDesc::default()),
                     &self.present_shader,
                 );
 
@@ -326,7 +339,7 @@ impl Renderer {
             },
         );
 
-        self.rg_output_tex = Some(render_client.prepare_render_graph(&mut rg, frame_state));
+        self.rg_output = Some(render_client.prepare_render_graph(&mut rg, frame_state));
 
         let (rg, temporal_rg_state) = rg.export_temporal();
 

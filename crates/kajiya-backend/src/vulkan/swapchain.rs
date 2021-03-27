@@ -174,6 +174,10 @@ impl Swapchain {
         })
     }
 
+    pub fn extent(&self) -> [u32; 2] {
+        [self.desc.dims.width, self.desc.dims.height]
+    }
+
     pub fn acquire_next_image(
         &mut self,
     ) -> std::result::Result<SwapchainImage, SwapchainAcquireImageErr> {

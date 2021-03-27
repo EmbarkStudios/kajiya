@@ -30,7 +30,7 @@ impl ImGuiBackend {
         setup_imgui_style(imgui);
 
         let mut imgui_platform = WinitPlatform::init(imgui);
-        imgui_platform.attach_window(imgui.io_mut(), window, HiDpiMode::Default);
+        imgui_platform.attach_window(imgui.io_mut(), window, HiDpiMode::Locked(1.0));
 
         {
             use imgui::{FontConfig, FontGlyphRanges, FontSource};
