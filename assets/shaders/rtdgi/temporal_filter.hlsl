@@ -6,15 +6,17 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float4> cv_history_tex;
-[[vk::binding(3)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(5)]] Texture2D<float> half_depth_tex;
-[[vk::binding(6)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi_indirect_tex;
-[[vk::binding(8)]] RWTexture2D<float4> history_output_tex;
-[[vk::binding(9)]] RWTexture2D<float4> cv_history_output_tex;
-[[vk::binding(10)]] RWTexture2D<float4> output_tex;
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float2> variance_history_tex;
+[[vk::binding(4)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(6)]] Texture2D<float> half_depth_tex;
+[[vk::binding(7)]] Texture3D<float4> csgi_direct_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(9)]] RWTexture2D<float4> history_output_tex;
+[[vk::binding(10)]] RWTexture2D<float4> cv_history_output_tex;
+[[vk::binding(11)]] RWTexture2D<float2> variance_history_output_tex;
+[[vk::binding(12)]] RWTexture2D<float4> output_tex;
+[[vk::binding(13)]] cbuffer _ {
     float4 output_tex_size;
     float4 gbuffer_tex_size;
 };
@@ -129,18 +131,17 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float3 cv_diff = (control_variate - cv_history);
 
     float reproj_validity_dilated = reproj.z;
-    #if 0
+    #if 1
+        // Greatly reduces temporal bleeding of slowly-moving edges
+        // TODO: do this at sampling stage instead of patching up the bilinear result
         {
-         	const int k = 2;
+         	const int k = 1;
             for (int y = -k; y <= k; ++y) {
                 for (int x = -k; x <= k; ++x) {
-                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[px * 2 + 2 * int2(x, y)].z);
+                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[px * 2 + int2(x, y)].z);
                 }
             }
         }
-    #else
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 1));
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
     #endif
 
     if (USE_RTDGI_CONTROL_VARIATES) {
@@ -160,7 +161,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //clamped_history = center;
     //float4 clamped_history = history;
 
-    float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(2.0, 6.0, reproj_validity_dilated * light_stability));
+    float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
 
     const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
 
@@ -174,6 +175,12 @@ void main(uint2 px: SV_DispatchThreadID) {
         spatial_input = max(0.0.xxx, res);
     }
 
+    const float2 moments_history = variance_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+    //const float center_luma = calculate_luma(abs(center.rgb));// - 0.5 * calculate_luma(control_variate.rgb));
+    const float center_luma = center.y;// - 0.5 * calculate_luma(control_variate.rgb));
+    const float2 current_moments = float2(center_luma, center_luma * center_luma);
+    variance_history_output_tex[px] = lerp(moments_history, current_moments, 0.1);
+
     //spatial_input *= reproj.z;    // debug validity
     //spatial_input *= light_stability;
     //spatial_input = smoothstep(0.0, 0.05, history_dist);
@@ -184,8 +191,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     //spatial_input = abs(dev.rgb);
     //spatial_input = smoothed_dev;
 
+    //const float center_variance = sqrt(max(0.0, moments_history.y - moments_history.x * moments_history.x)) / max(1e-8, abs(moments_history.x));
+    const float center_variance = 5 * max(0.0, moments_history.y - moments_history.x * moments_history.x);
+    //spatial_input = center_variance * abs(moments_history.x);
+    //spatial_input = abs(center_variance);
+
     // TODO: adaptively sample according to abs(res)
-    //spatial_input = abs(res);
+    //spatial_input = max(0.0, abs(res) / max(1e-5, control_variate));
 
     //output_tex[px] = float4(spatial_input, smoothed_dev * (light_stability > 0.5 ? 1.0 : -1.0));
     output_tex[px] = float4(spatial_input, light_stability);

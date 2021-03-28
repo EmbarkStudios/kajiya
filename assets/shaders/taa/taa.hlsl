@@ -225,6 +225,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     //result = float3(reproj.xy, 0);
+    //result = reproj.z;
 
     output_tex[px] = float4(result, 1);
 }

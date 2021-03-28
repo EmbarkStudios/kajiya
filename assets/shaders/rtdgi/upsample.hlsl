@@ -1,6 +1,7 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/uv.hlsl"
+#include "../inc/color.hlsl"
 #include "../inc/gbuffer.hlsl"
 
 #define USE_SSAO_STEERING 1
@@ -40,10 +41,19 @@ float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, f
     }
 }
 
+static float ggx_ndf_unnorm(float a2, float cos_theta) {
+	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
+	return a2 / (denom_sqrt * denom_sqrt);
+}
+
+
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     float4 result = 0.0.xxxx;
+    float ex = 0.0;
+    float ex2 = 0.0;
     float w_sum = 0.0;
+    float w_sum2 = 0.0;
 
     float center_depth = depth_tex[px];
     if (center_depth != 0.0) {
@@ -58,6 +68,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         w_sum = 0.0;
         result = 0.0.xxxx;
+
+        ex = 0;
+        ex2 = 0;
+        w_sum2 = 0.0;
 
         //const int sample_count = int(lerp(6, 16, saturate(rel_std_dev)));
         const int sample_count = 8;
@@ -83,7 +97,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 float wt = 1;
 
                 //wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
-                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 100);
+                //wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 100);
+                wt *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
                 wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
                 #if USE_SSAO_STEERING
@@ -92,15 +107,40 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
                 result += sample_val * wt;
                 w_sum += wt;
+
+                /*wt = 1;
+                //wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 30);
+                wt *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
+                wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));*/
+
+                const float luma = calculate_luma(sample_val.rgb);
+                ex += luma * wt;
+                ex2 += luma * luma * wt;
+                w_sum2 += wt;
             }
         }
     } else {
         result = 0.0.xxxx;
     }
 
-    if (w_sum > 1e-6) {
-        output_tex[px] = result / w_sum;
+#if 0
+    result = saturate(1 - 1e-2 / (center_depth + 1e-5));
+    w_sum = 1;
+#endif
+
+    float dev = 1;
+    if (w_sum2 > 1e-200) {
+        ex /= w_sum2;
+        ex2 /= w_sum2;
+        dev = sqrt(abs(ex * ex - ex2));
+    }
+
+    if (w_sum > 1e-200) {
+        //output_tex[px] = result / w_sum;
+
+        output_tex[px] = float4(result.rgb / w_sum, dev);
     } else {
-        output_tex[px] = ssgi_tex[px / 2];
+        //output_tex[px] = ssgi_tex[px / 2];
+        output_tex[px] = float4(ssgi_tex[px / 2].rgb, dev);
     }
 }

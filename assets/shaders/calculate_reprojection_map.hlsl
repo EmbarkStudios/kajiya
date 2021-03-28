@@ -17,7 +17,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float depth = 0.0;
     {
-        const int k = 1;
+        const int k = 0;
         for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
                 float s_depth = depth_tex[px + int2(x, y)];
@@ -52,16 +52,29 @@ void main(uint2 px: SV_DispatchThreadID) {
     float max_depth_validity = 0.0;
     {
         int2 prev_px = int2(prev_uv * output_tex_size.xy);
-        const int k = 1;
+        const int k = 0;
         for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
                 float prev_depth = prev_depth_tex[prev_px + int2(x, y)];
                 float4 prev_cs = float4(prev_cs_cur_depth.xy, prev_depth, 1.0);
                 float4 prev_vs = mul(frame_constants.view_constants.prev_clip_to_prev_view, prev_cs);
+
                 prev_vs /= prev_vs.w;
+
+                const float a = pos_prev_vs.z;
+                const float b = prev_vs.z;
+
+                /*max_depth_validity = max(
+                    max_depth_validity,
+                    saturate(exp2(-16.0 * length(pos_prev_vs.xyz - prev_vs.xyz) / max(1e-3, min(-pos_prev_vs.z, -prev_vs.z))))
+                );*/
+
+                float validity = saturate(exp2(-40 * abs((a - b) / (a + b))));
+                //validity = saturate(validity * 1.25 - 0.25);
+
                 max_depth_validity = max(
                     max_depth_validity,
-                    saturate(exp2(-4.0 * length(pos_prev_vs.xyz - prev_vs.xyz) / max(1e-3, min(-pos_prev_vs.z, -prev_vs.z))))
+                    validity
                 );
             }
         }
@@ -69,6 +82,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: validity with velocity
     validity *= max_depth_validity;
+    //validity = 1;
 
     float2 texel_center_offset = abs(0.5 - frac(prev_uv * output_tex_size.xy));
     float accuracy = 1.0 - texel_center_offset.x - texel_center_offset.y;

@@ -9,6 +9,7 @@
 #include "../inc/hash.hlsl"
 
 #define USE_SSAO_STEERING 1
+#define USE_DYNAMIC_KERNEL_RADIUS 1
 
 [[vk::binding(0)]] Texture2D<float4> hit0_tex;
 [[vk::binding(1)]] Texture2D<float4> half_view_normal_tex;
@@ -57,10 +58,15 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
     const bool input_gi_stable = center_validity >= 0.5;
-    const uint filter_idx =
-        /*input_gi_stable
-            ? uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0))
-            : 7;*/3;
+
+    #if USE_DYNAMIC_KERNEL_RADIUS
+        const uint filter_idx =
+            input_gi_stable
+                ? uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0))
+                : 7;
+    #else
+        const uint filter_idx = 3;
+    #endif
 
     {
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {

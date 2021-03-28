@@ -187,10 +187,10 @@ fn main() -> anyhow::Result<()> {
         render_client.add_instance(mesh, instance.position.into());
     }
 
-    /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
     let car_mesh = render_client.add_mesh(car_mesh);
     let mut car_pos = Vec3::unit_y() * -0.01;
-    let car_inst = render_client.add_instance(car_mesh, car_pos);*/
+    let car_inst = render_client.add_instance(car_mesh, car_pos);
 
     render_client.build_ray_tracing_top_level_acceleration();
 
@@ -273,10 +273,10 @@ fn main() -> anyhow::Result<()> {
                     render_client.reset_reference_accumulation = true;
                 }
 
-                /*if keyboard.is_down(VirtualKeyCode::Z) {
+                if keyboard.is_down(VirtualKeyCode::Z) {
                     car_pos.x += mouse_state.delta.x / 100.0;
                     render_client.set_instance_transform(car_inst, car_pos);
-                }*/
+                }
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Space) {
                     match render_client.render_mode {
@@ -297,6 +297,9 @@ fn main() -> anyhow::Result<()> {
                     light_phi +=
                         (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI;
                 }
+
+                //light_phi += dt;
+                //light_phi %= std::f32::consts::TAU;
 
                 let sun_direction = spherical_to_cartesian(light_theta, light_phi);
                 sun_direction_interp =
