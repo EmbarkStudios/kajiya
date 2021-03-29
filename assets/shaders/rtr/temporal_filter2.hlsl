@@ -1,5 +1,3 @@
-// TODO: currently a copy-pasta of the SSGI filter
-
 #include "../inc/samplers.hlsl"
 #include "../inc/uv.hlsl"
 #include "../inc/frame_constants.hlsl"
@@ -131,21 +129,13 @@ void main(uint2 px: SV_DispatchThreadID) {
         history0 = linear_to_working(history0);
     #endif
 
-    /*if (any(abs((uv + reproj.xy) * 2 - 1) > 0.99)) {
-        history0_valid = 0;
-    }*/
-
     float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0));
     float history1_valid = quad_reproj_valid_packed == 15;
-    //float history1_valid = 1;
-    /*if (any(abs(hit_prev_uv * 2 - 1) > 0.99)) {
-        history1_valid = 0;
-    }*/
 
     float4 history0_reproj = reprojection_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     float4 history1_reproj = reprojection_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0);
 
-#if 1
+
 	float4 vsum = 0.0.xxxx;
 	float4 vsum2 = 0.0.xxxx;
 	float wsum = 0.0;
@@ -195,28 +185,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	//float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
 	float4 nmin = center - dev * box_size * n_deviations;
 	float4 nmax = center + dev * box_size * n_deviations;
-#else
-	float4 vsum = 0.0.xxxx;
-	float wsum = 0.0;
 
-    float4 nmin = center;
-    float4 nmax = center;
-
-	const int k = 2;
-    for (int y = -k; y <= k; ++y) {
-        for (int x = -k; x <= k; ++x) {
-            float4 neigh = linear_to_working(input_tex[px + int2(x, y) * 1]);
-			nmin = min(nmin, neigh);
-            nmax = max(nmax, neigh);
-
-			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
-			vsum += neigh * w;
-			wsum += w;
-        }
-    }
-    
-    float4 ex = vsum / wsum;
-#endif
     
     float h0diff = length(history0.xyz - center.xyz);
     float h1diff = length(history1.xyz - center.xyz);

@@ -1,5 +1,3 @@
-// TODO: currently a copy-pasta of the SSGI filter
-
 #include "../inc/samplers.hlsl"
 #include "../inc/uv.hlsl"
 #include "../inc/frame_constants.hlsl"
@@ -213,23 +211,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     //history = history0;
     //history.w = history0.w;
 
-    float target_sample_count = 4;//lerp(8, 24, saturate(0.3 * center.w));
-    //float target_sample_count = 24;//lerp(8, 24, saturate(0.3 * center.w));
-    //float target_sample_count = clamp(sample_count, 1, 24);//lerp(8, 24, saturate(0.3 * center.w));
-
-    //float4 filtered_center = lerp(center, ex, saturate(history.w * 5));
-    float4 filtered_center = center;
-    float4 res = lerp(history, filtered_center, lerp(1.0, 1.0 / target_sample_count, reproj_validity_dilated));
+    float target_sample_count = 4;
+    float4 res = lerp(history, center, lerp(1.0, 1.0 / target_sample_count, reproj_validity_dilated));
     //res.w = sample_count + 1;
     //res.w = refl_ray_length * 20;
 
-    //res.rgb = working_to_linear(dev).rgb / max(1e-8, working_to_linear(ex).rgb);
     res = working_to_linear(res);
-    //res.rgb = working_to_linear(center).rgb * res.w * 0.01;
-
-    //res.w = calculate_luma(working_to_linear(dev).rgb / max(1e-5, working_to_linear(ex).rgb));
-    
     output_tex[px] = max(0.0.xxxx, res);
-    //output_tex[px].w = h0_score / (h0_score + h1_score);
-    //output_tex[px] = reproj.w;
 }

@@ -156,8 +156,7 @@ fn main() -> anyhow::Result<()> {
         assert_eq!(handle.0, 1);
     }
 
-    let mut camera = camera::FirstPersonCamera::new(Vec3::new(2.125909, 1.5639199, -1.3301293));
-    camera.look_at(Vec3::new(1.1532503, 1.5482154, -1.0984161));
+    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
     //camera.look_smoothness = 20.0;
     //camera.move_smoothness = 20.0;
@@ -188,10 +187,10 @@ fn main() -> anyhow::Result<()> {
         render_client.add_instance(mesh, instance.position.into());
     }
 
-    let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
     let car_mesh = render_client.add_mesh(car_mesh);
     let mut car_pos = Vec3::unit_y() * -0.01;
-    let car_inst = render_client.add_instance(car_mesh, car_pos);
+    let car_inst = render_client.add_instance(car_mesh, car_pos);*/
 
     render_client.build_ray_tracing_top_level_acceleration();
 
@@ -274,10 +273,10 @@ fn main() -> anyhow::Result<()> {
                     render_client.reset_reference_accumulation = true;
                 }
 
-                if keyboard.is_down(VirtualKeyCode::Z) {
+                /*if keyboard.is_down(VirtualKeyCode::Z) {
                     car_pos.x += mouse_state.delta.x / 100.0;
                     render_client.set_instance_transform(car_inst, car_pos);
-                }
+                }*/
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Space) {
                     match render_client.render_mode {

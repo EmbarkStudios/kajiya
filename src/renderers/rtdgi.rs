@@ -15,7 +15,6 @@ use blue_noise_sampler::spp64::*;
 pub struct RtdgiRenderer {
     temporal_tex: PingPongTemporalResource,
     temporal2_tex: PingPongTemporalResource,
-    temporal_variance_tex: PingPongTemporalResource,
     temporal2_variance_tex: PingPongTemporalResource,
     cv_temporal_tex: PingPongTemporalResource,
 
@@ -49,7 +48,6 @@ impl RtdgiRenderer {
         Self {
             temporal_tex: PingPongTemporalResource::new("rtdgi.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
-            temporal_variance_tex: PingPongTemporalResource::new("rtdgi.temporal_var"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
             cv_temporal_tex: PingPongTemporalResource::new("rtdgi.cv"),
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
@@ -85,13 +83,6 @@ impl RtdgiRenderer {
             .cv_temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(half_res_extent));
 
-        let (mut temporal_variance_output_tex, variance_history_tex) =
-            self.temporal_variance_tex.get_output_and_history(
-                rg,
-                ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, half_res_extent)
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            );
-
         let mut temporal_filtered_tex = rg.create(
             gbuffer_depth
                 .gbuffer
@@ -108,7 +99,6 @@ impl RtdgiRenderer {
         .read(&input_color)
         .read(&history_tex)
         .read(&cv_history_tex)
-        .read(&variance_history_tex)
         .read(reprojection_map)
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
@@ -116,7 +106,6 @@ impl RtdgiRenderer {
         .read(&csgi_volume.indirect_cascade0)
         .write(&mut temporal_output_tex)
         .write(&mut cv_temporal_output_tex)
-        .write(&mut temporal_variance_output_tex)
         .write(&mut temporal_filtered_tex)
         .constants((
             temporal_output_tex.desc().extent_inv_extent_2d(),

@@ -11,11 +11,6 @@
 
 #define SHUFFLE_SUBPIXELS 1
 
-static float ggx_ndf_unnorm(float a2, float cos_theta) {
-	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
-	return a2 / (denom_sqrt * denom_sqrt);
-}
-
 [numthreads(8, 8, 1)]
 void main(int2 px: SV_DispatchThreadID) {
     const float4 center = input_tex[px];
@@ -53,7 +48,6 @@ void main(int2 px: SV_DispatchThreadID) {
         // TODO: BRDF-based weights
         w *= exp2(-50.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
         float dp = saturate(dot(center_normal_vs, sample_normal_vs));
-        //w *= ggx_ndf_unnorm(0.1, dp);
         w *= dp * dp * dp;
         
 		vsum += neigh * w;
