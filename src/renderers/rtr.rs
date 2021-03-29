@@ -192,7 +192,18 @@ impl RtrRenderer {
         .constants(temporal2_output_tex.desc().extent_inv_extent_2d())
         .dispatch(resolved_tex.desc().extent);
 
-        temporal2_output_tex.into()
+        SimpleRenderPass::new_compute(
+            rg.add_pass("reflection cleanup"),
+            "/assets/shaders/rtr/spatial_cleanup.hlsl",
+        )
+        .read(&temporal2_output_tex)
+        .read(&gbuffer_depth.depth)
+        .read(&gbuffer_depth.geometric_normal)
+        .write(&mut resolved_tex) // reuse
+        .constants(SPATIAL_RESOLVE_OFFSETS)
+        .dispatch(resolved_tex.desc().extent);
+
+        resolved_tex.into()
     }
 }
 

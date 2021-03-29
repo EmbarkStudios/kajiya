@@ -116,7 +116,6 @@ void main(uint2 px: SV_DispatchThreadID) {
             history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
         } else {
             float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
-            //quad_reproj_valid.xyzw = 0;
 
             const Bilinear bilinear = get_bilinear_filter(uv + reproj.xy, output_tex_size.xy);
             float4 s00 = history_tex[int2(bilinear.origin) + int2(0, 0)];
@@ -231,10 +230,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float h1_score = 0;
 #endif
 
-    //const float reproj_penalty = 1000;
-    //history0 = lerp(center, history0, exp2(-reproj_penalty * length(history0_reproj.xy - reproj.xy)));
-    //history1 = lerp(center, history1, exp2(-reproj_penalty * length(history1_reproj.xy - reproj.xy)));
-
     const float score_sum = h0_score + h1_score;
     if (score_sum > 1e-50) {
         h0_score /= score_sum;
@@ -262,16 +257,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     //clamped_history = history0;
     //clamped_history.w = history0.w;
 
-    float target_sample_count = 16;//lerp(8, 24, saturate(0.3 * center.w));
-    //float target_sample_count = 24;//lerp(8, 24, saturate(0.3 * center.w));
-    //float target_sample_count = clamp(sample_count, 1, 24);//lerp(8, 24, saturate(0.3 * center.w));
-
     float max_sample_count = 16;
     float current_sample_count = clamped_history.a;
 
-    //float4 filtered_center = lerp(center, ex, saturate(clamped_history.w * 5));
     float4 filtered_center = center;
-    //float4 res = lerp(clamped_history, filtered_center, lerp(1.0, 1.0 / target_sample_count, reproj_validity_dilated));
     float4 res = lerp(clamped_history, filtered_center, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     res.w = min(current_sample_count, max_sample_count) + 1;
     //res.w = sample_count + 1;
@@ -279,11 +268,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     //res.rgb = working_to_linear(dev).rgb / max(1e-8, working_to_linear(ex).rgb);
     res = working_to_linear(res);
-    //res.rgb = working_to_linear(center).rgb * res.w * 0.01;
-
-    //res.w = calculate_luma(working_to_linear(dev).rgb / max(1e-5, working_to_linear(ex).rgb));
     
     output_tex[px] = max(0.0.xxxx, res);
-    //output_tex[px].w = h0_score / (h0_score + h1_score);
-    //output_tex[px] = reproj.w;
 }
