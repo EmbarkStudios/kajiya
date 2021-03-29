@@ -22,10 +22,10 @@
 
 #if 0 == ENCODING_SCHEME
 float4 linear_to_working(float4 x) {
-    return sqrt(x);
+    return float4(sqrt(x.xyz), x.w);
 }
 float4 working_to_linear(float4 x) {
-    return ((x)*(x));
+    return float4(x.xyz * x.xyz, x.w);
 }
 #endif
 
@@ -137,7 +137,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     }*/
 
     float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0));
-    float history1_valid = 1;
+    float history1_valid = quad_reproj_valid_packed == 15;
+    //float history1_valid = 1;
     /*if (any(abs(hit_prev_uv * 2 - 1) > 0.99)) {
         history1_valid = 0;
     }*/
@@ -243,8 +244,11 @@ void main(uint2 px: SV_DispatchThreadID) {
         h1_score = 0;
     }
 
-    float4 clamped_history0 = clamp(history0, nmin, nmax);
-    float4 clamped_history1 = clamp(history1, nmin, nmax);
+    float4 clamped_history0 = history0;
+    float4 clamped_history1 = history1;
+
+    clamped_history0.rgb = clamp(history0.rgb, nmin.rgb, nmax.rgb);
+    clamped_history1.rgb = clamp(history1.rgb, nmin.rgb, nmax.rgb);
     //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
     float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
     //float4 clamped_history = history0 * h0_score + history1 * h1_score;
@@ -262,9 +266,14 @@ void main(uint2 px: SV_DispatchThreadID) {
     //float target_sample_count = 24;//lerp(8, 24, saturate(0.3 * center.w));
     //float target_sample_count = clamp(sample_count, 1, 24);//lerp(8, 24, saturate(0.3 * center.w));
 
+    float max_sample_count = 16;
+    float current_sample_count = clamped_history.a;
+
     //float4 filtered_center = lerp(center, ex, saturate(clamped_history.w * 5));
     float4 filtered_center = center;
-    float4 res = lerp(clamped_history, filtered_center, lerp(1.0, 1.0 / target_sample_count, reproj_validity_dilated));
+    //float4 res = lerp(clamped_history, filtered_center, lerp(1.0, 1.0 / target_sample_count, reproj_validity_dilated));
+    float4 res = lerp(clamped_history, filtered_center, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
+    res.w = min(current_sample_count, max_sample_count) + 1;
     //res.w = sample_count + 1;
     //res.w = refl_ray_length * 20;
 

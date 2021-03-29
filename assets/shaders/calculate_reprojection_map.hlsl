@@ -1,13 +1,15 @@
 #include "inc/frame_constants.hlsl"
+#include "inc/pack_unpack.hlsl"
 #include "inc/uv.hlsl"
 #include "inc/samplers.hlsl"
 #include "inc/bilinear.hlsl"
 
 [[vk::binding(0)]] Texture2D<float> depth_tex;
-[[vk::binding(1)]] Texture2D<float> prev_depth_tex;
-[[vk::binding(2)]] Texture2D<float3> velocity_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(1)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(2)]] Texture2D<float> prev_depth_tex;
+[[vk::binding(3)]] Texture2D<float3> velocity_tex;
+[[vk::binding(4)]] RWTexture2D<float4> output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
 };
 
@@ -37,6 +39,9 @@ void main(uint2 px: SV_DispatchThreadID) {
         }
     }
 
+    float3 normal_ws = unpack_normal_11_10_11_no_normalize(gbuffer_tex[px].y);
+    float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(normal_ws, 0)).xyz);
+
     float4 pos_cs = float4(uv_to_cs(uv), depth, 1.0);
     float4 pos_vs = mul(frame_constants.view_constants.clip_to_view, pos_cs);
     float dist_to_point = -(pos_vs.z / pos_vs.w);
@@ -60,23 +65,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 prev_pvs = mul(frame_constants.view_constants.prev_clip_to_prev_view, prev_pcs);
     prev_pvs /= prev_pvs.w;
 
-    float3 normal = float3(0, 0, 1);
-
-    // TODO: input a normal buffer
-    if (!true) {
-        float3 vp0 = ViewRayContext::from_uv_and_depth(get_uv(px, output_tex_size), depth_tex[px]).ray_hit_vs();
-        float3 vp10 = ViewRayContext::from_uv_and_depth(get_uv(px + int2(1, 0), output_tex_size), depth_tex[px + int2(1, 0)]).ray_hit_vs();
-        float3 vp01 = ViewRayContext::from_uv_and_depth(get_uv(px + int2(0, 1), output_tex_size), depth_tex[px + int2(0, 1)]).ray_hit_vs();
-        float3 d = cross(vp01- vp0, vp10 - vp0);
-        d = normalize(d);
-        if (all(isfinite(d))) {
-            normal = d;
-        }
-    }
-
     // Based on "Fast Denoising with Self Stabilizing Recurrent Blurs"
     
-    float plane_dist_prev = dot(normal, prev_pvs.xyz);
+    float plane_dist_prev = dot(normal_vs, prev_pvs.xyz);
     float plane_dist_prev_norm = plane_dist_prev / prev_pvs.z;
 
     const Bilinear bilinear_at_prev = get_bilinear_filter(prev_uv, output_tex_size.xy);

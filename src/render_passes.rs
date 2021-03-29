@@ -102,7 +102,7 @@ impl KajiyaRenderClient {
 
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
             rg,
-            &gbuffer_depth.depth,
+            &gbuffer_depth,
             &velocity_img,
         );
 

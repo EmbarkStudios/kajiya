@@ -202,7 +202,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //float ex2 = rtr_tex[px].w;
     //output = 1e-1 * abs(ex * ex - ex2) / max(1e-8, ex);
 
-    //output = rtr_tex[px].www * 0.01;
+    //output = rtr_tex[px].www / 16.0;
     //output = rtr_tex[px].xyz;
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
