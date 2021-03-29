@@ -156,7 +156,8 @@ fn main() -> anyhow::Result<()> {
         assert_eq!(handle.0, 1);
     }
 
-    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
+    let mut camera = camera::FirstPersonCamera::new(Vec3::new(2.125909, 1.5639199, -1.3301293));
+    camera.look_at(Vec3::new(1.1532503, 1.5482154, -1.0984161));
     //camera.fov = 65.0;
     //camera.look_smoothness = 20.0;
     //camera.move_smoothness = 20.0;
@@ -320,6 +321,15 @@ fn main() -> anyhow::Result<()> {
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Tab) {
                     show_gui = !show_gui;
+                }
+
+                if keyboard.was_just_pressed(VirtualKeyCode::C) {
+                    println!(
+                        "position: {}, look_at: {}",
+                        frame_state.camera_matrices.eye_position(),
+                        frame_state.camera_matrices.eye_position()
+                            + frame_state.camera_matrices.eye_direction(),
+                    );
                 }
 
                 if show_gui {

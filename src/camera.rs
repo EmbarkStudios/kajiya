@@ -13,6 +13,12 @@ impl CameraMatrices {
     pub fn eye_position(&self) -> Vec3 {
         (self.view_to_world * Vec4::new(0.0, 0.0, 0.0, 1.0)).truncate()
     }
+
+    pub fn eye_direction(&self) -> Vec3 {
+        (self.view_to_world * Vec4::new(0.0, 0.0, -1.0, 0.0))
+            .truncate()
+            .normalize()
+    }
 }
 
 pub trait Camera {
@@ -121,6 +127,12 @@ impl FirstPersonCamera {
         }
     }
 
+    // https://stackoverflow.com/a/27497022
+    fn three_axis_rot(r11: f32, r12: f32, r21: f32, r31: f32, r32: f32) -> [f32; 3] {
+        [f32::atan2(r31, r32), f32::asin(r21), f32::atan2(r11, r12)]
+    }
+
+    // https://stackoverflow.com/a/27497022
     #[allow(dead_code)]
     pub fn look_at(&mut self, target: Vec3) {
         let q = Mat4::look_at_rh(self.position, target, Vec3::unit_y())
@@ -129,25 +141,17 @@ impl FirstPersonCamera {
             .conjugate()
             .normalize();
 
-        // (x-axis rotation)
-        let sinr_cosp = 2.0 * (q.w * q.x + q.y * q.z);
-        let cosr_cosp = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
-        self.pitch = f32::atan2(sinr_cosp, cosr_cosp).to_degrees();
+        let rots = Self::three_axis_rot(
+            2.0 * (q.x * q.z + q.w * q.y),
+            q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z,
+            -2.0 * (q.y * q.z - q.w * q.x),
+            2.0 * (q.x * q.y + q.w * q.z),
+            q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z,
+        );
 
-        // (y-axis rotation)
-        let sinp = 2.0 * (q.w * q.y - q.z * q.x);
-
-        self.yaw = if sinp.abs() >= 1.0 {
-            std::f32::consts::FRAC_PI_2.copysign(sinp) // use 90 degrees if out of range
-        } else {
-            sinp.asin()
-        }
-        .to_degrees();
-
-        // (z-axis rotation)
-        let siny_cosp = 2.0 * (q.w * q.z + q.x * q.y);
-        let cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
-        self.roll = f32::atan2(siny_cosp, cosy_cosp).to_degrees();
+        self.roll = rots[0].to_degrees();
+        self.pitch = rots[1].to_degrees();
+        self.yaw = rots[2].to_degrees();
 
         self.interp_rot = self.calc_rotation_quat();
     }
