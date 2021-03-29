@@ -61,7 +61,9 @@ pub fn calculate_reprojection_map(
     depth: &rg::Handle<Image>,
     velocity_img: &rg::Handle<Image>,
 ) -> rg::Handle<Image> {
-    let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+    //let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+    //let mut output_tex = rg.create(depth.desc().format(vk::Format::R32G32B32A32_SFLOAT));
+    let mut output_tex = rg.create(depth.desc().format(vk::Format::R16G16B16A16_SNORM));
 
     let mut prev_depth = rg
         .get_or_create_temporal(

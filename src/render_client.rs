@@ -420,7 +420,7 @@ impl KajiyaRenderClient {
                     // gbuffer
                     RenderPassAttachmentDesc::new(vk::Format::R32G32B32A32_SFLOAT).garbage_input(),
                     // velocity
-                    RenderPassAttachmentDesc::new(vk::Format::R16G16_SFLOAT).garbage_input(),
+                    RenderPassAttachmentDesc::new(vk::Format::R16G16B16A16_SFLOAT).garbage_input(),
                 ],
                 depth_attachment: Some(RenderPassAttachmentDesc::new(
                     vk::Format::D24_UNORM_S8_UINT,

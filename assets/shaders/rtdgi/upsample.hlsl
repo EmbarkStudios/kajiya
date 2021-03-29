@@ -119,6 +119,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 w_sum2 += wt;
             }
         }
+
+        #if 0
+            // Output normal for debug purposes
+            result = float4(saturate(normalize(center_normal_vs) * 0.5 + 0.5), 1);
+            result *= result;
+            w_sum = 1;
+        #endif
     } else {
         result = 0.0.xxxx;
     }

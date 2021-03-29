@@ -66,7 +66,7 @@ impl KajiyaRenderClient {
             crate::renderers::imageops::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
 
             let mut mesh_velocity_img = rg.create(ImageDesc::new_2d(
-                vk::Format::R16G16_SFLOAT,
+                vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ));
 

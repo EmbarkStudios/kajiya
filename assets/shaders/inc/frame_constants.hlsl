@@ -108,5 +108,8 @@ float3 get_eye_position() {
     return eye_pos_h.xyz / eye_pos_h.w;
 }
 
+float depth_to_view_z(float depth) {
+    return rcp(depth * -frame_constants.view_constants.clip_to_view._43);
+}
 
 #endif

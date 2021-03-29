@@ -26,7 +26,7 @@ struct {
 
 struct PsOut {
     float4 gbuffer: SV_TARGET0;
-    float2 velocity: SV_TARGET1;
+    float4 velocity: SV_TARGET1;
 };
 
 PsOut main(PsIn ps) {
@@ -81,12 +81,12 @@ PsOut main(PsIn ps) {
     PsOut ps_out;
     ps_out.gbuffer = asfloat(gbuffer.pack().data0);
 
-    float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.vs_pos, 1));
+    /*float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.vs_pos, 1));
     float4 prev_cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.prev_vs_pos, 1));
     float2 uv_pos = cs_to_uv(cs_pos.xy / cs_pos.w);
-    float2 prev_uv_pos = cs_to_uv(prev_cs_pos.xy / prev_cs_pos.w);
+    float2 prev_uv_pos = cs_to_uv(prev_cs_pos.xy / prev_cs_pos.w);*/
 
-    ps_out.velocity = prev_uv_pos - uv_pos;
+    ps_out.velocity = float4(ps.prev_vs_pos - ps.vs_pos, 0);
 
     return ps_out;
 }

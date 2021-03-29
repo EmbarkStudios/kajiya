@@ -141,8 +141,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 center = decode(input_tex[px].rgb);
     center = rgb_to_ycbcr(center);
 
-    float4 reproj = reprojection_tex[px];
-    float2 history_uv = uv + reproj.xy * float2(1.0, 1.0);
+    const float4 reproj = reprojection_tex[px];
+    float2 history_uv = uv + reproj.xy;
 
 #if 1
     float history_g = fetch_history_catmull_rom(history_uv).y;
@@ -186,9 +186,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     box_size *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
     box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
-    center = fetch_center_filtered(px);
-    //center = decode(input_tex[px].rgb);
-    center = rgb_to_ycbcr(center);
+    //center = rgb_to_ycbcr(fetch_center_filtered(px));
 
     const float n_deviations = 1.5 * lerp(1.0, 0.5, reproj.w);
 	float3 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
@@ -197,9 +195,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     float blend_factor = 1.0;
     
 	#if 1
+        // TODO: make better use of the quad reprojection validity
+        uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+        float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+        blend_factor = lerp(1.0, 1.0 / 12.0, dot(quad_reproj_valid, 0.25));
+
         float3 clamped_history = clamp(history, nmin, nmax);
 		//float3 clamped_history = history;//clamp(history, nmin, nmax);
-        blend_factor = lerp(1.0, 1.0 / 12.0, reproj.z);
 
         // "Anti-flicker"
         float clamp_dist = (min(abs(history.x - nmin.x), abs(history.x - nmax.x))) / max(max(history.x, ex.x), 1e-5);
@@ -225,7 +227,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     //result = float3(reproj.xy, 0);
-    //result = reproj.z;
+    //uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+    //float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+    //result = quad_reproj_valid.rgb;
 
     output_tex[px] = float4(result, 1);
 }

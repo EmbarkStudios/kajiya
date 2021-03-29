@@ -124,21 +124,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     //const float light_stability = 1;
     //const float light_stability = center.w > 0.0 ? 1.0 : 0.0;
 
-    float reproj_validity_dilated = smoothstep(0.4, 0.6, reproj.z);
-    #if 0
-        {
-         	const int k = 1;
-            for (int y = -k; y <= k; ++y) {
-                for (int x = -k; x <= k; ++x) {
-                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[px + int2(x, y)].z);
-                }
-            }
-        }
-    #elif 0
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 1));
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
-    #endif
-
 	//float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
     float4 clamped_history = history;
     //clamped_history = center;
@@ -149,7 +134,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float max_sample_count = 32;
     max_sample_count = lerp(max_sample_count, 4, variance_adjusted_temporal_change);
     //max_sample_count = lerp(max_sample_count, 1, smoothstep(0.01, 0.6, 10 * temporal_change * (center_dev / max(1e-5, center_luma))));
-    max_sample_count *= reproj_validity_dilated;
     max_sample_count *= light_stability;
 
     float current_sample_count = history.a;
@@ -174,7 +158,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output = abs(res);
     //output = WaveActiveSum(center.rgb) / WaveActiveSum(1);
     //output = WaveActiveSum(history.rgb) / WaveActiveSum(1);
-    //output = reproj_validity_dilated;
     //output = 0.01 * temporal_change / max(1e-5, calculate_luma(dev.rgb));
     //output = pow(smoothstep(0.1, 1, temporal_change), 1.0);
     //output = center_temporal_dev;

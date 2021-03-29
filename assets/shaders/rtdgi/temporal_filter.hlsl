@@ -161,6 +161,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //clamped_history = center;
     //float4 clamped_history = history;
 
+    // TODO: proper rejection (not "reproj_validity_dilated")
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
 
     const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);

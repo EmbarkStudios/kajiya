@@ -14,7 +14,7 @@
 
 #define USE_SSGI 0
 #define USE_CSGI 1
-#define USE_RTR 0
+#define USE_RTR 1
 #define USE_RTDGI 1
 
 #define SSGI_INTENSITY_BIAS 0.0
@@ -210,11 +210,22 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = bent_normal_dir * 0.5 + 0.5;
     //output = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
 
-    output = gi_irradiance;
+    //output = gi_irradiance;
     //output = gbuffer.metalness;
     //output = gbuffer.roughness;
     //output = gbuffer.albedo;
     //output = ssgi.rgb;
+
+    /*{
+        float3 vp0 = ViewRayContext::from_uv_and_depth(get_uv(px, output_tex_size), depth_tex[px]).ray_hit_vs();
+        float3 vp10 = ViewRayContext::from_uv_and_depth(get_uv(px + int2(1, 0), output_tex_size), depth_tex[px + int2(1, 0)]).ray_hit_vs();
+        float3 vp01 = ViewRayContext::from_uv_and_depth(get_uv(px + int2(0, 1), output_tex_size), depth_tex[px + int2(0, 1)]).ray_hit_vs();
+        float3 d = cross(vp01- vp0, vp10 - vp0);
+        d = normalize(d);
+       if (all(isfinite(d))) {
+            output = saturate(0.5 + 0.5 * d);
+       }
+    }*/
 
     #if 0
         output = lookup_csgi(

@@ -1,6 +1,7 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/color.hlsl"
 #include "../inc/uv.hlsl"
+#include "../inc/bilinear.hlsl"
 #include "../inc/frame_constants.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
@@ -17,9 +18,32 @@ void main(uint2 px: SV_DispatchThreadID) {
     
     float4 center = input_tex[px];
     float4 reproj = reprojection_tex[px];
+    float2 prev_uv = uv + reproj.xy;
 
-    // TODO: validity-constrained interpolation
-    float4 history = input_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+    uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+    float4 history = 0.0.xxxx;
+
+    //if (quad_reproj_valid_packed < 15) {
+    if (0 == quad_reproj_valid_packed) {
+        // Everything invalid
+    } else if (15 == quad_reproj_valid_packed) {
+        history = input_tex.SampleLevel(sampler_lnc, prev_uv, 0);
+    } else {
+        float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+        //quad_reproj_valid.xyzw = 0;
+
+        const Bilinear bilinear = get_bilinear_filter(prev_uv, output_tex_size.xy);
+        float4 s00 = input_tex[int2(bilinear.origin) + int2(0, 0)];
+        float4 s10 = input_tex[int2(bilinear.origin) + int2(1, 0)];
+        float4 s01 = input_tex[int2(bilinear.origin) + int2(0, 1)];
+        float4 s11 = input_tex[int2(bilinear.origin) + int2(1, 1)];
+
+        float4 weights = get_bilinear_custom_weights(bilinear, quad_reproj_valid);
+
+        if (dot(weights, 1.0) > 1e-5) {
+            history = apply_bilinear_custom_weights(s00, s10, s01, s11, weights);
+        }
+    }
 
     output_tex[px] = history;
 }
