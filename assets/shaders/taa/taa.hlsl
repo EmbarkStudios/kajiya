@@ -186,7 +186,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     box_size *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
     box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
-    //center = rgb_to_ycbcr(fetch_center_filtered(px));
+    center = rgb_to_ycbcr(fetch_center_filtered(px));
 
     const float n_deviations = 1.5 * lerp(1.0, 0.5, reproj.w);
 	float3 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;

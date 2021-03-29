@@ -9,7 +9,7 @@ struct PsIn {
 
 struct PsOut {
     float4 gbuffer: SV_TARGET0;
-    float2 velocity: SV_TARGET1;
+    float4 velocity: SV_TARGET1;
 };
 
 PsOut main(PsIn ps) {
@@ -21,6 +21,6 @@ PsOut main(PsIn ps) {
 
     PsOut ps_out;
     ps_out.gbuffer = asfloat(gbuffer.pack().data0);
-    ps_out.velocity = 0.0.xx;
+    ps_out.velocity = 0.0;
     return ps_out;
 }

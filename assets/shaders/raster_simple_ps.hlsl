@@ -61,7 +61,7 @@ PsOut main(PsIn ps) {
         normal = normalize(normal);
     }
 
-    if (!true) {
+    if (true) {
         // Derive normal from depth
         float3 d1 = ddx(ps.vs_pos);
         float3 d2 = ddy(ps.vs_pos);

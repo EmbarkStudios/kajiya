@@ -53,7 +53,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float2 uv_diff = prev_uv - uv;
 
     // Account for quantization of the `uv_diff` in R16G16B16A16_SNORM.
-    uv_diff = trunc(uv_diff * 32767) / 32767;
+    // This is so we calculate validity masks for pixels that the users will actually be using.
+    uv_diff = trunc(uv_diff * 32767.0) / 32767.0;
     prev_uv = uv + uv_diff;
 
     float4 prev_pvs = mul(frame_constants.view_constants.prev_clip_to_prev_view, prev_pcs);
