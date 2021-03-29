@@ -5,7 +5,7 @@
 #include "inc/bilinear.hlsl"
 
 [[vk::binding(0)]] Texture2D<float> depth_tex;
-[[vk::binding(1)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(1)]] Texture2D<float3> geometric_normal_tex;
 [[vk::binding(2)]] Texture2D<float> prev_depth_tex;
 [[vk::binding(3)]] Texture2D<float3> velocity_tex;
 [[vk::binding(4)]] RWTexture2D<float4> output_tex;
@@ -39,8 +39,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         }
     }
 
-    float3 normal_ws = unpack_normal_11_10_11_no_normalize(gbuffer_tex[px].y);
-    float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(normal_ws, 0)).xyz);
+    float3 normal_vs = geometric_normal_tex[px] * 2.0 - 1.0;
 
     float4 pos_cs = float4(uv_to_cs(uv), depth, 1.0);
     float4 pos_vs = mul(frame_constants.view_constants.clip_to_view, pos_cs);

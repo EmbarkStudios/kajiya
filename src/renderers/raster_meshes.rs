@@ -8,6 +8,8 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg};
 use rg::{IntoRenderPassPipelineBinding, RenderGraph};
 
+use super::GbufferDepth;
+
 #[derive(Clone)]
 pub struct UploadedTriMesh {
     pub index_buffer_offset: u64,
@@ -24,8 +26,7 @@ pub struct RasterMeshesData<'a> {
 pub fn raster_meshes(
     rg: &mut RenderGraph,
     render_pass: Arc<RenderPass>,
-    depth_img: &mut rg::Handle<Image>,
-    color_img: &mut rg::Handle<Image>,
+    gbuffer_depth: &mut GbufferDepth,
     velocity_img: &mut rg::Handle<Image>,
     mesh_data: RasterMeshesData<'_>,
 ) {
@@ -55,21 +56,30 @@ pub fn raster_meshes(
     let meshes: Vec<UploadedTriMesh> = mesh_data.meshes.to_vec();
     let instances: Vec<crate::render_client::MeshInstance> = mesh_data.instances.to_vec();
 
-    let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
-    let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
+    let depth_ref = pass.raster(
+        &mut gbuffer_depth.depth,
+        AccessType::DepthStencilAttachmentWrite,
+    );
+
+    let geometric_normal_ref = pass.raster(
+        &mut gbuffer_depth.geometric_normal,
+        AccessType::ColorAttachmentWrite,
+    );
+    let gbuffer_ref = pass.raster(&mut gbuffer_depth.gbuffer, AccessType::ColorAttachmentWrite);
     let velocity_ref = pass.raster(velocity_img, AccessType::ColorAttachmentWrite);
 
     let vertex_buffer = mesh_data.vertex_buffer.clone();
     let bindless_descriptor_set = mesh_data.bindless_descriptor_set;
 
     pass.render(move |api| {
-        let [width, height, _] = color_ref.desc().extent;
+        let [width, height, _] = gbuffer_ref.desc().extent;
 
         api.begin_render_pass(
             &*render_pass,
             [width, height],
             &[
-                (color_ref, &ImageViewDesc::default()),
+                (geometric_normal_ref, &ImageViewDesc::default()),
+                (gbuffer_ref, &ImageViewDesc::default()),
                 (velocity_ref, &ImageViewDesc::default()),
             ],
             Some((

@@ -417,6 +417,9 @@ impl KajiyaRenderClient {
             &*backend.device,
             RenderPassDesc {
                 color_attachments: &[
+                    // view-space geometry normal; * 2 - 1 to decode
+                    RenderPassAttachmentDesc::new(vk::Format::A2R10G10B10_UNORM_PACK32)
+                        .garbage_input(),
                     // gbuffer
                     RenderPassAttachmentDesc::new(vk::Format::R32G32B32A32_SFLOAT).garbage_input(),
                     // velocity

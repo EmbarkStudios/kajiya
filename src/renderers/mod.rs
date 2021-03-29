@@ -19,6 +19,7 @@ pub mod ssgi;
 pub mod taa;
 
 pub struct GbufferDepth {
+    pub geometric_normal: rg::Handle<Image>,
     pub gbuffer: rg::Handle<Image>,
     pub depth: rg::Handle<Image>,
     half_view_normal: RefCell<Option<rg::Handle<Image>>>,
@@ -26,8 +27,13 @@ pub struct GbufferDepth {
 }
 
 impl GbufferDepth {
-    pub fn new(gbuffer: rg::Handle<Image>, depth: rg::Handle<Image>) -> Self {
+    pub fn new(
+        geometric_normal: rg::Handle<Image>,
+        gbuffer: rg::Handle<Image>,
+        depth: rg::Handle<Image>,
+    ) -> Self {
         Self {
+            geometric_normal: geometric_normal,
             gbuffer,
             depth,
             half_view_normal: Default::default(),

@@ -87,7 +87,7 @@ pub fn calculate_reprojection_map(
         "/assets/shaders/calculate_reprojection_map.hlsl",
     )
     .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-    .read(&gbuffer_depth.gbuffer)
+    .read(&gbuffer_depth.geometric_normal)
     .read_aspect(&prev_depth, vk::ImageAspectFlags::DEPTH)
     .read(velocity_img)
     .write(&mut output_tex)

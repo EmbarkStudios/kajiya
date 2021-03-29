@@ -25,8 +25,9 @@ struct {
 } push_constants;
 
 struct PsOut {
-    float4 gbuffer: SV_TARGET0;
-    float4 velocity: SV_TARGET1;
+    float3 geometric_normal: SV_TARGET0;
+    float4 gbuffer: SV_TARGET1;
+    float4 velocity: SV_TARGET2;
 };
 
 PsOut main(PsIn ps) {
@@ -61,11 +62,15 @@ PsOut main(PsIn ps) {
         normal = normalize(normal);
     }
 
-    if (!true) {
-        // Derive normal from depth
+    // Derive normal from depth
+    float3 geometric_normal; {
         float3 d1 = ddx(ps.vs_pos);
         float3 d2 = ddy(ps.vs_pos);
-        normal = normalize(mul(frame_constants.view_constants.view_to_world, float4(cross(d2,d1), 0)).xyz); // this normal is dp/du X dp/dv
+        geometric_normal = normalize(cross(d2, d1));
+    }
+
+    if (!true) {
+        normal = mul(frame_constants.view_constants.view_to_world, float4(geometric_normal, 0)).xyz;
     }
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
@@ -79,6 +84,7 @@ PsOut main(PsIn ps) {
     gbuffer.metalness = metalness;
 
     PsOut ps_out;
+    ps_out.geometric_normal = geometric_normal * 0.5 + 0.5;
     ps_out.gbuffer = asfloat(gbuffer.pack().data0);
 
     /*float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.vs_pos, 1));

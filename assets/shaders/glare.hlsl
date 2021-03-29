@@ -133,7 +133,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     //col /= 2;
-    col *= 4;
+    //col *= 8;
     //col *= 16;
     //col *= 500;
 

@@ -57,15 +57,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
         );
     }
 
-    #if 0
-        ruv.x *= output_tex_size.x / output_tex_size.y;
-        temporal_output_tex[px] = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0]
-            .SampleLevel(sampler_lnc, uv, 0) * (all(uv == saturate(uv)) ? 1 : 0);
-        return;
-    #endif
-
-    float4 gbuffer_packed = gbuffer_tex[px];
-    if (all(gbuffer_packed == 0.0.xxxx)) {
+    const float depth = depth_tex[px];
+    if (depth == 0.0) {
         #if 1
             float3 output = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             if (dot(outgoing_ray.Direction, SUN_DIRECTION) > 0.999958816) { // cos(0.52 degrees)
@@ -76,14 +69,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
             //float3 output = outgoing_ray.Direction * 0.5 + 0.5;
         #endif
+        
         temporal_output_tex[px] = float4(output, 1);
         output_tex[px] = float4(output, 1);
-        //temporal_output_tex[px] = float4(0.1.xxx, 1.0);
         return;
     }
 
-    float z_over_w = depth_tex[px];
-    float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
+    float4 pt_cs = float4(uv_to_cs(uv), depth, 1.0);
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
     pt_ws /= pt_ws.w;
 
@@ -91,7 +83,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     
     const float shadow_mask = sun_shadow_mask_tex[px];
 
-    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
     //gbuffer.roughness = 0.9;
     //gbuffer.metalness = 0;
     //gbuffer.albedo = 0.5;
@@ -122,7 +114,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //res.xyz += albedo;
     //res.xyz += metalness;
     //res.xyz = metalness;
-    //res.xyz = 0.0001 / z_over_w;
+    //res.xyz = 0.0001 / depth;
     //res.xyz = frac(pt_ws.xyz * 10.0);
     //res.xyz = brdf_d * 0.1;
 
@@ -216,17 +208,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = gbuffer.albedo;
     //output = ssgi.rgb;
 
-    /*{
-        float3 vp0 = ViewRayContext::from_uv_and_depth(get_uv(px, output_tex_size), depth_tex[px]).ray_hit_vs();
-        float3 vp10 = ViewRayContext::from_uv_and_depth(get_uv(px + int2(1, 0), output_tex_size), depth_tex[px + int2(1, 0)]).ray_hit_vs();
-        float3 vp01 = ViewRayContext::from_uv_and_depth(get_uv(px + int2(0, 1), output_tex_size), depth_tex[px + int2(0, 1)]).ray_hit_vs();
-        float3 d = cross(vp01- vp0, vp10 - vp0);
-        d = normalize(d);
-       if (all(isfinite(d))) {
-            output = saturate(0.5 + 0.5 * d);
-       }
-    }*/
-
     #if 0
         output = lookup_csgi(
             pt_ws.xyz,
@@ -236,10 +217,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 //.with_sample_directional_radiance(gbuffer.normal)
                 //.with_bent_normal(pseudo_bent_normal)
         );
-    #endif
-
-    #if 0
-        output = bindless_textures[BINDLESS_LUT_BRDF_FG][px / 16].rgb;
     #endif
 
     output_tex[px] = float4(output, 1.0);

@@ -18,6 +18,8 @@ use kajiya_rg::{
     self as rg, BindRgRef, GetOrCreateTemporal, IntoRenderPassPipelineBinding, SimpleRenderPass,
 };
 
+use super::GbufferDepth;
+
 const VOLUME_DIMS: u32 = 64;
 
 pub struct CsgiRenderer {
@@ -166,8 +168,7 @@ impl CsgiVolume {
         &self,
         rg: &mut rg::RenderGraph,
         render_pass: Arc<RenderPass>,
-        depth_img: &mut rg::Handle<Image>,
-        gbuffer_img: &mut rg::Handle<Image>,
+        gbuffer_depth: &mut GbufferDepth,
         velocity_img: &mut rg::Handle<Image>,
     ) {
         let mut pass = rg.add_pass("raster csgi voxels");
@@ -192,9 +193,18 @@ impl CsgiVolume {
                 .face_cull(true),
         );
 
-        let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
-        let gbuffer_ref = pass.raster(gbuffer_img, AccessType::ColorAttachmentWrite);
+        let depth_ref = pass.raster(
+            &mut gbuffer_depth.depth,
+            AccessType::DepthStencilAttachmentWrite,
+        );
+
+        let geometric_normal_ref = pass.raster(
+            &mut gbuffer_depth.geometric_normal,
+            AccessType::ColorAttachmentWrite,
+        );
+        let gbuffer_ref = pass.raster(&mut gbuffer_depth.gbuffer, AccessType::ColorAttachmentWrite);
         let velocity_ref = pass.raster(velocity_img, AccessType::ColorAttachmentWrite);
+
         let grid_ref = pass.read(
             &self.direct_cascade0,
             AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
@@ -209,6 +219,7 @@ impl CsgiVolume {
                 &[
                     (gbuffer_ref, &ImageViewDesc::default()),
                     (velocity_ref, &ImageViewDesc::default()),
+                    (geometric_normal_ref, &ImageViewDesc::default()),
                 ],
                 Some((
                     depth_ref,

@@ -50,22 +50,28 @@ impl KajiyaRenderClient {
             &tlas,
         );
 
-        let gbuffer_depth;
-        let velocity_img;
-        {
-            let mut depth_img = rg.create(ImageDesc::new_2d(
-                vk::Format::D24_UNORM_S8_UINT,
-                frame_state.window_cfg.dims(),
-            ));
-            crate::renderers::imageops::clear_depth(rg, &mut depth_img);
+        let (gbuffer_depth, velocity_img) = {
+            let mut gbuffer_depth = {
+                let normal = rg.create(ImageDesc::new_2d(
+                    vk::Format::A2R10G10B10_UNORM_PACK32,
+                    frame_state.window_cfg.dims(),
+                ));
 
-            let mut gbuffer = rg.create(ImageDesc::new_2d(
-                vk::Format::R32G32B32A32_SFLOAT,
-                frame_state.window_cfg.dims(),
-            ));
-            crate::renderers::imageops::clear_color(rg, &mut gbuffer, [0.0, 0.0, 0.0, 0.0]);
+                let gbuffer = rg.create(ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    frame_state.window_cfg.dims(),
+                ));
 
-            let mut mesh_velocity_img = rg.create(ImageDesc::new_2d(
+                let mut depth_img = rg.create(ImageDesc::new_2d(
+                    vk::Format::D24_UNORM_S8_UINT,
+                    frame_state.window_cfg.dims(),
+                ));
+                crate::renderers::imageops::clear_depth(rg, &mut depth_img);
+
+                GbufferDepth::new(normal, gbuffer, depth_img)
+            };
+
+            let mut velocity_img = rg.create(ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
                 frame_state.window_cfg.dims(),
             ));
@@ -74,9 +80,8 @@ impl KajiyaRenderClient {
                 raster_meshes(
                     rg,
                     self.raster_simple_render_pass.clone(),
-                    &mut depth_img,
-                    &mut gbuffer,
-                    &mut mesh_velocity_img,
+                    &mut gbuffer_depth,
+                    &mut velocity_img,
                     RasterMeshesData {
                         meshes: self.meshes.as_slice(),
                         instances: self.instances.as_slice(),
@@ -90,15 +95,13 @@ impl KajiyaRenderClient {
                 csgi_volume.debug_raster_voxel_grid(
                     rg,
                     self.raster_simple_render_pass.clone(),
-                    &mut depth_img,
-                    &mut gbuffer,
-                    &mut mesh_velocity_img,
+                    &mut gbuffer_depth,
+                    &mut velocity_img,
                 );
             }
 
-            gbuffer_depth = GbufferDepth::new(gbuffer, depth_img);
-            velocity_img = mesh_velocity_img;
-        }
+            (gbuffer_depth, velocity_img)
+        };
 
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
             rg,
@@ -141,8 +144,7 @@ impl KajiyaRenderClient {
 
         light_gbuffer(
             rg,
-            &gbuffer_depth.gbuffer,
-            &gbuffer_depth.depth,
+            &gbuffer_depth,
             &sun_shadow_mask,
             &ssgi_tex,
             &rtr,

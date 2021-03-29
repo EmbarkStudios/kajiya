@@ -2,11 +2,12 @@ use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 
+use super::GbufferDepth;
+
 #[allow(clippy::too_many_arguments)]
 pub fn light_gbuffer(
     rg: &mut RenderGraph,
-    gbuffer: &rg::Handle<Image>,
-    depth: &rg::Handle<Image>,
+    gbuffer_depth: &GbufferDepth,
     sun_shadow_mask: &rg::Handle<Image>,
     ssgi: &rg::Handle<Image>,
     rtr: &rg::Handle<Image>,
@@ -21,8 +22,8 @@ pub fn light_gbuffer(
         rg.add_pass("light gbuffer"),
         "/assets/shaders/light_gbuffer.hlsl",
     )
-    .read(gbuffer)
-    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+    .read(&gbuffer_depth.gbuffer)
+    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
     .read(sun_shadow_mask)
     .read(ssgi)
     .read(rtr)
@@ -32,7 +33,7 @@ pub fn light_gbuffer(
     .read(&csgi_volume.direct_cascade0)
     .read(&csgi_volume.indirect_cascade0)
     .read(sky_cube)
-    .constants((gbuffer.desc().extent_inv_extent_2d(),))
+    .constants((gbuffer_depth.gbuffer.desc().extent_inv_extent_2d(),))
     .raw_descriptor_set(1, bindless_descriptor_set)
-    .dispatch(gbuffer.desc().extent);
+    .dispatch(gbuffer_depth.gbuffer.desc().extent);
 }
