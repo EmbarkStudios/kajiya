@@ -17,6 +17,7 @@ pub fn light_gbuffer(
     csgi_volume: &super::csgi::CsgiVolume,
     sky_cube: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
+    debug_shading_mode: usize,
 ) {
     SimpleRenderPass::new_compute(
         rg.add_pass("light gbuffer"),
@@ -33,7 +34,10 @@ pub fn light_gbuffer(
     .read(&csgi_volume.direct_cascade0)
     .read(&csgi_volume.indirect_cascade0)
     .read(sky_cube)
-    .constants((gbuffer_depth.gbuffer.desc().extent_inv_extent_2d(),))
+    .constants((
+        gbuffer_depth.gbuffer.desc().extent_inv_extent_2d(),
+        debug_shading_mode as u32,
+    ))
     .raw_descriptor_set(1, bindless_descriptor_set)
     .dispatch(gbuffer_depth.gbuffer.desc().extent);
 }

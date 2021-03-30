@@ -213,6 +213,8 @@ fn main() -> anyhow::Result<()> {
             .lock()
             .handle_event(window.as_ref(), &mut imgui, &event);
 
+        let ui_wants_mouse = imgui.io().want_capture_mouse;
+
         // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
         // dispatched any events. This is ideal for games and similar applications.
         *control_flow = ControlFlow::Poll;
@@ -291,7 +293,7 @@ fn main() -> anyhow::Result<()> {
                     };
                 }
 
-                if (mouse_state.button_mask & 1) != 0 {
+                if !ui_wants_mouse && (mouse_state.button_mask & 1) != 0 {
                     light_theta +=
                         (mouse_state.delta.x / window_cfg.width as f32) * -std::f32::consts::TAU;
                     light_phi +=
@@ -352,7 +354,17 @@ fn main() -> anyhow::Result<()> {
                             ui.text(format!("total: {:.3}ms", sum));
                         }
 
-                        if imgui::CollapsingHeader::new(im_str!("csgi"))
+                        if imgui::CollapsingHeader::new(im_str!("Tweaks"))
+                            .default_open(true)
+                            .build(&ui)
+                        {
+                            imgui::Drag::<f32>::new(im_str!("EV shift"))
+                                .range(-8.0..=8.0)
+                                .speed(0.01)
+                                .build(&ui, &mut render_client.ev_shift);
+                        }
+
+                        /*if imgui::CollapsingHeader::new(im_str!("csgi"))
                             .default_open(true)
                             .build(&ui)
                         {
@@ -363,25 +375,38 @@ fn main() -> anyhow::Result<()> {
                             imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
                                 .range(1..=9)
                                 .build(&ui, &mut render_client.csgi.neighbors_per_frame);
-                        }
+                        }*/
 
                         if imgui::CollapsingHeader::new(im_str!("debug"))
                             .default_open(true)
                             .build(&ui)
                         {
                             if ui.radio_button_bool(
-                                im_str!("none"),
+                                im_str!("Scene geometry"),
                                 render_client.debug_mode == RenderDebugMode::None,
                             ) {
                                 render_client.debug_mode = RenderDebugMode::None;
                             }
 
                             if ui.radio_button_bool(
-                                im_str!("csgi voxel grid"),
+                                im_str!("GI voxel grid"),
                                 render_client.debug_mode == RenderDebugMode::CsgiVoxelGrid,
                             ) {
                                 render_client.debug_mode = RenderDebugMode::CsgiVoxelGrid;
                             }
+
+                            imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
+                                &ui,
+                                &mut render_client.debug_shading_mode,
+                                &[im_str!("Default"), im_str!("No textures")],
+                            );
+
+                            /*ui.list_box(
+                                im_str!("lighting"),
+                                &mut current_lighting_mode,
+                                &[im_str!("Default"), im_str!("No textures")],
+                                2,
+                            );*/
                         }
 
                         imgui_backend.prepare_render(&ui, &window);

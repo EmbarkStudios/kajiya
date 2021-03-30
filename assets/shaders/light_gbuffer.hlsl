@@ -32,7 +32,11 @@
 [[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(11)]] cbuffer _ {
     float4 output_tex_size;
+    uint debug_shading_mode;
 };
+
+#define SHADING_MODE_DEFAULT 0
+#define SHADING_MODE_NO_TEXTURES 1
 
 #include "csgi/common.hlsl"
 #include "csgi/lookup.hlsl"
@@ -86,8 +90,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
     //gbuffer.roughness = 0.9;
     //gbuffer.metalness = 0;
-    //gbuffer.albedo = 0.5;
     //gbuffer.metalness = 1;
+
+    if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
+        gbuffer.albedo = 0.5;
+    }
 
     const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
     const float3 wi = mul(to_light_norm, shading_basis);

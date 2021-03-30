@@ -145,6 +145,7 @@ pub fn post_process(
     rg: &mut RenderGraph,
     input: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
+    ev_shift: f32,
 ) -> rg::Handle<Image> {
     let blur_pyramid = blur_pyramid(rg, input);
     let rev_blur_pyramid = rev_blur_pyramid(rg, &blur_pyramid);
@@ -154,15 +155,22 @@ pub fn post_process(
 
     //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
 
-    SimpleRenderPass::new_compute(rg.add_pass("glare"), "/assets/shaders/glare.hlsl")
-        .read(input)
-        .read(&blur_pyramid)
-        .read(&rev_blur_pyramid)
-        //.read(&blurred_luminance)
-        .write(&mut output)
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .constants((output.desc().extent_inv_extent_2d(), blur_pyramid_mip_count))
-        .dispatch(output.desc().extent);
+    SimpleRenderPass::new_compute(
+        rg.add_pass("post combine"),
+        "/assets/shaders/post_combine.hlsl",
+    )
+    .read(input)
+    .read(&blur_pyramid)
+    .read(&rev_blur_pyramid)
+    //.read(&blurred_luminance)
+    .write(&mut output)
+    .raw_descriptor_set(1, bindless_descriptor_set)
+    .constants((
+        output.desc().extent_inv_extent_2d(),
+        blur_pyramid_mip_count,
+        ev_shift,
+    ))
+    .dispatch(output.desc().extent);
 
     output
 }

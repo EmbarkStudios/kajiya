@@ -11,6 +11,10 @@
     float2 jitter;
 };
 
+// Apply at Mitchell-Netravali filter to the current frame, "un-jittering" it,
+// and sharpening the content.
+#define FILTER_CURRENT_FRAME 1
+
 #define ENCODING_VARIANT 2
 
 float3 decode_rgb(float3 a) {
@@ -138,9 +142,6 @@ float3 fetch_center_filtered(int2 pix) {
 void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
     
-    float3 center = decode(input_tex[px].rgb);
-    center = rgb_to_ycbcr(center);
-
     const float4 reproj = reprojection_tex[px];
     float2 history_uv = uv + reproj.xy;
 
@@ -186,7 +187,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     box_size *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
     box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
-    center = rgb_to_ycbcr(fetch_center_filtered(px));
+#if FILTER_CURRENT_FRAME
+    const float3 center = rgb_to_ycbcr(fetch_center_filtered(px));
+#else
+    const float3 center = rgb_to_ycbcr(decode(input_tex[px].rgb));
+#endif
 
     const float n_deviations = 1.5 * lerp(1.0, 0.5, reproj.w);
 	float3 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;

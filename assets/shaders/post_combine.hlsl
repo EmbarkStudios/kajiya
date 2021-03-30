@@ -12,6 +12,7 @@
 [[vk::binding(4)]] cbuffer _ {
     float4 output_tex_size;
     uint blur_pyramid_mip_count;
+    float ev_shift;
 };
 
 #define USE_TONEMAP 1
@@ -109,51 +110,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 	col.rgb *= max(0.0, sharpened_luma / max(1e-5, calculate_luma(col.rgb)));
 #endif
 
-#if USE_TIGHT_BLUR
-    float3 tight_glare = 0.0; {
-        static const int k = 1;
-        float wt_sum = 0;
-
-        [unroll]
-        for (int y = -k; y <= k; ++y) {
-            [unroll]
-            for (int x = -k; x <= k; ++x) {
-                float wt = exp2(-6.0 * sqrt(float(x * x + y * y)));
-                tight_glare += input_tex[px + uint2(x, y)].rgb * wt;
-                wt_sum += wt;
-            }
-        }
-
-        tight_glare /= wt_sum;
-    }
-
-    col = lerp(tight_glare, glare, glare_amount);
-#else
     col = lerp(col, glare, glare_amount);
-#endif
-
-    //col /= 2;
-    //col *= 8;
-    //col *= 16;
-    //col *= 500;
-
-#if 0
-    float luminances[16];
-    float2 avg_luminance = 0.0;
-    [unroll] for (int y = 0, lum_idx = 0; y < 4; ++y) {
-        [unroll] for (int x = 0; x < 4; ++x) {
-            float2 uv = float2((x + 0.5) / 4.0, (y + 0.5) / 4.0);
-            uv = lerp(uv, 0.5.xx, 0.75);
-            const float luminance = log2(calculate_luma(
-                blur_pyramid_tex.SampleLevel(sampler_lnc, uv, 6).rgb
-            ));
-            luminances[lum_idx++] = luminance;
-            avg_luminance += float2(luminance, 1);
-        }
-    }
-    col *= 0.2 / max(0.01, exp2(avg_luminance.x / avg_luminance.y));
-#endif
-
+    col *= exp2(ev_shift);
 
 #if USE_TONEMAP
 
@@ -196,6 +154,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         //col = 1-exp(-col);
     #endif
 
+    // Boost saturation and contrast to compensate for the loss from glare
     col = saturate(lerp(calculate_luma(col), col, 1.05));
     col = pow(col, 1.03);
 #endif

@@ -114,6 +114,8 @@ pub struct KajiyaRenderClient {
     pub taa: TaaRenderer,
 
     pub debug_mode: RenderDebugMode,
+    pub debug_shading_mode: usize,
+    pub ev_shift: f32,
 
     pub ui_frame: Option<(UiRenderCallback, Arc<Image>)>,
 }
@@ -514,6 +516,8 @@ impl KajiyaRenderClient {
             taa: TaaRenderer::new(),
 
             debug_mode: RenderDebugMode::None,
+            debug_shading_mode: 0,
+            ev_shift: 0.0,
 
             ui_frame: Default::default(),
         })

@@ -154,11 +154,17 @@ impl KajiyaRenderClient {
             &csgi_volume,
             &sky_cube,
             self.bindless_descriptor_set,
+            self.debug_shading_mode,
         );
 
         let anti_aliased = self.taa.render(rg, &debug_out_tex, &reprojection_map);
 
-        let post = post_process(rg, &anti_aliased, self.bindless_descriptor_set);
+        let post = post_process(
+            rg,
+            &anti_aliased,
+            self.bindless_descriptor_set,
+            self.ev_shift,
+        );
 
         rg.export(
             post,
@@ -195,7 +201,7 @@ impl KajiyaRenderClient {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let post = post_process(rg, &accum_img, self.bindless_descriptor_set);
+        let post = post_process(rg, &accum_img, self.bindless_descriptor_set, self.ev_shift);
 
         rg.export(
             post,
