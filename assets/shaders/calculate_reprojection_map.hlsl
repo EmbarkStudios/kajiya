@@ -46,7 +46,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float dist_to_point = -(pos_vs.z / pos_vs.w);
 
     float4 prev_vs = pos_vs / pos_vs.w;
-        //prev_vs.xyz += mul(frame_constants.view_constants.world_to_view, float4(velocity_tex[px].xyz, 0)).xyz;
     prev_vs.xyz += float4(velocity_tex[px].xyz, 0).xyz;
     
     //float4 prev_cs = mul(frame_constants.view_constants.prev_view_to_prev_clip, prev_vs);
@@ -67,7 +66,17 @@ void main(uint2 px: SV_DispatchThreadID) {
     // Based on "Fast Denoising with Self Stabilizing Recurrent Blurs"
     
     float plane_dist_prev = dot(normal_vs, prev_pvs.xyz);
-    float plane_dist_prev_norm = plane_dist_prev / prev_pvs.z;
+
+    // Note: departure from the quoted technique: they calculate reprojected sample depth by linearly
+    // scaling plane distance with view-space Z, which is not correct unless the plane is aligned with view.
+    // Instead, the amount that distance actually increases with depth is simply `normal_vs.z`.
+
+    // Note: bias the minimum distance increase, so that reprojection at grazing angles has a sharper cutoff.
+    // This can introduce shimmering a grazing angles, but also reduces reprojection artifacts on surfaces
+    // which flip their normal from back- to fron-facing across a frame. Such reprojection smears a few
+    // pixels along a wide area, creating a glitchy look.
+    float plane_dist_prev_dz = min(-0.2, normal_vs.z);
+    //float plane_dist_prev_dz = -normal_vs.z;
 
     const Bilinear bilinear_at_prev = get_bilinear_filter(prev_uv, output_tex_size.xy);
     float2 prev_gather_uv = (bilinear_at_prev.origin + 1.0) / output_tex_size.xy;
@@ -75,8 +84,11 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float4 prev_view_z = rcp(prev_depth * -frame_constants.view_constants.prev_clip_to_prev_view._43);
 
-    float4 quad_dists = abs(plane_dist_prev_norm * prev_view_z - plane_dist_prev.xxxx);
-    float4 quad_validity = step(quad_dists, 0.01 * dist_to_point);
+    // Note: departure from the quoted technique: linear offset from zero distance at previous position instead of scaling.
+    float4 quad_dists = abs(plane_dist_prev_dz * (prev_view_z - prev_pvs.z));
+
+    const float acceptance_threshold = 0.005;
+    float4 quad_validity = step(quad_dists, acceptance_threshold * dist_to_point);
 
     quad_validity.x *= all(bilinear_at_prev.px0() >= 0) && all(bilinear_at_prev.px0() < uint2(output_tex_size.xy));
     quad_validity.y *= all(bilinear_at_prev.px1() >= 0) && all(bilinear_at_prev.px1() < uint2(output_tex_size.xy));

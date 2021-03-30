@@ -206,6 +206,9 @@ fn main() -> anyhow::Result<()> {
     let mut light_phi = 1.48;
     let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
 
+    const MAX_FPS_LIMIT: u32 = 256;
+    let mut max_fps = MAX_FPS_LIMIT;
+
     let mut last_frame_instant = std::time::Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
@@ -252,8 +255,15 @@ fn main() -> anyhow::Result<()> {
             Event::RedrawRequested(_) => {
                 let now = std::time::Instant::now();
                 let dt_duration = now - last_frame_instant;
-                last_frame_instant = now;
                 let dt = dt_duration.as_secs_f32();
+
+                // Limit framerate. Not particularly precise.
+                if max_fps != MAX_FPS_LIMIT && dt < 1.0 / max_fps as f32 {
+                    std::thread::sleep(std::time::Duration::from_micros(1));
+                    return;
+                }
+
+                last_frame_instant = now;
 
                 keyboard.update(std::mem::take(&mut keyboard_events), dt);
                 mouse_state.update(&new_mouse_state);
@@ -398,8 +408,17 @@ fn main() -> anyhow::Result<()> {
                             imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
                                 &ui,
                                 &mut render_client.debug_shading_mode,
-                                &[im_str!("Default"), im_str!("No textures")],
+                                &[
+                                    im_str!("Default"),
+                                    im_str!("No textures"),
+                                    im_str!("Diffuse GI"),
+                                    im_str!("Reflections"),
+                                ],
                             );
+
+                            imgui::Drag::<u32>::new(im_str!("Max FPS"))
+                                .range(1..=MAX_FPS_LIMIT)
+                                .build(&ui, &mut max_fps);
 
                             /*ui.list_box(
                                 im_str!("lighting"),

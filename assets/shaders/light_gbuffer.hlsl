@@ -37,6 +37,8 @@
 
 #define SHADING_MODE_DEFAULT 0
 #define SHADING_MODE_NO_TEXTURES 1
+#define SHADING_MODE_DIFFUSE_GI 2
+#define SHADING_MODE_REFLECTIONS 3
 
 #include "csgi/common.hlsl"
 #include "csgi/lookup.hlsl"
@@ -202,14 +204,20 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = 1e-1 * abs(ex * ex - ex2) / max(1e-8, ex);
 
     //output = rtr_tex[px].www / 16.0;
-    //output = rtr_tex[px].xyz;
+
+    if (debug_shading_mode == SHADING_MODE_REFLECTIONS) {
+        output = rtr_tex[px].xyz;
+    }
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
     //output = pow((bent_normal_dir) * 0.5 + 0.5, 2);
     //output = bent_normal_dir * 0.5 + 0.5;
     //output = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
 
-    //output = gi_irradiance;
+    if (debug_shading_mode == SHADING_MODE_DIFFUSE_GI) {
+        output = gi_irradiance;
+    }
+
     //output = gbuffer.metalness;
     //output = gbuffer.roughness;
     //output = gbuffer.albedo;
