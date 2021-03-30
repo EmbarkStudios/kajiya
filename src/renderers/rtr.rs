@@ -197,7 +197,7 @@ impl RtrRenderer {
             "/assets/shaders/rtr/spatial_cleanup.hlsl",
         )
         .read(&temporal2_output_tex)
-        .read(&gbuffer_depth.depth)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&gbuffer_depth.geometric_normal)
         .write(&mut resolved_tex) // reuse
         .constants(SPATIAL_RESOLVE_OFFSETS)
