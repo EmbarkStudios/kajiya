@@ -2,6 +2,8 @@ use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 
+use super::motion_blur;
+
 pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Handle<Image> {
     let skip_n_bottom_mips = 1;
     let mut pyramid_desc = input

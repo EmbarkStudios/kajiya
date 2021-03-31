@@ -1,7 +1,7 @@
 use crate::{
     render_client::{KajiyaRenderClient, RenderDebugMode},
     renderers::{
-        deferred::light_gbuffer, post::post_process, raster_meshes::*,
+        deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
     },
     vulkan::image::*,
@@ -158,16 +158,18 @@ impl KajiyaRenderClient {
         );
 
         let anti_aliased = self.taa.render(rg, &debug_out_tex, &reprojection_map);
+        let motion_blurred =
+            motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
 
-        let post = post_process(
+        let post_processed = post_process(
             rg,
-            &anti_aliased,
+            &motion_blurred,
             self.bindless_descriptor_set,
             self.ev_shift,
         );
 
         rg.export(
-            post,
+            post_processed,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
     }
@@ -201,10 +203,11 @@ impl KajiyaRenderClient {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let post = post_process(rg, &accum_img, self.bindless_descriptor_set, self.ev_shift);
+        let post_processed =
+            post_process(rg, &accum_img, self.bindless_descriptor_set, self.ev_shift);
 
         rg.export(
-            post,
+            post_processed,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
     }

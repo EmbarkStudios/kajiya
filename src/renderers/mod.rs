@@ -7,6 +7,7 @@ pub mod csgi;
 pub mod deferred;
 pub mod half_res;
 pub mod imageops;
+pub mod motion_blur;
 pub mod post;
 pub mod raster_meshes;
 pub mod reference;
