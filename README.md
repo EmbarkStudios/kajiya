@@ -23,6 +23,7 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
 * Temporal anti-aliasing
 * Natural tone mapping
 * Physically-based glare
+* Basic motion blur
 * Contrast-adaptive sharpening
 * GLTF mesh loading (no animations yet)
 * A render graph running it all
