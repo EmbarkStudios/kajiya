@@ -2245,6 +2245,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5fecdca9a5291cc2b8dcf7dc02453fee791a280f3743cb0905f8822ae463b3fe"
 
 [[package]]
+name = "view"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "futures",
+ "glam",
+ "imgui",
+ "kajiya",
+ "lazy_static",
+ "log",
+ "parking_lot",
+ "ron",
+ "serde",
+ "smol",
+ "structopt",
+ "turbosloth",
+ "winit",
+]
+
+[[package]]
 name = "vk-sync"
 version = "0.1.6"
 source = "git+https://github.com/zedrian/vk-sync-rs.git?rev=e28c05d#e28c05def9b606429f5b8c912c3be34ab9c360ba"

@@ -1,14 +1,12 @@
 use crate::{
     camera::CameraMatrices,
-    dynamic_constants::DynamicConstants,
+    frame_state::FrameState,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
         csgi::CsgiRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*, ssgi::*,
         taa::TaaRenderer,
     },
     viewport::ViewConstants,
-    vulkan::{self, image::*, shader::*, RenderBackend},
-    FrameState,
 };
 use glam::{Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, PackedTriMesh, PackedVertex};
@@ -17,8 +15,10 @@ use kajiya_backend::{
         version::DeviceV1_0,
         vk::{self, ImageView},
     },
+    dynamic_constants::DynamicConstants,
     rspirv_reflect,
     vk_sync::{self, AccessType},
+    vulkan::{self, image::*, shader::*, RenderBackend},
     vulkan::{
         device,
         ray_tracing::{
@@ -34,13 +34,11 @@ use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
-use winit::event::VirtualKeyCode;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct FrameConstants {
     view_constants: ViewConstants,
-    mouse: [f32; 4],
     sun_direction: [f32; 4],
     frame_idx: u32,
 }
@@ -391,9 +389,11 @@ fn load_gpu_image_asset(
     device: Arc<kajiya_backend::Device>,
     asset: AssetRef<GpuImage::Flat>,
 ) -> Arc<Image> {
-    let asset =
-        crate::mmapped_asset::<GpuImage::Flat>(&format!("baked/{:8.8x}.image", asset.identity()))
-            .unwrap();
+    let asset = crate::mmap::mmapped_asset::<GpuImage::Flat>(&format!(
+        "baked/{:8.8x}.image",
+        asset.identity()
+    ))
+    .unwrap();
 
     let desc = ImageDesc::new_2d(asset.format, [asset.extent[0], asset.extent[1]])
         .usage(vk::ImageUsageFlags::SAMPLED)
@@ -792,14 +792,12 @@ impl KajiyaRenderClient {
             let tlas = api.resources.rt_acceleration(tlas_ref);
 
             let cb = api.cb;
-            api.device()
-                .rebuild_ray_tracing_top_acceleration(
-                    cb.raw,
-                    instance_buffer_address,
-                    instances.len(),
-                    tlas,
-                )
-                .expect("rebuild_ray_tracing_top_acceleration");
+            api.device().rebuild_ray_tracing_top_acceleration(
+                cb.raw,
+                instance_buffer_address,
+                instances.len(),
+                tlas,
+            );
         });
 
         tlas
@@ -909,7 +907,6 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
 
         dynamic_constants.push(&FrameConstants {
             view_constants,
-            mouse: gen_shader_mouse_state(&frame_state),
             sun_direction: [
                 frame_state.sun_direction.x,
                 frame_state.sun_direction.y,
@@ -925,29 +922,6 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
     fn retire_render_graph(&mut self, _rg: &RetiredRenderGraph) {
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
-}
-
-fn gen_shader_mouse_state(frame_state: &FrameState) -> [f32; 4] {
-    let pos = frame_state.input.mouse.pos
-        / Vec2::new(
-            frame_state.window_cfg.width as f32,
-            frame_state.window_cfg.height as f32,
-        );
-
-    [
-        pos.x,
-        pos.y,
-        if (frame_state.input.mouse.button_mask & 1) != 0 {
-            1.0
-        } else {
-            0.0
-        },
-        if frame_state.input.keys.is_down(VirtualKeyCode::LShift) {
-            -1.0
-        } else {
-            1.0
-        },
-    ]
 }
 
 fn radical_inverse(mut n: u32, base: u32) -> f32 {

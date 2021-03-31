@@ -206,6 +206,7 @@ impl RtdgiRenderer {
         spatial_filtered_tex
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,

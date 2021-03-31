@@ -1,50 +1,36 @@
-mod camera;
-mod image_cache;
-mod image_lut;
-mod imgui_backend;
-mod input;
-mod logging;
-mod lut_renderers;
-mod math;
-mod render_client;
-mod render_passes;
-mod renderers;
-mod viewport;
-
 use anyhow::Context;
-use camera::*;
-use image_cache::*;
-use imgui::im_str;
-use input::*;
-use kajiya_asset::{image::LoadImage, mesh::*};
-use lut_renderers::*;
-use math::*;
 
-use kajiya_backend::*;
+use kajiya::{
+    asset::{image::LoadImage, mesh::*},
+    backend::*,
+    camera::*,
+    frame_state::FrameState,
+    image_cache::*,
+    input::*,
+    lut_renderers::*,
+    math::*,
+    mmap::mmapped_asset,
+    render_client::{KajiyaRenderClient, RenderDebugMode, RenderMode},
+};
+
+use imgui::im_str;
+
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use memmap2::MmapOptions;
+
 use parking_lot::Mutex;
-use render_client::{RenderDebugMode, RenderMode};
-use std::{collections::HashMap, fs::File, sync::Arc};
+use std::{fs::File, sync::Arc};
 use structopt::StructOpt;
 use turbosloth::*;
+
 use winit::{
     event::{ElementState, Event, KeyboardInput, MouseButton, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
-pub struct FrameState {
-    pub camera_matrices: CameraMatrices,
-    pub window_cfg: WindowConfig,
-    //pub swapchain_extent: [u32; 2],
-    pub input: InputState,
-    pub sun_direction: Vec3,
-}
-
 #[derive(Debug, StructOpt)]
-#[structopt(name = "kajiya", about = "Toy rendering engine.")]
+#[structopt(name = "view", about = "Kajiya scene viewer.")]
 struct Opt {
     #[structopt(long, default_value = "1280")]
     width: u32,
@@ -78,22 +64,8 @@ struct SceneInstanceDesc {
     mesh: String,
 }
 
-lazy_static::lazy_static! {
-    static ref ASSET_MMAPS: Mutex<HashMap<String, memmap2::Mmap>> = Mutex::new(HashMap::new());
-}
-
-pub fn mmapped_asset<T>(path: &str) -> anyhow::Result<&'static T> {
-    let mut mmaps = ASSET_MMAPS.lock();
-    let data: &[u8] = mmaps.entry(path.to_owned()).or_insert_with(|| {
-        let file = File::open(path).unwrap();
-        unsafe { MmapOptions::new().map(&file).unwrap() }
-    });
-    let asset: &T = unsafe { (data.as_ptr() as *const T).as_ref() }.unwrap();
-    Ok(asset)
-}
-
 fn main() -> anyhow::Result<()> {
-    logging::set_up_logging()?;
+    kajiya::logging::set_up_logging()?;
     let opt = Opt::from_args();
 
     let scene_file = format!("assets/scenes/{}.ron", opt.scene);
@@ -125,12 +97,12 @@ fn main() -> anyhow::Result<()> {
     let lazy_cache = LazyCache::create();
 
     let render_backend = RenderBackend::new(&*window, &window_cfg, !opt.no_debug)?;
-    let mut render_client = render_client::KajiyaRenderClient::new(&render_backend)?;
+    let mut render_client = KajiyaRenderClient::new(&render_backend)?;
 
     // BINDLESS_LUT_BRDF_FG
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
-    let mut renderer = kajiya_rg::renderer::Renderer::new(render_backend)?;
+    let mut renderer = kajiya::rg::renderer::Renderer::new(render_backend)?;
     let mut last_error_text = None;
 
     {
@@ -155,7 +127,7 @@ fn main() -> anyhow::Result<()> {
         assert_eq!(handle.0, 1);
     }
 
-    let mut camera = camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
+    let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
     //camera.look_smoothness = 20.0;
     //camera.move_smoothness = 20.0;
@@ -195,7 +167,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
-        imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
+        kajiya::imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
     imgui_backend
         .create_graphics_resources([window.inner_size().width, window.inner_size().height]);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));

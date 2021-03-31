@@ -73,7 +73,7 @@ build_and_run.cmd battle
 or
 
 ```
-cargo run --bin kajiya --release -- --scene battle --width 1920 --height 1080 --no-debug
+cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no-debug
 ```
 
 _Please note that the `smol` async runtime is used for baking and run-time shader compilation. There's no custom executor yet, so the `SMOL_THREADS` environment variable controls parallelism._

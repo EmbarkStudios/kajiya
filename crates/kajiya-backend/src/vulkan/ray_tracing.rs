@@ -395,7 +395,7 @@ impl Device {
         instance_buffer_address: vk::DeviceAddress,
         instance_count: usize,
         tlas: &RayTracingAcceleration,
-    ) -> Result<()> {
+    ) {
         let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
             .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
             .geometry(ash::vk::AccelerationStructureGeometryDataKHR {
@@ -438,7 +438,7 @@ impl Device {
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
         max_primitive_counts: &[u32],
         accel: &RayTracingAcceleration,
-    ) -> Result<()> {
+    ) {
         let memory_requirements = unsafe {
             self.acceleration_structure_ext
                 .get_acceleration_structure_build_sizes(
@@ -493,8 +493,6 @@ impl Device {
                 &[],
             );
         }
-
-        Ok(())
     }
 
     fn create_ray_tracing_shader_table(

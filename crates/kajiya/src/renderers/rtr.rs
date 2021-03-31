@@ -59,6 +59,7 @@ impl RtrRenderer {
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,

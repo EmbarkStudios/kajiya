@@ -24,6 +24,7 @@ pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn blit_image_to_swapchain(
     main_tex_extent: [u32; 2],
     swapchain_extent: [u32; 2],

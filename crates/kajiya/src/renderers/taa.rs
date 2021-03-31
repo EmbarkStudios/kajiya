@@ -8,6 +8,12 @@ pub struct TaaRenderer {
     pub current_supersample_offset: Vec2,
 }
 
+impl Default for TaaRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TaaRenderer {
     pub fn new() -> Self {
         Self {

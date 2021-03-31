@@ -33,7 +33,7 @@ impl KeyboardState {
         self.events.iter()
     }
 
-    pub(crate) fn update(&mut self, events: Vec<KeyboardInput>, dt: f32) {
+    pub fn update(&mut self, events: Vec<KeyboardInput>, dt: f32) {
         self.events = events;
 
         for event in &self.events {

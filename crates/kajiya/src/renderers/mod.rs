@@ -34,7 +34,7 @@ impl GbufferDepth {
         depth: rg::Handle<Image>,
     ) -> Self {
         Self {
-            geometric_normal: geometric_normal,
+            geometric_normal,
             gbuffer,
             depth,
             half_view_normal: Default::default(),
