@@ -45,7 +45,7 @@ impl ImGuiBackend {
                     }),
                 },
                 FontSource::TtfData {
-                    data: include_bytes!("../../../assets/fonts/Roboto-Regular.ttf"),
+                    data: include_bytes!("../../../../assets/fonts/Roboto-Regular.ttf"),
                     size_pixels: font_size,
                     config: Some(FontConfig {
                         rasterizer_multiply: 1.75,

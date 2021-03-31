@@ -1,14 +1,14 @@
 [workspace]
 members = [
-    "bin/bake",
-    "bin/view",
+    "crates/bin/bake",
+    "crates/bin/view",
 
-    "crates/kajiya-asset",
-    "crates/kajiya-backend",
-    "crates/kajiya-rg",
-    "crates/kajiya",
+    "crates/lib/kajiya-asset",
+    "crates/lib/kajiya-backend",
+    "crates/lib/kajiya-rg",
+    "crates/lib/kajiya",
 
-    "crates/ash-imgui",
+    "crates/lib/ash-imgui",
 ]
 
 [patch.crates-io]
