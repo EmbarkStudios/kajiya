@@ -410,7 +410,7 @@ fn main() -> anyhow::Result<()> {
                                 &mut render_client.debug_shading_mode,
                                 &[
                                     im_str!("Default"),
-                                    im_str!("No textures"),
+                                    im_str!("No base color"),
                                     im_str!("Diffuse GI"),
                                     im_str!("Reflections"),
                                 ],
@@ -419,13 +419,6 @@ fn main() -> anyhow::Result<()> {
                             imgui::Drag::<u32>::new(im_str!("Max FPS"))
                                 .range(1..=MAX_FPS_LIMIT)
                                 .build(&ui, &mut max_fps);
-
-                            /*ui.list_box(
-                                im_str!("lighting"),
-                                &mut current_lighting_mode,
-                                &[im_str!("Default"), im_str!("No textures")],
-                                2,
-                            );*/
                         }
 
                         imgui_backend.prepare_render(&ui, &window);
