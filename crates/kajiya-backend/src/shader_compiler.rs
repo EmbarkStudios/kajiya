@@ -178,7 +178,7 @@ fn compile_generic_shader_hlsl_impl(
         target_profile,
         &[
             "-spirv",
-            //"-enable-templates",
+            "-enable-templates",
             "-fspv-target-env=vulkan1.2",
             "-WX",  // warnings as errors
             "-Ges", // strict mode

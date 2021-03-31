@@ -1,6 +1,7 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/uv.hlsl"
 #include "../inc/color.hlsl"
+#include "../inc/image.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
@@ -38,86 +39,22 @@ float3 encode_rgb(float3 a) {
     #endif
 }
 
-float3 decode(float3 a) {
-    return decode_rgb(a);
-}
-
-float3 encode(float3 a) {
-    return encode_rgb(a);
-}
-
 float3 fetch_history(float2 uv) {
-	return decode(
+	return decode_rgb(
         history_tex.SampleLevel(sampler_lnc, uv, 0).xyz
     );
 }
 
-float3 fetch_history_px(int2 px) {
-	return decode(history_tex[px].xyz);
-}
-
-float3 cubic_hermite(float3 A, float3 B, float3 C, float3 D, float t) {
-	float t2 = t*t;
-    float t3 = t*t*t;
-    float3 a = -A/2.0 + (3.0*B)/2.0 - (3.0*C)/2.0 + D/2.0;
-    float3 b = A - (5.0*B)/2.0 + 2.0*C - D / 2.0;
-    float3 c = -A/2.0 + C/2.0;
-   	float3 d = B;
-    
-    return a*t3 + b*t2 + c*t + d;
-}
-
-// https://www.shadertoy.com/view/MllSzX
-float3 fetch_history_catmull_rom(float2 P) {
-    float2 pixel = P * output_tex_size.xy + 0.5;
-    float2 c_onePixel = output_tex_size.zw;
-    float2 c_twoPixels = output_tex_size.zw * 2.0;
-    
-    float2 frc = frac(pixel);
-    //pixel = floor(pixel) / output_tex_size.xy - float2(c_onePixel/2.0);
-    int2 ipixel = int2(pixel) - 1;
-    
-    float3 C00 = fetch_history_px(ipixel + int2(-1 ,-1));
-    float3 C10 = fetch_history_px(ipixel + int2( 0        ,-1));
-    float3 C20 = fetch_history_px(ipixel + int2( 1 ,-1));
-    float3 C30 = fetch_history_px(ipixel + int2( 2,-1));
-    
-    float3 C01 = fetch_history_px(ipixel + int2(-1 , 0));
-    float3 C11 = fetch_history_px(ipixel + int2( 0        , 0));
-    float3 C21 = fetch_history_px(ipixel + int2( 1 , 0));
-    float3 C31 = fetch_history_px(ipixel + int2( 2, 0));    
-    
-    float3 C02 = fetch_history_px(ipixel + int2(-1 , 1));
-    float3 C12 = fetch_history_px(ipixel + int2( 0        , 1));
-    float3 C22 = fetch_history_px(ipixel + int2( 1 , 1));
-    float3 C32 = fetch_history_px(ipixel + int2( 2, 1));    
-    
-    float3 C03 = fetch_history_px(ipixel + int2(-1 , 2));
-    float3 C13 = fetch_history_px(ipixel + int2( 0        , 2));
-    float3 C23 = fetch_history_px(ipixel + int2( 1 , 2));
-    float3 C33 = fetch_history_px(ipixel + int2( 2, 2));    
-    
-    float3 CP0X = cubic_hermite(C00, C10, C20, C30, frc.x);
-    float3 CP1X = cubic_hermite(C01, C11, C21, C31, frc.x);
-    float3 CP2X = cubic_hermite(C02, C12, C22, C32, frc.x);
-    float3 CP3X = cubic_hermite(C03, C13, C23, C33, frc.x);
-    
-    return cubic_hermite(CP0X, CP1X, CP2X, CP3X, frc.y);
-}
-
-float mitchell_netravali(float x) {
-    float B = 1.0 / 3.0;
-    float C = 1.0 / 3.0;
-
-    float ax = abs(x);
-    if (ax < 1) {
-        return ((12 - 9 * B - 6 * C) * ax * ax * ax + (-18 + 12 * B + 6 * C) * ax * ax + (6 - 2 * B)) / 6;
-    } else if ((ax >= 1) && (ax < 2)) {
-        return ((-B - 6 * C) * ax * ax * ax + (6 * B + 30 * C) * ax * ax + (-12 * B - 48 * C) * ax + (8 * B + 24 * C)) / 6;
-    } else {
-        return 0;
+struct HistoryRemap {
+    static HistoryRemap create() {
+        HistoryRemap res;
+        return res;
     }
-}
+
+    float4 remap(float4 v) {
+        return float4(decode_rgb(v.rgb), 1);
+    }
+};
 
 float3 fetch_center_filtered(int2 pix) {
     float4 res = 0.0.xxxx;
@@ -126,7 +63,7 @@ float3 fetch_center_filtered(int2 pix) {
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
             int2 src = pix + int2(x, y);
-            float4 col = float4(decode(input_tex[src].rgb), 1);
+            float4 col = float4(decode_rgb(input_tex[src].rgb), 1);
             float dist = length(jitter * float2(1, -1) - float2(x, y));
             float wt = mitchell_netravali(dist);
             col *= wt;
@@ -146,13 +83,21 @@ void main(uint2 px: SV_DispatchThreadID) {
     float2 history_uv = uv + reproj.xy;
 
 #if 1
-    float history_g = fetch_history_catmull_rom(history_uv).y;
+    float history_g = image_sample_catmull_rom(
+        TextureImage::from_parts(history_tex, output_tex_size.xy),
+        history_uv,
+        HistoryRemap::create()
+    ).y;
     float3 history = fetch_history(history_uv);
     if (history.y > 1e-5) {
         history *= history_g / history.y;
     }
 #else
-    float3 history = fetch_history_catmull_rom(history_uv);
+    float3 history = image_sample_catmull_rom(
+        TextureImage::from_parts(history_tex, output_tex_size.xy),
+        history_uv,
+        HistoryRemap::create()
+    ).rgb;
 #endif
 
     history = rgb_to_ycbcr(history);
@@ -164,7 +109,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 1;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float3 neigh = decode(input_tex[px + int2(x, y)].rgb);
+            float3 neigh = decode_rgb(input_tex[px + int2(x, y)].rgb);
             neigh = rgb_to_ycbcr(neigh);
 
 			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
@@ -190,7 +135,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 #if FILTER_CURRENT_FRAME
     const float3 center = rgb_to_ycbcr(fetch_center_filtered(px));
 #else
-    const float3 center = rgb_to_ycbcr(decode(input_tex[px].rgb));
+    const float3 center = rgb_to_ycbcr(decode_rgb(input_tex[px].rgb));
 #endif
 
     const float n_deviations = 1.5 * lerp(1.0, 0.5, reproj.w);
@@ -215,10 +160,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 		float3 result = lerp(clamped_history, center, blend_factor);
         result = ycbcr_to_rgb(result);
 
-		result = encode(result);
+		result = encode_rgb(result);
 	#else
         center = ycbcr_to_rgb(center);
-		float3 result = encode(center);
+		float3 result = encode_rgb(center);
 	#endif
 
 #if 0
