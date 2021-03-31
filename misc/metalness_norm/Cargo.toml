@@ -9,3 +9,5 @@ edition = "2018"
 [dependencies]
 plotters = "0.3"
 image = "0.23"
+
+[workspace]
