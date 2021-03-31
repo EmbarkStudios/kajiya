@@ -38,11 +38,6 @@ turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af
 vk-sync = { git = "https://github.com/zedrian/vk-sync-rs.git", rev = "e28c05d" }
 winit = "0.24"
 
-[profile.release]
-debug = true
-incremental = true
-lto = false
-
 [features]
 default = ["ray-tracing"]
 #default = []
