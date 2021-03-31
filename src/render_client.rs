@@ -1,5 +1,4 @@
 use crate::{
-    asset::mesh::{AssetRef, GpuImage, PackedTriMesh, PackedVertex},
     camera::CameraMatrices,
     dynamic_constants::DynamicConstants,
     image_lut::{ComputeImageLut, ImageLut},
@@ -12,6 +11,7 @@ use crate::{
     FrameState,
 };
 use glam::{Vec2, Vec3};
+use kajiya_asset::mesh::{AssetRef, GpuImage, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
     ash::{
         version::DeviceV1_0,

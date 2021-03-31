@@ -718,13 +718,13 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
                 MeshMaterialMap::Placeholder(values) => (
                     super::image::CreatePlaceholderImage::new(*values).into_lazy(),
                     TexParams {
-                        gamma: crate::asset::mesh::TexGamma::Linear,
+                        gamma: crate::mesh::TexGamma::Linear,
                         use_mips: false,
                     },
                 ),
             };
 
-            crate::asset::image::CreateGpuImage { image, params }.into_lazy()
+            crate::image::CreateGpuImage { image, params }.into_lazy()
         })
         .collect();
 

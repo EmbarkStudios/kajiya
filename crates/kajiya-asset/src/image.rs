@@ -79,8 +79,8 @@ impl LazyWorker for CreateGpuImage {
         let src = self.image.eval(&ctx).await?;
 
         let format = match self.params.gamma {
-            crate::asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
-            crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
+            crate::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
+            crate::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
         };
 
         let mut image = image::DynamicImage::ImageRgba8(

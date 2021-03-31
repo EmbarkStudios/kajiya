@@ -1,4 +1,3 @@
-mod asset;
 mod camera;
 mod image_cache;
 mod image_lut;
@@ -13,11 +12,11 @@ mod renderers;
 mod viewport;
 
 use anyhow::Context;
-use asset::{image::LoadImage, mesh::*};
 use camera::*;
 use image_cache::*;
 use imgui::im_str;
 use input::*;
+use kajiya_asset::{image::LoadImage, mesh::*};
 use lut_renderers::*;
 use math::*;
 

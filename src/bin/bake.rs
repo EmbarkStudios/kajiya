@@ -1,5 +1,5 @@
 use glam::Quat;
-use kajiya::asset::mesh::{pack_triangle_mesh, GpuImage, LoadGltfScene, PackedTriMesh};
+use kajiya_asset::mesh::{pack_triangle_mesh, GpuImage, LoadGltfScene, PackedTriMesh};
 use std::{collections::HashSet, fs::File, path::PathBuf};
 
 use turbosloth::*;

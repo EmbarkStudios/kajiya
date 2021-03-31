@@ -1,7 +1,7 @@
 use std::{hash::Hash, sync::Arc};
 
-use crate::asset::{image::RawRgba8Image, mesh::TexParams};
 use image::{imageops::FilterType, DynamicImage, GenericImageView};
+use kajiya_asset::{image::RawRgba8Image, mesh::TexParams};
 use kajiya_backend::{ash::vk, Device, Image, ImageDesc, ImageSubResourceData};
 use turbosloth::*;
 
@@ -27,8 +27,8 @@ impl LazyWorker for UploadGpuImage {
         let src = self.image.eval(&ctx).await?;
 
         let format = match self.params.gamma {
-            crate::asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
-            crate::asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
+            kajiya_asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
+            kajiya_asset::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
         };
 
         let mut desc =

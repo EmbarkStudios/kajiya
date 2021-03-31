@@ -1,6 +1,6 @@
 use anyhow::Result;
 
-use kajiya::asset::mesh::{GpuImage, PackedTriMesh};
+use kajiya_asset::mesh::{GpuImage, PackedTriMesh};
 use memmap2::MmapOptions;
 use std::fs::File;
 
