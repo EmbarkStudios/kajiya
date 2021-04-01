@@ -101,7 +101,7 @@ fn main() -> anyhow::Result<()> {
     let swapchain_extent = [window.inner_size().width, window.inner_size().height];
     let lazy_cache = LazyCache::create();
 
-    let render_backend = RenderBackend::new(
+    let mut render_backend = RenderBackend::new(
         &*window,
         RenderBackendConfig {
             swapchain_extent,
@@ -114,7 +114,7 @@ fn main() -> anyhow::Result<()> {
     // BINDLESS_LUT_BRDF_FG
     render_client.add_image_lut(BrdfFgLutComputer, 0);
 
-    let mut renderer = kajiya::rg::renderer::Renderer::new(render_backend)?;
+    let mut rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
     let mut last_error_text = None;
 
     {
@@ -126,7 +126,7 @@ fn main() -> anyhow::Result<()> {
                     gamma: TexGamma::Linear,
                     use_mips: false,
                 },
-                device: renderer.device().clone(),
+                device: rg_renderer.device().clone(),
             }
             .into_lazy()
             .eval(&lazy_cache),
@@ -179,7 +179,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
-        imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
+        imgui_backend::ImGuiBackend::new(rg_renderer.device().clone(), &window, &mut imgui);
     imgui_backend.create_graphics_resources(swapchain_extent);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));
     let mut show_gui = true;
@@ -418,9 +418,13 @@ fn main() -> anyhow::Result<()> {
                     ));
                 }
 
-                match renderer.prepare_frame(&mut render_client, &frame_state) {
+                match rg_renderer.prepare_frame(&mut render_client, &frame_state) {
                     Ok(()) => {
-                        renderer.draw_frame(&mut render_client, &frame_state);
+                        rg_renderer.draw_frame(
+                            &mut render_client,
+                            &mut render_backend.swapchain,
+                            &frame_state,
+                        );
                         last_error_text = None;
                     }
                     Err(e) => {

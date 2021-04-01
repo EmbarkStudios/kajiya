@@ -31,9 +31,8 @@ fn select_surface_format(formats: Vec<vk::SurfaceFormatKHR>) -> Option<vk::Surfa
 }
 
 pub struct RenderBackend {
-    //instance: Arc<instance::Instance>,
-    //surface: Arc<surface::Surface>,
     pub device: Arc<device::Device>,
+    pub surface: Arc<surface::Surface>,
     pub swapchain: swapchain::Swapchain,
 }
 
@@ -86,7 +85,11 @@ impl RenderBackend {
             },
         )?;
 
-        Ok(Self { device, swapchain })
+        Ok(Self {
+            device,
+            surface,
+            swapchain,
+        })
     }
 
     /*fn maintain(&mut self) {

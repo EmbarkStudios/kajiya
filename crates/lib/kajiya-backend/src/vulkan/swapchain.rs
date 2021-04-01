@@ -24,6 +24,10 @@ pub struct Swapchain {
     // Keep a reference in order not to drop after the device
     #[allow(dead_code)]
     pub(crate) device: Arc<Device>,
+
+    // Ditto
+    #[allow(dead_code)]
+    surface: Arc<Surface>,
 }
 
 pub struct SwapchainImage {
@@ -40,7 +44,7 @@ pub enum SwapchainAcquireImageErr {
 impl Swapchain {
     pub fn enumerate_surface_formats(
         device: &Arc<Device>,
-        surface: &Arc<Surface>,
+        surface: &Surface,
     ) -> Result<Vec<vk::SurfaceFormatKHR>> {
         unsafe {
             Ok(surface
@@ -165,12 +169,13 @@ impl Swapchain {
         Ok(Swapchain {
             fns,
             raw: swapchain,
-            device: device.clone(),
             desc,
             images,
             image_views,
             semaphores,
             next_semaphore: 0,
+            device: device.clone(),
+            surface: surface.clone(),
         })
     }
 

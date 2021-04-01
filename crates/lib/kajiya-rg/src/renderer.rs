@@ -11,7 +11,10 @@ use kajiya_backend::{
     rspirv_reflect,
     transient_resource_cache::TransientResourceCache,
     vk_sync,
-    vulkan::{self, image::*, presentation::blit_image_to_swapchain, shader::*, RenderBackend},
+    vulkan::{
+        self, image::*, presentation::blit_image_to_swapchain, shader::*, swapchain::Swapchain,
+        RenderBackend,
+    },
     Device,
 };
 #[allow(unused_imports)]
@@ -32,7 +35,8 @@ impl Default for TemporalRg {
 }
 
 pub struct Renderer {
-    backend: RenderBackend,
+    device: Arc<Device>,
+
     pipeline_cache: PipelineCache,
     transient_resource_cache: TransientResourceCache,
     dynamic_constants: DynamicConstants,
@@ -87,7 +91,7 @@ pub trait RenderClient<FrameState: 'static> {
 }
 
 impl Renderer {
-    pub fn new(backend: RenderBackend) -> anyhow::Result<Self> {
+    pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
         let present_shader = vulkan::presentation::create_present_compute_shader(&*backend.device);
 
         let dynamic_constants = DynamicConstants::new({
@@ -110,7 +114,7 @@ impl Renderer {
             Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
 
         Ok(Renderer {
-            backend,
+            device: backend.device.clone(),
             dynamic_constants,
             frame_descriptor_set,
             pipeline_cache: PipelineCache::new(&LazyCache::create()),
@@ -127,26 +131,25 @@ impl Renderer {
     pub fn draw_frame<FrameState: 'static>(
         &mut self,
         render_client: &mut dyn RenderClient<FrameState>,
+        swapchain: &mut Swapchain,
         frame_state: &FrameState,
     ) {
         let frame_constants_offset = self.dynamic_constants.current_offset();
         render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
 
-        let swapchain_extent = self.backend.swapchain.extent();
+        let swapchain_extent = swapchain.extent();
 
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
         // after all the other rendering commands have been recorded.
-        let swapchain_image = self
-            .backend
-            .swapchain
+        let swapchain_image = swapchain
             .acquire_next_image()
             .ok()
             .expect("swapchain image");
 
-        let current_frame = self.backend.device.current_frame();
+        let current_frame = self.device.current_frame();
         let cb = &current_frame.command_buffer;
-        let device = &*self.backend.device;
+        let device = &*self.device;
         let raw_device = &device.raw;
 
         unsafe {
@@ -163,7 +166,7 @@ impl Renderer {
             if let Some((rg, rg_output)) = self.compiled_rg.take().zip(self.rg_output.take()) {
                 let retired_rg = rg.execute(
                     RenderGraphExecutionParams {
-                        device: &self.backend.device,
+                        device: &self.device,
                         pipeline_cache: &mut self.pipeline_cache,
                         frame_descriptor_set: self.frame_descriptor_set,
                         frame_constants_offset,
@@ -199,7 +202,7 @@ impl Renderer {
                 blit_image_to_swapchain(
                     main_img.desc.extent_2d(),
                     swapchain_extent,
-                    &*self.backend.device,
+                    &*self.device,
                     cb,
                     &swapchain_image,
                     main_img.view(device, &ImageViewDesc::default()),
@@ -229,15 +232,15 @@ impl Renderer {
             //println!("queue_submit");
             raw_device
                 .queue_submit(
-                    self.backend.device.universal_queue.raw,
+                    self.device.universal_queue.raw,
                     &[submit_info.build()],
                     cb.submit_done_fence,
                 )
                 .expect("queue submit failed.");
         }
 
-        self.backend.swapchain.present_image(swapchain_image, &[]);
-        self.backend.device.finish_frame(current_frame);
+        swapchain.present_image(swapchain_image, &[]);
+        self.device.finish_frame(current_frame);
     }
 
     // Descriptor set for per-frame data
@@ -329,7 +332,7 @@ impl Renderer {
                     panic!("Trying to prepare_frame but render graph is still active")
                 }
             },
-            self.backend.device.clone(),
+            self.device.clone(),
         );
 
         rg.predefined_descriptor_set_layouts.insert(
@@ -345,7 +348,7 @@ impl Renderer {
 
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
 
-        match self.pipeline_cache.prepare_frame(&self.backend.device) {
+        match self.pipeline_cache.prepare_frame(&self.device) {
             Ok(()) => {
                 // If the frame preparation succeded, update stored temporal rg state and finish
                 self.temporal_rg_state = TemporalRg::Exported(temporal_rg_state);
@@ -387,6 +390,6 @@ impl Renderer {
     }
 
     pub fn device(&self) -> &Arc<Device> {
-        &self.backend.device
+        &self.device
     }
 }
