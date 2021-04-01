@@ -14,6 +14,7 @@ pub mod swapchain;
 use ash::vk;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use raw_window_handle::HasRawWindowHandle;
 use std::sync::Arc;
 
 fn select_surface_format(formats: Vec<vk::SurfaceFormatKHR>) -> Option<vk::SurfaceFormatKHR> {
@@ -36,17 +37,23 @@ pub struct RenderBackend {
     pub swapchain: swapchain::Swapchain,
 }
 
+#[derive(Clone, Copy)]
+pub struct RenderBackendConfig {
+    pub swapchain_extent: [u32; 2],
+    pub vsync: bool,
+    pub graphics_debugging: bool,
+}
+
 impl RenderBackend {
     pub fn new(
-        window: &winit::window::Window,
-        window_cfg: &crate::WindowConfig,
-        graphics_debugging: bool,
+        window: &impl HasRawWindowHandle,
+        config: RenderBackendConfig,
     ) -> anyhow::Result<Self> {
         let instance = instance::Instance::builder()
-            .required_extensions(ash_window::enumerate_required_extensions(&*window).unwrap())
-            .graphics_debugging(graphics_debugging)
+            .required_extensions(ash_window::enumerate_required_extensions(window).unwrap())
+            .graphics_debugging(config.graphics_debugging)
             .build()?;
-        let surface = surface::Surface::create(&instance, &*window)?;
+        let surface = surface::Surface::create(&instance, window)?;
 
         use physical_device::*;
         let physical_devices =
@@ -72,19 +79,14 @@ impl RenderBackend {
             swapchain::SwapchainDesc {
                 format: select_surface_format(surface_formats).expect("suitable surface format"),
                 dims: vk::Extent2D {
-                    width: window.inner_size().width,
-                    height: window.inner_size().height,
+                    width: config.swapchain_extent[0],
+                    height: config.swapchain_extent[1],
                 },
-                vsync: window_cfg.vsync,
+                vsync: config.vsync,
             },
         )?;
 
-        Ok(Self {
-            //instance,
-            //surface,
-            device,
-            swapchain,
-        })
+        Ok(Self { device, swapchain })
     }
 
     /*fn maintain(&mut self) {

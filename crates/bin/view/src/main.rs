@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use kajiya::{
     asset::{image::LoadImage, mesh::*},
-    backend::*,
+    backend::{vulkan::RenderBackendConfig, *},
     camera::*,
     frame_state::FrameState,
     image_cache::*,
@@ -94,9 +94,17 @@ fn main() -> anyhow::Result<()> {
             .expect("window"),
     );
 
+    let swapchain_extent = [window.inner_size().width, window.inner_size().height];
     let lazy_cache = LazyCache::create();
 
-    let render_backend = RenderBackend::new(&*window, &window_cfg, !opt.no_debug)?;
+    let render_backend = RenderBackend::new(
+        &*window,
+        RenderBackendConfig {
+            swapchain_extent,
+            vsync: window_cfg.vsync,
+            graphics_debugging: !opt.no_debug,
+        },
+    )?;
     let mut render_client = KajiyaRenderClient::new(&render_backend)?;
 
     // BINDLESS_LUT_BRDF_FG
@@ -168,8 +176,7 @@ fn main() -> anyhow::Result<()> {
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
         kajiya::imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
-    imgui_backend
-        .create_graphics_resources([window.inner_size().width, window.inner_size().height]);
+    imgui_backend.create_graphics_resources(swapchain_extent);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));
     let mut show_gui = true;
 
@@ -291,7 +298,6 @@ fn main() -> anyhow::Result<()> {
                 let frame_state = FrameState {
                     camera_matrices: camera.calc_matrices(),
                     window_cfg,
-                    //swapchain_extent: [window.inner_size().width, window.inner_size().height],
                     input: InputState {
                         mouse: mouse_state,
                         keys: keyboard.clone(),
@@ -400,7 +406,7 @@ fn main() -> anyhow::Result<()> {
                     let ui_draw_data: &'static imgui::DrawData =
                         unsafe { std::mem::transmute(ui_draw_data) };
                     let imgui_backend = imgui_backend.clone();
-                    let gui_extent = [window.inner_size().width, window.inner_size().height];
+                    let gui_extent = swapchain_extent;
 
                     render_client.ui_frame = Some((
                         Box::new(move |cb| {

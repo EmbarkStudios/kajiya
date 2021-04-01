@@ -1229,11 +1229,8 @@ dependencies = [
  "image",
  "kajiya-backend",
  "log",
- "ron",
  "serde",
- "smol",
  "turbosloth",
- "winit",
 ]
 
 [[package]]
@@ -1245,10 +1242,8 @@ dependencies = [
  "ash",
  "ash-window",
  "byte-slice-cast",
- "chrono",
  "derive_builder",
  "failure",
- "fern",
  "futures",
  "glam",
  "gltf 0.15.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -1264,10 +1259,8 @@ dependencies = [
  "rspirv-reflect",
  "shader-prepper",
  "smol",
- "thiserror",
  "turbosloth",
  "vk-sync",
- "winit",
 ]
 
 [[package]]
@@ -1276,21 +1269,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrayvec",
- "byte-slice-cast",
- "chrono",
  "derive_builder",
- "fern",
  "futures",
  "glam",
  "kajiya-backend",
  "lazy_static",
  "log",
  "parking_lot",
- "raw-window-handle",
- "relative-path",
- "shader-prepper",
- "smol",
- "thiserror",
  "turbosloth",
 ]
 
