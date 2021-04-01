@@ -398,13 +398,18 @@ fn main() -> anyhow::Result<()> {
                     ));
                 }
 
-                match rg_renderer.prepare_frame(&mut render_client, &frame_state) {
+                match rg_renderer
+                    .prepare_frame(|rg| render_client.prepare_render_graph(rg, &frame_state))
+                {
                     Ok(()) => {
                         rg_renderer.draw_frame(
-                            &mut render_client,
+                            |dynamic_constants| {
+                                render_client
+                                    .prepare_frame_constants(dynamic_constants, &frame_state)
+                            },
                             &mut render_backend.swapchain,
-                            &frame_state,
                         );
+                        render_client.retire_frame();
                         last_error_text = None;
                     }
                     Err(e) => {

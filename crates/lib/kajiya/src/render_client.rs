@@ -23,8 +23,8 @@ pub struct KajiyaRenderClient {
 
 pub type UiRenderCallback = Box<dyn FnOnce(vk::CommandBuffer) + 'static>;
 
-impl RenderClient<FrameState> for KajiyaRenderClient {
-    fn prepare_render_graph(
+impl KajiyaRenderClient {
+    pub fn prepare_render_graph(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_state: &FrameState,
@@ -40,7 +40,7 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
         RenderGraphOutput { main_img, ui_img }
     }
 
-    fn prepare_frame_constants(
+    pub fn prepare_frame_constants(
         &mut self,
         dynamic_constants: &mut DynamicConstants,
         frame_state: &FrameState,
@@ -49,8 +49,8 @@ impl RenderClient<FrameState> for KajiyaRenderClient {
             .prepare_frame_constants(dynamic_constants, frame_state);
     }
 
-    fn retire_render_graph(&mut self, rg: &RetiredRenderGraph) {
-        self.world_renderer.retire_render_graph(rg);
+    pub fn retire_frame(&mut self) {
+        self.world_renderer.retire_frame();
     }
 }
 

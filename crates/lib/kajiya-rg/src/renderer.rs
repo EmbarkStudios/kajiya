@@ -74,22 +74,6 @@ pub struct RenderGraphOutput {
     pub ui_img: ExportedHandle<Image>,
 }
 
-pub trait RenderClient<FrameState: 'static> {
-    fn prepare_render_graph(
-        &mut self,
-        rg: &mut TemporalRenderGraph,
-        frame_state: &FrameState,
-    ) -> RenderGraphOutput;
-
-    fn prepare_frame_constants(
-        &mut self,
-        dynamic_constants: &mut DynamicConstants,
-        frame_state: &FrameState,
-    );
-
-    fn retire_render_graph(&mut self, retired_rg: &RetiredRenderGraph);
-}
-
 impl Renderer {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
         let present_shader = vulkan::presentation::create_present_compute_shader(&*backend.device);
@@ -128,14 +112,17 @@ impl Renderer {
         })
     }
 
-    pub fn draw_frame<FrameState: 'static>(
+    pub fn draw_frame<PrepareFrameConstantsFn>(
         &mut self,
-        render_client: &mut dyn RenderClient<FrameState>,
+        //render_client: &mut dyn RenderClient<FrameState>,
+        prepare_frame_constants: PrepareFrameConstantsFn,
         swapchain: &mut Swapchain,
-        frame_state: &FrameState,
-    ) {
+    ) where
+        PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants),
+    {
         let frame_constants_offset = self.dynamic_constants.current_offset();
-        render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
+        //render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
+        prepare_frame_constants(&mut self.dynamic_constants);
 
         let swapchain_extent = swapchain.extent();
 
@@ -189,8 +176,6 @@ impl Renderer {
                     ui_img_access_type
                         == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
                 );
-
-                render_client.retire_render_graph(&retired_rg);
 
                 self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
                     TemporalRg::Inert(_) => {
@@ -320,11 +305,13 @@ impl Renderer {
         set
     }
 
-    pub fn prepare_frame<FrameState: 'static>(
+    pub fn prepare_frame<PrepareRenderGraphFn>(
         &mut self,
-        render_client: &mut dyn RenderClient<FrameState>,
-        frame_state: &FrameState,
-    ) -> anyhow::Result<()> {
+        prepare_render_graph: PrepareRenderGraphFn,
+    ) -> anyhow::Result<()>
+    where
+        PrepareRenderGraphFn: FnOnce(&mut TemporalRenderGraph) -> RenderGraphOutput,
+    {
         let mut rg = TemporalRenderGraph::new(
             match &self.temporal_rg_state {
                 TemporalRg::Inert(state) => state.clone_assuming_inert(),
@@ -342,7 +329,7 @@ impl Renderer {
             },
         );
 
-        self.rg_output = Some(render_client.prepare_render_graph(&mut rg, frame_state));
+        self.rg_output = Some(prepare_render_graph(&mut rg));
 
         let (rg, temporal_rg_state) = rg.export_temporal();
 

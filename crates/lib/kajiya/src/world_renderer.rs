@@ -878,7 +878,7 @@ impl WorldRenderer {
         self.prev_camera_matrices = Some(frame_state.camera_matrices);
     }
 
-    pub fn retire_render_graph(&mut self, _rg: &RetiredRenderGraph) {
+    pub fn retire_frame(&mut self) {
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
 }
