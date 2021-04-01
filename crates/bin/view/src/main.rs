@@ -6,15 +6,14 @@ use anyhow::Context;
 
 use input::*;
 use kajiya::{
-    asset::{image::LoadImage, mesh::*},
+    asset::mesh::*,
     backend::{vulkan::RenderBackendConfig, *},
     camera::*,
     frame_state::FrameState,
-    image_cache::*,
-    lut_renderers::*,
     math::*,
     mmap::mmapped_asset,
-    render_client::{KajiyaRenderClient, RenderDebugMode, RenderMode},
+    render_client::KajiyaRenderClient,
+    world_renderer::{RenderDebugMode, RenderMode},
 };
 
 use imgui::im_str;
@@ -109,35 +108,10 @@ fn main() -> anyhow::Result<()> {
             graphics_debugging: !opt.no_debug,
         },
     )?;
-    let mut render_client = KajiyaRenderClient::new(&render_backend)?;
-
-    // BINDLESS_LUT_BRDF_FG
-    render_client.add_image_lut(BrdfFgLutComputer, 0);
-
+    let mut render_client = KajiyaRenderClient::new(&render_backend, &lazy_cache)?;
     let mut rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
+
     let mut last_error_text = None;
-
-    {
-        let image = LoadImage::new("assets/images/bluenoise/256_256/LDR_RGBA_0.png")?.into_lazy();
-        let blue_noise_img = smol::block_on(
-            UploadGpuImage {
-                image,
-                params: TexParams {
-                    gamma: TexGamma::Linear,
-                    use_mips: false,
-                },
-                device: rg_renderer.device().clone(),
-            }
-            .into_lazy()
-            .eval(&lazy_cache),
-        )
-        .unwrap();
-
-        let handle = render_client.add_image(blue_noise_img);
-
-        // BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0
-        assert_eq!(handle.0, 1);
-    }
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
@@ -166,8 +140,10 @@ fn main() -> anyhow::Result<()> {
 
     for instance in scene_desc.instances {
         let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", instance.mesh))?;
-        let mesh = render_client.add_mesh(mesh);
-        render_client.add_instance(mesh, instance.position.into());
+        let mesh = render_client.world_renderer.add_mesh(mesh);
+        render_client
+            .world_renderer
+            .add_instance(mesh, instance.position.into());
     }
 
     /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
@@ -175,7 +151,9 @@ fn main() -> anyhow::Result<()> {
     let mut car_pos = Vec3::unit_y() * -0.01;
     let car_inst = render_client.add_instance(car_mesh, car_pos);*/
 
-    render_client.build_ray_tracing_top_level_acceleration();
+    render_client
+        .world_renderer
+        .build_ray_tracing_top_level_acceleration();
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
@@ -258,13 +236,13 @@ fn main() -> anyhow::Result<()> {
                 };
                 camera.update(&input_state);
 
-                render_client.store_prev_mesh_transforms();
+                render_client.world_renderer.store_prev_mesh_transforms();
 
                 // Reset accumulation of the path tracer whenever the camera moves
                 if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
-                    && render_client.render_mode == RenderMode::Reference
+                    && render_client.world_renderer.render_mode == RenderMode::Reference
                 {
-                    render_client.reset_reference_accumulation = true;
+                    render_client.world_renderer.reset_reference_accumulation = true;
                 }
 
                 /*if keyboard.is_down(VirtualKeyCode::Z) {
@@ -273,14 +251,14 @@ fn main() -> anyhow::Result<()> {
                 }*/
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Space) {
-                    match render_client.render_mode {
+                    match render_client.world_renderer.render_mode {
                         RenderMode::Standard => {
                             camera.convergence_sensitivity = 1.0;
-                            render_client.render_mode = RenderMode::Reference;
+                            render_client.world_renderer.render_mode = RenderMode::Reference;
                         }
                         RenderMode::Reference => {
                             camera.convergence_sensitivity = 0.0;
-                            render_client.render_mode = RenderMode::Standard;
+                            render_client.world_renderer.render_mode = RenderMode::Standard;
                         }
                     };
                 }
@@ -347,7 +325,7 @@ fn main() -> anyhow::Result<()> {
                             imgui::Drag::<f32>::new(im_str!("EV shift"))
                                 .range(-8.0..=8.0)
                                 .speed(0.01)
-                                .build(&ui, &mut render_client.ev_shift);
+                                .build(&ui, &mut render_client.world_renderer.ev_shift);
                         }
 
                         /*if imgui::CollapsingHeader::new(im_str!("csgi"))
@@ -369,21 +347,23 @@ fn main() -> anyhow::Result<()> {
                         {
                             if ui.radio_button_bool(
                                 im_str!("Scene geometry"),
-                                render_client.debug_mode == RenderDebugMode::None,
+                                render_client.world_renderer.debug_mode == RenderDebugMode::None,
                             ) {
-                                render_client.debug_mode = RenderDebugMode::None;
+                                render_client.world_renderer.debug_mode = RenderDebugMode::None;
                             }
 
                             if ui.radio_button_bool(
                                 im_str!("GI voxel grid"),
-                                render_client.debug_mode == RenderDebugMode::CsgiVoxelGrid,
+                                render_client.world_renderer.debug_mode
+                                    == RenderDebugMode::CsgiVoxelGrid,
                             ) {
-                                render_client.debug_mode = RenderDebugMode::CsgiVoxelGrid;
+                                render_client.world_renderer.debug_mode =
+                                    RenderDebugMode::CsgiVoxelGrid;
                             }
 
                             imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
                                 &ui,
-                                &mut render_client.debug_shading_mode,
+                                &mut render_client.world_renderer.debug_shading_mode,
                                 &[
                                     im_str!("Default"),
                                     im_str!("No base color"),

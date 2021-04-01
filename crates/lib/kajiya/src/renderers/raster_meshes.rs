@@ -8,6 +8,8 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg};
 use rg::{IntoRenderPassPipelineBinding, RenderGraph};
 
+use crate::world_renderer::MeshInstance;
+
 use super::GbufferDepth;
 
 #[derive(Clone)]
@@ -18,7 +20,7 @@ pub struct UploadedTriMesh {
 
 pub struct RasterMeshesData<'a> {
     pub meshes: &'a [UploadedTriMesh],
-    pub instances: &'a [crate::render_client::MeshInstance],
+    pub instances: &'a [MeshInstance],
     pub vertex_buffer: Arc<Buffer>,
     pub bindless_descriptor_set: vk::DescriptorSet,
 }
@@ -54,7 +56,7 @@ pub fn raster_meshes(
     );
 
     let meshes: Vec<UploadedTriMesh> = mesh_data.meshes.to_vec();
-    let instances: Vec<crate::render_client::MeshInstance> = mesh_data.instances.to_vec();
+    let instances: Vec<MeshInstance> = mesh_data.instances.to_vec();
 
     let depth_ref = pass.raster(
         &mut gbuffer_depth.depth,

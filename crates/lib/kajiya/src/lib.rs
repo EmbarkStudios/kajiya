@@ -10,6 +10,7 @@ pub mod render_client;
 pub mod render_passes;
 pub mod renderers;
 pub mod viewport;
+pub mod world_renderer;
 
 pub use kajiya_asset as asset;
 pub use kajiya_backend as backend;

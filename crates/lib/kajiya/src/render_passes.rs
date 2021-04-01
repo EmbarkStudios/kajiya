@@ -1,19 +1,15 @@
 use crate::{
     frame_state::FrameState,
-    render_client::{KajiyaRenderClient, RenderDebugMode},
     renderers::{
         deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
     },
+    world_renderer::{RenderDebugMode, WorldRenderer},
 };
-use kajiya_backend::{
-    ash::vk::{self},
-    vk_sync::{self, AccessType},
-    vulkan::image::*,
-};
+use kajiya_backend::{ash::vk, vk_sync, vulkan::image::*};
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
-impl KajiyaRenderClient {
+impl WorldRenderer {
     pub(super) fn prepare_render_graph_standard(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
@@ -207,21 +203,5 @@ impl KajiyaRenderClient {
             post_processed,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
-    }
-
-    pub(super) fn render_ui(&mut self, rg: &mut rg::RenderGraph) -> rg::Handle<Image> {
-        if let Some((ui_renderer, image)) = self.ui_frame.take() {
-            let mut ui_tex = rg.import(image, AccessType::Nothing);
-            let mut pass = rg.add_pass("render ui");
-
-            pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
-            pass.render(move |api| ui_renderer(api.cb.raw));
-
-            ui_tex
-        } else {
-            let mut blank_img = rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]));
-            crate::renderers::imageops::clear_color(rg, &mut blank_img, [0.0f32; 4]);
-            blank_img
-        }
     }
 }
