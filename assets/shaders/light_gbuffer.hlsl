@@ -39,6 +39,7 @@
 #define SHADING_MODE_NO_TEXTURES 1
 #define SHADING_MODE_DIFFUSE_GI 2
 #define SHADING_MODE_REFLECTIONS 3
+#define SHADING_MODE_RTX_OFF 4
 
 #include "csgi/common.hlsl"
 #include "csgi/lookup.hlsl"
@@ -87,7 +88,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float3 to_light_norm = SUN_DIRECTION;
     
-    const float shadow_mask = sun_shadow_mask_tex[px];
+    float shadow_mask = sun_shadow_mask_tex[px];
+    if (debug_shading_mode == SHADING_MODE_RTX_OFF) {
+        shadow_mask = 1;
+    }
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
     //gbuffer.roughness = 0.9;
@@ -137,31 +141,26 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 gi_irradiance = 0.0.xxx;
 
     float3 csgi_irradiance = 0;
-    #if USE_CSGI
-    {
-        // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
-        // Note: point-lookup doesn't leak, so multiple bounces should be fine
-        float3 to_eye = get_eye_position() - pt_ws.xyz;
-        float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
-        
-        csgi_irradiance = lookup_csgi(
-            pt_ws.xyz,
-            gbuffer.normal,
-            CsgiLookupParams::make_default()
-                //.with_sample_directional_radiance(gbuffer.normal)
-                .with_bent_normal(pseudo_bent_normal)
-        );
-        gi_irradiance = csgi_irradiance;
+
+    if (USE_CSGI && debug_shading_mode != SHADING_MODE_RTX_OFF) {
+        if (USE_RTDGI) {
+            gi_irradiance = rtdgi_tex[px].rgb;
+        } else {
+            // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
+            // Note: point-lookup doesn't leak, so multiple bounces should be fine
+            float3 to_eye = get_eye_position() - pt_ws.xyz;
+            float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
+            
+            csgi_irradiance = lookup_csgi(
+                pt_ws.xyz,
+                gbuffer.normal,
+                CsgiLookupParams::make_default()
+                    //.with_sample_directional_radiance(gbuffer.normal)
+                    .with_bent_normal(pseudo_bent_normal)
+            );
+            gi_irradiance = csgi_irradiance;
+        }
     }
-    #endif
-
-    #if USE_CSGI && USE_RTDGI
-        //gi_irradiance = max(0.0, csgi_irradiance + rtdgi_tex[px / 2].rgb);
-        gi_irradiance = rtdgi_tex[px].rgb;
-        //gi_irradiance = csgi_irradiance;
-        //gi_irradiance = abs(rtdgi_tex[px / 2].rgb);
-    #endif
-
 
     const float4 ssgi = ssgi_tex[px];
     #if USE_SSGI
@@ -179,9 +178,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
         * brdf.energy_preservation.preintegrated_transmission_fraction
         ;
 
-    #if USE_RTR
+    if (USE_RTR && debug_shading_mode != SHADING_MODE_RTX_OFF) {
         total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
-    #endif
+    }
 
     //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
 

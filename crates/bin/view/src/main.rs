@@ -384,6 +384,7 @@ fn main() -> anyhow::Result<()> {
                                     im_str!("No base color"),
                                     im_str!("Diffuse GI"),
                                     im_str!("Reflections"),
+                                    im_str!("RTX OFF"),
                                 ],
                             );
 
