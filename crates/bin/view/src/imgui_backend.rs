@@ -18,11 +18,15 @@ struct GfxResources {
     pub imgui_texture: Arc<Image>,
 }
 
-pub struct ImGuiBackend {
-    device: Arc<Device>,
-    imgui_platform: WinitPlatform,
+pub struct ImGuiBackendInner {
     imgui_renderer: ash_imgui::Renderer,
     gfx: Option<GfxResources>,
+}
+
+pub struct ImGuiBackend {
+    inner: Arc<Mutex<ImGuiBackendInner>>,
+    device: Arc<Device>,
+    imgui_platform: WinitPlatform,
 }
 
 impl ImGuiBackend {
@@ -74,12 +78,19 @@ impl ImGuiBackend {
         Self {
             device,
             imgui_platform,
-            imgui_renderer,
-            gfx: None,
+            inner: Arc::new(Mutex::new(ImGuiBackendInner {
+                imgui_renderer,
+                gfx: None,
+            })),
         }
     }
 
-    // TODO
+    pub fn create_graphics_resources(&mut self, surface_resolution: [u32; 2]) {
+        self.inner
+            .lock()
+            .create_graphics_resources(self.device.as_ref(), surface_resolution);
+    }
+
     #[allow(dead_code)]
     pub fn destroy_graphics_resources(&mut self) {
         let device = &self.device.raw;
@@ -87,36 +98,19 @@ impl ImGuiBackend {
         println!("device_wait_idle");
         unsafe { device.device_wait_idle() }.unwrap();
 
-        if self.imgui_renderer.has_pipeline() {
-            self.imgui_renderer.destroy_pipeline(&device);
+        let mut inner = self.inner.lock();
+
+        if inner.imgui_renderer.has_pipeline() {
+            inner.imgui_renderer.destroy_pipeline(&device);
         }
 
-        if let Some(gfx) = self.gfx.take() {
+        if let Some(gfx) = inner.gfx.take() {
             unsafe {
                 // TODO
                 //device.destroy_render_pass(gfx.imgui_render_pass, None);
                 device.destroy_framebuffer(gfx.imgui_framebuffer, None);
             }
         }
-    }
-
-    pub fn create_graphics_resources(&mut self, surface_resolution: [u32; 2]) {
-        assert!(self.gfx.is_none());
-
-        let imgui_render_pass = create_imgui_render_pass(&self.device.raw);
-        let (imgui_framebuffer, imgui_texture) =
-            create_imgui_framebuffer(self.device.as_ref(), imgui_render_pass, surface_resolution);
-
-        let gfx = GfxResources {
-            imgui_render_pass,
-            imgui_framebuffer,
-            imgui_texture,
-        };
-
-        self.imgui_renderer
-            .create_pipeline(&self.device.raw, gfx.imgui_render_pass);
-
-        self.gfx = Some(gfx);
     }
 
     pub fn handle_event(
@@ -142,48 +136,69 @@ impl ImGuiBackend {
         imgui.frame()
     }
 
-    fn get_target_image(&self) -> Option<Arc<Image>> {
-        self.gfx.as_ref().map(|res| res.imgui_texture.clone())
-    }
-
-    pub fn to_render_graph(
-        slf: &Arc<Mutex<Self>>,
+    pub fn finish_frame(
+        &mut self,
         ui: imgui::Ui<'_>,
         window: &winit::window::Window,
         ui_renderer: &mut ImguiRenderer,
     ) {
         let (ui_draw_data, ui_target_image) = {
-            let mut slf = slf.lock();
-
-            slf.imgui_platform.prepare_render(&ui, &window);
+            self.imgui_platform.prepare_render(&ui, &window);
 
             let ui_draw_data: &'static imgui::DrawData =
                 unsafe { std::mem::transmute(ui.render()) };
 
-            (ui_draw_data, slf.get_target_image().unwrap())
+            (ui_draw_data, self.inner.lock().get_target_image().unwrap())
         };
 
-        let imgui_backend = slf.clone();
+        let inner = self.inner.clone();
+        let device = self.device.clone();
         let gui_extent = [window.inner_size().width, window.inner_size().height];
 
         ui_renderer.ui_frame = Some((
             Box::new(move |cb| {
-                imgui_backend
+                inner
                     .lock()
-                    .render(gui_extent, ui_draw_data, cb)
+                    .render(gui_extent, ui_draw_data, device, cb)
                     .expect("ui.render");
             }),
             ui_target_image,
         ));
     }
+}
 
-    pub fn render(
+impl ImGuiBackendInner {
+    fn create_graphics_resources(&mut self, device: &Device, surface_resolution: [u32; 2]) {
+        assert!(self.gfx.is_none());
+
+        let imgui_render_pass = create_imgui_render_pass(&device.raw);
+        let (imgui_framebuffer, imgui_texture) =
+            create_imgui_framebuffer(device, imgui_render_pass, surface_resolution);
+
+        let gfx = GfxResources {
+            imgui_render_pass,
+            imgui_framebuffer,
+            imgui_texture,
+        };
+
+        self.imgui_renderer
+            .create_pipeline(&device.raw, gfx.imgui_render_pass);
+
+        self.gfx = Some(gfx);
+    }
+
+    fn get_target_image(&self) -> Option<Arc<Image>> {
+        self.gfx.as_ref().map(|res| res.imgui_texture.clone())
+    }
+
+    fn render(
         &mut self,
         physical_size: [u32; 2],
         draw_data: &imgui::DrawData,
+        device: Arc<Device>,
         cb: vk::CommandBuffer,
     ) -> Option<Arc<Image>> {
-        let device = self.device.raw.clone();
+        let device = &device.raw;
 
         match self.gfx {
             Some(ref gfx) => {
@@ -253,7 +268,7 @@ impl ImGuiBackend {
     }
 }
 
-pub fn create_imgui_render_pass(device: &ash::Device) -> vk::RenderPass {
+fn create_imgui_render_pass(device: &ash::Device) -> vk::RenderPass {
     let renderpass_attachments = [vk::AttachmentDescription {
         format: vk::Format::R8G8B8A8_UNORM,
         samples: vk::SampleCountFlags::TYPE_1,
@@ -292,7 +307,7 @@ pub fn create_imgui_render_pass(device: &ash::Device) -> vk::RenderPass {
     }
 }
 
-pub fn create_imgui_framebuffer(
+fn create_imgui_framebuffer(
     device: &Device,
     render_pass: vk::RenderPass,
     surface_resolution: [u32; 2],
@@ -326,7 +341,7 @@ pub fn create_imgui_framebuffer(
 }
 
 // Based on https://github.com/ocornut/imgui/issues/707#issuecomment-430613104
-pub fn setup_imgui_style(ctx: &mut imgui::Context) {
+fn setup_imgui_style(ctx: &mut imgui::Context) {
     let hi = |v: f32| [0.502, 0.075, 0.256, v];
     let med = |v: f32| [0.455, 0.198, 0.301, v];
     let low = |v: f32| [0.232, 0.201, 0.271, v];

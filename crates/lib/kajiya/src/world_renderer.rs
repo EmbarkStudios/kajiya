@@ -533,7 +533,7 @@ impl WorldRenderer {
         tlas
     }
 
-    pub fn store_prev_mesh_transforms(&mut self) {
+    fn store_prev_mesh_transforms(&mut self) {
         for inst in &mut self.instances {
             inst.prev_position = inst.position;
         }
@@ -614,6 +614,7 @@ impl WorldRenderer {
 
     pub fn retire_frame(&mut self) {
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
+        self.store_prev_mesh_transforms();
     }
 }
 

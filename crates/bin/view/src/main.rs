@@ -22,7 +22,6 @@ use imgui::im_str;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
-use parking_lot::Mutex;
 use std::{fs::File, sync::Arc};
 use structopt::StructOpt;
 use turbosloth::*;
@@ -154,9 +153,8 @@ fn main() -> anyhow::Result<()> {
     let mut imgui_backend =
         imgui_backend::ImGuiBackend::new(rg_renderer.device().clone(), &window, &mut imgui);
     imgui_backend.create_graphics_resources(swapchain_extent);
-    let imgui_backend = Arc::new(Mutex::new(imgui_backend));
-    let mut show_gui = true;
 
+    let mut show_gui = true;
     let mut light_theta = -4.54;
     let mut light_phi = 1.48;
     let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
@@ -167,9 +165,7 @@ fn main() -> anyhow::Result<()> {
     let mut last_frame_instant = std::time::Instant::now();
 
     event_loop.run(move |event, _, control_flow| {
-        imgui_backend
-            .lock()
-            .handle_event(window.as_ref(), &mut imgui, &event);
+        imgui_backend.handle_event(window.as_ref(), &mut imgui, &event);
 
         let ui_wants_mouse = imgui.io().want_capture_mouse;
 
@@ -231,8 +227,6 @@ fn main() -> anyhow::Result<()> {
                 };
                 camera.update(&input_state);
 
-                world_renderer.store_prev_mesh_transforms();
-
                 // Reset accumulation of the path tracer whenever the camera moves
                 if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
                     && world_renderer.render_mode == RenderMode::Reference
@@ -293,93 +287,83 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if show_gui {
-                    let ui = {
-                        let mut imgui_backend = imgui_backend.lock();
-                        let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
+                    let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
 
-                        if imgui::CollapsingHeader::new(im_str!("GPU passes"))
-                            .default_open(true)
-                            .build(&ui)
-                        {
-                            let gpu_stats = gpu_profiler::get_stats();
-                            ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
+                    if imgui::CollapsingHeader::new(im_str!("GPU passes"))
+                        .default_open(true)
+                        .build(&ui)
+                    {
+                        let gpu_stats = gpu_profiler::get_stats();
+                        ui.text(format!("CPU frame time: {:.3}ms", dt * 1000.0));
 
-                            let mut sum = 0.0;
-                            for (name, ms) in gpu_stats.get_ordered_name_ms() {
-                                ui.text(format!("{}: {:.3}ms", name, ms));
-                                sum += ms;
-                            }
-
-                            ui.text(format!("total: {:.3}ms", sum));
+                        let mut sum = 0.0;
+                        for (name, ms) in gpu_stats.get_ordered_name_ms() {
+                            ui.text(format!("{}: {:.3}ms", name, ms));
+                            sum += ms;
                         }
 
-                        if imgui::CollapsingHeader::new(im_str!("Tweaks"))
-                            .default_open(true)
-                            .build(&ui)
-                        {
-                            imgui::Drag::<f32>::new(im_str!("EV shift"))
-                                .range(-8.0..=8.0)
-                                .speed(0.01)
-                                .build(&ui, &mut world_renderer.ev_shift);
+                        ui.text(format!("total: {:.3}ms", sum));
+                    }
+
+                    if imgui::CollapsingHeader::new(im_str!("Tweaks"))
+                        .default_open(true)
+                        .build(&ui)
+                    {
+                        imgui::Drag::<f32>::new(im_str!("EV shift"))
+                            .range(-8.0..=8.0)
+                            .speed(0.01)
+                            .build(&ui, &mut world_renderer.ev_shift);
+                    }
+
+                    /*if imgui::CollapsingHeader::new(im_str!("csgi"))
+                        .default_open(true)
+                        .build(&ui)
+                    {
+                        imgui::Drag::<i32>::new(im_str!("Trace subdivision"))
+                            .range(0..=5)
+                            .build(&ui, &mut render_client.csgi.trace_subdiv);
+
+                        imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
+                            .range(1..=9)
+                            .build(&ui, &mut render_client.csgi.neighbors_per_frame);
+                    }*/
+
+                    if imgui::CollapsingHeader::new(im_str!("debug"))
+                        .default_open(true)
+                        .build(&ui)
+                    {
+                        if ui.radio_button_bool(
+                            im_str!("Scene geometry"),
+                            world_renderer.debug_mode == RenderDebugMode::None,
+                        ) {
+                            world_renderer.debug_mode = RenderDebugMode::None;
                         }
 
-                        /*if imgui::CollapsingHeader::new(im_str!("csgi"))
-                            .default_open(true)
-                            .build(&ui)
-                        {
-                            imgui::Drag::<i32>::new(im_str!("Trace subdivision"))
-                                .range(0..=5)
-                                .build(&ui, &mut render_client.csgi.trace_subdiv);
-
-                            imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
-                                .range(1..=9)
-                                .build(&ui, &mut render_client.csgi.neighbors_per_frame);
-                        }*/
-
-                        if imgui::CollapsingHeader::new(im_str!("debug"))
-                            .default_open(true)
-                            .build(&ui)
-                        {
-                            if ui.radio_button_bool(
-                                im_str!("Scene geometry"),
-                                world_renderer.debug_mode == RenderDebugMode::None,
-                            ) {
-                                world_renderer.debug_mode = RenderDebugMode::None;
-                            }
-
-                            if ui.radio_button_bool(
-                                im_str!("GI voxel grid"),
-                                world_renderer.debug_mode == RenderDebugMode::CsgiVoxelGrid,
-                            ) {
-                                world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid;
-                            }
-
-                            imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
-                                &ui,
-                                &mut world_renderer.debug_shading_mode,
-                                &[
-                                    im_str!("Default"),
-                                    im_str!("No base color"),
-                                    im_str!("Diffuse GI"),
-                                    im_str!("Reflections"),
-                                    im_str!("RTX OFF"),
-                                ],
-                            );
-
-                            imgui::Drag::<u32>::new(im_str!("Max FPS"))
-                                .range(1..=MAX_FPS_LIMIT)
-                                .build(&ui, &mut max_fps);
+                        if ui.radio_button_bool(
+                            im_str!("GI voxel grid"),
+                            world_renderer.debug_mode == RenderDebugMode::CsgiVoxelGrid,
+                        ) {
+                            world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid;
                         }
 
-                        ui
-                    };
+                        imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
+                            &ui,
+                            &mut world_renderer.debug_shading_mode,
+                            &[
+                                im_str!("Default"),
+                                im_str!("No base color"),
+                                im_str!("Diffuse GI"),
+                                im_str!("Reflections"),
+                                im_str!("RTX OFF"),
+                            ],
+                        );
 
-                    imgui_backend::ImGuiBackend::to_render_graph(
-                        &imgui_backend,
-                        ui,
-                        &window,
-                        &mut ui_renderer,
-                    );
+                        imgui::Drag::<u32>::new(im_str!("Max FPS"))
+                            .range(1..=MAX_FPS_LIMIT)
+                            .build(&ui, &mut max_fps);
+                    }
+
+                    imgui_backend.finish_frame(ui, &window, &mut ui_renderer);
                 }
 
                 match rg_renderer.prepare_frame(|rg| {
