@@ -20,15 +20,12 @@ impl WorldRenderer {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "root.accum",
-                ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                    [frame_state.window_cfg.width, frame_state.window_cfg.height],
-                )
-                .usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
+                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_state.render_extent)
+                    .usage(
+                        vk::ImageUsageFlags::SAMPLED
+                            | vk::ImageUsageFlags::STORAGE
+                            | vk::ImageUsageFlags::TRANSFER_DST,
+                    ),
             )
             .unwrap();
 
@@ -47,17 +44,17 @@ impl WorldRenderer {
             let mut gbuffer_depth = {
                 let normal = rg.create(ImageDesc::new_2d(
                     vk::Format::A2R10G10B10_UNORM_PACK32,
-                    frame_state.window_cfg.dims(),
+                    frame_state.render_extent,
                 ));
 
                 let gbuffer = rg.create(ImageDesc::new_2d(
                     vk::Format::R32G32B32A32_SFLOAT,
-                    frame_state.window_cfg.dims(),
+                    frame_state.render_extent,
                 ));
 
                 let mut depth_img = rg.create(ImageDesc::new_2d(
                     vk::Format::D24_UNORM_S8_UINT,
-                    frame_state.window_cfg.dims(),
+                    frame_state.render_extent,
                 ));
                 crate::renderers::imageops::clear_depth(rg, &mut depth_img);
 
@@ -66,7 +63,7 @@ impl WorldRenderer {
 
             let mut velocity_img = rg.create(ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
-                frame_state.window_cfg.dims(),
+                frame_state.render_extent,
             ));
 
             if self.debug_mode != RenderDebugMode::CsgiVoxelGrid {
@@ -175,15 +172,12 @@ impl WorldRenderer {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "refpt.accum",
-                ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                    [frame_state.window_cfg.width, frame_state.window_cfg.height],
-                )
-                .usage(
-                    vk::ImageUsageFlags::SAMPLED
-                        | vk::ImageUsageFlags::STORAGE
-                        | vk::ImageUsageFlags::TRANSFER_DST,
-                ),
+                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_state.render_extent)
+                    .usage(
+                        vk::ImageUsageFlags::SAMPLED
+                            | vk::ImageUsageFlags::STORAGE
+                            | vk::ImageUsageFlags::TRANSFER_DST,
+                    ),
             )
             .unwrap();
 

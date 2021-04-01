@@ -28,19 +28,17 @@ impl ViewConstants {
     pub fn builder<CamMat: Into<CameraMatrices>>(
         camera_matrices: CamMat,
         prev_camera_matrices: CamMat,
-        width: u32,
-        height: u32,
+        render_extent: [u32; 2],
     ) -> VieportConstantBuilder {
         VieportConstantBuilder {
-            width,
-            height,
+            render_extent,
             camera_matrices: camera_matrices.into(),
             prev_camera_matrices: prev_camera_matrices.into(),
             pixel_offset: Vec2::zero(),
         }
     }
 
-    pub fn set_pixel_offset(&mut self, v: Vec2, width: u32, height: u32) {
+    pub fn set_pixel_offset(&mut self, v: Vec2, [width, height]: [u32; 2]) {
         let sample_offset_pixels = v;
         let sample_offset_clip = Vec2::new((2.0 * v.x) / width as f32, (2.0 * v.y) / height as f32);
 
@@ -65,8 +63,7 @@ impl ViewConstants {
 }
 
 pub struct VieportConstantBuilder {
-    width: u32,
-    height: u32,
+    render_extent: [u32; 2],
     camera_matrices: CameraMatrices,
     prev_camera_matrices: CameraMatrices,
     pixel_offset: Vec2,
@@ -104,7 +101,7 @@ impl VieportConstantBuilder {
             sample_offset_clip: Vec2::zero(),
         };
 
-        res.set_pixel_offset(self.pixel_offset, self.width, self.height);
+        res.set_pixel_offset(self.pixel_offset, self.render_extent);
         res
     }
 }

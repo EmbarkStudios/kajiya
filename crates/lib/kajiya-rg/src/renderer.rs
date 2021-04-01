@@ -1,6 +1,6 @@
 use crate::{
     CompiledRenderGraph, ExportedHandle, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
-    RenderGraphExecutionParams, RetiredRenderGraph, TemporalRenderGraph, TemporalRenderGraphState,
+    RenderGraphExecutionParams, TemporalRenderGraph, TemporalRenderGraphState,
     TemporalResourceState,
 };
 use kajiya_backend::{

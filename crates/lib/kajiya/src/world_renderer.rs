@@ -28,7 +28,7 @@ use kajiya_backend::{
         },
     },
 };
-use kajiya_rg::{self as rg, RetiredRenderGraph};
+use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -828,15 +828,11 @@ impl WorldRenderer {
         dynamic_constants: &mut DynamicConstants,
         frame_state: &FrameState,
     ) {
-        let width = frame_state.window_cfg.width;
-        let height = frame_state.window_cfg.height;
-
         let mut view_constants = ViewConstants::builder(
             frame_state.camera_matrices,
             self.prev_camera_matrices
                 .unwrap_or(frame_state.camera_matrices),
-            width,
-            height,
+            frame_state.render_extent,
         )
         .build();
 
@@ -861,7 +857,7 @@ impl WorldRenderer {
                 self.supersample_offsets[self.frame_idx as usize % self.supersample_offsets.len()];
             //Vec2::zero();
             self.taa.current_supersample_offset = supersample_offset;
-            view_constants.set_pixel_offset(supersample_offset, width, height);
+            view_constants.set_pixel_offset(supersample_offset, frame_state.render_extent);
         }
 
         dynamic_constants.push(&FrameConstants {

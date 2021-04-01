@@ -14,16 +14,3 @@ pub use rspirv_reflect;
 pub use vk_sync;
 pub use vulkan::shader::{MAX_BINDLESS_DESCRIPTOR_COUNT, MAX_DESCRIPTOR_SETS};
 pub use vulkan::{device::Device, image::*, RenderBackend};
-
-#[derive(Copy, Clone)]
-pub struct WindowConfig {
-    pub width: u32,
-    pub height: u32,
-    pub vsync: bool,
-}
-
-impl WindowConfig {
-    pub fn dims(self) -> [u32; 2] {
-        [self.width, self.height]
-    }
-}

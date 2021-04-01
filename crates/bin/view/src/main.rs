@@ -12,7 +12,8 @@ use kajiya::{
     frame_state::FrameState,
     math::*,
     mmap::mmapped_asset,
-    render_client::KajiyaRenderClient,
+    render_client::{create_default_world_renderer, UiRenderer},
+    rg::renderer::RenderGraphOutput,
     world_renderer::{RenderDebugMode, RenderMode},
 };
 
@@ -78,11 +79,7 @@ fn main() -> anyhow::Result<()> {
 
     let event_loop = EventLoop::new();
 
-    let window_cfg = WindowConfig {
-        width: opt.width,
-        height: opt.height,
-        vsync: !opt.no_vsync,
-    };
+    let render_extent = [opt.width, opt.height];
 
     let window = Arc::new(
         WindowBuilder::new()
@@ -90,8 +87,8 @@ fn main() -> anyhow::Result<()> {
             .with_resizable(false)
             .with_decorations(!opt.no_window_decorations)
             .with_inner_size(winit::dpi::LogicalSize::new(
-                window_cfg.width as f64,
-                window_cfg.height as f64,
+                render_extent[0] as f64,
+                render_extent[1] as f64,
             ))
             .build(&event_loop)
             .expect("window"),
@@ -104,11 +101,13 @@ fn main() -> anyhow::Result<()> {
         &*window,
         RenderBackendConfig {
             swapchain_extent,
-            vsync: window_cfg.vsync,
+            vsync: !opt.no_vsync,
             graphics_debugging: !opt.no_debug,
         },
     )?;
-    let mut render_client = KajiyaRenderClient::new(&render_backend, &lazy_cache)?;
+
+    let mut world_renderer = create_default_world_renderer(&render_backend, &lazy_cache)?;
+    let mut ui_renderer = UiRenderer::default();
     let mut rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
 
     let mut last_error_text = None;
@@ -126,7 +125,7 @@ fn main() -> anyhow::Result<()> {
     camera.fov = 35.0 * 9.0 / 16.0;
     camera.look_at(Vec3::new(0.0, 0.75, 0.0));*/
 
-    camera.aspect = window_cfg.width as f32 / window_cfg.height as f32;
+    camera.aspect = render_extent[0] as f32 / render_extent[1] as f32;
 
     #[allow(unused_mut)]
     let mut camera = CameraConvergenceEnforcer::new(camera);
@@ -140,10 +139,8 @@ fn main() -> anyhow::Result<()> {
 
     for instance in scene_desc.instances {
         let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", instance.mesh))?;
-        let mesh = render_client.world_renderer.add_mesh(mesh);
-        render_client
-            .world_renderer
-            .add_instance(mesh, instance.position.into());
+        let mesh = world_renderer.add_mesh(mesh);
+        world_renderer.add_instance(mesh, instance.position.into());
     }
 
     /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
@@ -151,9 +148,7 @@ fn main() -> anyhow::Result<()> {
     let mut car_pos = Vec3::unit_y() * -0.01;
     let car_inst = render_client.add_instance(car_mesh, car_pos);*/
 
-    render_client
-        .world_renderer
-        .build_ray_tracing_top_level_acceleration();
+    world_renderer.build_ray_tracing_top_level_acceleration();
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
@@ -236,13 +231,13 @@ fn main() -> anyhow::Result<()> {
                 };
                 camera.update(&input_state);
 
-                render_client.world_renderer.store_prev_mesh_transforms();
+                world_renderer.store_prev_mesh_transforms();
 
                 // Reset accumulation of the path tracer whenever the camera moves
                 if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
-                    && render_client.world_renderer.render_mode == RenderMode::Reference
+                    && world_renderer.render_mode == RenderMode::Reference
                 {
-                    render_client.world_renderer.reset_reference_accumulation = true;
+                    world_renderer.reset_reference_accumulation = true;
                 }
 
                 /*if keyboard.is_down(VirtualKeyCode::Z) {
@@ -251,23 +246,23 @@ fn main() -> anyhow::Result<()> {
                 }*/
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Space) {
-                    match render_client.world_renderer.render_mode {
+                    match world_renderer.render_mode {
                         RenderMode::Standard => {
                             camera.convergence_sensitivity = 1.0;
-                            render_client.world_renderer.render_mode = RenderMode::Reference;
+                            world_renderer.render_mode = RenderMode::Reference;
                         }
                         RenderMode::Reference => {
                             camera.convergence_sensitivity = 0.0;
-                            render_client.world_renderer.render_mode = RenderMode::Standard;
+                            world_renderer.render_mode = RenderMode::Standard;
                         }
                     };
                 }
 
                 if !ui_wants_mouse && (mouse_state.button_mask & 1) != 0 {
                     light_theta +=
-                        (mouse_state.delta.x / window_cfg.width as f32) * -std::f32::consts::TAU;
+                        (mouse_state.delta.x / render_extent[0] as f32) * -std::f32::consts::TAU;
                     light_phi +=
-                        (mouse_state.delta.y / window_cfg.height as f32) * std::f32::consts::PI;
+                        (mouse_state.delta.y / render_extent[1] as f32) * std::f32::consts::PI;
                 }
 
                 //light_phi += dt;
@@ -279,7 +274,7 @@ fn main() -> anyhow::Result<()> {
 
                 let frame_state = FrameState {
                     camera_matrices: camera.calc_matrices(),
-                    window_cfg,
+                    render_extent,
                     //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
                     sun_direction: sun_direction_interp,
                 };
@@ -325,7 +320,7 @@ fn main() -> anyhow::Result<()> {
                             imgui::Drag::<f32>::new(im_str!("EV shift"))
                                 .range(-8.0..=8.0)
                                 .speed(0.01)
-                                .build(&ui, &mut render_client.world_renderer.ev_shift);
+                                .build(&ui, &mut world_renderer.ev_shift);
                         }
 
                         /*if imgui::CollapsingHeader::new(im_str!("csgi"))
@@ -347,23 +342,21 @@ fn main() -> anyhow::Result<()> {
                         {
                             if ui.radio_button_bool(
                                 im_str!("Scene geometry"),
-                                render_client.world_renderer.debug_mode == RenderDebugMode::None,
+                                world_renderer.debug_mode == RenderDebugMode::None,
                             ) {
-                                render_client.world_renderer.debug_mode = RenderDebugMode::None;
+                                world_renderer.debug_mode = RenderDebugMode::None;
                             }
 
                             if ui.radio_button_bool(
                                 im_str!("GI voxel grid"),
-                                render_client.world_renderer.debug_mode
-                                    == RenderDebugMode::CsgiVoxelGrid,
+                                world_renderer.debug_mode == RenderDebugMode::CsgiVoxelGrid,
                             ) {
-                                render_client.world_renderer.debug_mode =
-                                    RenderDebugMode::CsgiVoxelGrid;
+                                world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid;
                             }
 
                             imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
                                 &ui,
-                                &mut render_client.world_renderer.debug_shading_mode,
+                                &mut world_renderer.debug_shading_mode,
                                 &[
                                     im_str!("Default"),
                                     im_str!("No base color"),
@@ -387,7 +380,7 @@ fn main() -> anyhow::Result<()> {
                     let imgui_backend = imgui_backend.clone();
                     let gui_extent = swapchain_extent;
 
-                    render_client.ui_frame = Some((
+                    ui_renderer.ui_frame = Some((
                         Box::new(move |cb| {
                             imgui_backend
                                 .lock()
@@ -398,18 +391,20 @@ fn main() -> anyhow::Result<()> {
                     ));
                 }
 
-                match rg_renderer
-                    .prepare_frame(|rg| render_client.prepare_render_graph(rg, &frame_state))
-                {
+                match rg_renderer.prepare_frame(|rg| {
+                    let main_img = world_renderer.prepare_render_graph(rg, &frame_state);
+                    let ui_img = ui_renderer.prepare_render_graph(rg);
+                    RenderGraphOutput { main_img, ui_img }
+                }) {
                     Ok(()) => {
                         rg_renderer.draw_frame(
                             |dynamic_constants| {
-                                render_client
+                                world_renderer
                                     .prepare_frame_constants(dynamic_constants, &frame_state)
                             },
                             &mut render_backend.swapchain,
                         );
-                        render_client.retire_frame();
+                        world_renderer.retire_frame();
                         last_error_text = None;
                     }
                     Err(e) => {
