@@ -1,11 +1,15 @@
 use std::sync::Arc;
 
-use kajiya::backend::{
-    ash::{self, version::DeviceV1_0, vk},
-    Device, Image, ImageDesc, ImageViewDesc,
+use kajiya::{
+    backend::{
+        ash::{self, version::DeviceV1_0, vk},
+        Device, Image, ImageDesc, ImageViewDesc,
+    },
+    imgui_renderer::ImguiRenderer,
 };
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
+use parking_lot::Mutex;
 
 struct GfxResources {
     //imgui_render_pass: RenderPass,
@@ -138,12 +142,39 @@ impl ImGuiBackend {
         imgui.frame()
     }
 
-    pub fn prepare_render(&mut self, ui: &imgui::Ui, window: &winit::window::Window) {
-        self.imgui_platform.prepare_render(ui, window);
+    fn get_target_image(&self) -> Option<Arc<Image>> {
+        self.gfx.as_ref().map(|res| res.imgui_texture.clone())
     }
 
-    pub fn get_target_image(&self) -> Option<Arc<Image>> {
-        self.gfx.as_ref().map(|res| res.imgui_texture.clone())
+    pub fn to_render_graph(
+        slf: &Arc<Mutex<Self>>,
+        ui: imgui::Ui<'_>,
+        window: &winit::window::Window,
+        ui_renderer: &mut ImguiRenderer,
+    ) {
+        let (ui_draw_data, ui_target_image) = {
+            let mut slf = slf.lock();
+
+            slf.imgui_platform.prepare_render(&ui, &window);
+
+            let ui_draw_data: &'static imgui::DrawData =
+                unsafe { std::mem::transmute(ui.render()) };
+
+            (ui_draw_data, slf.get_target_image().unwrap())
+        };
+
+        let imgui_backend = slf.clone();
+        let gui_extent = [window.inner_size().width, window.inner_size().height];
+
+        ui_renderer.ui_frame = Some((
+            Box::new(move |cb| {
+                imgui_backend
+                    .lock()
+                    .render(gui_extent, ui_draw_data, cb)
+                    .expect("ui.render");
+            }),
+            ui_target_image,
+        ));
     }
 
     pub fn render(

@@ -293,7 +293,7 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 if show_gui {
-                    let (ui_draw_data, imgui_target_image) = {
+                    let ui = {
                         let mut imgui_backend = imgui_backend.lock();
                         let ui = imgui_backend.prepare_frame(&window, &mut imgui, dt);
 
@@ -371,24 +371,15 @@ fn main() -> anyhow::Result<()> {
                                 .build(&ui, &mut max_fps);
                         }
 
-                        imgui_backend.prepare_render(&ui, &window);
-                        (ui.render(), imgui_backend.get_target_image().unwrap())
+                        ui
                     };
 
-                    let ui_draw_data: &'static imgui::DrawData =
-                        unsafe { std::mem::transmute(ui_draw_data) };
-                    let imgui_backend = imgui_backend.clone();
-                    let gui_extent = swapchain_extent;
-
-                    ui_renderer.ui_frame = Some((
-                        Box::new(move |cb| {
-                            imgui_backend
-                                .lock()
-                                .render(gui_extent, ui_draw_data, cb)
-                                .expect("ui.render");
-                        }),
-                        imgui_target_image,
-                    ));
+                    imgui_backend::ImGuiBackend::to_render_graph(
+                        &imgui_backend,
+                        ui,
+                        &window,
+                        &mut ui_renderer,
+                    );
                 }
 
                 match rg_renderer.prepare_frame(|rg| {
