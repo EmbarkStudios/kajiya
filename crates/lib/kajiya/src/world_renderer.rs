@@ -1,4 +1,6 @@
 use crate::{
+    bindless_descriptor_set::{create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT},
+    buffer_builder::BufferBuilder,
     camera::CameraMatrices,
     frame_state::FrameState,
     image_lut::{ComputeImageLut, ImageLut},
@@ -16,23 +18,15 @@ use kajiya_backend::{
         vk::{self, ImageView},
     },
     dynamic_constants::DynamicConstants,
-    rspirv_reflect,
     vk_sync::{self, AccessType},
     vulkan::{self, image::*, shader::*, RenderBackend},
-    vulkan::{
-        device,
-        ray_tracing::{
-            RayTracingAcceleration, RayTracingBottomAccelerationDesc, RayTracingGeometryDesc,
-            RayTracingGeometryPart, RayTracingGeometryType, RayTracingInstanceDesc,
-            RayTracingTopAccelerationDesc,
-        },
-    },
+    vulkan::{device, ray_tracing::*},
 };
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
-use std::{collections::HashMap, mem::size_of, ops::Range, sync::Arc};
+use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 
 #[repr(C)]
@@ -125,262 +119,6 @@ pub enum RenderMode {
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct BindlessImageHandle(pub u32);
 
-/*fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
-    unsafe { std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * size_of::<T>()) }
-}*/
-
-/*fn append_buffer_data<T: Copy>(buf_slice: &mut [u8], buf_written: &mut usize, data: &[T]) -> usize {
-    if !data.is_empty() {
-        let alignment = std::mem::align_of::<T>();
-        assert!(alignment.count_ones() == 1);
-
-        let data_start = (*buf_written + alignment - 1) & !(alignment - 1);
-        let data_bytes = data.len() * size_of::<T>();
-        assert!(
-            data_start + data_bytes <= buf_slice.len(),
-            format!("data_bytes: {}; buf_slice: {}", data_bytes, buf_slice.len())
-        );
-
-        let dst = unsafe {
-            std::slice::from_raw_parts_mut(buf_slice.as_ptr().add(data_start) as *mut T, data.len())
-        };
-        dst.copy_from_slice(data);
-
-        *buf_written = data_start + data_bytes;
-        data_start
-    } else {
-        0
-    }
-}*/
-
-fn create_bindless_descriptor_set(device: &device::Device) -> vk::DescriptorSet {
-    let raw_device = &device.raw;
-
-    let set_binding_flags = [
-        vk::DescriptorBindingFlags::PARTIALLY_BOUND,
-        vk::DescriptorBindingFlags::PARTIALLY_BOUND,
-        vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
-            | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
-            | vk::DescriptorBindingFlags::PARTIALLY_BOUND
-            | vk::DescriptorBindingFlags::VARIABLE_DESCRIPTOR_COUNT,
-    ];
-
-    let mut binding_flags_create_info = vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
-        .binding_flags(&set_binding_flags)
-        .build();
-
-    let descriptor_set_layout = unsafe {
-        raw_device
-            .create_descriptor_set_layout(
-                &vk::DescriptorSetLayoutCreateInfo::builder()
-                    .bindings(&[
-                        vk::DescriptorSetLayoutBinding::builder()
-                            .binding(0)
-                            .descriptor_count(1)
-                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .stage_flags(vk::ShaderStageFlags::ALL)
-                            .build(),
-                        vk::DescriptorSetLayoutBinding::builder()
-                            .binding(1)
-                            .descriptor_count(1)
-                            .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-                            .stage_flags(vk::ShaderStageFlags::ALL)
-                            .build(),
-                        vk::DescriptorSetLayoutBinding::builder()
-                            .binding(2)
-                            .descriptor_count(MAX_BINDLESS_DESCRIPTOR_COUNT as _)
-                            .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-                            .stage_flags(vk::ShaderStageFlags::ALL)
-                            .build(),
-                    ])
-                    .flags(vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL)
-                    .push_next(&mut binding_flags_create_info)
-                    .build(),
-                None,
-            )
-            .unwrap()
-    };
-
-    let descriptor_sizes = [
-        vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::STORAGE_BUFFER,
-            descriptor_count: 2,
-        },
-        vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::SAMPLED_IMAGE,
-            descriptor_count: MAX_BINDLESS_DESCRIPTOR_COUNT as _,
-        },
-    ];
-
-    let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
-        .pool_sizes(&descriptor_sizes)
-        .flags(vk::DescriptorPoolCreateFlags::UPDATE_AFTER_BIND)
-        .max_sets(1);
-
-    let descriptor_pool = unsafe {
-        raw_device
-            .create_descriptor_pool(&descriptor_pool_info, None)
-            .unwrap()
-    };
-
-    let variable_descriptor_count = MAX_BINDLESS_DESCRIPTOR_COUNT as _;
-    let mut variable_descriptor_count_allocate_info =
-        vk::DescriptorSetVariableDescriptorCountAllocateInfo::builder()
-            .descriptor_counts(std::slice::from_ref(&variable_descriptor_count))
-            .build();
-
-    let set = unsafe {
-        raw_device
-            .allocate_descriptor_sets(
-                &vk::DescriptorSetAllocateInfo::builder()
-                    .descriptor_pool(descriptor_pool)
-                    .set_layouts(std::slice::from_ref(&descriptor_set_layout))
-                    .push_next(&mut variable_descriptor_count_allocate_info)
-                    .build(),
-            )
-            .unwrap()[0]
-    };
-
-    set
-}
-
-trait BufferDataSource {
-    fn as_bytes(&self) -> &[u8];
-    fn alignment(&self) -> u64;
-}
-
-struct PendingBufferUpload {
-    source: Box<dyn BufferDataSource>,
-    offset: u64,
-}
-
-impl<T: Copy> BufferDataSource for &'static [T] {
-    fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.as_ptr() as *const u8,
-                self.len() * std::mem::size_of::<T>(),
-            )
-        }
-    }
-
-    fn alignment(&self) -> u64 {
-        std::mem::align_of::<T>() as u64
-    }
-}
-
-impl<T: Copy> BufferDataSource for Vec<T> {
-    fn as_bytes(&self) -> &[u8] {
-        unsafe {
-            std::slice::from_raw_parts(
-                self.as_ptr() as *const u8,
-                self.len() * std::mem::size_of::<T>(),
-            )
-        }
-    }
-
-    fn alignment(&self) -> u64 {
-        std::mem::align_of::<T>() as u64
-    }
-}
-struct BufferBuilder {
-    //buf_slice: &'a mut [u8],
-    pending_uploads: Vec<PendingBufferUpload>,
-    current_offset: u64,
-}
-
-impl Default for BufferBuilder {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl BufferBuilder {
-    fn new() -> Self {
-        Self {
-            pending_uploads: Vec::new(),
-            current_offset: 0,
-        }
-    }
-
-    fn append(&mut self, data: impl BufferDataSource + 'static) -> u64 {
-        let alignment = data.alignment();
-        assert!(alignment.count_ones() == 1);
-
-        let data_start = (self.current_offset + alignment - 1) & !(alignment - 1);
-        let data_len = data.as_bytes().len() as u64;
-
-        self.pending_uploads.push(PendingBufferUpload {
-            source: Box::new(data),
-            offset: data_start,
-        });
-        self.current_offset = data_start + data_len;
-
-        data_start
-    }
-
-    fn upload(self, device: &kajiya_backend::Device, target: &mut Buffer, target_offset: u64) {
-        let target = target.raw;
-
-        // TODO: share a common staging buffer, don't leak
-        const STAGING_BYTES: usize = 64 * 1024 * 1024;
-        let mut staging_buffer = device
-            .create_buffer(
-                BufferDesc {
-                    size: STAGING_BYTES,
-                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                    mapped: true,
-                },
-                None,
-            )
-            .expect("Staging buffer for buffer upload");
-
-        struct UploadChunk {
-            pending_idx: usize,
-            src_range: Range<usize>,
-        }
-
-        // TODO: merge chunks to perform fewer uploads if multiple source regions fit in one chunk
-        let chunks: Vec<UploadChunk> = self
-            .pending_uploads
-            .iter()
-            .enumerate()
-            .flat_map(|(pending_idx, pending)| {
-                let byte_count = pending.source.as_bytes().len();
-                let chunk_count = (byte_count + STAGING_BYTES - 1) / STAGING_BYTES;
-                (0..chunk_count).map(move |chunk| UploadChunk {
-                    pending_idx,
-                    src_range: chunk * STAGING_BYTES..((chunk + 1) * STAGING_BYTES).min(byte_count),
-                })
-            })
-            .collect();
-
-        for UploadChunk {
-            pending_idx,
-            src_range,
-        } in chunks
-        {
-            let pending = &self.pending_uploads[pending_idx];
-            staging_buffer.allocation.mapped_slice_mut().unwrap()
-                [0..(src_range.end - src_range.start)]
-                .copy_from_slice(&pending.source.as_bytes()[src_range.start..src_range.end]);
-
-            device.with_setup_cb(|cb| unsafe {
-                device.raw.cmd_copy_buffer(
-                    cb,
-                    staging_buffer.raw,
-                    target,
-                    &[vk::BufferCopy::builder()
-                        .src_offset(0u64)
-                        .dst_offset(target_offset + pending.offset + src_range.start as u64)
-                        .size((src_range.end - src_range.start) as u64)
-                        .build()],
-                );
-            });
-        }
-    }
-}
-
 fn load_gpu_image_asset(
     device: Arc<kajiya_backend::Device>,
     asset: AssetRef<GpuImage::Flat>,
@@ -410,7 +148,7 @@ fn load_gpu_image_asset(
 }
 
 impl WorldRenderer {
-    pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
+    pub(crate) fn new_empty(backend: &RenderBackend) -> anyhow::Result<Self> {
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -647,7 +385,7 @@ impl WorldRenderer {
             buffer_builder.append(mesh.tangents.as_slice()) as u32 + vertex_data_offset;
         let mat_data_offset = buffer_builder.append(materials) as u32 + vertex_data_offset;
 
-        let total_buffer_size = buffer_builder.current_offset;
+        let total_buffer_size = buffer_builder.current_offset();
         let mut vertex_buffer = self.vertex_buffer.lock();
         buffer_builder.upload(
             self.device.as_ref(),
@@ -877,29 +615,6 @@ impl WorldRenderer {
     pub fn retire_frame(&mut self) {
         self.frame_idx = self.frame_idx.overflowing_add(1).0;
     }
-}
-
-lazy_static::lazy_static! {
-    static ref BINDLESS_DESCRIPTOR_SET_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [
-        (0, rspirv_reflect::DescriptorInfo {
-            ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER,
-            is_bindless: false,
-            name: Default::default(),
-        }),
-        (1, rspirv_reflect::DescriptorInfo {
-            ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER,
-            is_bindless: false,
-            name: Default::default(),
-        }),
-        (2, rspirv_reflect::DescriptorInfo {
-            ty: rspirv_reflect::DescriptorType::SAMPLED_IMAGE,
-            is_bindless: true,
-            name: Default::default(),
-        }),
-    ]
-    .iter()
-    .cloned()
-    .collect();
 }
 
 fn radical_inverse(mut n: u32, base: u32) -> f32 {

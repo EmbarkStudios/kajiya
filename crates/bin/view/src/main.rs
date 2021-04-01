@@ -10,11 +10,11 @@ use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     camera::*,
     frame_state::FrameState,
+    imgui_renderer::ImguiRenderer,
     math::*,
     mmap::mmapped_asset,
-    render_client::{create_default_world_renderer, UiRenderer},
     rg::renderer::RenderGraphOutput,
-    world_renderer::{RenderDebugMode, RenderMode},
+    world_renderer::{RenderDebugMode, RenderMode, WorldRenderer},
 };
 
 use imgui::im_str;
@@ -106,8 +106,8 @@ fn main() -> anyhow::Result<()> {
         },
     )?;
 
-    let mut world_renderer = create_default_world_renderer(&render_backend, &lazy_cache)?;
-    let mut ui_renderer = UiRenderer::default();
+    let mut world_renderer = WorldRenderer::new(&render_backend, &lazy_cache)?;
+    let mut ui_renderer = ImguiRenderer::default();
     let mut rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
 
     let mut last_error_text = None;
