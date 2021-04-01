@@ -9,7 +9,7 @@ use kajiya::{
     asset::mesh::*,
     backend::{vulkan::RenderBackendConfig, *},
     camera::*,
-    frame_state::FrameState,
+    frame_desc::WorldFrameDesc,
     imgui_renderer::ImguiRenderer,
     math::*,
     mmap::mmapped_asset,
@@ -41,8 +41,6 @@ struct Opt {
     #[structopt(long, default_value = "720")]
     height: u32,
 
-    //#[structopt(long, parse(from_os_str))]
-    //scene: PathBuf,
     #[structopt(long)]
     scene: String,
 
@@ -77,24 +75,24 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     let event_loop = EventLoop::new();
-
-    let render_extent = [opt.width, opt.height];
-
     let window = Arc::new(
         WindowBuilder::new()
             .with_title("kajiya")
             .with_resizable(false)
             .with_decorations(!opt.no_window_decorations)
             .with_inner_size(winit::dpi::LogicalSize::new(
-                render_extent[0] as f64,
-                render_extent[1] as f64,
+                opt.width as f64,
+                opt.height as f64,
             ))
             .build(&event_loop)
             .expect("window"),
     );
 
+    // Physical window extent in pixels
     let swapchain_extent = [window.inner_size().width, window.inner_size().height];
-    let lazy_cache = LazyCache::create();
+
+    // Actual rendering extent in pixels
+    let render_extent = [opt.width, opt.height];
 
     let mut render_backend = RenderBackend::new(
         &*window,
@@ -105,11 +103,10 @@ fn main() -> anyhow::Result<()> {
         },
     )?;
 
+    let lazy_cache = LazyCache::create();
     let mut world_renderer = WorldRenderer::new(&render_backend, &lazy_cache)?;
     let mut ui_renderer = ImguiRenderer::default();
     let mut rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
-
-    let mut last_error_text = None;
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
@@ -143,10 +140,11 @@ fn main() -> anyhow::Result<()> {
     }
 
     /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
-    let car_mesh = render_client.add_mesh(car_mesh);
+    let car_mesh = world_renderer.add_mesh(car_mesh);
     let mut car_pos = Vec3::unit_y() * -0.01;
-    let car_inst = render_client.add_instance(car_mesh, car_pos);*/
+    let car_inst = world_renderer.add_instance(car_mesh, car_pos);*/
 
+    // TODO: Remove. Only here to allocate memory for the TLAS; it's rebuilt every frame
     world_renderer.build_ray_tracing_top_level_acceleration();
 
     let mut imgui = imgui::Context::create();
@@ -163,6 +161,7 @@ fn main() -> anyhow::Result<()> {
     let mut max_fps = MAX_FPS_LIMIT;
 
     let mut last_frame_instant = std::time::Instant::now();
+    let mut last_error_text = None;
 
     event_loop.run(move |event, _, control_flow| {
         imgui_backend.handle_event(window.as_ref(), &mut imgui, &event);
@@ -236,7 +235,7 @@ fn main() -> anyhow::Result<()> {
 
                 /*if keyboard.is_down(VirtualKeyCode::Z) {
                     car_pos.x += mouse_state.delta.x / 100.0;
-                    render_client.set_instance_transform(car_inst, car_pos);
+                    world_renderer.set_instance_transform(car_inst, car_pos);
                 }*/
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Space) {
@@ -266,7 +265,7 @@ fn main() -> anyhow::Result<()> {
                 sun_direction_interp =
                     Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
-                let frame_state = FrameState {
+                let frame_desc = WorldFrameDesc {
                     camera_matrices: camera.calc_matrices(),
                     render_extent,
                     //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
@@ -280,9 +279,9 @@ fn main() -> anyhow::Result<()> {
                 if keyboard.was_just_pressed(VirtualKeyCode::C) {
                     println!(
                         "position: {}, look_at: {}",
-                        frame_state.camera_matrices.eye_position(),
-                        frame_state.camera_matrices.eye_position()
-                            + frame_state.camera_matrices.eye_direction(),
+                        frame_desc.camera_matrices.eye_position(),
+                        frame_desc.camera_matrices.eye_position()
+                            + frame_desc.camera_matrices.eye_direction(),
                     );
                 }
 
@@ -321,11 +320,11 @@ fn main() -> anyhow::Result<()> {
                     {
                         imgui::Drag::<i32>::new(im_str!("Trace subdivision"))
                             .range(0..=5)
-                            .build(&ui, &mut render_client.csgi.trace_subdiv);
+                            .build(&ui, &mut world_renderer.csgi.trace_subdiv);
 
                         imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
                             .range(1..=9)
-                            .build(&ui, &mut render_client.csgi.neighbors_per_frame);
+                            .build(&ui, &mut world_renderer.csgi.neighbors_per_frame);
                     }*/
 
                     if imgui::CollapsingHeader::new(im_str!("debug"))
@@ -367,7 +366,7 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 match rg_renderer.prepare_frame(|rg| {
-                    let main_img = world_renderer.prepare_render_graph(rg, &frame_state);
+                    let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
                     let ui_img = ui_renderer.prepare_render_graph(rg);
                     RenderGraphOutput { main_img, ui_img }
                 }) {
@@ -375,7 +374,7 @@ fn main() -> anyhow::Result<()> {
                         rg_renderer.draw_frame(
                             |dynamic_constants| {
                                 world_renderer
-                                    .prepare_frame_constants(dynamic_constants, &frame_state)
+                                    .prepare_frame_constants(dynamic_constants, &frame_desc)
                             },
                             &mut render_backend.swapchain,
                         );

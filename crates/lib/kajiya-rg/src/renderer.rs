@@ -114,14 +114,12 @@ impl Renderer {
 
     pub fn draw_frame<PrepareFrameConstantsFn>(
         &mut self,
-        //render_client: &mut dyn RenderClient<FrameState>,
         prepare_frame_constants: PrepareFrameConstantsFn,
         swapchain: &mut Swapchain,
     ) where
         PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants),
     {
         let frame_constants_offset = self.dynamic_constants.current_offset();
-        //render_client.prepare_frame_constants(&mut self.dynamic_constants, frame_state);
         prepare_frame_constants(&mut self.dynamic_constants);
 
         let swapchain_extent = swapchain.extent();

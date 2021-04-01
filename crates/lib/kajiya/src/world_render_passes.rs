@@ -1,5 +1,5 @@
 use crate::{
-    frame_state::FrameState,
+    frame_desc::WorldFrameDesc,
     renderers::{
         deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
@@ -13,19 +13,18 @@ impl WorldRenderer {
     pub(super) fn prepare_render_graph_standard(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        frame_state: &FrameState,
+        frame_desc: &WorldFrameDesc,
     ) -> rg::ExportedHandle<Image> {
         let tlas = self.prepare_top_level_acceleration(rg);
 
         let mut accum_img = rg
             .get_or_create_temporal(
                 "root.accum",
-                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_state.render_extent)
-                    .usage(
-                        vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::STORAGE
-                            | vk::ImageUsageFlags::TRANSFER_DST,
-                    ),
+                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_desc.render_extent).usage(
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ),
             )
             .unwrap();
 
@@ -33,7 +32,7 @@ impl WorldRenderer {
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
         let csgi_volume = self.csgi.render(
-            frame_state.camera_matrices.eye_position(),
+            frame_desc.camera_matrices.eye_position(),
             rg,
             &convolved_sky_cube,
             self.bindless_descriptor_set,
@@ -44,17 +43,17 @@ impl WorldRenderer {
             let mut gbuffer_depth = {
                 let normal = rg.create(ImageDesc::new_2d(
                     vk::Format::A2R10G10B10_UNORM_PACK32,
-                    frame_state.render_extent,
+                    frame_desc.render_extent,
                 ));
 
                 let gbuffer = rg.create(ImageDesc::new_2d(
                     vk::Format::R32G32B32A32_SFLOAT,
-                    frame_state.render_extent,
+                    frame_desc.render_extent,
                 ));
 
                 let mut depth_img = rg.create(ImageDesc::new_2d(
                     vk::Format::D24_UNORM_S8_UINT,
-                    frame_state.render_extent,
+                    frame_desc.render_extent,
                 ));
                 crate::renderers::imageops::clear_depth(rg, &mut depth_img);
 
@@ -63,7 +62,7 @@ impl WorldRenderer {
 
             let mut velocity_img = rg.create(ImageDesc::new_2d(
                 vk::Format::R16G16B16A16_SFLOAT,
-                frame_state.render_extent,
+                frame_desc.render_extent,
             ));
 
             if self.debug_mode != RenderDebugMode::CsgiVoxelGrid {
@@ -167,17 +166,16 @@ impl WorldRenderer {
     pub(super) fn prepare_render_graph_reference(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        frame_state: &FrameState,
+        frame_desc: &WorldFrameDesc,
     ) -> rg::ExportedHandle<Image> {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "refpt.accum",
-                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_state.render_extent)
-                    .usage(
-                        vk::ImageUsageFlags::SAMPLED
-                            | vk::ImageUsageFlags::STORAGE
-                            | vk::ImageUsageFlags::TRANSFER_DST,
-                    ),
+                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_desc.render_extent).usage(
+                    vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::STORAGE
+                        | vk::ImageUsageFlags::TRANSFER_DST,
+                ),
             )
             .unwrap();
 

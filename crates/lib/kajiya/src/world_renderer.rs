@@ -2,7 +2,7 @@ use crate::{
     bindless_descriptor_set::{create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT},
     buffer_builder::BufferBuilder,
     camera::CameraMatrices,
-    frame_state::FrameState,
+    frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
         csgi::CsgiRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*, ssgi::*,
@@ -542,7 +542,7 @@ impl WorldRenderer {
     pub fn prepare_render_graph(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        frame_state: &FrameState,
+        frame_desc: &WorldFrameDesc,
     ) -> rg::ExportedHandle<Image> {
         rg.predefined_descriptor_set_layouts.insert(
             1,
@@ -556,21 +556,21 @@ impl WorldRenderer {
         }
 
         match self.render_mode {
-            RenderMode::Standard => self.prepare_render_graph_standard(rg, frame_state),
-            RenderMode::Reference => self.prepare_render_graph_reference(rg, frame_state),
+            RenderMode::Standard => self.prepare_render_graph_standard(rg, frame_desc),
+            RenderMode::Reference => self.prepare_render_graph_reference(rg, frame_desc),
         }
     }
 
     pub fn prepare_frame_constants(
         &mut self,
         dynamic_constants: &mut DynamicConstants,
-        frame_state: &FrameState,
+        frame_desc: &WorldFrameDesc,
     ) {
         let mut view_constants = ViewConstants::builder(
-            frame_state.camera_matrices,
+            frame_desc.camera_matrices,
             self.prev_camera_matrices
-                .unwrap_or(frame_state.camera_matrices),
-            frame_state.render_extent,
+                .unwrap_or(frame_desc.camera_matrices),
+            frame_desc.render_extent,
         )
         .build();
 
@@ -595,21 +595,21 @@ impl WorldRenderer {
                 self.supersample_offsets[self.frame_idx as usize % self.supersample_offsets.len()];
             //Vec2::zero();
             self.taa.current_supersample_offset = supersample_offset;
-            view_constants.set_pixel_offset(supersample_offset, frame_state.render_extent);
+            view_constants.set_pixel_offset(supersample_offset, frame_desc.render_extent);
         }
 
         dynamic_constants.push(&FrameConstants {
             view_constants,
             sun_direction: [
-                frame_state.sun_direction.x,
-                frame_state.sun_direction.y,
-                frame_state.sun_direction.z,
+                frame_desc.sun_direction.x,
+                frame_desc.sun_direction.y,
+                frame_desc.sun_direction.z,
                 0.0,
             ],
             frame_idx: self.frame_idx,
         });
 
-        self.prev_camera_matrices = Some(frame_state.camera_matrices);
+        self.prev_camera_matrices = Some(frame_desc.camera_matrices);
     }
 
     pub fn retire_frame(&mut self) {
