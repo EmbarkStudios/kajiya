@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
 use byte_slice_cast::AsSliceOf;
 use glam::Vec3;
+use parking_lot::Mutex;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum RayTracingGeometryType {
@@ -47,6 +48,7 @@ pub struct RayTracingInstanceDesc {
 #[derive(Clone)]
 pub struct RayTracingTopAccelerationDesc {
     pub instances: Vec<RayTracingInstanceDesc>,
+    pub preallocate_bytes: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -64,13 +66,40 @@ pub struct RayTracingShaderTableDesc {
 pub struct RayTracingAcceleration {
     pub raw: vk::AccelerationStructureKHR,
     backing_buffer: super::buffer::Buffer,
-    scratch_buffer: super::buffer::Buffer,
+}
+
+#[derive(Clone)]
+pub struct RayTracingAccelerationScratchBuffer {
+    buffer: Arc<Mutex<super::buffer::Buffer>>,
 }
 
 impl Device {
+    pub fn create_ray_tracing_acceleration_scratch_buffer(
+        &self,
+    ) -> Result<RayTracingAccelerationScratchBuffer> {
+        const INITIAL_SIZE: usize = 1024 * 1024 * 32;
+
+        let buffer = self
+            .create_buffer(
+                super::buffer::BufferDesc {
+                    size: INITIAL_SIZE,
+                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    mapped: false,
+                },
+                None,
+            )
+            .context("Acceleration structure scratch buffer")?;
+
+        Ok(RayTracingAccelerationScratchBuffer {
+            buffer: Arc::new(Mutex::new(buffer)),
+        })
+    }
+
     pub fn create_ray_tracing_bottom_acceleration(
         &self,
         desc: &RayTracingBottomAccelerationDesc,
+        scratch_buffer: &RayTracingAccelerationScratchBuffer,
     ) -> Result<RayTracingAcceleration> {
         //log::trace!("Creating ray tracing bottom acceleration: {:?}", desc);
 
@@ -132,17 +161,21 @@ impl Device {
 
         // Create bottom-level acceleration structure
 
+        let preallocate_bytes = 0;
         self.create_ray_tracing_acceleration(
             vk::AccelerationStructureTypeKHR::BOTTOM_LEVEL,
             geometry_info,
             &build_range_infos,
             &max_primitive_counts,
+            preallocate_bytes,
+            scratch_buffer,
         )
     }
 
     pub fn create_ray_tracing_top_acceleration(
         &self,
         desc: &RayTracingTopAccelerationDesc,
+        scratch_buffer: &RayTracingAccelerationScratchBuffer,
     ) -> Result<RayTracingAcceleration> {
         //log::trace!("Creating ray tracing top acceleration: {:?}", desc);
 
@@ -189,7 +222,7 @@ impl Device {
             })
             .collect();
 
-        let instance_buffer_size = std::mem::size_of::<GeometryInstance>() * instances.len();
+        let instance_buffer_size = std::mem::size_of::<GeometryInstance>() * instances.len().max(1);
         let instance_buffer = self
             .create_buffer(
                 super::buffer::BufferDesc {
@@ -198,13 +231,16 @@ impl Device {
                     mapped: false,
                 },
                 unsafe {
-                    Some(std::slice::from_raw_parts(
-                        instances.as_ptr() as *const u8,
-                        instance_buffer_size,
-                    ))
+                    (!instances.is_empty()).then(|| {
+                        std::slice::from_raw_parts(
+                            instances.as_ptr() as *const u8,
+                            instance_buffer_size,
+                        )
+                    })
                 },
             )
             .expect("TLAS instance buffer");
+
         let instance_buffer_address = instance_buffer.device_address(self);
 
         let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
@@ -238,6 +274,8 @@ impl Device {
             geometry_info,
             &build_range_infos,
             &max_primitive_counts,
+            desc.preallocate_bytes,
+            scratch_buffer,
         )
     }
 
@@ -247,6 +285,8 @@ impl Device {
         mut geometry_info: vk::AccelerationStructureBuildGeometryInfoKHR,
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
         max_primitive_counts: &[u32],
+        preallocate_bytes: usize,
+        scratch_buffer: &RayTracingAccelerationScratchBuffer,
     ) -> Result<RayTracingAcceleration> {
         let memory_requirements = unsafe {
             self.acceleration_structure_ext
@@ -263,10 +303,13 @@ impl Device {
             memory_requirements.build_scratch_size
         );
 
+        let backing_buffer_size: usize =
+            preallocate_bytes.max(memory_requirements.acceleration_structure_size as usize);
+
         let accel_buffer = self
             .create_buffer(
                 super::buffer::BufferDesc {
-                    size: memory_requirements.acceleration_structure_size as _,
+                    size: backing_buffer_size,
                     usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                     mapped: false,
@@ -278,7 +321,7 @@ impl Device {
         let accel_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
             .ty(ty)
             .buffer(accel_buffer.raw)
-            .size(memory_requirements.acceleration_structure_size as _)
+            .size(backing_buffer_size as u64)
             .build();
 
         unsafe {
@@ -287,17 +330,23 @@ impl Device {
                 .create_acceleration_structure(&accel_info, None)
                 .context("create_acceleration_structure")?;
 
-            let scratch_buffer = self
-                .create_buffer(
-                    super::buffer::BufferDesc {
-                        size: memory_requirements.build_scratch_size as _,
-                        usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                        mapped: false,
-                    },
-                    None,
-                )
-                .context("Acceleration structure scratch buffer")?;
+            let scratch_buffer = scratch_buffer.buffer.lock();
+            assert!(
+                memory_requirements.build_scratch_size as usize <= scratch_buffer.desc.size,
+                "todo: resize scratch"
+            );
+
+            /*let scratch_buffer = self
+            .create_buffer(
+                super::buffer::BufferDesc {
+                    size: memory_requirements.build_scratch_size as _,
+                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    mapped: false,
+                },
+                None,
+            )
+            .context("Acceleration structure scratch buffer")?;*/
 
             geometry_info.dst_acceleration_structure = accel_raw;
             geometry_info.scratch_data = ash::vk::DeviceOrHostAddressKHR {
@@ -337,7 +386,6 @@ impl Device {
             Ok(RayTracingAcceleration {
                 raw: accel_raw,
                 backing_buffer: accel_buffer,
-                scratch_buffer,
             })
         }
     }
@@ -395,6 +443,7 @@ impl Device {
         instance_buffer_address: vk::DeviceAddress,
         instance_count: usize,
         tlas: &RayTracingAcceleration,
+        scratch_buffer: &RayTracingAccelerationScratchBuffer,
     ) {
         let geometry = ash::vk::AccelerationStructureGeometryKHR::builder()
             .geometry_type(ash::vk::GeometryTypeKHR::INSTANCES)
@@ -428,6 +477,7 @@ impl Device {
             &build_range_infos,
             &max_primitive_counts,
             tlas,
+            scratch_buffer,
         )
     }
 
@@ -438,6 +488,7 @@ impl Device {
         build_range_infos: &[vk::AccelerationStructureBuildRangeInfoKHR],
         max_primitive_counts: &[u32],
         accel: &RayTracingAcceleration,
+        scratch_buffer: &RayTracingAccelerationScratchBuffer,
     ) {
         let memory_requirements = unsafe {
             self.acceleration_structure_ext
@@ -454,8 +505,10 @@ impl Device {
             "todo: backing"
         );
 
+        let scratch_buffer = scratch_buffer.buffer.lock();
+
         assert!(
-            memory_requirements.build_scratch_size as usize <= accel.scratch_buffer.desc.size,
+            memory_requirements.build_scratch_size as usize <= scratch_buffer.desc.size,
             "todo: scratch"
         );
 
@@ -463,7 +516,7 @@ impl Device {
             geometry_info.dst_acceleration_structure = accel.raw;
             geometry_info.scratch_data = ash::vk::DeviceOrHostAddressKHR {
                 device_address: self.raw.get_buffer_device_address(
-                    &ash::vk::BufferDeviceAddressInfo::builder().buffer(accel.scratch_buffer.raw),
+                    &ash::vk::BufferDeviceAddressInfo::builder().buffer(scratch_buffer.raw),
                 ),
             };
 

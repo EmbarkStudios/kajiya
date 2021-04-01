@@ -144,9 +144,6 @@ fn main() -> anyhow::Result<()> {
     let mut car_pos = Vec3::unit_y() * -0.01;
     let car_inst = world_renderer.add_instance(car_mesh, car_pos);*/
 
-    // TODO: Remove. Only here to allocate memory for the TLAS; it's rebuilt every frame
-    world_renderer.build_ray_tracing_top_level_acceleration();
-
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
         imgui_backend::ImGuiBackend::new(rg_renderer.device().clone(), &window, &mut imgui);

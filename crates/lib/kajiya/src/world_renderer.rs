@@ -58,6 +58,7 @@ pub struct InstanceHandle(pub usize);
 
 const MAX_GPU_MESHES: usize = 1024;
 const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 512;
+const TLAS_PREALLOCATE_BYTES: usize = 1024 * 1024 * 32;
 
 #[derive(Clone, Copy)]
 pub struct MeshInstance {
@@ -86,6 +87,7 @@ pub struct WorldRenderer {
 
     mesh_blas: Vec<Arc<RayTracingAcceleration>>,
     tlas: Option<Arc<RayTracingAcceleration>>,
+    accel_scratch: RayTracingAccelerationScratchBuffer,
 
     bindless_images: Vec<Arc<Image>>,
     next_bindless_image_id: usize,
@@ -220,6 +222,10 @@ impl WorldRenderer {
             .collect();
         //let supersample_offsets = vec![Vec2::new(0.0, -0.5), Vec2::new(0.0, 0.5)];
 
+        let accel_scratch = backend
+            .device
+            .create_ray_tracing_acceleration_scratch_buffer()?;
+
         Ok(Self {
             raster_simple_render_pass,
 
@@ -227,9 +233,12 @@ impl WorldRenderer {
             //cube_index_buffer: Arc::new(cube_index_buffer),
             device: backend.device.clone(),
             meshes: Default::default(),
-            mesh_blas: Default::default(),
             instances: Default::default(),
+
+            mesh_blas: Default::default(),
             tlas: Default::default(),
+            accel_scratch,
+
             mesh_buffer: Mutex::new(Arc::new(mesh_buffer)),
             vertex_buffer: Mutex::new(Arc::new(vertex_buffer)),
             vertex_buffer_written: 0,
@@ -408,26 +417,29 @@ impl WorldRenderer {
 
         let blas = self
             .device
-            .create_ray_tracing_bottom_acceleration(&RayTracingBottomAccelerationDesc {
-                geometries: vec![RayTracingGeometryDesc {
-                    geometry_type: RayTracingGeometryType::Triangle,
-                    vertex_buffer: vertex_buffer_da,
-                    index_buffer: index_buffer_da,
-                    vertex_format: vk::Format::R32G32B32_SFLOAT,
-                    vertex_stride: size_of::<PackedVertex>(),
-                    parts: vec![RayTracingGeometryPart {
-                        index_count: mesh.indices.len(),
-                        index_offset: 0,
-                        max_vertex: mesh
-                            .indices
-                            .as_slice()
-                            .iter()
-                            .copied()
-                            .max()
-                            .expect("mesh must not be empty"),
+            .create_ray_tracing_bottom_acceleration(
+                &RayTracingBottomAccelerationDesc {
+                    geometries: vec![RayTracingGeometryDesc {
+                        geometry_type: RayTracingGeometryType::Triangle,
+                        vertex_buffer: vertex_buffer_da,
+                        index_buffer: index_buffer_da,
+                        vertex_format: vk::Format::R32G32B32_SFLOAT,
+                        vertex_stride: size_of::<PackedVertex>(),
+                        parts: vec![RayTracingGeometryPart {
+                            index_count: mesh.indices.len(),
+                            index_offset: 0,
+                            max_vertex: mesh
+                                .indices
+                                .as_slice()
+                                .iter()
+                                .copied()
+                                .max()
+                                .expect("mesh must not be empty"),
+                        }],
                     }],
-                }],
-            })
+                },
+                &self.accel_scratch,
+            )
             .expect("blas");
 
         mesh_buffer_dst[mesh_idx] = GpuMesh {
@@ -465,21 +477,25 @@ impl WorldRenderer {
         self.instances[inst.0].position = pos;
     }
 
-    pub fn build_ray_tracing_top_level_acceleration(&mut self) {
+    pub(crate) fn build_ray_tracing_top_level_acceleration(&mut self) {
         let tlas = self
             .device
-            .create_ray_tracing_top_acceleration(&RayTracingTopAccelerationDesc {
-                //instances: self.mesh_blas.iter().collect::<Vec<_>>(),
-                instances: self
-                    .instances
-                    .iter()
-                    .map(|inst| RayTracingInstanceDesc {
-                        blas: self.mesh_blas[inst.mesh.0].clone(),
-                        position: inst.position,
-                        mesh_index: inst.mesh.0 as u32,
-                    })
-                    .collect::<Vec<_>>(),
-            })
+            .create_ray_tracing_top_acceleration(
+                &RayTracingTopAccelerationDesc {
+                    //instances: self.mesh_blas.iter().collect::<Vec<_>>(),
+                    instances: self
+                        .instances
+                        .iter()
+                        .map(|inst| RayTracingInstanceDesc {
+                            blas: self.mesh_blas[inst.mesh.0].clone(),
+                            position: inst.position,
+                            mesh_index: inst.mesh.0 as u32,
+                        })
+                        .collect::<Vec<_>>(),
+                    preallocate_bytes: TLAS_PREALLOCATE_BYTES,
+                },
+                &self.accel_scratch,
+            )
             .expect("tlas");
 
         self.tlas = Some(Arc::new(tlas));
@@ -512,6 +528,8 @@ impl WorldRenderer {
         let mut pass = rg.add_pass("rebuild tlas");
         let tlas_ref = pass.write(&mut tlas, AccessType::TransferWrite);
 
+        let accel_scratch = self.accel_scratch.clone();
+
         pass.render(move |api| {
             //let device = &api.device().raw;
             let resources = &mut api.resources;
@@ -527,6 +545,7 @@ impl WorldRenderer {
                 instance_buffer_address,
                 instances.len(),
                 tlas,
+                &accel_scratch,
             );
         });
 
