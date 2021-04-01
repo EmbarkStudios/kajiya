@@ -1,12 +1,16 @@
+mod camera_input;
+mod imgui_backend;
+mod input;
+
 use anyhow::Context;
 
+use input::*;
 use kajiya::{
     asset::{image::LoadImage, mesh::*},
     backend::{vulkan::RenderBackendConfig, *},
     camera::*,
     frame_state::FrameState,
     image_cache::*,
-    input::*,
     lut_renderers::*,
     math::*,
     mmap::mmapped_asset,
@@ -175,7 +179,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
-        kajiya::imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
+        imgui_backend::ImGuiBackend::new(renderer.device().clone(), &window, &mut imgui);
     imgui_backend.create_graphics_resources(swapchain_extent);
     let imgui_backend = Arc::new(Mutex::new(imgui_backend));
     let mut show_gui = true;
@@ -298,11 +302,6 @@ fn main() -> anyhow::Result<()> {
                 let frame_state = FrameState {
                     camera_matrices: camera.calc_matrices(),
                     window_cfg,
-                    input: InputState {
-                        mouse: mouse_state,
-                        keys: keyboard.clone(),
-                        dt,
-                    },
                     //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
                     sun_direction: sun_direction_interp,
                 };

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use kajiya_backend::{
+use kajiya::backend::{
     ash::{self, version::DeviceV1_0, vk},
     Device, Image, ImageDesc, ImageViewDesc,
 };

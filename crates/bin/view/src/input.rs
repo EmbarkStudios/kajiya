@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use crate::math::*;
+use glam::Vec2;
 use std::collections::HashMap;
 pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
 

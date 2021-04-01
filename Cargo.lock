@@ -1182,7 +1182,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrayvec",
- "ash-imgui",
  "async-channel",
  "async-executor",
  "blue-noise-sampler",
@@ -1198,8 +1197,6 @@ dependencies = [
  "hassle-rs",
  "hotwatch",
  "image",
- "imgui",
- "imgui-winit-support",
  "kajiya-asset",
  "kajiya-backend",
  "kajiya-rg",
@@ -1215,7 +1212,6 @@ dependencies = [
  "structopt",
  "thiserror",
  "turbosloth",
- "winit",
 ]
 
 [[package]]
@@ -2234,9 +2230,11 @@ name = "view"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ash-imgui",
  "futures",
  "glam",
  "imgui",
+ "imgui-winit-support",
  "kajiya",
  "lazy_static",
  "log",
