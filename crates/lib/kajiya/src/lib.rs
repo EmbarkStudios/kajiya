@@ -12,6 +12,7 @@ pub mod renderers;
 pub mod viewport;
 pub mod world_render_passes;
 pub mod world_renderer;
+pub mod world_renderer_mmap_adapter;
 
 mod bindless_descriptor_set;
 mod buffer_builder;

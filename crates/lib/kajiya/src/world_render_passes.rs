@@ -55,7 +55,7 @@ impl WorldRenderer {
                     vk::Format::D24_UNORM_S8_UINT,
                     frame_desc.render_extent,
                 ));
-                crate::renderers::imageops::clear_depth(rg, &mut depth_img);
+                rg::imageops::clear_depth(rg, &mut depth_img);
 
                 GbufferDepth::new(normal, gbuffer, depth_img)
             };
@@ -181,7 +181,7 @@ impl WorldRenderer {
 
         if self.reset_reference_accumulation {
             self.reset_reference_accumulation = false;
-            crate::renderers::imageops::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
+            rg::imageops::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
         let tlas = self.prepare_top_level_acceleration(rg);

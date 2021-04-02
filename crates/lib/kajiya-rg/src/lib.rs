@@ -6,6 +6,7 @@ mod resource;
 mod resource_registry;
 mod temporal;
 
+pub mod imageops;
 pub mod renderer;
 
 pub use graph::*;

@@ -127,8 +127,8 @@ fn load_gpu_image_asset(
     device: Arc<kajiya_backend::Device>,
     asset: AssetRef<GpuImage::Flat>,
 ) -> Arc<Image> {
-    let asset = crate::mmap::mmapped_asset::<GpuImage::Flat>(&format!(
-        "baked/{:8.8x}.image",
+    let asset = crate::mmap::mmapped_asset::<GpuImage::Flat, _>(&format!(
+        "/baked/{:8.8x}.image",
         asset.identity()
     ))
     .unwrap();

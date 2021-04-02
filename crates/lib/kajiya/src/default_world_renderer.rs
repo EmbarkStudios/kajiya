@@ -19,7 +19,7 @@ impl WorldRenderer {
 
         {
             let image =
-                LoadImage::new("assets/images/bluenoise/256_256/LDR_RGBA_0.png")?.into_lazy();
+                LoadImage::new("/assets/images/bluenoise/256_256/LDR_RGBA_0.png")?.into_lazy();
             let blue_noise_img = smol::block_on(
                 UploadGpuImage {
                     image,

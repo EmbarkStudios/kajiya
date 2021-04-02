@@ -41,7 +41,7 @@ impl ImguiRenderer {
             ui_tex
         } else {
             let mut blank_img = rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]));
-            crate::renderers::imageops::clear_color(rg, &mut blank_img, [0.0f32; 4]);
+            rg::imageops::clear_color(rg, &mut blank_img, [0.0f32; 4]);
             blank_img
         }
     }

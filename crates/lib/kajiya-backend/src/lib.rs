@@ -9,6 +9,7 @@ pub mod transient_resource_cache;
 pub mod vulkan;
 
 pub use ash;
+pub use file::{canonical_path_from_vfs, set_vfs_mount_point};
 pub use gpu_allocator;
 pub use rspirv_reflect;
 pub use vk_sync;

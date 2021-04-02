@@ -1,12 +1,35 @@
 use anyhow::Context as _;
 use hotwatch::Hotwatch;
 use lazy_static::lazy_static;
-use std::{fs::File, path::PathBuf, sync::Mutex};
+use parking_lot::Mutex;
+use std::{fs::File, path::PathBuf};
 use turbosloth::*;
 
 lazy_static! {
     static ref FILE_WATCHER: Mutex<Hotwatch> =
         Mutex::new(Hotwatch::new_with_custom_delay(std::time::Duration::from_millis(100)).unwrap());
+}
+
+lazy_static! {
+    static ref VFS_MOUNT_POINT: Mutex<Option<PathBuf>> = Mutex::new(None);
+}
+
+pub fn set_vfs_mount_point(path: impl Into<PathBuf>) {
+    *VFS_MOUNT_POINT.lock() = Some(path.into());
+}
+
+pub fn canonical_path_from_vfs(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
+    let mut path = path.into();
+
+    if let Ok(rel_path) = path.strip_prefix("/") {
+        if let Some(vfs_mount_point) = VFS_MOUNT_POINT.lock().as_ref() {
+            path = vfs_mount_point.join(rel_path);
+        } else {
+            path = rel_path.to_owned();
+        }
+    }
+
+    path.canonicalize()
 }
 
 #[derive(Clone, Hash)]
@@ -16,7 +39,7 @@ pub struct LoadFile {
 
 impl LoadFile {
     pub fn new(path: impl Into<PathBuf>) -> std::io::Result<Self> {
-        let path = path.into().canonicalize()?;
+        let path = canonical_path_from_vfs(path)?;
         Ok(Self { path })
     }
 }
@@ -30,7 +53,6 @@ impl LazyWorker for LoadFile {
 
         FILE_WATCHER
             .lock()
-            .unwrap()
             .watch(self.path.clone(), move |event| {
                 if matches!(event, hotwatch::Event::Write(_)) {
                     invalidation_trigger();

@@ -1,10 +1,9 @@
+use crate::{self as rg, RenderGraph};
 use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
     vk_sync::AccessType,
     vulkan::image::*,
 };
-use kajiya_rg::{self as rg};
-use rg::RenderGraph;
 
 pub fn clear_depth(rg: &mut RenderGraph, img: &mut rg::Handle<Image>) {
     let mut pass = rg.add_pass("clear depth");

@@ -117,16 +117,18 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
         path: &str,
         parent_file: &Self::IncludeContext,
     ) -> std::result::Result<(String, Self::IncludeContext), failure::Error> {
-        let path = if let Some('/') = path.chars().next() {
-            path.chars().skip(1).collect()
+        let resolved_path = if let Some('/') = path.chars().next() {
+            path.to_owned()
         } else {
             let mut folder: RelativePathBuf = parent_file.into();
             folder.pop();
             folder.join(path).as_str().to_string()
         };
 
+        // println!("shader include '{}' resolved to '{}'", path, resolved_path);
+
         let blob = smol::block_on(
-            crate::file::LoadFile::new(&path)?
+            crate::file::LoadFile::new(&resolved_path)?
                 .into_lazy()
                 .eval(&self.ctx),
         )
@@ -134,7 +136,7 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
 
         String::from_utf8((*blob).clone())
             .map_err(|e| failure::format_err!("{}", e))
-            .map(|ok| (ok, path))
+            .map(|ok| (ok, resolved_path))
     }
 }
 

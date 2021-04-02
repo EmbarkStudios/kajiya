@@ -71,7 +71,7 @@ lazy_static::lazy_static! {
 
 pub struct RenderGraphOutput {
     pub main_img: ExportedHandle<Image>,
-    pub ui_img: ExportedHandle<Image>,
+    pub ui_img: Option<ExportedHandle<Image>>,
 }
 
 impl Renderer {
@@ -170,7 +170,9 @@ impl Renderer {
                         == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
                 );
 
-                let (ui_img, ui_img_access_type) = retired_rg.exported_resource(rg_output.ui_img);
+                let (ui_img, ui_img_access_type) = retired_rg.exported_resource(
+                    rg_output.ui_img.expect("ui_img must be Some at this stage"),
+                );
                 assert!(
                     ui_img_access_type
                         == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
@@ -328,7 +330,21 @@ impl Renderer {
             },
         );
 
-        self.rg_output = Some(prepare_render_graph(&mut rg));
+        self.rg_output = Some({
+            let mut output = prepare_render_graph(&mut rg);
+
+            if output.ui_img.is_none() {
+                let mut blank_img =
+                    rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]));
+                crate::imageops::clear_color(&mut rg, &mut blank_img, [0.0f32; 4]);
+                output.ui_img = Some(rg.export(
+                    blank_img,
+                    vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+                ));
+            }
+
+            output
+        });
 
         let (rg, temporal_rg_state) = rg.export_temporal();
 

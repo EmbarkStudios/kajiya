@@ -134,12 +134,13 @@ fn main() -> anyhow::Result<()> {
     let mut new_mouse_state: MouseState = Default::default();
 
     for instance in scene_desc.instances {
-        let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", instance.mesh))?;
+        let mesh =
+            mmapped_asset::<PackedTriMesh::Flat, _>(&format!("/baked/{}.mesh", instance.mesh))?;
         let mesh = world_renderer.add_mesh(mesh);
         world_renderer.add_instance(mesh, instance.position.into(), Quat::identity());
     }
 
-    let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    let car_mesh = mmapped_asset::<PackedTriMesh::Flat, _>("/baked/336_lrm.mesh")?;
     let car_mesh = world_renderer.add_mesh(car_mesh);
     let mut car_pos = Vec3::unit_y() * -0.01;
     let mut car_rot = 0.0f32;
@@ -370,7 +371,7 @@ fn main() -> anyhow::Result<()> {
 
                 match rg_renderer.prepare_frame(|rg| {
                     let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
-                    let ui_img = ui_renderer.prepare_render_graph(rg);
+                    let ui_img = Some(ui_renderer.prepare_render_graph(rg));
                     RenderGraphOutput { main_img, ui_img }
                 }) {
                     Ok(()) => {
