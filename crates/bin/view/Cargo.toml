@@ -8,14 +8,12 @@ edition = "2018"
 
 [dependencies]
 kajiya = { path = "../../lib/kajiya" }
-kajiya-imgui = { path = "../../lib/kajiya-imgui" }
+kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
 
 anyhow = "1.0"
-ash-imgui = { path = "../../lib/ash-imgui" }
 futures = "0.3"
 glam = "0.12"
 imgui = "0.7"
-imgui-winit-support = "0.7"
 lazy_static = "1.4"
 log = "0.4"
 parking_lot = "0.11"

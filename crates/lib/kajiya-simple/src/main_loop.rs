@@ -24,7 +24,7 @@ pub struct FrameContext<'a> {
     pub world_renderer: &'a mut WorldRenderer,
 
     #[cfg(feature = "dear-imgui")]
-    pub imgui: ImguiContext<'a>,
+    pub imgui: Option<ImguiContext<'a>>,
 }
 
 #[cfg(feature = "dear-imgui")]
@@ -195,17 +195,6 @@ impl SimpleMainLoop {
                     let dt = dt_duration.as_secs_f32();
                     last_frame_instant = now;
 
-                    /*keyboard.update(std::mem::take(&mut keyboard_events), dt);
-                    mouse_state.update(&new_mouse_state);
-                    new_mouse_state = mouse_state;
-
-                    let input_state = InputState {
-                        mouse: mouse_state,
-                        keys: keyboard.clone(),
-                        dt,
-                    };
-                    camera.update(&input_state);*/
-
                     let frame_desc = frame_fn(FrameContext {
                         dt,
                         render_extent,
@@ -213,13 +202,13 @@ impl SimpleMainLoop {
                         world_renderer: &mut world_renderer,
 
                         #[cfg(feature = "dear-imgui")]
-                        imgui: ImguiContext {
+                        imgui: Some(ImguiContext {
                             imgui: &mut optional.imgui,
                             imgui_backend: &mut optional.imgui_backend,
                             ui_renderer: &mut ui_renderer,
                             dt,
                             window: &window,
-                        },
+                        }),
                     });
 
                     events.clear();

@@ -2219,13 +2219,11 @@ name = "view"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ash-imgui",
  "futures",
  "glam",
  "imgui",
- "imgui-winit-support",
  "kajiya",
- "kajiya-imgui",
+ "kajiya-simple",
  "lazy_static",
  "log",
  "parking_lot",
