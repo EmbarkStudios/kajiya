@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/bin/bake",
+    "crates/bin/hello",
     "crates/bin/view",
 
     "crates/lib/kajiya-asset",

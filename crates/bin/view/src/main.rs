@@ -3,28 +3,12 @@ mod input;
 
 use anyhow::Context;
 
-use input::*;
-use kajiya::{
-    backend::*,
-    camera::*,
-    frame_desc::WorldFrameDesc,
-    math::*,
-    world_renderer::{RenderDebugMode, RenderMode},
-};
-
 use imgui::im_str;
-
+use input::*;
 use kajiya_simple::*;
-#[allow(unused_imports)]
-use log::{debug, error, info, trace, warn};
 
 use std::fs::File;
 use structopt::StructOpt;
-
-use winit::{
-    event::{ElementState, KeyboardInput, MouseButton, WindowEvent},
-    window::WindowBuilder,
-};
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "view", about = "Kajiya scene viewer.")]
@@ -144,7 +128,7 @@ fn main() -> anyhow::Result<()> {
         for event in ctx.events {
             match event {
                 WindowEvent::KeyboardInput { input, .. } => {
-                    keyboard_events.push(input.clone());
+                    keyboard_events.push(*input);
                 }
                 WindowEvent::CursorMoved { position, .. } => {
                     new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
@@ -321,7 +305,7 @@ fn main() -> anyhow::Result<()> {
         WorldFrameDesc {
             camera_matrices: camera.calc_matrices(),
             render_extent: ctx.render_extent,
-            sun_direction: sun_direction,
+            sun_direction,
         }
     })
 }

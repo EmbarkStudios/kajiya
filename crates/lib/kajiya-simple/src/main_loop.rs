@@ -38,7 +38,7 @@ pub struct ImguiContext<'a> {
 
 #[cfg(feature = "dear-imgui")]
 impl<'a> ImguiContext<'a> {
-    pub fn frame<'ui_ctx>(mut self, callback: impl FnOnce(&imgui::Ui<'_>)) {
+    pub fn frame(mut self, callback: impl FnOnce(&imgui::Ui<'_>)) {
         let ui = self
             .imgui_backend
             .prepare_frame(&self.window, &mut self.imgui, self.dt);
