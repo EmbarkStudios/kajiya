@@ -95,7 +95,7 @@ impl ImGuiBackend {
     pub fn destroy_graphics_resources(&mut self) {
         let device = &self.device.raw;
 
-        println!("device_wait_idle");
+        log::info!("device_wait_idle");
         unsafe { device.device_wait_idle() }.unwrap();
 
         let mut inner = self.inner.lock();

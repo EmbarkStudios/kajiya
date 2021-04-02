@@ -19,7 +19,7 @@ pub fn motion_blur(
 
     SimpleRenderPass::new_compute(
         rg.add_pass("velocity reduce x"),
-        "/assets/shaders/motion_blur/velocity_reduce_x.hlsl",
+        "/shaders/motion_blur/velocity_reduce_x.hlsl",
     )
     .read(reprojection_map)
     .write(&mut velocity_reduced_x)
@@ -34,7 +34,7 @@ pub fn motion_blur(
 
     SimpleRenderPass::new_compute(
         rg.add_pass("velocity reduce y"),
-        "/assets/shaders/motion_blur/velocity_reduce_y.hlsl",
+        "/shaders/motion_blur/velocity_reduce_y.hlsl",
     )
     .read(&velocity_reduced_x)
     .write(&mut velocity_reduced_y)
@@ -44,7 +44,7 @@ pub fn motion_blur(
 
     SimpleRenderPass::new_compute(
         rg.add_pass("velocity dilate"),
-        "/assets/shaders/motion_blur/velocity_dilate.hlsl",
+        "/shaders/motion_blur/velocity_dilate.hlsl",
     )
     .read(&velocity_reduced_y)
     .write(&mut velocity_dilated)
@@ -54,7 +54,7 @@ pub fn motion_blur(
 
     SimpleRenderPass::new_compute(
         rg.add_pass("motion blur"),
-        "/assets/shaders/motion_blur/motion_blur.hlsl",
+        "/shaders/motion_blur/motion_blur.hlsl",
     )
     .read(input)
     .read(&reprojection_map)

@@ -2,7 +2,7 @@ use anyhow::Context as _;
 use hotwatch::Hotwatch;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
-use std::{fs::File, path::PathBuf};
+use std::{collections::HashMap, fs::File, path::PathBuf};
 use turbosloth::*;
 
 lazy_static! {
@@ -11,25 +11,43 @@ lazy_static! {
 }
 
 lazy_static! {
-    static ref VFS_MOUNT_POINT: Mutex<Option<PathBuf>> = Mutex::new(None);
+    static ref VFS_MOUNT_POINTS: Mutex<HashMap<String, PathBuf>> = Mutex::new(
+        vec![
+            ("/shaders".to_owned(), PathBuf::from("assets/shaders")),
+            ("/images".to_owned(), PathBuf::from("assets/images")),
+            ("/baked".to_owned(), PathBuf::from("baked"))
+        ]
+        .into_iter()
+        .collect()
+    );
 }
 
-pub fn set_vfs_mount_point(path: impl Into<PathBuf>) {
-    *VFS_MOUNT_POINT.lock() = Some(path.into());
+pub fn set_vfs_mount_point(mount_point: impl Into<String>, path: impl Into<PathBuf>) {
+    VFS_MOUNT_POINTS
+        .lock()
+        .insert(mount_point.into(), path.into());
 }
 
-pub fn canonical_path_from_vfs(path: impl Into<PathBuf>) -> std::io::Result<PathBuf> {
-    let mut path = path.into();
+pub fn set_standard_vfs_mount_points(kajiya_path: impl Into<PathBuf>) {
+    let kajiya_path = kajiya_path.into();
+    set_vfs_mount_point("/shaders", kajiya_path.join("assets/shaders"));
+    set_vfs_mount_point("/images", kajiya_path.join("assets/images"));
+}
 
-    if let Ok(rel_path) = path.strip_prefix("/") {
-        if let Some(vfs_mount_point) = VFS_MOUNT_POINT.lock().as_ref() {
-            path = vfs_mount_point.join(rel_path);
-        } else {
-            path = rel_path.to_owned();
+pub fn canonical_path_from_vfs(path: impl Into<PathBuf>) -> anyhow::Result<PathBuf> {
+    let path = path.into();
+
+    for (mount_point, mounted_path) in VFS_MOUNT_POINTS.lock().iter() {
+        if let Ok(rel_path) = path.strip_prefix(mount_point) {
+            return Ok(mounted_path.join(rel_path).canonicalize()?);
         }
     }
 
-    path.canonicalize()
+    if path.strip_prefix("/").is_ok() {
+        anyhow::bail!("No vfs mount point for '{:?}'", path);
+    }
+
+    Ok(path)
 }
 
 #[derive(Clone, Hash)]
@@ -38,7 +56,7 @@ pub struct LoadFile {
 }
 
 impl LoadFile {
-    pub fn new(path: impl Into<PathBuf>) -> std::io::Result<Self> {
+    pub fn new(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
         let path = canonical_path_from_vfs(path)?;
         Ok(Self { path })
     }

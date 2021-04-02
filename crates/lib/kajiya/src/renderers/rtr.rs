@@ -101,12 +101,12 @@ impl RtrRenderer {
 
         SimpleRenderPass::new_rt(
             rg.add_pass("reflection trace"),
-            "/assets/shaders/rtr/reflection.rgen.hlsl",
+            "/shaders/rtr/reflection.rgen.hlsl",
             &[
-                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
-                "/assets/shaders/rt/shadow.rmiss.hlsl",
+                "/shaders/rt/gbuffer.rmiss.hlsl",
+                "/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
+            &["/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
@@ -145,7 +145,7 @@ impl RtrRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection resolve"),
-            "/assets/shaders/rtr/resolve.hlsl",
+            "/shaders/rtr/resolve.hlsl",
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
@@ -165,7 +165,7 @@ impl RtrRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection temporal"),
-            "/assets/shaders/rtr/temporal_filter.hlsl",
+            "/shaders/rtr/temporal_filter.hlsl",
         )
         .read(&resolved_tex)
         .read(&history_tex)
@@ -182,7 +182,7 @@ impl RtrRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection temporal2"),
-            "/assets/shaders/rtr/temporal_filter2.hlsl",
+            "/shaders/rtr/temporal_filter2.hlsl",
         )
         .read(&temporal_output_tex)
         .read(&history2_tex)
@@ -195,7 +195,7 @@ impl RtrRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection cleanup"),
-            "/assets/shaders/rtr/spatial_cleanup.hlsl",
+            "/shaders/rtr/spatial_cleanup.hlsl",
         )
         .read(&temporal2_output_tex)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)

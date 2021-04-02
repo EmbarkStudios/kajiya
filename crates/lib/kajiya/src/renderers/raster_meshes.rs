@@ -37,13 +37,13 @@ pub fn raster_meshes(
     let pipeline = pass.register_raster_pipeline(
         &[
             PipelineShader {
-                code: "/assets/shaders/raster_simple_vs.hlsl",
+                code: "/shaders/raster_simple_vs.hlsl",
                 desc: PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
                     .build()
                     .unwrap(),
             },
             PipelineShader {
-                code: "/assets/shaders/raster_simple_ps.hlsl",
+                code: "/shaders/raster_simple_ps.hlsl",
                 desc: PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
                     .build()
                     .unwrap(),

@@ -94,7 +94,7 @@ impl RtdgiRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi temporal"),
-            "/assets/shaders/rtdgi/temporal_filter.hlsl",
+            "/shaders/rtdgi/temporal_filter.hlsl",
         )
         .read(&input_color)
         .read(&history_tex)
@@ -132,7 +132,7 @@ impl RtdgiRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi reproject"),
-            "/assets/shaders/rtdgi/fullres_reproject.hlsl",
+            "/shaders/rtdgi/fullres_reproject.hlsl",
         )
         .read(&history_tex)
         .read(reprojection_map)
@@ -157,7 +157,7 @@ impl RtdgiRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi temporal2"),
-            "/assets/shaders/rtdgi/temporal_filter2.hlsl",
+            "/shaders/rtdgi/temporal_filter2.hlsl",
         )
         .read(&input_color)
         .read(&reprojected_history_tex)
@@ -190,7 +190,7 @@ impl RtdgiRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi spatial"),
-            "/assets/shaders/rtdgi/spatial_filter.hlsl",
+            "/shaders/rtdgi/spatial_filter.hlsl",
         )
         .read(input_color)
         .read(&*half_view_normal_tex)
@@ -251,12 +251,12 @@ impl RtdgiRenderer {
 
         SimpleRenderPass::new_rt(
             rg.add_pass("rtdgi trace"),
-            "/assets/shaders/rtdgi/trace_diffuse.rgen.hlsl",
+            "/shaders/rtdgi/trace_diffuse.rgen.hlsl",
             &[
-                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
-                "/assets/shaders/rt/shadow.rmiss.hlsl",
+                "/shaders/rt/gbuffer.rmiss.hlsl",
+                "/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
+            &["/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
@@ -297,7 +297,7 @@ impl RtdgiRenderer {
         );
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi upsample"),
-            "/assets/shaders/rtdgi/upsample.hlsl",
+            "/shaders/rtdgi/upsample.hlsl",
         )
         .read(&filtered_tex)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)

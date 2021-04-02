@@ -54,6 +54,7 @@ fn main() -> anyhow::Result<()> {
     let mut kajiya = SimpleMainLoop::builder()
         .vsync(!opt.no_vsync)
         .graphics_debugging(!opt.no_debug)
+        .default_log_level(log::LevelFilter::Info)
         .build(
             WindowBuilder::new()
                 .with_title("kajiya")

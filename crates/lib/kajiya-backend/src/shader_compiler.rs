@@ -128,7 +128,10 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
         // println!("shader include '{}' resolved to '{}'", path, resolved_path);
 
         let blob = smol::block_on(
-            crate::file::LoadFile::new(&resolved_path)?
+            crate::file::LoadFile::new(&resolved_path)
+                .map_err(|err| {
+                    failure::err_msg(format!("Failed loading shader include {}: {:?}", path, err))
+                })?
                 .into_lazy()
                 .eval(&self.ctx),
         )
@@ -189,7 +192,7 @@ fn compile_generic_shader_hlsl_impl(
     )
     .map_err(|err| anyhow!("{}", err))?;
 
-    println!("dxc took {:?} for {}", t0.elapsed(), name,);
+    log::trace!("dxc took {:?} for {}", t0.elapsed(), name,);
 
     Ok(spirv)
 }

@@ -84,7 +84,7 @@ pub fn calculate_reprojection_map(
 
     SimpleRenderPass::new_compute(
         rg.add_pass("reprojection map"),
-        "/assets/shaders/calculate_reprojection_map.hlsl",
+        "/shaders/calculate_reprojection_map.hlsl",
     )
     .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
     .read(&gbuffer_depth.geometric_normal)

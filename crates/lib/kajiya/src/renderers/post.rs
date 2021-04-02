@@ -17,7 +17,7 @@ pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Hand
 
     let mut output = rg.create(pyramid_desc);
 
-    SimpleRenderPass::new_compute(rg.add_pass("blur0"), "/assets/shaders/blur.hlsl")
+    SimpleRenderPass::new_compute(rg.add_pass("blur0"), "/shaders/blur.hlsl")
         .read(input)
         .write_view(
             &mut output,
@@ -32,7 +32,7 @@ pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Hand
 
         SimpleRenderPass::new_compute(
             rg.add_pass(&format!("blur{}", target_mip)),
-            "/assets/shaders/blur.hlsl",
+            "/shaders/blur.hlsl",
         )
         .read_view(
             &output,
@@ -75,7 +75,7 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
 
         SimpleRenderPass::new_compute(
             rg.add_pass(&format!("rev_blur{}", target_mip)),
-            "/assets/shaders/rev_blur.hlsl",
+            "/shaders/rev_blur.hlsl",
         )
         .read_view(
             &in_pyramid,
@@ -111,7 +111,7 @@ fn edge_preserving_filter_luminance(
 
     SimpleRenderPass::new_compute(
         rg.add_pass("log luminance"),
-        "/assets/shaders/tonemap/extract_log_luminance.hlsl",
+        "/shaders/tonemap/extract_log_luminance.hlsl",
     )
     .read(&input)
     .write(&mut lum_tex)
@@ -126,7 +126,7 @@ fn edge_preserving_filter_luminance(
 
         SimpleRenderPass::new_compute(
             rg.add_pass("a-trous"),
-            "/assets/shaders/tonemap/luminance-a-trous.hlsl",
+            "/shaders/tonemap/luminance-a-trous.hlsl",
         )
         .read(&input)
         .read(&lum_tex)
@@ -155,22 +155,19 @@ pub fn post_process(
 
     //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
 
-    SimpleRenderPass::new_compute(
-        rg.add_pass("post combine"),
-        "/assets/shaders/post_combine.hlsl",
-    )
-    .read(input)
-    .read(&blur_pyramid)
-    .read(&rev_blur_pyramid)
-    //.read(&blurred_luminance)
-    .write(&mut output)
-    .raw_descriptor_set(1, bindless_descriptor_set)
-    .constants((
-        output.desc().extent_inv_extent_2d(),
-        blur_pyramid_mip_count,
-        ev_shift,
-    ))
-    .dispatch(output.desc().extent);
+    SimpleRenderPass::new_compute(rg.add_pass("post combine"), "/shaders/post_combine.hlsl")
+        .read(input)
+        .read(&blur_pyramid)
+        .read(&rev_blur_pyramid)
+        //.read(&blurred_luminance)
+        .write(&mut output)
+        .raw_descriptor_set(1, bindless_descriptor_set)
+        .constants((
+            output.desc().extent_inv_extent_2d(),
+            blur_pyramid_mip_count,
+            ev_shift,
+        ))
+        .dispatch(output.desc().extent);
 
     output
 }

@@ -5,7 +5,7 @@
 ) -> Handle<Image> {
     let mut pass = rg.add_pass();
 
-    let pipeline = pass.register_compute_pipeline("/assets/shaders/sdf/sdf_raymarch_gbuffer.hlsl");
+    let pipeline = pass.register_compute_pipeline("/shaders/sdf/sdf_raymarch_gbuffer.hlsl");
 
     let sdf_ref = pass.read(
         sdf_img,
@@ -35,9 +35,9 @@ pub fn edit_sdf(rg: &mut RenderGraph, sdf_img: &mut Handle<Image>, clear: bool) 
     let sdf_img_ref = pass.write(sdf_img, AccessType::ComputeShaderWrite);
 
     let pipeline_path = if clear {
-        "/assets/shaders/sdf/gen_empty_sdf.hlsl"
+        "/shaders/sdf/gen_empty_sdf.hlsl"
     } else {
-        "/assets/shaders/sdf/edit_sdf.hlsl"
+        "/shaders/sdf/edit_sdf.hlsl"
     };
 
     let pipeline = pass.register_compute_pipeline(pipeline_path);
@@ -62,7 +62,7 @@ fn clear_sdf_bricks_meta(rg: &mut RenderGraph) -> Handle<Buffer> {
     let brick_meta_buf_ref = pass.write(&mut brick_meta_buf, AccessType::ComputeShaderWrite);
 
     let clear_meta_pipeline =
-        pass.register_compute_pipeline("/assets/shaders/sdf/clear_bricks_meta.hlsl");
+        pass.register_compute_pipeline("/shaders/sdf/clear_bricks_meta.hlsl");
 
     pass.render(move |api| {
         let pipeline = api.bind_compute_pipeline(
@@ -99,7 +99,7 @@ pub fn calculate_sdf_bricks_meta(rg: &mut RenderGraph, sdf_img: &Handle<Image>) 
     });
     let brick_inst_buf_ref = pass.write(&mut brick_inst_buf, AccessType::ComputeShaderWrite);
 
-    let calc_meta_pipeline = pass.register_compute_pipeline("/assets/shaders/sdf/find_bricks.hlsl");
+    let calc_meta_pipeline = pass.register_compute_pipeline("/shaders/sdf/find_bricks.hlsl");
 
     pass.render(move |api| {
         let pipeline = api.bind_compute_pipeline(calc_meta_pipeline.into_binding().descriptor_set(
@@ -138,13 +138,13 @@ pub fn raster_sdf(
     let pipeline = pass.register_raster_pipeline(
         &[
             RasterPipelineShader {
-                code: "/assets/shaders/raster_simple_vs.hlsl",
+                code: "/shaders/raster_simple_vs.hlsl",
                 desc: RasterShaderDesc::builder(RasterStage::Vertex)
                     .build()
                     .unwrap(),
             },
             RasterPipelineShader {
-                code: "/assets/shaders/raster_simple_ps.hlsl",
+                code: "/shaders/raster_simple_ps.hlsl",
                 desc: RasterShaderDesc::builder(RasterStage::Pixel)
                     .build()
                     .unwrap(),

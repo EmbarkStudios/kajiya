@@ -8,7 +8,7 @@ struct {
     float2 output_tex_size;
 } push_constants;
 
-#include "../../../assets/shaders/inc/image.hlsl"
+#include "../../../shaders/inc/image.hlsl"
 
 float linear_to_srgb(float v) {
     if (v <= 0.0031308) {

@@ -96,7 +96,7 @@ impl CsgiRenderer {
 
         /*SimpleRenderPass::new_compute(
             rg.add_pass("csgi clear"),
-            "/assets/shaders/csgi/clear_volume.hlsl",
+            "/shaders/csgi/clear_volume.hlsl",
         )
         .write(&mut direct_cascade0)
         .dispatch(direct_cascade0.desc().extent);*/
@@ -105,12 +105,12 @@ impl CsgiRenderer {
 
         SimpleRenderPass::new_rt(
             rg.add_pass("csgi trace"),
-            "/assets/shaders/csgi/trace_volume.rgen.hlsl",
+            "/shaders/csgi/trace_volume.rgen.hlsl",
             &[
-                "/assets/shaders/rt/gbuffer.rmiss.hlsl",
-                "/assets/shaders/rt/shadow.rmiss.hlsl",
+                "/shaders/rt/gbuffer.rmiss.hlsl",
+                "/shaders/rt/shadow.rmiss.hlsl",
             ],
-            &["/assets/shaders/rt/gbuffer.rchit.hlsl"],
+            &["/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&indirect_cascade_combined0)
         .write(&mut direct_cascade0)
@@ -125,18 +125,15 @@ impl CsgiRenderer {
             ],
         );
 
-        SimpleRenderPass::new_compute(
-            rg.add_pass("csgi sweep"),
-            "/assets/shaders/csgi/sweep_volume.hlsl",
-        )
-        .read(&direct_cascade0)
-        .read(sky_cube)
-        .write(&mut indirect_cascade0)
-        .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
+        SimpleRenderPass::new_compute(rg.add_pass("csgi sweep"), "/shaders/csgi/sweep_volume.hlsl")
+            .read(&direct_cascade0)
+            .read(sky_cube)
+            .write(&mut indirect_cascade0)
+            .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("csgi diagonal sweep"),
-            "/assets/shaders/csgi/diagonal_sweep_volume.hlsl",
+            "/shaders/csgi/diagonal_sweep_volume.hlsl",
         )
         .read(&direct_cascade0)
         .read(sky_cube)
@@ -149,7 +146,7 @@ impl CsgiRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("csgi subray combine"),
-            "/assets/shaders/csgi/subray_combine.hlsl",
+            "/shaders/csgi/subray_combine.hlsl",
         )
         .read(&indirect_cascade0)
         .read(&direct_cascade0)
@@ -176,13 +173,13 @@ impl CsgiVolume {
         let pipeline = pass.register_raster_pipeline(
             &[
                 PipelineShader {
-                    code: "/assets/shaders/csgi/raster_voxels_vs.hlsl",
+                    code: "/shaders/csgi/raster_voxels_vs.hlsl",
                     desc: PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
                         .build()
                         .unwrap(),
                 },
                 PipelineShader {
-                    code: "/assets/shaders/csgi/raster_voxels_ps.hlsl",
+                    code: "/shaders/csgi/raster_voxels_ps.hlsl",
                     desc: PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
                         .build()
                         .unwrap(),

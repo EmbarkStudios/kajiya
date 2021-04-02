@@ -451,7 +451,7 @@ impl Device {
                 )
                 .expect("queue submit failed.");
 
-            println!("device_wait_idle");
+            log::info!("device_wait_idle");
             self.raw.device_wait_idle().unwrap();
         }
     }
@@ -524,7 +524,7 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            println!("device_wait_idle");
+            log::info!("device_wait_idle");
             let _ = self.raw.device_wait_idle();
         }
     }

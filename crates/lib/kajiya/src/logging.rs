@@ -1,4 +1,4 @@
-pub fn set_up_logging() -> anyhow::Result<()> {
+pub fn set_up_logging(default_log_level: log::LevelFilter) -> anyhow::Result<()> {
     use fern::colors::{Color, ColoredLevelConfig};
 
     // configure colors for the whole line
@@ -33,12 +33,12 @@ pub fn set_up_logging() -> anyhow::Result<()> {
         })
         // set the default log level. to filter out verbose log messages from dependencies, set
         // this to Warn and overwrite the log level for your crate.
-        .level(log::LevelFilter::Info)
+        .level(default_log_level)
         // change log levels for individual modules. Note: This looks for the record's target
         // field which defaults to the module path but can be overwritten with the `target`
         // parameter:
         // `info!(target="special_target", "This log message is about special_target");`
-        .level_for("kajiya::device", log::LevelFilter::Trace)
+        // .level_for("kajiya::device", log::LevelFilter::Trace)
         // output to stdout
         .chain(std::io::stdout());
 

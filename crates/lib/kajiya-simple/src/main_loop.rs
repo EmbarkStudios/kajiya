@@ -58,6 +58,7 @@ struct MainLoopOptional {
 pub struct SimpleMainLoopBuilder {
     vsync: bool,
     graphics_debugging: bool,
+    default_log_level: log::LevelFilter,
 }
 
 impl Default for SimpleMainLoopBuilder {
@@ -71,6 +72,7 @@ impl SimpleMainLoopBuilder {
         SimpleMainLoopBuilder {
             vsync: true,
             graphics_debugging: false,
+            default_log_level: log::LevelFilter::Warn,
         }
     }
 
@@ -81,6 +83,11 @@ impl SimpleMainLoopBuilder {
 
     pub fn graphics_debugging(mut self, graphics_debugging: bool) -> Self {
         self.graphics_debugging = graphics_debugging;
+        self
+    }
+
+    pub fn default_log_level(mut self, default_log_level: log::LevelFilter) -> Self {
+        self.default_log_level = default_log_level;
         self
     }
 
@@ -111,7 +118,7 @@ impl SimpleMainLoop {
         builder: SimpleMainLoopBuilder,
         window_builder: WindowBuilder,
     ) -> anyhow::Result<Self> {
-        kajiya::logging::set_up_logging()?;
+        kajiya::logging::set_up_logging(builder.default_log_level)?;
         std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
 
         let event_loop = EventLoop::new();

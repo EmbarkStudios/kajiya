@@ -14,7 +14,7 @@ pub fn extract_half_res_gbuffer_view_normal_rgba8(
     );
     SimpleRenderPass::new_compute(
         rg.add_pass("extract view normal/2"),
-        "/assets/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
+        "/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
     )
     .read(gbuffer)
     .write(&mut output_tex)
@@ -37,16 +37,13 @@ pub fn extract_half_res_depth(
             .usage(vk::ImageUsageFlags::empty())
             .format(vk::Format::R32_SFLOAT),
     );
-    SimpleRenderPass::new_compute(
-        rg.add_pass("downscale r"),
-        "/assets/shaders/downscale_r.hlsl",
-    )
-    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-    .write(&mut output_tex)
-    .constants((
-        depth.desc().extent_inv_extent_2d(),
-        output_tex.desc().extent_inv_extent_2d(),
-    ))
-    .dispatch(output_tex.desc().extent);
+    SimpleRenderPass::new_compute(rg.add_pass("downscale r"), "/shaders/downscale_r.hlsl")
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .write(&mut output_tex)
+        .constants((
+            depth.desc().extent_inv_extent_2d(),
+            output_tex.desc().extent_inv_extent_2d(),
+        ))
+        .dispatch(output_tex.desc().extent);
     output_tex
 }

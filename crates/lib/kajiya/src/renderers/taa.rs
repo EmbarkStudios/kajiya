@@ -39,7 +39,7 @@ impl TaaRenderer {
             .temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(input_tex.desc().extent_2d()));
 
-        SimpleRenderPass::new_compute(rg.add_pass("taa"), "/assets/shaders/taa/taa.hlsl")
+        SimpleRenderPass::new_compute(rg.add_pass("taa"), "/shaders/taa/taa.hlsl")
             .read(&input_tex)
             .read(&history_tex)
             .read(reprojection_map)
