@@ -35,6 +35,10 @@ pub enum DescriptorSetBinding {
         buffer: vk::DescriptorBufferInfo,
         offset: u32,
     },
+    DynamicStorageBuffer {
+        buffer: vk::DescriptorBufferInfo,
+        offset: u32,
+    },
 }
 
 #[derive(Default)]
@@ -214,6 +218,15 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                             buffer: vk::DescriptorBufferInfo::builder()
                                 .buffer(self.resources.dynamic_constants.buffer.raw)
                                 .range(16384)
+                                .build(),
+                            offset: *offset,
+                        }
+                    }
+                    RenderPassBinding::DynamicConstantsStorageBuffer(offset) => {
+                        DescriptorSetBinding::DynamicStorageBuffer {
+                            buffer: vk::DescriptorBufferInfo::builder()
+                                .buffer(self.resources.dynamic_constants.buffer.raw)
+                                .range(vk::WHOLE_SIZE)
                                 .build(),
                             offset: *offset,
                         }
@@ -432,6 +445,7 @@ pub enum RenderPassBinding {
     Buffer(RenderPassBufferBinding),
     RayTracingAcceleration(RenderPassRayTracingAccelerationBinding),
     DynamicConstants(u32),
+    DynamicConstantsStorageBuffer(u32),
 }
 
 pub struct BoundRayTracingPipeline<'api, 'a, 'exec_params, 'constants> {
@@ -613,6 +627,13 @@ fn bind_descriptor_set(
                             dynamic_offsets.push(*offset);
                             write
                                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                                .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
+                                .build()
+                        }
+                        DescriptorSetBinding::DynamicStorageBuffer { buffer, offset } => {
+                            dynamic_offsets.push(*offset);
+                            write
+                                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                                 .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))
                                 .build()
                         }

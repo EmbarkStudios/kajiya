@@ -85,6 +85,7 @@ impl Renderer {
                     BufferDesc {
                         size: DYNAMIC_CONSTANTS_SIZE_BYTES * 2,
                         usage: vk::BufferUsageFlags::UNIFORM_BUFFER
+                            | vk::BufferUsageFlags::STORAGE_BUFFER
                             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                         mapped: true,
                     },

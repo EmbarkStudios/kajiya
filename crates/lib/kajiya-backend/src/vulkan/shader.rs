@@ -158,7 +158,11 @@ pub fn create_descriptor_set_layouts(
                                     vk::DescriptorType::STORAGE_IMAGE
                                 }
                                 rspirv_reflect::DescriptorType::STORAGE_BUFFER => {
-                                    vk::DescriptorType::STORAGE_BUFFER
+                                    if binding.name.ends_with("_dyn") {
+                                        vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
+                                    } else {
+                                        vk::DescriptorType::STORAGE_BUFFER
+                                    }
                                 }
                                 _ => unimplemented!("{:?}", binding),
                             })

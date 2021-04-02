@@ -10,7 +10,7 @@ use crate::{
     },
     viewport::ViewConstants,
 };
-use glam::{Vec2, Vec3};
+use glam::{Mat3, Quat, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
     ash::{
@@ -62,7 +62,9 @@ const TLAS_PREALLOCATE_BYTES: usize = 1024 * 1024 * 32;
 
 #[derive(Clone, Copy)]
 pub struct MeshInstance {
+    pub rotation: Mat3,
     pub position: Vec3,
+    pub prev_rotation: Mat3,
     pub prev_position: Vec3,
     pub mesh: MeshHandle,
 }
@@ -462,19 +464,27 @@ impl WorldRenderer {
         MeshHandle(mesh_idx)
     }
 
-    pub fn add_instance(&mut self, mesh: MeshHandle, pos: Vec3) -> InstanceHandle {
+    pub fn add_instance(
+        &mut self,
+        mesh: MeshHandle,
+        position: Vec3,
+        rotation: Quat,
+    ) -> InstanceHandle {
         let handle = InstanceHandle(self.instances.len());
         self.instances.push(MeshInstance {
-            position: pos,
-            prev_position: pos,
+            rotation: Mat3::from_quat(rotation),
+            position,
+            prev_rotation: Mat3::identity(),
+            prev_position: position,
             mesh,
         });
         handle
     }
 
     #[allow(dead_code)]
-    pub fn set_instance_transform(&mut self, inst: InstanceHandle, pos: Vec3) {
-        self.instances[inst.0].position = pos;
+    pub fn set_instance_transform(&mut self, inst: InstanceHandle, position: Vec3, rotation: Quat) {
+        self.instances[inst.0].position = position;
+        self.instances[inst.0].rotation = Mat3::from_quat(rotation);
     }
 
     pub(crate) fn build_ray_tracing_top_level_acceleration(&mut self) {
@@ -489,6 +499,7 @@ impl WorldRenderer {
                         .map(|inst| RayTracingInstanceDesc {
                             blas: self.mesh_blas[inst.mesh.0].clone(),
                             position: inst.position,
+                            rotation: inst.rotation,
                             mesh_index: inst.mesh.0 as u32,
                         })
                         .collect::<Vec<_>>(),
@@ -521,6 +532,7 @@ impl WorldRenderer {
             .map(|inst| RayTracingInstanceDesc {
                 blas: self.mesh_blas[inst.mesh.0].clone(),
                 position: inst.position,
+                rotation: inst.rotation,
                 mesh_index: inst.mesh.0 as u32,
             })
             .collect::<Vec<_>>();
@@ -555,6 +567,7 @@ impl WorldRenderer {
     fn store_prev_mesh_transforms(&mut self) {
         for inst in &mut self.instances {
             inst.prev_position = inst.position;
+            inst.prev_rotation = inst.rotation;
         }
     }
 

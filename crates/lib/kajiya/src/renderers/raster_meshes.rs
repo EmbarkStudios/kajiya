@@ -6,7 +6,7 @@ use kajiya_backend::{
     vulkan::{buffer::*, image::*, shader::*},
 };
 use kajiya_rg::{self as rg};
-use rg::{IntoRenderPassPipelineBinding, RenderGraph};
+use rg::{IntoRenderPassPipelineBinding, RenderGraph, RenderPassBinding};
 
 use crate::world_renderer::MeshInstance;
 
@@ -52,7 +52,7 @@ pub fn raster_meshes(
         RasterPipelineDesc::builder()
             .render_pass(render_pass.clone())
             .face_cull(true)
-            .push_constants_bytes(7 * std::mem::size_of::<u32>()),
+            .push_constants_bytes(2 * std::mem::size_of::<u32>()),
     );
 
     let meshes: Vec<UploadedTriMesh> = mesh_data.meshes.to_vec();
@@ -76,6 +76,42 @@ pub fn raster_meshes(
     pass.render(move |api| {
         let [width, height, _] = gbuffer_ref.desc().extent;
 
+        let instance_transforms_offset =
+            api.dynamic_constants()
+                .push_from_iter(instances.iter().map(|inst| {
+                    let transform: [f32; 12] = [
+                        inst.rotation.x_axis.x,
+                        inst.rotation.y_axis.x,
+                        inst.rotation.z_axis.x,
+                        inst.position.x,
+                        inst.rotation.x_axis.y,
+                        inst.rotation.y_axis.y,
+                        inst.rotation.z_axis.y,
+                        inst.position.y,
+                        inst.rotation.x_axis.z,
+                        inst.rotation.y_axis.z,
+                        inst.rotation.z_axis.z,
+                        inst.position.z,
+                    ];
+
+                    let prev_transform: [f32; 12] = [
+                        inst.prev_rotation.x_axis.x,
+                        inst.prev_rotation.y_axis.x,
+                        inst.prev_rotation.z_axis.x,
+                        inst.prev_position.x,
+                        inst.prev_rotation.x_axis.y,
+                        inst.prev_rotation.y_axis.y,
+                        inst.prev_rotation.z_axis.y,
+                        inst.prev_position.y,
+                        inst.prev_rotation.x_axis.z,
+                        inst.prev_rotation.y_axis.z,
+                        inst.prev_rotation.z_axis.z,
+                        inst.prev_position.z,
+                    ];
+
+                    (transform, prev_transform)
+                }));
+
         api.begin_render_pass(
             &*render_pass,
             [width, height],
@@ -98,7 +134,12 @@ pub fn raster_meshes(
         let pipeline = api.bind_raster_pipeline(
             pipeline
                 .into_binding()
-                .descriptor_set(0, &[])
+                .descriptor_set(
+                    0,
+                    &[RenderPassBinding::DynamicConstantsStorageBuffer(
+                        instance_transforms_offset,
+                    )],
+                )
                 .raw_descriptor_set(1, bindless_descriptor_set),
         );
 
@@ -106,7 +147,7 @@ pub fn raster_meshes(
             let raw_device = &api.device().raw;
             let cb = api.cb;
 
-            for instance in instances {
+            for (draw_idx, instance) in instances.into_iter().enumerate() {
                 let mesh = &meshes[instance.mesh.0];
 
                 raw_device.cmd_bind_index_buffer(
@@ -116,15 +157,7 @@ pub fn raster_meshes(
                     vk::IndexType::UINT32,
                 );
 
-                let push_constants = (
-                    instance.mesh.0 as u32,
-                    instance.position.x,
-                    instance.position.y,
-                    instance.position.z,
-                    instance.prev_position.x,
-                    instance.prev_position.y,
-                    instance.prev_position.z,
-                );
+                let push_constants = (draw_idx as u32, instance.mesh.0 as u32);
 
                 pipeline.push_constants(
                     cb.raw,

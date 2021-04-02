@@ -12,7 +12,7 @@ use super::{
 use anyhow::{Context, Result};
 use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
 use byte_slice_cast::AsSliceOf;
-use glam::Vec3;
+use glam::{Mat3, Vec3};
 use parking_lot::Mutex;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -42,6 +42,7 @@ pub struct RayTracingGeometryDesc {
 pub struct RayTracingInstanceDesc {
     pub blas: Arc<RayTracingAcceleration>,
     pub position: Vec3,
+    pub rotation: Mat3,
     pub mesh_index: u32,
 }
 
@@ -195,17 +196,17 @@ impl Device {
                 };
 
                 let transform: [f32; 12] = [
-                    1.0,
-                    0.0,
-                    0.0,
+                    desc.rotation.x_axis.x,
+                    desc.rotation.y_axis.x,
+                    desc.rotation.z_axis.x,
                     desc.position.x,
-                    0.0,
-                    1.0,
-                    0.0,
+                    desc.rotation.x_axis.y,
+                    desc.rotation.y_axis.y,
+                    desc.rotation.z_axis.y,
                     desc.position.y,
-                    0.0,
-                    0.0,
-                    1.0,
+                    desc.rotation.x_axis.z,
+                    desc.rotation.y_axis.z,
+                    desc.rotation.z_axis.z,
                     desc.position.z,
                 ];
 
@@ -408,17 +409,17 @@ impl Device {
             };
 
             let transform: [f32; 12] = [
-                1.0,
-                0.0,
-                0.0,
+                desc.rotation.x_axis.x,
+                desc.rotation.y_axis.x,
+                desc.rotation.z_axis.x,
                 desc.position.x,
-                0.0,
-                1.0,
-                0.0,
+                desc.rotation.x_axis.y,
+                desc.rotation.y_axis.y,
+                desc.rotation.z_axis.y,
                 desc.position.y,
-                0.0,
-                0.0,
-                1.0,
+                desc.rotation.x_axis.z,
+                desc.rotation.y_axis.z,
+                desc.rotation.z_axis.z,
                 desc.position.z,
             ];
 

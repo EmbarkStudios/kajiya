@@ -4,10 +4,16 @@
 
 [[vk::push_constant]]
 struct {
+    uint draw_index;
     uint mesh_index;
-    float instance_position[3];
-    float prev_instance_position[3];
 } push_constants;
+
+struct InstanceTransform {
+    row_major float3x4 current;
+    row_major float3x4 previous;
+};
+
+[[vk::binding(0)]] StructuredBuffer<InstanceTransform> instance_transforms_dyn;
 
 struct VsOut {
 	float4 position: SV_Position;
@@ -44,11 +50,13 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     float2 uv = asfloat(vertices.Load2(vid * sizeof(float2) + mesh.vertex_uv_offset));
     uint material_id = vertices.Load(vid * sizeof(uint) + mesh.vertex_mat_offset);
 
-    float3 ws_pos = v.position + float3(push_constants.instance_position);
+    //float3 ws_pos = v.position + float3(push_constants.instance_position);
+    float3 ws_pos = mul(instance_transforms_dyn[push_constants.draw_index].current, float4(v.position, 1.0));
+    
     float4 vs_pos = mul(frame_constants.view_constants.world_to_view, float4(ws_pos, 1.0));
     float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, vs_pos);
 
-    float3 prev_ws_pos = v.position + float3(push_constants.prev_instance_position);
+    float3 prev_ws_pos = mul(instance_transforms_dyn[push_constants.draw_index].previous, float4(v.position, 1.0));
     float4 prev_vs_pos = mul(frame_constants.view_constants.world_to_view, float4(prev_ws_pos, 1.0));
     //float4 prev_cs_pos = mul(frame_constants.view_constants.view_to_sample, prev_vs_pos);
 

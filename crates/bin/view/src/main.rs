@@ -136,13 +136,14 @@ fn main() -> anyhow::Result<()> {
     for instance in scene_desc.instances {
         let mesh = mmapped_asset::<PackedTriMesh::Flat>(&format!("baked/{}.mesh", instance.mesh))?;
         let mesh = world_renderer.add_mesh(mesh);
-        world_renderer.add_instance(mesh, instance.position.into());
+        world_renderer.add_instance(mesh, instance.position.into(), Quat::identity());
     }
 
-    /*let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
+    let car_mesh = mmapped_asset::<PackedTriMesh::Flat>("baked/336_lrm.mesh")?;
     let car_mesh = world_renderer.add_mesh(car_mesh);
     let mut car_pos = Vec3::unit_y() * -0.01;
-    let car_inst = world_renderer.add_instance(car_mesh, car_pos);*/
+    let mut car_rot = 0.0f32;
+    let car_inst = world_renderer.add_instance(car_mesh, car_pos, Quat::identity());
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
@@ -230,10 +231,15 @@ fn main() -> anyhow::Result<()> {
                     world_renderer.reset_reference_accumulation = true;
                 }
 
-                /*if keyboard.is_down(VirtualKeyCode::Z) {
+                if keyboard.is_down(VirtualKeyCode::Z) {
                     car_pos.x += mouse_state.delta.x / 100.0;
-                    world_renderer.set_instance_transform(car_inst, car_pos);
-                }*/
+                }
+                car_rot += 0.5 * dt;
+                world_renderer.set_instance_transform(
+                    car_inst,
+                    car_pos,
+                    Quat::from_rotation_y(car_rot),
+                );
 
                 if keyboard.was_just_pressed(VirtualKeyCode::Space) {
                     match world_renderer.render_mode {

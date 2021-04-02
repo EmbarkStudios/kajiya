@@ -1,10 +1,9 @@
+#include "inc/samplers.hlsl"
 #include "inc/frame_constants.hlsl"
 #include "inc/mesh.hlsl"
 #include "inc/pack_unpack.hlsl"
 #include "inc/bindless.hlsl"
 #include "inc/gbuffer.hlsl"
-
-SamplerState sampler_llr;
 
 struct PsIn {
     [[vk::location(0)]] float4 color: TEXCOORD0;
@@ -19,10 +18,16 @@ struct PsIn {
 
 [[vk::push_constant]]
 struct {
+    uint draw_index;
     uint mesh_index;
-    float instance_position[3];
-    float prev_instance_position[3];
 } push_constants;
+
+struct InstanceTransform {
+    row_major float3x4 current;
+    row_major float3x4 previous;
+};
+
+[[vk::binding(0)]] StructuredBuffer<InstanceTransform> instance_transforms_dyn;
 
 struct PsOut {
     float3 geometric_normal: SV_TARGET0;
@@ -79,7 +84,7 @@ PsOut main(PsIn ps) {
 
     GbufferData gbuffer;
     gbuffer.albedo = albedo;
-    gbuffer.normal = normal;
+    gbuffer.normal = normalize(mul(instance_transforms_dyn[push_constants.draw_index].current, float4(normal, 0.0)));
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
 

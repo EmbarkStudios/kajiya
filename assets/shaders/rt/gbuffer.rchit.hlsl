@@ -18,6 +18,7 @@ float twice_uv_area(float2 t0, float2 t1, float2 t2) {
     return abs((t1.x - t0.x) * (t2.y - t0.y) - (t2.x - t0.x) * (t1.y - t0.y));
 }
 
+// buggy.
 float compute_texture_lod(Texture2D tex, float triangle_constant, float3 ray_direction, float3 surf_normal, float cone_width) {
     uint w, h;
     tex.GetDimensions(w, h);
@@ -122,7 +123,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
     GbufferData gbuffer;
     gbuffer.albedo = albedo;
-    gbuffer.normal = normal;
+    gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
     gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
