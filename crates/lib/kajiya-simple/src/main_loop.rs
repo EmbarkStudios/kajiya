@@ -55,6 +55,39 @@ struct MainLoopOptional {
     #[cfg(feature = "dear-imgui")]
     imgui: imgui::Context,
 }
+pub struct SimpleMainLoopBuilder {
+    vsync: bool,
+    graphics_debugging: bool,
+}
+
+impl Default for SimpleMainLoopBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl SimpleMainLoopBuilder {
+    pub fn new() -> Self {
+        SimpleMainLoopBuilder {
+            vsync: true,
+            graphics_debugging: false,
+        }
+    }
+
+    pub fn vsync(mut self, vsync: bool) -> Self {
+        self.vsync = vsync;
+        self
+    }
+
+    pub fn graphics_debugging(mut self, graphics_debugging: bool) -> Self {
+        self.graphics_debugging = graphics_debugging;
+        self
+    }
+
+    pub fn build(self, window_builder: WindowBuilder) -> anyhow::Result<SimpleMainLoop> {
+        SimpleMainLoop::build(self, window_builder)
+    }
+}
 
 pub struct SimpleMainLoop {
     pub window: winit::window::Window,
@@ -70,7 +103,14 @@ pub struct SimpleMainLoop {
 }
 
 impl SimpleMainLoop {
-    pub fn new(window_builder: WindowBuilder) -> anyhow::Result<Self> {
+    pub fn builder() -> SimpleMainLoopBuilder {
+        SimpleMainLoopBuilder::new()
+    }
+
+    fn build(
+        builder: SimpleMainLoopBuilder,
+        window_builder: WindowBuilder,
+    ) -> anyhow::Result<Self> {
         kajiya::logging::set_up_logging()?;
         std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
 
@@ -96,8 +136,8 @@ impl SimpleMainLoop {
             &window,
             RenderBackendConfig {
                 swapchain_extent,
-                vsync: true,
-                graphics_debugging: false,
+                vsync: builder.vsync,
+                graphics_debugging: builder.graphics_debugging,
             },
         )?;
 

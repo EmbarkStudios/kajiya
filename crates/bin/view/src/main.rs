@@ -67,16 +67,19 @@ fn main() -> anyhow::Result<()> {
         File::open(&scene_file).with_context(|| format!("Opening scene file {}", scene_file))?,
     )?;
 
-    let mut kajiya = SimpleMainLoop::new(
-        WindowBuilder::new()
-            .with_title("kajiya")
-            .with_resizable(false)
-            .with_decorations(!opt.no_window_decorations)
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                opt.width as f64,
-                opt.height as f64,
-            )),
-    )?;
+    let mut kajiya = SimpleMainLoop::builder()
+        .vsync(!opt.no_vsync)
+        .graphics_debugging(!opt.no_debug)
+        .build(
+            WindowBuilder::new()
+                .with_title("kajiya")
+                .with_resizable(false)
+                .with_decorations(!opt.no_window_decorations)
+                .with_inner_size(winit::dpi::LogicalSize::new(
+                    opt.width as f64,
+                    opt.height as f64,
+                )),
+        )?;
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
