@@ -1,5 +1,4 @@
 mod camera_input;
-mod imgui_backend;
 mod input;
 
 use anyhow::Context;
@@ -10,10 +9,10 @@ use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     camera::*,
     frame_desc::WorldFrameDesc,
-    imgui_renderer::ImguiRenderer,
     math::*,
     mmap::mmapped_asset,
     rg::renderer::RenderGraphOutput,
+    ui_renderer::UiRenderer,
     world_renderer::{RenderDebugMode, RenderMode, WorldRenderer},
 };
 
@@ -105,7 +104,7 @@ fn main() -> anyhow::Result<()> {
 
     let lazy_cache = LazyCache::create();
     let mut world_renderer = WorldRenderer::new(&render_backend, &lazy_cache)?;
-    let mut ui_renderer = ImguiRenderer::default();
+    let mut ui_renderer = UiRenderer::default();
     let mut rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
@@ -148,7 +147,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut imgui = imgui::Context::create();
     let mut imgui_backend =
-        imgui_backend::ImGuiBackend::new(rg_renderer.device().clone(), &window, &mut imgui);
+        kajiya_imgui::ImGuiBackend::new(rg_renderer.device().clone(), &window, &mut imgui);
     imgui_backend.create_graphics_resources(swapchain_extent);
 
     let mut show_gui = true;

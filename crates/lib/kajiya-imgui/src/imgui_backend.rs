@@ -5,7 +5,7 @@ use kajiya::{
         ash::{self, version::DeviceV1_0, vk},
         Device, Image, ImageDesc, ImageViewDesc,
     },
-    imgui_renderer::ImguiRenderer,
+    ui_renderer::UiRenderer,
 };
 
 use imgui_winit_support::{HiDpiMode, WinitPlatform};
@@ -140,7 +140,7 @@ impl ImGuiBackend {
         &mut self,
         ui: imgui::Ui<'_>,
         window: &winit::window::Window,
-        ui_renderer: &mut ImguiRenderer,
+        ui_renderer: &mut UiRenderer,
     ) {
         let (ui_draw_data, ui_target_image) = {
             self.imgui_platform.prepare_render(&ui, &window);

@@ -1216,6 +1216,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "kajiya-imgui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ash-imgui",
+ "glam",
+ "imgui",
+ "imgui-winit-support",
+ "kajiya",
+ "log",
+ "parking_lot",
+ "turbosloth",
+ "winit",
+]
+
+[[package]]
 name = "kajiya-rg"
 version = "0.1.0"
 dependencies = [
@@ -1229,6 +1245,23 @@ dependencies = [
  "log",
  "parking_lot",
  "turbosloth",
+]
+
+[[package]]
+name = "kajiya-simple"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ash-imgui",
+ "glam",
+ "imgui",
+ "imgui-winit-support",
+ "kajiya",
+ "kajiya-imgui",
+ "log",
+ "parking_lot",
+ "turbosloth",
+ "winit",
 ]
 
 [[package]]
@@ -2192,6 +2225,7 @@ dependencies = [
  "imgui",
  "imgui-winit-support",
  "kajiya",
+ "kajiya-imgui",
  "lazy_static",
  "log",
  "parking_lot",

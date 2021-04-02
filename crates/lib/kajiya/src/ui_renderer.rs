@@ -12,13 +12,13 @@ use kajiya_rg::{self as rg};
 use log::{debug, error, info, trace, warn};
 
 #[derive(Default)]
-pub struct ImguiRenderer {
+pub struct UiRenderer {
     pub ui_frame: Option<(UiRenderCallback, Arc<Image>)>,
 }
 
 pub type UiRenderCallback = Box<dyn FnOnce(vk::CommandBuffer) + 'static>;
 
-impl ImguiRenderer {
+impl UiRenderer {
     pub fn prepare_render_graph(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,

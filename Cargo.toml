@@ -5,7 +5,9 @@ members = [
 
     "crates/lib/kajiya-asset",
     "crates/lib/kajiya-backend",
+    "crates/lib/kajiya-imgui",
     "crates/lib/kajiya-rg",
+    "crates/lib/kajiya-simple",
     "crates/lib/kajiya",
 
     "crates/lib/ash-imgui",

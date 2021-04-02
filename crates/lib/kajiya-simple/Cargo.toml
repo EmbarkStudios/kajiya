@@ -1,0 +1,30 @@
+[package]
+name = "kajiya-simple"
+version = "0.1.0"
+authors = ["Tomasz Stachowiak <h3@h3.gd>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+kajiya = { path = "../kajiya" }
+kajiya-imgui = { path = "../kajiya-imgui", optional = true }
+
+anyhow = "1.0"
+glam = "0.12"
+log = "0.4"
+parking_lot = "0.11"
+turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
+winit = "0.24"
+
+ash-imgui = { path = "../ash-imgui", optional = true }
+imgui = { version = "0.7", optional = true }
+imgui-winit-support = { version = "0.7", optional = true }
+
+[features]
+dear-imgui = [
+    "ash-imgui",
+    "imgui",
+    "imgui-winit-support",
+    "kajiya-imgui",
+]
