@@ -87,8 +87,12 @@ void main(uint2 px: SV_DispatchThreadID) {
     // Note: departure from the quoted technique: linear offset from zero distance at previous position instead of scaling.
     float4 quad_dists = abs(plane_dist_prev_dz * (prev_view_z - prev_pvs.z));
 
-    const float acceptance_threshold = 0.005;
-    float4 quad_validity = step(quad_dists, acceptance_threshold * dist_to_point);
+    // TODO: reject based on normal too? Potentially tricky under rotations.
+
+    const float acceptance_threshold = 0.00025;
+
+    // TODO: why does dist_to_point _squared_ seem to work better?
+    float4 quad_validity = step(quad_dists, acceptance_threshold * dist_to_point * dist_to_point);
 
     quad_validity.x *= all(bilinear_at_prev.px0() >= 0) && all(bilinear_at_prev.px0() < uint2(output_tex_size.xy));
     quad_validity.y *= all(bilinear_at_prev.px1() >= 0) && all(bilinear_at_prev.px1() < uint2(output_tex_size.xy));

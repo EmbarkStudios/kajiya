@@ -35,6 +35,7 @@ struct FrameConstants {
     view_constants: ViewConstants,
     sun_direction: [f32; 4],
     frame_idx: u32,
+    world_gi_scale: f32,
 }
 
 #[repr(C)]
@@ -112,6 +113,8 @@ pub struct WorldRenderer {
     pub debug_mode: RenderDebugMode,
     pub debug_shading_mode: usize,
     pub ev_shift: f32,
+
+    pub world_gi_scale: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -263,6 +266,7 @@ impl WorldRenderer {
             debug_mode: RenderDebugMode::None,
             debug_shading_mode: 0,
             ev_shift: 0.0,
+            world_gi_scale: 1.0,
         })
     }
 
@@ -639,6 +643,7 @@ impl WorldRenderer {
                 0.0,
             ],
             frame_idx: self.frame_idx,
+            world_gi_scale: self.world_gi_scale,
         });
 
         self.prev_camera_matrices = Some(frame_desc.camera_matrices);

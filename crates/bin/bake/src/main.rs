@@ -13,7 +13,7 @@ struct Opt {
     #[structopt(long, parse(from_os_str))]
     scene: PathBuf,
 
-    #[structopt(long, default_value = "0.1")]
+    #[structopt(long, default_value = "1.0")]
     scale: f32,
 
     #[structopt(short = "o")]

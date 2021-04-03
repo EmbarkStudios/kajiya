@@ -80,9 +80,3 @@ impl MouseState {
         self.button_mask = new_state.button_mask;
     }
 }
-
-pub struct InputState {
-    pub mouse: MouseState,
-    pub keys: KeyboardState,
-    pub dt: f32,
-}

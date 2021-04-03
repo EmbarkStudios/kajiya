@@ -112,7 +112,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     col = lerp(col, glare, glare_amount);
     col *= exp2(ev_shift);
-
+    
 #if USE_TONEMAP
 
     /*float filtered_luminance = exp(filtered_luminance_tex[px].x);

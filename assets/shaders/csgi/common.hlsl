@@ -1,3 +1,5 @@
+#include "../inc/frame_constants.hlsl"
+
 #define USE_RTDGI_CONTROL_VARIATES 1
 
 static const uint CSGI_SLICE_COUNT = 6;
@@ -6,7 +8,8 @@ static const uint CSGI_INDIRECT_COUNT = 6 + 8;
 static const uint CSGI_VOLUME_DIMS = 64;
 
 #define CSGI_VOLUME_CENTER float3(0, 0, 0)
-static const float CSGI_VOLUME_SIZE = 12;
+//static const float CSGI_VOLUME_SIZE = 12;
+#define CSGI_VOLUME_SIZE (12.0 * frame_constants.world_gi_scale)
 #define CSGI_VOXEL_SIZE (float(CSGI_VOLUME_SIZE) / float(CSGI_VOLUME_DIMS))
 
 static const uint CSGI_NEIGHBOR_DIR_COUNT = 9;

@@ -84,7 +84,7 @@ impl FirstPersonCamera {
     // https://stackoverflow.com/a/27497022
     #[allow(dead_code)]
     pub fn look_at(&mut self, target: Vec3) {
-        let q = Mat4::look_at_rh(self.position, target, Vec3::unit_y())
+        let q = Mat4::look_at_rh(self.interp_pos, target, Vec3::unit_y())
             .to_scale_rotation_translation()
             .1
             .conjugate()

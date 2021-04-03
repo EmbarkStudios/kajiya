@@ -124,8 +124,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     //const float light_stability = 1;
     //const float light_stability = center.w > 0.0 ? 1.0 : 0.0;
 
-	//float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
-    float4 clamped_history = history;
+	float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
+    //float4 clamped_history = history;
     //clamped_history = center;
 
     const float remapped_temporal_change = smoothstep(0.01, 0.6, temporal_change);

@@ -95,9 +95,15 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     const float4 reflection_hit_cs = mul(frame_constants.view_constants.view_to_sample, float4(reflection_hit_vs, 1));
     const float4 prev_hit_cs = mul(frame_constants.view_constants.clip_to_prev_clip, reflection_hit_cs);
-    const float2 hit_prev_uv = cs_to_uv(prev_hit_cs.xy / prev_hit_cs.w);
+    float2 hit_prev_uv = cs_to_uv(prev_hit_cs.xy / prev_hit_cs.w);
+
+    const float4 prev_reflector_cs = mul(frame_constants.view_constants.clip_to_prev_clip, view_ray_context.ray_hit_cs);
+    const float2 reflector_prev_uv = cs_to_uv(prev_reflector_cs.xy / prev_reflector_cs.w);
 
     float4 reproj = reprojection_tex[px];
+
+    const float2 reflector_move_rate = min(1.0, abs(reproj.xy) / abs(reflector_prev_uv - uv));
+    hit_prev_uv = lerp(uv, hit_prev_uv, reflector_move_rate);
 
     const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
     const float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;

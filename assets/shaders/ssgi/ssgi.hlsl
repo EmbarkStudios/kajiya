@@ -24,9 +24,10 @@
     // TODO: fork the SSGI shader into just cheapo GTAO
 
     static const uint SSGI_HALF_SAMPLE_COUNT = 8;
-    static const float SSGI_KERNEL_RADIUS = 0.1;
+
     // TODO: better units (pxels? degrees?)
-    static const float MAX_KERNEL_RADIUS_CS = 0.4;
+    #define SSGI_KERNEL_RADIUS (0.1 * frame_constants.world_gi_scale)
+    #define MAX_KERNEL_RADIUS_CS (0.4 * frame_constants.world_gi_scale)
 #else
     // Crazy settings for testing with the Cornell Box
 

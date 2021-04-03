@@ -405,6 +405,14 @@ impl<T> FlatVec<T> {
     }
 
     #[inline(always)]
+    pub fn as_ptr(&self) -> *const T {
+        unsafe {
+            let data = (&self.offset as *const u64 as *const u8).add(self.offset as usize);
+            data as *const T
+        }
+    }
+
+    #[inline(always)]
     pub fn iter(&self) -> impl Iterator<Item = &T> {
         self.as_slice().iter()
     }

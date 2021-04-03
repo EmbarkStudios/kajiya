@@ -1,10 +1,9 @@
 mod camera_input;
-mod input;
 
 use anyhow::Context;
 
+use camera_input::InputState;
 use imgui::im_str;
-use input::*;
 use kajiya_simple::*;
 
 use std::fs::File;

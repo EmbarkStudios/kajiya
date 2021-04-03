@@ -1,8 +1,13 @@
 use glam::Vec3;
 use kajiya::camera::*;
+use kajiya_simple::{KeyboardState, MouseState};
 use winit::event::VirtualKeyCode;
 
-use crate::input::InputState;
+pub struct InputState {
+    pub mouse: MouseState,
+    pub keys: KeyboardState,
+    pub dt: f32,
+}
 
 impl From<&InputState> for FirstPersonCameraInput {
     fn from(input_state: &InputState) -> FirstPersonCameraInput {

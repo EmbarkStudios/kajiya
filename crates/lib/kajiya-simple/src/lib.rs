@@ -1,6 +1,8 @@
+mod input;
 mod main_loop;
 
 pub use glam::*;
+pub use input::*;
 pub use kajiya::{
     backend::{
         file::{set_standard_vfs_mount_points, set_vfs_mount_point},

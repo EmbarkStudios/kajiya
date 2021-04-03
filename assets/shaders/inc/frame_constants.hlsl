@@ -26,6 +26,7 @@ struct FrameConstants {
     ViewConstants view_constants;
     float4 sun_direction;
     uint frame_index;
+    float world_gi_scale;
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;

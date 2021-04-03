@@ -37,8 +37,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float2 uv = get_uv(px, output_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
-    //const float filter_radius_ss = center_ssao * lerp(0.5, 2.0, saturate(20 * rel_std_dev)) * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
-    const float filter_radius_ss = center_ssao * 0.5 * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
+
+    const float world_space_kernel_radius = 0.5 * frame_constants.world_gi_scale;
+    const float filter_radius_ss = center_ssao * world_space_kernel_radius * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
 
     #define USE_POISSON 1
 
