@@ -1,6 +1,7 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/mesh.hlsl"
 #include "../inc/pack_unpack.hlsl"
+#include "../inc/frame_constants.hlsl"
 #include "../inc/bindless.hlsl"
 #include "../inc/rt.hlsl"
 
@@ -127,7 +128,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
-    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT;
+    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT * instance_dynamic_constants_dyn[InstanceIndex()].emissive_multiplier;
 
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //gbuffer.metalness = 1;

@@ -87,7 +87,7 @@ PsOut main(PsIn ps) {
     gbuffer.normal = normalize(mul(instance_transforms_dyn[push_constants.draw_index].current, float4(normal, 0.0)));
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
-    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT;
+    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT * instance_dynamic_constants_dyn[push_constants.draw_index].emissive_multiplier;
 
     PsOut ps_out;
     ps_out.geometric_normal = geometric_normal * 0.5 + 0.5;

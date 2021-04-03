@@ -31,6 +31,12 @@ struct FrameConstants {
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;
 
+struct InstanceDynamicConstants {
+    float emissive_multiplier;
+};
+
+[[vk::binding(1, 2)]] StructuredBuffer<InstanceDynamicConstants> instance_dynamic_constants_dyn;
+
 struct ViewRayContext {
     float4 ray_dir_cs;
     float4 ray_dir_vs_h;

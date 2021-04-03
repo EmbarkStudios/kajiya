@@ -2,6 +2,7 @@
 #define MESH_HLSL
 
 // HACK to account for GLTF's limitations
+//static const float EMISSIVE_MULT = 10.0;
 static const float EMISSIVE_MULT = 10.0;
 
 struct VertexPacked {

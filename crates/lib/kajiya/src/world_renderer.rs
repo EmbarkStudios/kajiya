@@ -501,10 +501,16 @@ impl WorldRenderer {
         handle
     }
 
-    #[allow(dead_code)]
     pub fn set_instance_transform(&mut self, inst: InstanceHandle, position: Vec3, rotation: Quat) {
         self.instances[inst.0].position = position;
         self.instances[inst.0].rotation = Mat3::from_quat(rotation);
+    }
+
+    pub fn get_instance_dynamic_parameters_mut(
+        &mut self,
+        inst: InstanceHandle,
+    ) -> &mut InstanceDynamicParameters {
+        &mut self.instances[inst.0].dynamic_parameters
     }
 
     pub(crate) fn build_ray_tracing_top_level_acceleration(&mut self) {
@@ -662,11 +668,14 @@ impl WorldRenderer {
             world_gi_scale: self.world_gi_scale,
         });
 
+        let instance_dynamic_parameters_offset = dynamic_constants
+            .push_from_iter(self.instances.iter().map(|inst| inst.dynamic_parameters));
+
         self.prev_camera_matrices = Some(frame_desc.camera_matrices);
 
         rg::renderer::FrameConstantsLayout {
             globals_offset,
-            instance_dynamic_parameters_offset: 0,
+            instance_dynamic_parameters_offset,
             instance_dynamic_parameters_size: 0,
         }
     }

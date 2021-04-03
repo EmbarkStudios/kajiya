@@ -176,11 +176,16 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                     pipeline.pipeline_layout,
                     2,
                     &[self.resources.execution_params.frame_descriptor_set],
-                    &[self
-                        .resources
-                        .execution_params
-                        .frame_constants_layout
-                        .globals_offset],
+                    &[
+                        self.resources
+                            .execution_params
+                            .frame_constants_layout
+                            .globals_offset,
+                        self.resources
+                            .execution_params
+                            .frame_constants_layout
+                            .instance_dynamic_parameters_offset,
+                    ],
                 );
             }
         }

@@ -21,6 +21,7 @@ use kajiya_backend::{
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
+use vk::WHOLE_SIZE;
 use vulkan::buffer::{Buffer, BufferDesc};
 
 enum TemporalRg {
@@ -55,12 +56,13 @@ lazy_static::lazy_static! {
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::UNIFORM_BUFFER,
             is_bindless: false,
-            /*stages: rspirv_reflect::ShaderStageFlags(
-                (vk::ShaderStageFlags::COMPUTE
-                    | vk::ShaderStageFlags::ALL_GRAPHICS
-                    | vk::ShaderStageFlags::ALL)
-                    .as_raw(),
-            ),*/
+            name: Default::default(),
+        },
+    ), (
+        1,
+        rspirv_reflect::DescriptorInfo {
+            ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+            is_bindless: false,
             name: Default::default(),
         },
     )]
@@ -77,6 +79,8 @@ pub struct RenderGraphOutput {
 pub struct FrameConstantsLayout {
     pub globals_offset: u32,
     pub instance_dynamic_parameters_offset: u32,
+
+    // TODO: nuke?
     pub instance_dynamic_parameters_size: u32,
 }
 
@@ -241,7 +245,10 @@ impl Renderer {
     ) -> vk::DescriptorSet {
         let device = &backend.device.raw;
 
-        let set_binding_flags = [vk::DescriptorBindingFlags::PARTIALLY_BOUND];
+        let set_binding_flags = [
+            vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+            vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+        ];
 
         let mut binding_flags_create_info =
             vk::DescriptorSetLayoutBindingFlagsCreateInfo::builder()
@@ -252,12 +259,20 @@ impl Renderer {
             device
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::builder()
-                        .bindings(&[vk::DescriptorSetLayoutBinding::builder()
-                            .descriptor_count(1)
-                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                            .stage_flags(vk::ShaderStageFlags::ALL)
-                            .binding(0)
-                            .build()])
+                        .bindings(&[
+                            vk::DescriptorSetLayoutBinding::builder()
+                                .descriptor_count(1)
+                                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                                .stage_flags(vk::ShaderStageFlags::ALL)
+                                .binding(0)
+                                .build(),
+                            vk::DescriptorSetLayoutBinding::builder()
+                                .descriptor_count(1)
+                                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
+                                .stage_flags(vk::ShaderStageFlags::ALL)
+                                .binding(1)
+                                .build(),
+                        ])
                         .push_next(&mut binding_flags_create_info)
                         .build(),
                     None,
@@ -265,10 +280,16 @@ impl Renderer {
                 .unwrap()
         };
 
-        let descriptor_sizes = [vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
-            descriptor_count: 1,
-        }];
+        let descriptor_sizes = [
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC,
+                descriptor_count: 1,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+                descriptor_count: 1,
+            },
+        ];
 
         let descriptor_pool_info = vk::DescriptorPoolCreateInfo::builder()
             .pool_sizes(&descriptor_sizes)
@@ -292,20 +313,31 @@ impl Renderer {
         };
 
         {
-            let buffer_info = vk::DescriptorBufferInfo::builder()
+            let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
                 .buffer(dynamic_constants.raw)
                 .range(16384)
                 .build();
-
-            let write_descriptor_set = vk::WriteDescriptorSet::builder()
-                .dst_set(set)
-                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
-                .buffer_info(std::slice::from_ref(&buffer_info))
+            let storage_buffer_info = vk::DescriptorBufferInfo::builder()
+                .buffer(dynamic_constants.raw)
+                .range(vk::WHOLE_SIZE)
                 .build();
 
-            unsafe {
-                device.update_descriptor_sets(std::slice::from_ref(&write_descriptor_set), &[])
-            };
+            let descriptor_set_writes = [
+                vk::WriteDescriptorSet::builder()
+                    .dst_binding(0)
+                    .dst_set(set)
+                    .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
+                    .buffer_info(std::slice::from_ref(&uniform_buffer_info))
+                    .build(),
+                vk::WriteDescriptorSet::builder()
+                    .dst_binding(1)
+                    .dst_set(set)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
+                    .buffer_info(std::slice::from_ref(&storage_buffer_info))
+                    .build(),
+            ];
+
+            unsafe { device.update_descriptor_sets(&descriptor_set_writes, &[]) };
         }
 
         set

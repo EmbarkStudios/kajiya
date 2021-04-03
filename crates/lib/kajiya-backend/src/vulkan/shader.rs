@@ -142,7 +142,8 @@ pub fn create_descriptor_set_layouts(
                     rspirv_reflect::DescriptorType::UNIFORM_BUFFER
                     | rspirv_reflect::DescriptorType::UNIFORM_TEXEL_BUFFER
                     | rspirv_reflect::DescriptorType::STORAGE_IMAGE
-                    | rspirv_reflect::DescriptorType::STORAGE_BUFFER => bindings.push(
+                    | rspirv_reflect::DescriptorType::STORAGE_BUFFER
+                    | rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC => bindings.push(
                         vk::DescriptorSetLayoutBinding::builder()
                             .binding(*binding_index)
                             //.descriptor_count(binding.count)
@@ -163,6 +164,9 @@ pub fn create_descriptor_set_layouts(
                                     } else {
                                         vk::DescriptorType::STORAGE_BUFFER
                                     }
+                                }
+                                rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC => {
+                                    vk::DescriptorType::STORAGE_BUFFER_DYNAMIC
                                 }
                                 _ => unimplemented!("{:?}", binding),
                             })
