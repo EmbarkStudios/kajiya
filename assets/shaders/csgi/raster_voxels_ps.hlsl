@@ -14,7 +14,7 @@ struct PsOut {
 };
 
 PsOut main(PsIn ps) {
-    GbufferData gbuffer;
+    GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = ps.color.rgb;
     gbuffer.normal = ps.normal;
     gbuffer.roughness = 0.5;

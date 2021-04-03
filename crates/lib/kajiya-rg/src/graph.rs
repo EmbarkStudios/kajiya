@@ -1,5 +1,7 @@
 #![allow(unused_imports)]
 
+use crate::renderer::FrameConstantsLayout;
+
 use super::{
     pass_builder::PassBuilder,
     resource::*,
@@ -364,7 +366,7 @@ pub struct RenderGraphExecutionParams<'a> {
     pub device: &'a Device,
     pub pipeline_cache: &'a mut PipelineCache,
     pub frame_descriptor_set: vk::DescriptorSet,
-    pub frame_constants_offset: u32,
+    pub frame_constants_layout: FrameConstantsLayout,
     pub profiler_data: &'a VkProfilerData,
 }
 

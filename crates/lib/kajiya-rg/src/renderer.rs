@@ -74,6 +74,12 @@ pub struct RenderGraphOutput {
     pub ui_img: Option<ExportedHandle<Image>>,
 }
 
+pub struct FrameConstantsLayout {
+    pub globals_offset: u32,
+    pub instance_dynamic_parameters_offset: u32,
+    pub instance_dynamic_parameters_size: u32,
+}
+
 impl Renderer {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
         let present_shader = vulkan::presentation::create_present_compute_shader(&*backend.device);
@@ -118,10 +124,9 @@ impl Renderer {
         prepare_frame_constants: PrepareFrameConstantsFn,
         swapchain: &mut Swapchain,
     ) where
-        PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants),
+        PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants) -> FrameConstantsLayout,
     {
-        let frame_constants_offset = self.dynamic_constants.current_offset();
-        prepare_frame_constants(&mut self.dynamic_constants);
+        let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
 
         let swapchain_extent = swapchain.extent();
 
@@ -155,7 +160,7 @@ impl Renderer {
                         device: &self.device,
                         pipeline_cache: &mut self.pipeline_cache,
                         frame_descriptor_set: self.frame_descriptor_set,
-                        frame_constants_offset,
+                        frame_constants_layout,
                         profiler_data: &current_frame.profiler_data,
                     },
                     &mut self.transient_resource_cache,

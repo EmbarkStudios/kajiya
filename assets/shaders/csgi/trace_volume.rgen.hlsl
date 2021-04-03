@@ -165,6 +165,8 @@ void main() {
                         light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
     #endif
 
+                    total_radiance += gbuffer.emissive;
+
                     //total_radiance = gbuffer.albedo + 0.1;
 
                     #if 0

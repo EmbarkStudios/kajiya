@@ -82,11 +82,12 @@ PsOut main(PsIn ps) {
     //metalness = 1;
     //roughness = 0.2;
 
-    GbufferData gbuffer;
+    GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(instance_transforms_dyn[push_constants.draw_index].current, float4(normal, 0.0)));
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
+    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT;
 
     PsOut ps_out;
     ps_out.geometric_normal = geometric_normal * 0.5 + 0.5;

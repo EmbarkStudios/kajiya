@@ -19,9 +19,20 @@ struct GbufferDataPacked {
 
 struct GbufferData {
     float3 albedo;
+    float3 emissive;
     float3 normal;
     float roughness;
     float metalness;
+
+    static GbufferData create_zero() {
+        GbufferData res;
+        res.albedo = 0;
+        res.emissive = 0;
+        res.normal = 0;
+        res.roughness = 0;
+        res.metalness = 0;
+        return res;
+    }
 
     GbufferDataPacked pack();
 };
@@ -31,8 +42,10 @@ GbufferDataPacked GbufferData::pack() {
     float4 res = 0.0.xxxx;
     res.x = asfloat(pack_color_888(albedo));
     res.y = pack_normal_11_10_11(normal);
-    res.z = roughness * roughness;      // UE4 remap
-    res.w = metalness;
+
+    float2 roughness_metalness = float2(roughness * roughness, metalness);
+    res.z = asfloat(pack_2x16f_uint(roughness_metalness));
+    res.w = asfloat(float3_to_rgb9e5(emissive));
 
    GbufferDataPacked packed;
    packed.data0 = asuint(res);
@@ -43,8 +56,12 @@ GbufferData GbufferDataPacked::unpack() {
     GbufferData res;
     res.albedo = unpack_albedo();
     res.normal = unpack_normal();
-    res.roughness = sqrt(asfloat(data0.z));
-    res.metalness = asfloat(data0.w);
+
+    float2 roughness_metalness = unpack_2x16f_uint(data0.z);
+    res.roughness = sqrt(roughness_metalness.x);
+    res.metalness = roughness_metalness.y;
+    res.emissive = rgb9e5_to_float3(data0.w);
+
     return res;
 }
 

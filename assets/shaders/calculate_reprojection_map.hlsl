@@ -89,10 +89,13 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: reject based on normal too? Potentially tricky under rotations.
 
-    const float acceptance_threshold = 0.00025;
+    const float acceptance_threshold = 0.001;
 
-    // TODO: why does dist_to_point _squared_ seem to work better?
-    float4 quad_validity = step(quad_dists, acceptance_threshold * dist_to_point * dist_to_point);
+    // Reduce strictness at grazing angles, where distances grow due to perspective
+    const float3 pos_vs_norm = normalize(pos_vs.xyz / pos_vs.w);
+    const float ndotv = dot(normal_vs, pos_vs_norm);
+
+    float4 quad_validity = step(quad_dists, acceptance_threshold * dist_to_point / -ndotv);
 
     quad_validity.x *= all(bilinear_at_prev.px0() >= 0) && all(bilinear_at_prev.px0() < uint2(output_tex_size.xy));
     quad_validity.y *= all(bilinear_at_prev.px1() >= 0) && all(bilinear_at_prev.px1() < uint2(output_tex_size.xy));

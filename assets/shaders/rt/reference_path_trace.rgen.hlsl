@@ -199,6 +199,8 @@ void main() {
                     const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                     total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
+                    total_radiance += gbuffer.emissive * throughput;
+
                     #if 0
                         const float3 pos_ws = primary_hit.position;
                         float4 pos_vs = mul(frame_constants.view_constants.world_to_view, float4(pos_ws, 1));

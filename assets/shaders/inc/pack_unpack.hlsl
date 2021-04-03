@@ -85,6 +85,16 @@ float3 octa_decode(float2 f)
     return normalize( n );
 }
 
+uint pack_2x16f_uint(float2 f) {
+    return f32tof16(f.x) | (f32tof16(f.y) << 16u);
+}
+
+float2 unpack_2x16f_uint(uint u) {
+    return float2(
+    	f16tof32(u & 0xffff),
+    	f16tof32((u >> 16) & 0xffff)
+    );
+}
 
 #define RGB9E5_EXPONENT_BITS          5
 #define RGB9E5_MANTISSA_BITS          9

@@ -7,7 +7,6 @@ static const float2 BRDF_FG_LUT_UV_BIAS = 0.5.xx / BRDF_FG_LUT_DIMS;
 static const float BRDF_SAMPLING_MIN_COS = 1e-5;
 
 #define USE_GGX_VNDF_SAMPLING 1
-
 #define USE_GGX_CORRELATED_MASKING 1
 
 // Defined wrt the projected solid angle metric

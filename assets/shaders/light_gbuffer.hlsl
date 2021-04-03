@@ -119,6 +119,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 light_radiance = shadow_mask * SUN_COLOR;
     float3 total_radiance = brdf_value * light_radiance;
 
+    total_radiance += gbuffer.emissive;
+
     //const float3 radiance = (spec.value + spec.transmission_fraction * diff.value) * max(0.0, wi.z);
     //const float3 light_radiance = shadow_mask * SUN_COLOR;
     //total_radiance += radiance * light_radiance;

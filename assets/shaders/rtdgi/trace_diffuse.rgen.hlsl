@@ -196,6 +196,8 @@ void main() {
             const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
             total_radiance += brdf_value * light_radiance;
 
+            total_radiance += gbuffer.emissive;
+
             if (USE_CSGI) {
                 const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
 

@@ -26,6 +26,7 @@ use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
+use rg::renderer::FrameConstantsLayout;
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 
@@ -62,12 +63,26 @@ const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 512;
 const TLAS_PREALLOCATE_BYTES: usize = 1024 * 1024 * 32;
 
 #[derive(Clone, Copy)]
+pub struct InstanceDynamicParameters {
+    pub emissive_multiplier: f32,
+}
+
+impl Default for InstanceDynamicParameters {
+    fn default() -> Self {
+        Self {
+            emissive_multiplier: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct MeshInstance {
     pub rotation: Mat3,
     pub position: Vec3,
     pub prev_rotation: Mat3,
     pub prev_position: Vec3,
     pub mesh: MeshHandle,
+    pub dynamic_parameters: InstanceDynamicParameters,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -481,6 +496,7 @@ impl WorldRenderer {
             prev_rotation: Mat3::identity(),
             prev_position: position,
             mesh,
+            dynamic_parameters: InstanceDynamicParameters::default(),
         });
         handle
     }
@@ -601,7 +617,7 @@ impl WorldRenderer {
         &mut self,
         dynamic_constants: &mut DynamicConstants,
         frame_desc: &WorldFrameDesc,
-    ) {
+    ) -> FrameConstantsLayout {
         let mut view_constants = ViewConstants::builder(
             frame_desc.camera_matrices,
             self.prev_camera_matrices
@@ -634,7 +650,7 @@ impl WorldRenderer {
             view_constants.set_pixel_offset(supersample_offset, frame_desc.render_extent);
         }
 
-        dynamic_constants.push(&FrameConstants {
+        let globals_offset = dynamic_constants.push(&FrameConstants {
             view_constants,
             sun_direction: [
                 frame_desc.sun_direction.x,
@@ -647,6 +663,12 @@ impl WorldRenderer {
         });
 
         self.prev_camera_matrices = Some(frame_desc.camera_matrices);
+
+        rg::renderer::FrameConstantsLayout {
+            globals_offset,
+            instance_dynamic_parameters_offset: 0,
+            instance_dynamic_parameters_size: 0,
+        }
     }
 
     pub fn retire_frame(&mut self) {

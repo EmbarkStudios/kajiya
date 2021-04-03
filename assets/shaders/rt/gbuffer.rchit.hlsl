@@ -121,12 +121,13 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     normal = normalize(normal);
 #endif
 
-    GbufferData gbuffer;
+    GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
     gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
+    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT;
 
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //gbuffer.metalness = 1;
