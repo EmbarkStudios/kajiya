@@ -96,14 +96,14 @@ fn main() -> anyhow::Result<()> {
             .add_instance(mesh, instance.position.into(), Quat::identity());
     }
 
-    let car_mesh = kajiya
+    /*let car_mesh = kajiya
         .world_renderer
         .add_baked_mesh("/baked/336_lrm.mesh")?;
     let mut car_pos = Vec3::unit_y() * -0.01;
     let mut car_rot = 0.0f32;
     let car_inst = kajiya
         .world_renderer
-        .add_instance(car_mesh, car_pos, Quat::identity());
+        .add_instance(car_mesh, car_pos, Quat::identity());*/
 
     let mut show_gui = true;
     let mut light_theta = -4.54;
@@ -169,7 +169,7 @@ fn main() -> anyhow::Result<()> {
             ctx.world_renderer.reset_reference_accumulation = true;
         }
 
-        if keyboard.is_down(VirtualKeyCode::Z) {
+        /*if keyboard.is_down(VirtualKeyCode::Z) {
             car_pos.x += mouse_state.delta.x / 100.0;
         }
         car_rot += 0.5 * ctx.dt;
@@ -177,7 +177,7 @@ fn main() -> anyhow::Result<()> {
             car_inst,
             car_pos,
             Quat::from_rotation_y(car_rot),
-        );
+        );*/
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
             match ctx.world_renderer.render_mode {
