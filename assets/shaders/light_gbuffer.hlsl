@@ -217,9 +217,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     // Hacky visual test of volumetric scattering
     if (frame_constants.global_fog_thickness > 0.0) {
+        float3 scattering = 0.0.xxx;
+        float prev_t = 0.0;
+        float sigma_s = 0.07 * frame_constants.global_fog_thickness;
+        float sigma_e = sigma_s * 0.4;
+
         float3 eye_to_pt = pt_ws.xyz - get_eye_position();
         const float total_ray_length = length(eye_to_pt);
-        const int k_samples = 8;//clamp(int(0.25 * total_ray_length), 3, 8);
+        const int k_samples = 6;//clamp(int(0.25 * total_ray_length), 3, 8);
 
         //uint rng = hash3(uint3(px * 2, 0*frame_constants.frame_index));
         //float t_offset = uint_to_u01_float(hash1_mut(rng));
@@ -231,10 +236,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
             ].x * 255.0 / 256.0 + 0.5 / 256.0;
         }
 
-        float3 scattering = 0.0.xxx;
-        float prev_t = 0.0;
-        float sigma_s = 0.1 * frame_constants.global_fog_thickness;
-        float sigma_e = sigma_s * 0.4;
         float transmittance = 1.0;
 
         for (int k = 0; k < k_samples; ++k) {
@@ -249,12 +250,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
                     .with_sample_phase(0.6, outgoing_ray.Direction)
             );
 
+            const float local_density = 1;//max(1e-5, lerp(0.1, 1.0, smoothstep(0.0, 1.0, air_ws.x)));
+            
             // Based on https://www.shadertoy.com/view/XlBSRz
             // (See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/)
-            float3 scattered_light = gi_color * sigma_s;
-            float3 s_int = scattered_light * (1.0 - exp(-total_ray_length * step_size * sigma_e)) / sigma_e;
+            float3 scattered_light = gi_color * (sigma_s * local_density);
+            float3 s_int = scattered_light * (1.0 - exp(-total_ray_length * step_size * sigma_e * local_density)) / (sigma_e * local_density);
             scattering += transmittance * s_int;
-            transmittance *= exp(-total_ray_length * step_size * sigma_e);
+            transmittance *= exp(-total_ray_length * step_size * sigma_e * local_density);
 
             prev_t = t;
         }
