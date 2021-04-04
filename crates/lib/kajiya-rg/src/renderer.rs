@@ -21,7 +21,6 @@ use kajiya_backend::{
 use log::{debug, error, info, trace, warn};
 use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
-use vk::WHOLE_SIZE;
 use vulkan::buffer::{Buffer, BufferDesc};
 
 enum TemporalRg {

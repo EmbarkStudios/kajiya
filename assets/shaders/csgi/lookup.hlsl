@@ -1,7 +1,15 @@
+#include "../inc/math_const.hlsl"
+
+float henyey_greenstein(float g, float costh) {
+    return (1.0 - g * g) / max(1e-5, 4.0 * M_PI * pow(max(0.0, 1.0 + g * g - 2.0 * g * costh), 3.0 / 2.0));
+}
+
 struct CsgiLookupParams {
     bool use_linear_fetch;
     bool use_bent_normal;
     bool sample_directional_radiance;
+    bool sample_phase;
+    float phase_g;
     bool sample_specular;
     bool direct_light_only;
     float3 directional_radiance_direction;
@@ -15,6 +23,8 @@ struct CsgiLookupParams {
         res.use_bent_normal = false;
         res.bent_normal = 0;
         res.sample_directional_radiance = false;
+        res.sample_phase = false;
+        res.phase_g = 0;
         res.sample_specular = false;
         res.directional_radiance_phong_exponent = 50.0;
         res.direct_light_only = false;
@@ -39,6 +49,14 @@ struct CsgiLookupParams {
         CsgiLookupParams res = this;
         res.sample_directional_radiance = true;
         res.directional_radiance_direction = v;
+        return res;
+    }
+
+    CsgiLookupParams with_sample_phase(float g, float3 dir) {
+        CsgiLookupParams res = this;
+        res.sample_phase = true;
+        res.directional_radiance_direction = dir;
+        res.phase_g = g;
         return res;
     }
 
@@ -123,6 +141,9 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                     wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
                     wt = pow(wt, params.directional_radiance_phong_exponent);
                     wt *= saturate(dot(normalize(slice_dir), normal));
+                } else if (params.sample_phase) {
+                    float cos_theta = dot(normalize(slice_dir), params.directional_radiance_direction);
+                    wt = henyey_greenstein(params.phase_g, cos_theta);
                 } else {
                     wt = saturate(dot(normalize(slice_dir), normal));
                 }

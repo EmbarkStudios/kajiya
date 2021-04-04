@@ -27,6 +27,7 @@ struct FrameConstants {
     float4 sun_direction;
     uint frame_index;
     float world_gi_scale;
+    float global_fog_thickness;
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;

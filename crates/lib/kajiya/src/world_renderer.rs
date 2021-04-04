@@ -37,6 +37,7 @@ struct FrameConstants {
     sun_direction: [f32; 4],
     frame_idx: u32,
     world_gi_scale: f32,
+    global_fog_thickness: f32,
 }
 
 #[repr(C)]
@@ -130,6 +131,7 @@ pub struct WorldRenderer {
     pub ev_shift: f32,
 
     pub world_gi_scale: f32,
+    pub global_fog_thickness: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -282,6 +284,7 @@ impl WorldRenderer {
             debug_shading_mode: 0,
             ev_shift: 0.0,
             world_gi_scale: 1.0,
+            global_fog_thickness: 0.0,
         })
     }
 
@@ -666,6 +669,7 @@ impl WorldRenderer {
             ],
             frame_idx: self.frame_idx,
             world_gi_scale: self.world_gi_scale,
+            global_fog_thickness: self.global_fog_thickness,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants
