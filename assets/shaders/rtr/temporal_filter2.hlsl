@@ -3,6 +3,7 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/color.hlsl"
 #include "../inc/bilinear.hlsl"
+#include "../inc/soft_color_clamp.hlsl"
 
 #define USE_DUAL_REPROJECTION 1
 
@@ -217,8 +218,14 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 clamped_history0 = history0;
     float4 clamped_history1 = history1;
 
+#if 0
     clamped_history0.rgb = clamp(history0.rgb, nmin.rgb, nmax.rgb);
     clamped_history1.rgb = clamp(history1.rgb, nmin.rgb, nmax.rgb);
+#else
+    clamped_history0.rgb = soft_color_clamp(center.rgb, history0.rgb, ex.rgb, dev.rgb);
+    clamped_history1.rgb = soft_color_clamp(center.rgb, history1.rgb, ex.rgb, dev.rgb);
+#endif
+
     //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
     float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
     //float4 clamped_history = history0 * h0_score + history1 * h1_score;

@@ -2,6 +2,7 @@
 #include "../inc/color.hlsl"
 #include "../inc/uv.hlsl"
 #include "../inc/frame_constants.hlsl"
+#include "../inc/soft_color_clamp.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
@@ -155,7 +156,14 @@ void main(uint2 px: SV_DispatchThreadID) {
         history.rgb -= cv_diff * reproj_validity_dilated * 0.9;
     }
 
+#if 0
 	float4 clamped_history = clamp(history, nmin, nmax);
+#else
+    float4 clamped_history = float4(
+        soft_color_clamp(center.rgb, history.rgb, ex.rgb, dev.rgb),
+        history.a
+    );
+#endif
     //clamped_history = center;
     //float4 clamped_history = history;
 

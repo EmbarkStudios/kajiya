@@ -162,8 +162,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 		result = encode_rgb(result);
 	#else
-        center = ycbcr_to_rgb(center);
-		float3 result = encode_rgb(center);
+		float3 result = encode_rgb(ycbcr_to_rgb(center));
 	#endif
 
 #if 0

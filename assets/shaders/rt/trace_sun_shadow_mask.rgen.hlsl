@@ -32,7 +32,7 @@ void main() {
 
     const float3 bias_dir = normalize(eye_ws.xyz / eye_ws.w - pt_ws.xyz);
 
-    const float3 ray_origin = pt_ws.xyz + bias_dir * (length(pt_vs.xyz) + length(pt_ws.xyz)) * 1e-4;
+    const float3 ray_origin = pt_ws.xyz + bias_dir * (length(pt_vs.xyz) + 10 * length(pt_ws.xyz)) * 1e-4;
     const bool is_shadowed = rt_is_shadowed(
         acceleration_structure,
         new_ray(
