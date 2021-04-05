@@ -302,11 +302,7 @@ fn main() -> anyhow::Result<()> {
             });
         }
 
-        WorldFrameDesc {
-            camera_matrices: camera.calc_matrices(),
-            render_extent: ctx.render_extent,
-            sun_direction,
-        }
+        frame_desc
     })
 }
 
