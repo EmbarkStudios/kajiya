@@ -37,10 +37,10 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     VertexPacked vp = VertexPacked(asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_core_offset)));
     Vertex v = unpack_vertex(vp);
 
-    /*float4 v_color =
+    float4 v_color =
         mesh.vertex_aux_offset != 0
             ? asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_aux_offset))
-            : 1.0.xxxx;*/
+            : 1.0.xxxx;
 
     float4 v_tangent_packed =
         mesh.vertex_tangent_offset != 0
@@ -61,7 +61,7 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     //float4 prev_cs_pos = mul(frame_constants.view_constants.view_to_sample, prev_vs_pos);
 
     vsout.position = cs_pos;
-    vsout.color = 1.0;
+    vsout.color = v_color;
     vsout.uv = uv;
     vsout.normal = v.normal;
     vsout.material_id = material_id;
