@@ -91,7 +91,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //temporal_change = 0.02 * temporal_change / max(1e-5, calculate_luma(dev.rgb));
     //temporal_change = WaveActiveSum(temporal_change) / WaveActiveSum(1);
 
-    float box_size = 1;//lerp(reproj.w, 1.0, 0.5);
+    float box_size = 1;
     const float n_deviations = 5.0;// * WaveActiveMin(light_stability);
     //dev = max(dev, history * 0.1);
     //dev = min(dev, history * 0.01);

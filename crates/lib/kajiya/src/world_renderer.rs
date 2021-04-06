@@ -114,6 +114,7 @@ pub struct WorldRenderer {
     image_luts: Vec<ImageLut>,
     frame_idx: u32,
     prev_camera_matrices: Option<CameraMatrices>,
+    pub(crate) temporal_upscale_extent: [u32; 2],
 
     supersample_offsets: Vec<Vec2>,
 
@@ -125,6 +126,8 @@ pub struct WorldRenderer {
     pub rtdgi: RtdgiRenderer,
     pub csgi: CsgiRenderer,
     pub taa: TaaRenderer,
+    pub supersample_drift: Vec2,
+    pub use_sample_drift_correction: bool,
 
     pub debug_mode: RenderDebugMode,
     pub debug_shading_mode: usize,
@@ -172,7 +175,10 @@ fn load_gpu_image_asset(
 }
 
 impl WorldRenderer {
-    pub(crate) fn new_empty(backend: &RenderBackend) -> anyhow::Result<Self> {
+    pub(crate) fn new_empty(
+        temporal_upscale_extent: [u32; 2],
+        backend: &RenderBackend,
+    ) -> anyhow::Result<Self> {
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -279,6 +285,9 @@ impl WorldRenderer {
             csgi: CsgiRenderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
             taa: TaaRenderer::new(),
+            supersample_drift: Vec2::zero(),
+            use_sample_drift_correction: true,
+            temporal_upscale_extent,
 
             debug_mode: RenderDebugMode::None,
             debug_shading_mode: 0,
@@ -655,8 +664,39 @@ impl WorldRenderer {
             let supersample_offset =
                 self.supersample_offsets[self.frame_idx as usize % self.supersample_offsets.len()];
             //Vec2::zero();
-            self.taa.current_supersample_offset = supersample_offset;
-            view_constants.set_pixel_offset(supersample_offset, frame_desc.render_extent);
+
+            //let jitter_grid_extent = [1920, 1080];
+            let jitter_grid_extent = [1280, 720];
+
+            if self.use_sample_drift_correction {
+                if let Some(prev_camera_matrices) = self.prev_camera_matrices {
+                    let prev_forward = -prev_camera_matrices.view_to_world.z_axis;
+                    let forward_shift = frame_desc.camera_matrices.world_to_view * prev_forward;
+
+                    let mut sample_shift = frame_desc.camera_matrices.view_to_clip * forward_shift;
+                    sample_shift.x *= jitter_grid_extent[0] as f32 * 0.5;
+                    sample_shift.y *= jitter_grid_extent[1] as f32 * 0.5;
+
+                    self.supersample_drift += Vec2::new(sample_shift.x, sample_shift.y);
+
+                    self.supersample_drift.x = (self.supersample_drift.x + 1.0) % 1.0;
+                    if self.supersample_drift.x > 0.5 {
+                        self.supersample_drift.x = 1.0 - self.supersample_drift.x;
+                    }
+
+                    self.supersample_drift.y = (self.supersample_drift.y + 1.0) % 1.0;
+                    if self.supersample_drift.y > 0.5 {
+                        self.supersample_drift.y = 1.0 - self.supersample_drift.y;
+                    }
+                }
+            }
+
+            self.taa.current_supersample_offset = supersample_offset - self.supersample_drift;
+            self.taa.current_supersample_offset.x %= 0.5;
+            self.taa.current_supersample_offset.y %= 0.5;
+
+            view_constants.set_pixel_offset(supersample_offset, jitter_grid_extent);
+            //view_constants.set_pixel_offset(supersample_offset, frame_desc.render_extent);
         }
 
         let globals_offset = dynamic_constants.push(&FrameConstants {

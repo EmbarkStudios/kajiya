@@ -230,6 +230,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //out_color = saturate(filter_idx / 7.0);
     //out_color = history_error;
 
+    //out_color = half_view_normal_tex[px / 2].xyz * 0.5 + 0.5;
     output_tex[px] = float4(out_color, relative_error);
     ray_len_out_tex[px] = ray_len_accum;
 }

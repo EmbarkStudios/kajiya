@@ -42,7 +42,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 ex2 = vsum2 / wsum;
 	float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
 
-    float box_size = lerp(reproj.w, 1.0, 0.05);
+    float box_size = lerp(reproj.w, 0.05, 1.0);
 
     const float n_deviations = 5.0;
 	float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;

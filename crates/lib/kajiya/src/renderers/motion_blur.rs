@@ -61,7 +61,10 @@ pub fn motion_blur(
     .read(&velocity_dilated)
     .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
     .write(&mut output)
-    .constants(output.desc().extent_inv_extent_2d())
+    .constants((
+        depth.desc().extent_inv_extent_2d(),
+        output.desc().extent_inv_extent_2d(),
+    ))
     .dispatch(output.desc().extent);
 
     output

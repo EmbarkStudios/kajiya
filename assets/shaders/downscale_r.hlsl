@@ -10,6 +10,6 @@
 
 [numthreads(8, 8, 1)]
 void main(in int2 px : SV_DispatchThreadID) {
-    int2 src_px = px * int2((input_tex_size.xy + 1.0) / output_tex_size.xy);
+    int2 src_px = int2(((px + 0.25) / output_tex_size.xy) * input_tex_size.xy);
 	output_tex[px] = input_tex[src_px];
 }

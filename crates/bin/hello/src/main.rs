@@ -1,11 +1,10 @@
 use kajiya_simple::*;
 
 fn main() -> anyhow::Result<()> {
-    let mut kajiya = SimpleMainLoop::builder().build(
+    let mut kajiya = SimpleMainLoop::builder().resolution([1920, 1080]).build(
         WindowBuilder::new()
             .with_title("hello-kajiya")
-            .with_resizable(false)
-            .with_inner_size(winit::dpi::LogicalSize::new(1920, 1080)),
+            .with_resizable(false),
     )?;
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 2.5));

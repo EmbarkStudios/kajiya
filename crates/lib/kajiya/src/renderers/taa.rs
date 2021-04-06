@@ -34,10 +34,11 @@ impl TaaRenderer {
         rg: &mut rg::TemporalRenderGraph,
         input_tex: &rg::Handle<Image>,
         reprojection_map: &rg::Handle<Image>,
+        output_extent: [u32; 2],
     ) -> rg::ReadOnlyHandle<Image> {
         let (mut temporal_output_tex, history_tex) = self
             .temporal_tex
-            .get_output_and_history(rg, Self::temporal_tex_desc(input_tex.desc().extent_2d()));
+            .get_output_and_history(rg, Self::temporal_tex_desc(output_extent));
 
         SimpleRenderPass::new_compute(rg.add_pass("taa"), "/shaders/taa/taa.hlsl")
             .read(&input_tex)
@@ -46,9 +47,10 @@ impl TaaRenderer {
             .write(&mut temporal_output_tex)
             .constants((
                 input_tex.desc().extent_inv_extent_2d(),
+                temporal_output_tex.desc().extent_inv_extent_2d(),
                 self.current_supersample_offset,
             ))
-            .dispatch(input_tex.desc().extent);
+            .dispatch(temporal_output_tex.desc().extent);
 
         temporal_output_tex.into()
     }

@@ -11,8 +11,12 @@ use log::{debug, error, info, trace, warn};
 use turbosloth::*;
 
 impl WorldRenderer {
-    pub fn new(backend: &RenderBackend, lazy_cache: &Arc<LazyCache>) -> anyhow::Result<Self> {
-        let mut world_renderer = Self::new_empty(backend)?;
+    pub fn new(
+        temporal_upscale_extent: [u32; 2],
+        backend: &RenderBackend,
+        lazy_cache: &Arc<LazyCache>,
+    ) -> anyhow::Result<Self> {
+        let mut world_renderer = Self::new_empty(temporal_upscale_extent, backend)?;
 
         // BINDLESS_LUT_BRDF_FG
         world_renderer.add_image_lut(crate::lut_renderers::BrdfFgLutComputer, 0);

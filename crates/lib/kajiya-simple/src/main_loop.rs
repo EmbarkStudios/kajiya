@@ -55,10 +55,21 @@ struct MainLoopOptional {
     #[cfg(feature = "dear-imgui")]
     imgui: imgui::Context,
 }
+
+pub enum WindowScale {
+    Exact(f32),
+
+    // Follow resolution scaling preferences in the OS
+    SystemNative,
+}
+
 pub struct SimpleMainLoopBuilder {
+    resolution: [u32; 2],
     vsync: bool,
     graphics_debugging: bool,
     default_log_level: log::LevelFilter,
+    window_scale: WindowScale,
+    temporal_upsampling: f32,
 }
 
 impl Default for SimpleMainLoopBuilder {
@@ -70,10 +81,18 @@ impl Default for SimpleMainLoopBuilder {
 impl SimpleMainLoopBuilder {
     pub fn new() -> Self {
         SimpleMainLoopBuilder {
+            resolution: [1280, 720],
             vsync: true,
             graphics_debugging: false,
             default_log_level: log::LevelFilter::Warn,
+            window_scale: WindowScale::SystemNative,
+            temporal_upsampling: 1.0,
         }
+    }
+
+    pub fn resolution(mut self, resolution: [u32; 2]) -> Self {
+        self.resolution = resolution;
+        self
     }
 
     pub fn vsync(mut self, vsync: bool) -> Self {
@@ -88,6 +107,20 @@ impl SimpleMainLoopBuilder {
 
     pub fn default_log_level(mut self, default_log_level: log::LevelFilter) -> Self {
         self.default_log_level = default_log_level;
+        self
+    }
+
+    // TODO; not hooked up yet
+    pub fn window_scale(mut self, window_scale: WindowScale) -> Self {
+        self.window_scale = window_scale;
+        self
+    }
+
+    /// Must be >= 1.0. The rendering resolution will be 1.0 / `temporal_upsampling`,
+    /// and will be upscaled to the target resolution by TAA. Greater values mean faster
+    /// rendering, but temporal shimmering artifacts and blurriness.
+    pub fn temporal_upsampling(mut self, temporal_upsampling: f32) -> Self {
+        self.temporal_upsampling = temporal_upsampling.clamp(1.0, 2.0);
         self
     }
 
@@ -116,10 +149,15 @@ impl SimpleMainLoop {
 
     fn build(
         builder: SimpleMainLoopBuilder,
-        window_builder: WindowBuilder,
+        mut window_builder: WindowBuilder,
     ) -> anyhow::Result<Self> {
         kajiya::logging::set_up_logging(builder.default_log_level)?;
         std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
+
+        window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
+            builder.resolution[0] as f64,
+            builder.resolution[1] as f64,
+        ));
 
         let event_loop = EventLoop::new();
         let window = window_builder.build(&event_loop).expect("window");
@@ -127,16 +165,24 @@ impl SimpleMainLoop {
         // Physical window extent in pixels
         let swapchain_extent = [window.inner_size().width, window.inner_size().height];
 
-        let scale_factor = window.scale_factor();
-        let render_extent = window.inner_size().to_logical(scale_factor);
-
-        // Actual rendering extent in pixels
-        let render_extent = [render_extent.width, render_extent.height];
+        //let scale_factor = window.scale_factor();
+        let render_extent = [
+            (builder.resolution[0] as f32 / builder.temporal_upsampling) as u32,
+            (builder.resolution[1] as f32 / builder.temporal_upsampling) as u32,
+        ];
 
         log::info!(
             "Actual rendering extent: {}x{}",
             render_extent[0],
             render_extent[1]
+        );
+
+        let temporal_upscale_extent = builder.resolution;
+
+        log::info!(
+            "Temporal upscaling extent: {}x{}",
+            temporal_upscale_extent[0],
+            temporal_upscale_extent[1]
         );
 
         let render_backend = RenderBackend::new(
@@ -149,7 +195,8 @@ impl SimpleMainLoop {
         )?;
 
         let lazy_cache = LazyCache::create();
-        let world_renderer = WorldRenderer::new(&render_backend, &lazy_cache)?;
+        let world_renderer =
+            WorldRenderer::new(temporal_upscale_extent, &render_backend, &lazy_cache)?;
         let ui_renderer = UiRenderer::default();
 
         let rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;

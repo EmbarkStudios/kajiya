@@ -18,6 +18,9 @@ struct Opt {
     #[structopt(long, default_value = "720")]
     height: u32,
 
+    #[structopt(long, default_value = "1.0")]
+    temporal_upsampling: f32,
+
     #[structopt(long)]
     scene: String,
 
@@ -51,18 +54,16 @@ fn main() -> anyhow::Result<()> {
     )?;
 
     let mut kajiya = SimpleMainLoop::builder()
+        .resolution([opt.width, opt.height])
         .vsync(!opt.no_vsync)
         .graphics_debugging(!opt.no_debug)
+        .temporal_upsampling(opt.temporal_upsampling)
         .default_log_level(log::LevelFilter::Info)
         .build(
             WindowBuilder::new()
                 .with_title("kajiya")
                 .with_resizable(false)
-                .with_decorations(!opt.no_window_decorations)
-                .with_inner_size(winit::dpi::LogicalSize::new(
-                    opt.width as f64,
-                    opt.height as f64,
-                )),
+                .with_decorations(!opt.no_window_decorations),
         )?;
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
@@ -87,13 +88,16 @@ fn main() -> anyhow::Result<()> {
     let mut mouse_state: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
 
+    let mut render_instances = vec![];
     for instance in scene_desc.instances {
         let mesh = kajiya
             .world_renderer
             .add_baked_mesh(format!("/baked/{}.mesh", instance.mesh))?;
-        kajiya
-            .world_renderer
-            .add_instance(mesh, instance.position.into(), Quat::identity());
+        render_instances.push(kajiya.world_renderer.add_instance(
+            mesh,
+            instance.position.into(),
+            Quat::identity(),
+        ));
     }
 
     /*let car_mesh = kajiya
@@ -109,6 +113,7 @@ fn main() -> anyhow::Result<()> {
     let mut light_theta = -4.54;
     let mut light_phi = 1.48;
     let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
+    let mut emissive_multiplier = 1.0;
 
     const MAX_FPS_LIMIT: u32 = 256;
     let mut max_fps = MAX_FPS_LIMIT;
@@ -178,6 +183,12 @@ fn main() -> anyhow::Result<()> {
             car_pos,
             Quat::from_rotation_y(car_rot),
         );*/
+
+        for inst in &render_instances {
+            ctx.world_renderer
+                .get_instance_dynamic_parameters_mut(*inst)
+                .emissive_multiplier = emissive_multiplier;
+        }
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
             match ctx.world_renderer.render_mode {
@@ -250,6 +261,11 @@ fn main() -> anyhow::Result<()> {
                         .range(-8.0..=8.0)
                         .speed(0.01)
                         .build(&ui, &mut ctx.world_renderer.ev_shift);
+
+                    imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
+                        .range(0.0..=20.0)
+                        .speed(0.1)
+                        .build(&ui, &mut emissive_multiplier);
                 }
 
                 /*if imgui::CollapsingHeader::new(im_str!("csgi"))
@@ -298,6 +314,11 @@ fn main() -> anyhow::Result<()> {
                     imgui::Drag::<u32>::new(im_str!("Max FPS"))
                         .range(1..=MAX_FPS_LIMIT)
                         .build(&ui, &mut max_fps);
+
+                    /*ui.checkbox(
+                        im_str!("Use sample drift correction"),
+                        &mut ctx.world_renderer.use_sample_drift_correction,
+                    );*/
                 }
             });
         }
