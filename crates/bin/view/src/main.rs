@@ -315,10 +315,10 @@ fn main() -> anyhow::Result<()> {
                         .range(1..=MAX_FPS_LIMIT)
                         .build(&ui, &mut max_fps);
 
-                    /*ui.checkbox(
+                    ui.checkbox(
                         im_str!("Use sample drift correction"),
                         &mut ctx.world_renderer.use_sample_drift_correction,
-                    );*/
+                    );
                 }
             });
         }

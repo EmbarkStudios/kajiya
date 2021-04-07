@@ -98,7 +98,7 @@ CenterSampleInfo fetch_center_filtered(int2 dst_px) {
             float2 src_sample_loc = base_src_sample_loc + float2(x, y) / input_resolution_scale;
 
             float4 col = float4(rgb_to_ycbcr(decode_rgb(input_tex[src_px].rgb)), 1);
-            float2 sample_center_offset = jitter * float2(1, -1) - (src_sample_loc - dst_sample_loc);
+            float2 sample_center_offset = jitter * float2(1, -1) / input_resolution_scale - (src_sample_loc - dst_sample_loc);
             float dist2 = dot(sample_center_offset, sample_center_offset);
             float dist = sqrt(dist2);
 
@@ -113,9 +113,17 @@ CenterSampleInfo fetch_center_filtered(int2 dst_px) {
         }
     }
 
+    const int sample_count = (k * 2 + 1) * (k * 2 + 1);
+    const float ideal_coverage = 1.0 + 4 * 0.5 + 4 * 0.25;
+
+    float2 sample_center_offset = jitter / input_resolution_scale * float2(1, -1) - (base_src_sample_loc - dst_sample_loc);
+
     CenterSampleInfo info;
     info.color = res.rgb / max(1e-5, res.a);
-    info.coverage = res.a;
+    //info.color = res.rgb / ideal_coverage * 1.5;
+    //info.coverage = res.a / sample_count;
+    //info.coverage = dev_wt_sum;
+    info.coverage = res.a / sample_count;//exp2(-2 * dot(sample_center_offset, sample_center_offset) * kernel_distance_mult);
     info.ex = ex / dev_wt_sum;
     info.ex2 = ex2 / dev_wt_sum;
     return info;
@@ -193,20 +201,23 @@ void main(uint2 px: SV_DispatchThreadID) {
     box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
     const float n_deviations = 1.5 * lerp(0.75, 1.0, reproj.w);
-	float3 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
-	float3 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
+	float3 nmin = center - dev * box_size * n_deviations;
+	float3 nmax = center + dev * box_size * n_deviations;
 
     float blend_factor = 1.0;
     
 	#if 1
         // TODO: make better use of the quad reprojection validity
-        uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
-        float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
-        blend_factor = lerp(1.0, 1.0 / 12.0, dot(quad_reproj_valid, 0.25));
+        //uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+        //float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+        //blend_factor = lerp(1.0, 1.0 / 12.0, dot(quad_reproj_valid, 0.25));
+        //blend_factor = lerp(1.0, 1.0 / 12.0, min(1.0, dot(quad_reproj_valid, 1.0)));
+        blend_factor = 1.0 / 12.0;
 
-        // HACK: reduces shimmering, but increases ghosting; mostly useful for upsampling
-        blend_factor = min(blend_factor, WaveReadLaneAt(blend_factor, WaveGetLaneIndex() ^ 1));
-        blend_factor = min(blend_factor, WaveReadLaneAt(blend_factor, WaveGetLaneIndex() ^ 8));
+        // HACK: when used with quad rejection, this reduces shimmering,
+        // but increases ghosting; mostly useful for upsampling
+        //blend_factor = min(blend_factor, WaveReadLaneAt(blend_factor, WaveGetLaneIndex() ^ 1));
+        //blend_factor = min(blend_factor, WaveReadLaneAt(blend_factor, WaveGetLaneIndex() ^ 8));
 
         float3 clamped_history = clamp(history, nmin, nmax);
 		//float3 clamped_history = history;
@@ -214,10 +225,6 @@ void main(uint2 px: SV_DispatchThreadID) {
         // "Anti-flicker"
         float clamp_dist = (min(abs(history.x - nmin.x), abs(history.x - nmax.x))) / max(max(history.x, ex.x), 1e-5);
         blend_factor *= lerp(0.2, 1.0, smoothstep(0.0, 2.0, clamp_dist));
-
-        // Reduce blend factor towards the new sample for locations
-        // that get poor coverage with temporal upscaling.
-        blend_factor *= center_sample.coverage;
 
 		float3 result = lerp(clamped_history, center, blend_factor);
         result = ycbcr_to_rgb(result);
@@ -242,6 +249,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     //float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
     //result = quad_reproj_valid.rgb;
     //result = float3(abs(reproj.xy), 0);
+    //result = (center_sample.coverage / 0.42 / (input_resolution_scale.x * input_resolution_scale.y)) > 1.2;
+    //result = center_sample.coverage;
 
     output_tex[px] = float4(result, 1);
 }

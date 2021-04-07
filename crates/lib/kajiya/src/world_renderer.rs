@@ -665,9 +665,7 @@ impl WorldRenderer {
                 self.supersample_offsets[self.frame_idx as usize % self.supersample_offsets.len()];
             //Vec2::zero();
 
-            //let jitter_grid_extent = [1920, 1080];
-            let jitter_grid_extent = [1280, 720];
-
+            let jitter_grid_extent = frame_desc.render_extent;
             if self.use_sample_drift_correction {
                 if let Some(prev_camera_matrices) = self.prev_camera_matrices {
                     let prev_forward = -prev_camera_matrices.view_to_world.z_axis;

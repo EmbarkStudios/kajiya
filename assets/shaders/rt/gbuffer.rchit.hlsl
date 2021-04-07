@@ -60,6 +60,8 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
     normal = surf_normal;
 
+    // TODO: vertex color
+
     float2 uv0 = asfloat(vertices.Load2(ind.x * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv1 = asfloat(vertices.Load2(ind.y * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv2 = asfloat(vertices.Load2(ind.z * sizeof(float2) + mesh.vertex_uv_offset));
