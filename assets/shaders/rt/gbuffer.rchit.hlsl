@@ -60,7 +60,13 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
     normal = surf_normal;
 
-    // TODO: vertex color
+    float4 v_color = 1.0.xxxx;
+    if (mesh.vertex_aux_offset != 0) {
+        float4 vc0 = asfloat(vertices.Load4(ind.x * sizeof(float4) + mesh.vertex_aux_offset));
+        float4 vc1 = asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_aux_offset));
+        float4 vc2 = asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_aux_offset));
+        v_color = vc0 * barycentrics.x + vc1 * barycentrics.y + vc2 * barycentrics.z;
+    }
 
     float2 uv0 = asfloat(vertices.Load2(ind.x * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv1 = asfloat(vertices.Load2(ind.y * sizeof(float2) + mesh.vertex_uv_offset));
@@ -76,7 +82,11 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float2 albedo_uv = transform_material_uv(material, uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
-    float3 albedo = albedo_tex.SampleLevel(sampler_llr, albedo_uv, albedo_lod).xyz * float4(material.base_color_mult).xyz;
+
+    float3 albedo =
+        albedo_tex.SampleLevel(sampler_llr, albedo_uv, albedo_lod).xyz
+        * float4(material.base_color_mult).xyz
+        * v_color.rgb;
 
     float2 spec_uv = transform_material_uv(material, uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
