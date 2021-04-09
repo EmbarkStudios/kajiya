@@ -4,8 +4,12 @@
 
 static const uint CSGI_SLICE_COUNT = 6;
 static const uint CSGI_INDIRECT_COUNT = 6 + 8;
-
 static const uint CSGI_VOLUME_DIMS = 64;
+
+//#define CSGI_ACCUM_HYSTERESIS 0.05
+//#define CSGI_ACCUM_HYSTERESIS 0.15
+#define CSGI_ACCUM_HYSTERESIS 0.25
+//#define CSGI_ACCUM_HYSTERESIS 1.0
 
 #define CSGI_VOLUME_CENTER float3(0, 0, 0)
 //static const float CSGI_VOLUME_SIZE = 12;

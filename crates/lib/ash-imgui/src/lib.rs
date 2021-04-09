@@ -320,8 +320,8 @@ impl Renderer {
                 size: vk::DeviceSize::from(align_up(texture.data.len() as u32, atom_size)),
                 ..Default::default()
             };
-            unsafe { device.flush_mapped_memory_ranges(slice::from_ref(&mapped_memory_range)) }
-                .unwrap();
+            /*unsafe { device.flush_mapped_memory_ranges(slice::from_ref(&mapped_memory_range)) }
+            .unwrap();*/
         }
 
         Self {
@@ -726,7 +726,7 @@ impl Renderer {
                     ..Default::default()
                 },
             ];
-            unsafe { device.flush_mapped_memory_ranges(&mapped_ranges) }.unwrap();
+            //unsafe { device.flush_mapped_memory_ranges(&mapped_ranges) }.unwrap();
         }
     }
 }

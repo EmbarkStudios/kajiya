@@ -16,7 +16,6 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
 
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     float4 val = direct_tex[offset + vx];
-    //val.a = sqrt(val.a);
     val.rgb /= max(0.01, val.a);
     return max(0.0, val);
 }
@@ -32,7 +31,7 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
     return float4(indirect_tex[offset + subray_offset + vx], 1);
 }
 
-[numthreads(8, 8, 1)]
+[numthreads(4, 4, 1)]
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
     const uint indirect_dir_idx = CSGI_SLICE_COUNT + dispatch_vx.z;
     const int3 indirect_dir = CSGI_INDIRECT_DIRS[indirect_dir_idx];
@@ -92,15 +91,17 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 float3 scatter = 0.0;
                 float scatter_wt = 0.0;
 
-                float4 indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
-                float4 indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
-                float4 indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
-
-                indirect_i.rgb = lerp(atmosphere_color, indirect_i.rgb, indirect_i.a);
-                indirect_j.rgb = lerp(atmosphere_color, indirect_j.rgb, indirect_j.a);
-                indirect_k.rgb = lerp(atmosphere_color, indirect_k.rgb, indirect_k.a);
-
                 {
+                    float4 indirect_i = 0;
+
+                    // Note: one of those branches is faster than none,
+                    // but two or three are slower than none :shrug:
+                    if (center_direct_i.a < 0.999)
+                    {
+                        indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
+                        indirect_i.rgb = lerp(atmosphere_color, indirect_i.rgb, indirect_i.a);
+                    }
+
                     float wt = subray_wts[subray].x;
                     float3 indirect = indirect_i.rgb;
                     #if USE_DEEP_OCCLUDE
@@ -112,6 +113,13 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 }
 
                 {
+                    float4 indirect_j = 0;
+                    //if (center_direct_j.a < 0.999)
+                    {
+                        indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
+                        indirect_j.rgb = lerp(atmosphere_color, indirect_j.rgb, indirect_j.a);
+                    }
+
                     float wt = subray_wts[subray].y;
                     float3 indirect = indirect_j.rgb;
                     #if USE_DEEP_OCCLUDE
@@ -123,6 +131,13 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 }
 
                 {
+                    float4 indirect_k = 0;
+                    //if (center_direct_k.a < 0.999)
+                    {
+                        indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
+                        indirect_k.rgb = lerp(atmosphere_color, indirect_k.rgb, indirect_k.a);
+                    }
+
                     float wt = subray_wts[subray].z;
                     float3 indirect = indirect_k.rgb;
                     #if USE_DEEP_OCCLUDE

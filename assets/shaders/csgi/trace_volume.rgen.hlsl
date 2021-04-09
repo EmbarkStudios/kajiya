@@ -28,10 +28,6 @@
 #define USE_RAY_JITTER 1
 #define RAY_JITTER_AMOUNT 0.75
 //#define RAY_JITTER_AMOUNT 1.0
-//#define ACCUM_HYSTERESIS 0.05
-//#define ACCUM_HYSTERESIS 0.15
-#define ACCUM_HYSTERESIS 0.25
-//#define ACCUM_HYSTERESIS 1.0
 
 #define USE_MULTIBOUNCE 1
 
@@ -72,11 +68,11 @@ void main() {
         float2 jitter_urand = hammersley(frame_constants.frame_index % 4, 8);
         const float offset_x = jitter_urand.x * jitter_amount;
         const float offset_y = jitter_urand.y * jitter_amount;
-        const float blend_factor = ACCUM_HYSTERESIS;
+        const float blend_factor = CSGI_ACCUM_HYSTERESIS;
     #else
         const float offset_x = 0.0;
         const float offset_y = 0.0;
-        const float blend_factor = ACCUM_HYSTERESIS;
+        const float blend_factor = CSGI_ACCUM_HYSTERESIS;
     #endif
 
     float3 vx_trace_offset;
@@ -198,20 +194,16 @@ void main() {
 
             int cells_skipped_by_ray = int(floor(primary_hit.ray_t));
             ray_length_int -= cells_skipped_by_ray + 1;
+            vx += slice_dir * cells_skipped_by_ray;
 
-            while (cells_skipped_by_ray-- > 0) {
-                csgi_direct_tex[vx + output_offset] = lerp(csgi_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
-                vx += slice_dir;
-            }
-
-            csgi_direct_tex[vx + output_offset] = lerp(csgi_direct_tex[vx + output_offset], float4(total_radiance, 1), blend_factor);
+            csgi_direct_tex[vx + output_offset] = lerp(
+                // Cancel the decay that runs just before this pass
+                csgi_direct_tex[vx + output_offset] / (1.0 - CSGI_ACCUM_HYSTERESIS),
+                float4(total_radiance, 1),
+                blend_factor
+            );
             vx += slice_dir;
         } else {
-            while (ray_length_int-- > 0) {
-                csgi_direct_tex[vx + output_offset] = lerp(csgi_direct_tex[vx + output_offset], float4(0, 0, 0, 0), blend_factor);
-                vx += slice_dir;
-            }
-            
             break;
         }
     }

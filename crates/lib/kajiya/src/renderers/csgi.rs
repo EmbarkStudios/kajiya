@@ -103,6 +103,14 @@ impl CsgiRenderer {
 
         let sweep_vx_count = VOLUME_DIMS >> self.trace_subdiv.clamp(0, 5);
 
+        SimpleRenderPass::new_compute(rg.add_pass("csgi decay"), "/shaders/csgi/decay_volume.hlsl")
+            .write(&mut direct_cascade0)
+            .dispatch([
+                VOLUME_DIMS * PRETRACE_COUNT as u32,
+                VOLUME_DIMS as u32,
+                VOLUME_DIMS,
+            ]);
+
         SimpleRenderPass::new_rt(
             rg.add_pass("csgi trace"),
             "/shaders/csgi/trace_volume.rgen.hlsl",
@@ -125,12 +133,6 @@ impl CsgiRenderer {
             ],
         );
 
-        SimpleRenderPass::new_compute(rg.add_pass("csgi sweep"), "/shaders/csgi/sweep_volume.hlsl")
-            .read(&direct_cascade0)
-            .read(sky_cube)
-            .write(&mut indirect_cascade0)
-            .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
-
         SimpleRenderPass::new_compute(
             rg.add_pass("csgi diagonal sweep"),
             "/shaders/csgi/diagonal_sweep_volume.hlsl",
@@ -143,6 +145,12 @@ impl CsgiRenderer {
             VOLUME_DIMS,
             (TRACE_COUNT - PRETRACE_COUNT) as u32,
         ]);
+
+        SimpleRenderPass::new_compute(rg.add_pass("csgi sweep"), "/shaders/csgi/sweep_volume.hlsl")
+            .read(&direct_cascade0)
+            .read(sky_cube)
+            .write(&mut indirect_cascade0)
+            .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("csgi subray combine"),
