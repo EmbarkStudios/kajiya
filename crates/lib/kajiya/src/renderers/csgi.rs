@@ -133,6 +133,19 @@ impl CsgiRenderer {
             ],
         );
 
+        let mut direct_opacity_cascade0 = rg.create(ImageDesc::new_3d(
+            vk::Format::R8_UNORM,
+            [VOLUME_DIMS, VOLUME_DIMS, VOLUME_DIMS],
+        ));
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("csgi direct opacity sum"),
+            "/shaders/csgi/direct_opacity_sum.hlsl",
+        )
+        .read(&direct_cascade0)
+        .write(&mut direct_opacity_cascade0)
+        .dispatch([VOLUME_DIMS, VOLUME_DIMS, VOLUME_DIMS]);
+
         SimpleRenderPass::new_compute(
             rg.add_pass("csgi diagonal sweep"),
             "/shaders/csgi/diagonal_sweep_volume.hlsl",
@@ -158,6 +171,7 @@ impl CsgiRenderer {
         )
         .read(&indirect_cascade0)
         .read(&direct_cascade0)
+        .read(&direct_opacity_cascade0)
         .write(&mut indirect_cascade_combined0)
         .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);
 

@@ -1,4 +1,3 @@
-#include "../inc/pack_unpack.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] RWTexture3D<float4> direct_tex;
