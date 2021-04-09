@@ -47,8 +47,16 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
     static const uint PLANE_COUNT = CSGI_VOLUME_DIMS * 3 - 2;
 
+    #if 0
+    static const uint plane_start_idx = (frame_constants.frame_index % 2) * PLANE_COUNT / 2;
+    static const uint plane_end_idx = PLANE_COUNT - plane_start_idx;
+    #else
+    static const uint plane_start_idx = 0;
+    static const uint plane_end_idx = PLANE_COUNT;
+    #endif
+
     {[loop]
-    for (uint plane_idx = 0; plane_idx < PLANE_COUNT; ++plane_idx) {
+    for (uint plane_idx = plane_start_idx; plane_idx < plane_end_idx; ++plane_idx) {
         // A diagonal cross-section of a 3d grid creates a 2d hexagonal grid.
         // Here, axial coordinates are used to find the cells which belong to each slice.
         // See: https://www.redblobgames.com/grids/hexagons/
