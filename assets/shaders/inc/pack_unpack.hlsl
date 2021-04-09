@@ -160,3 +160,17 @@ float3 rgb9e5_to_float3(uint v) {
         float(bitfield_extract(v, 32 - RGB9E5_MANTISSA_BITS * 3, RGB9E5_MANTISSA_BITS)) * scale
     );
 }
+
+// Used with B10G11R11_UFLOAT_PACK32 output
+// The GPU will convert floating point values to 11_11_10 by _trimming_ the value,
+// which often results in value loss and discoloration.
+// By using this just before storing the value to an image, the conversion becomes rounding.
+float3 prequant_shift_11_11_10(float3 v) {
+    static const float3 F_11_11_10_MANTISSA_BITS = float3(6, 6, 5);
+
+    float3 exponent;
+    frexp(v, exponent);
+
+    // Add a 0.5 just below what the format can represent
+    return v + exp2(exponent - F_11_11_10_MANTISSA_BITS - 2);
+}

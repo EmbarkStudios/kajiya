@@ -1,11 +1,12 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/hash.hlsl"
+#include "../inc/pack_unpack.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWTexture3D<float4> indirect_tex;
+[[vk::binding(2)]] RWTexture3D<float3> indirect_tex;
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
@@ -27,8 +28,9 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
 
-    return float4(indirect_tex[offset + subray_offset + vx].rgb, 1);
+    return float4(indirect_tex[offset + subray_offset + vx], 1);
 }
+
 
 // TODO: 3D textures on NV seem to be only tiled in the XY plane,
 // meaning that the -Z and +Z sweeps are fast, but the others are slow.
@@ -134,7 +136,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
             float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
             const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-            indirect_tex[subray_offset + vx + indirect_offset] = radiance;
+            indirect_tex[subray_offset + vx + indirect_offset] = prequant_shift_11_11_10(radiance.rgb);
         }}
     }
 }

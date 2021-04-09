@@ -1,10 +1,11 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/frame_constants.hlsl"
+#include "../inc/pack_unpack.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWTexture3D<float4> indirect_tex;
+[[vk::binding(2)]] RWTexture3D<float3> indirect_tex;
 
 #define USE_DEEP_OCCLUDE 1
 
@@ -28,7 +29,7 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
 
-    return float4(indirect_tex[offset + subray_offset + vx].rgb, 1);
+    return float4(indirect_tex[offset + subray_offset + vx], 1);
 }
 
 [numthreads(8, 8, 1)]
@@ -44,11 +45,14 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
     float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
 
-#if 1
-    static const uint PLANE_COUNT = (CSGI_VOLUME_DIMS - 1) * 3;
+    static const uint PLANE_COUNT = CSGI_VOLUME_DIMS * 3 - 2;
 
     {[loop]
     for (uint plane_idx = 0; plane_idx < PLANE_COUNT; ++plane_idx) {
+        // A diagonal cross-section of a 3d grid creates a 2d hexagonal grid.
+        // Here, axial coordinates are used to find the cells which belong to each slice.
+        // See: https://www.redblobgames.com/grids/hexagons/
+
         const int sum_to = plane_idx;
         const int extent = CSGI_VOLUME_DIMS;
         const int xmin = max(0, sum_to - (extent-1) * 2);
@@ -59,13 +63,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
         vx = indirect_dir > 0 ? (CSGI_VOLUME_DIMS - vx - 1) : vx;
 
-        if (all(vx >= 0 && vx < extent))
-        {
-#else
-    {[loop]
-    for (uint slice_z = 0; slice_z < CSGI_VOLUME_DIMS; ++slice_z) {
-        const int3 vx = int3(dispatch_vx.xy, slice_z); {
-#endif
+        if (all(vx >= 0 && vx < extent)) {
             const float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
             const float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
             const float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
@@ -130,7 +128,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
                 const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
                 const int3 indirect_offset = int3(indirect_dir_idx * CSGI_VOLUME_DIMS, 0, 0);
-                indirect_tex[subray_offset + vx + indirect_offset] = radiance;
+                indirect_tex[subray_offset + vx + indirect_offset] = prequant_shift_11_11_10(radiance.rgb);
             }
         }
     }}

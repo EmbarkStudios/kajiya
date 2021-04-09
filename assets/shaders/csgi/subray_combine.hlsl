@@ -1,4 +1,5 @@
 #include "common.hlsl"
+#include "../inc/pack_unpack.hlsl"
 
 [[vk::binding(0)]] Texture3D<float3> input_tex;
 [[vk::binding(1)]] Texture3D<float4> direct_tex;
@@ -83,5 +84,5 @@ void main(in uint3 vx : SV_DispatchThreadID) {
     }
     result /= subray_count;
 
-    output_tex[vx] = lerp(output_tex[vx], result, 1) * suppression;
+    output_tex[vx] = prequant_shift_11_11_10(lerp(output_tex[vx], result, 1) * suppression);
 }
