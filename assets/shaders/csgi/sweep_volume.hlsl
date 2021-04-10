@@ -6,7 +6,7 @@
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWTexture3D<float3> indirect_tex;
+[[vk::binding(2)]] RWTexture3D<float3> subray_indirect_tex;
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
@@ -25,10 +25,31 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
         return 0.0.xxxx;
     }
 
+#if CSGI_SUBRAY_PACKED
+    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 subray_offset = int3(0, subray, 0);
+    const int3 vx_stride = int3(1, 4, 1);
+#else
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
+    const int3 vx_stride = int3(1, 1, 1);
+#endif
 
-    return float4(indirect_tex[offset + subray_offset + vx], 1);
+    return float4(subray_indirect_tex[offset + subray_offset + vx * vx_stride], 1);
+}
+
+void write_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
+#if CSGI_SUBRAY_PACKED
+    const int3 subray_offset = int3(0, subray, 0);
+    const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 vx_stride = int3(1, 4, 1);
+#else
+    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
+    const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 vx_stride = int3(1, 1, 1);
+#endif
+
+    subray_indirect_tex[subray_offset + vx * vx_stride + indirect_offset] = prequant_shift_11_11_10(radiance);
 }
 
 
@@ -74,32 +95,69 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         float2(skew, skew) + subray_jitter
     };
 
-    [unroll] for (uint subray = 0; subray < 4; ++subray) {
-    //{ uint subray = frame_constants.frame_index % 4;
-        float bias_x = subray_bias[subray].x;
-        float bias_y = subray_bias[subray].y;
-        float weights[4] = {
-            max(0.0, 1.0 - bias_x),
-            max(0.0, 1.0 + bias_x),
-            max(0.0, 1.0 - bias_y),
-            max(0.0, 1.0 + bias_y),
+    #if 1
+    static const uint plane_start_idx = (frame_constants.frame_index % 4) * CSGI_VOLUME_DIMS / 4;
+    static const uint plane_end_idx = plane_start_idx + CSGI_VOLUME_DIMS / 4;
+    #else
+    static const uint plane_start_idx = 0;
+    static const uint plane_end_idx = CSGI_VOLUME_DIMS;
+    #endif
+
+    int3 vx = initial_vx - slice_dir * plane_start_idx;
+    [loop]
+    for (uint slice_z = plane_start_idx; slice_z < plane_end_idx; ++slice_z, vx -= slice_dir) {
+        const float4 center_direct_s = sample_direct_from(vx, direct_dir_idx);
+        float4 tangent_neighbor_direct_and_vis[4];
+        float tangent_weights[4];
+
+        for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
+            const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
+            const int3 tangent_dir = CSGI_SLICE_DIRS[tangent_dir_idx];
+
+            const float center_opacity_t = sample_direct_from(vx, tangent_dir_idx).a;
+            const float4 direct_neighbor_t = sample_direct_from(vx + tangent_dir, tangent_dir_idx);
+            const float4 direct_neighbor_s = sample_direct_from(vx + tangent_dir, direct_dir_idx);
+
+            float4 neighbor_direct_and_vis = float4(0.0.xxx, 1.0);
+            
+            neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(direct_neighbor_s.rgb, 0.0), direct_neighbor_s.a);
+            #if 0
+                // HACK: ad-hoc scale for off-axis contributions
+                neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(0.25 * direct_neighbor_t.rgb, 0.0), direct_neighbor_t.a);
+            #else
+                neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(direct_neighbor_t.rgb, 0.0), direct_neighbor_t.a);
+            #endif
+            neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, 0.0.xxxx, center_opacity_t);
+            neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, 0.0.xxxx, center_direct_s.a);
+
+            float wt = 1;
+
+            // TODO: is this right? It does fix the case of bounce on the side of 336_lrm
+            wt *= (1 - center_opacity_t);
+            wt *= (1 - center_direct_s.a);
+            //wt *= (1 - 0.75 * direct_neighbor_t.a);
+
+            tangent_neighbor_direct_and_vis[tangent_i] = neighbor_direct_and_vis;
+            tangent_weights[tangent_i] = wt;
+        }
+
+        float3 subray_radiance[4] = {
+            0.0.xxx, 0.0.xxx, 0.0.xxx, 0.0.xxx,
         };
 
-        #if 1
-        static const uint plane_start_idx = (frame_constants.frame_index % 4) * CSGI_VOLUME_DIMS / 4;
-        static const uint plane_end_idx = plane_start_idx + CSGI_VOLUME_DIMS / 4;
-        #else
-        static const uint plane_start_idx = 0;
-        static const uint plane_end_idx = CSGI_VOLUME_DIMS;
-        #endif
+        {[loop] for (uint subray = 0; subray < 4; ++subray) {
+            const float subray_bias_x = subray_bias[subray].x;
+            const float subray_bias_y = subray_bias[subray].y;
+            const float subray_tangent_weights[4] = {
+                max(0.0, 1.0 - subray_bias_x),
+                max(0.0, 1.0 + subray_bias_x),
+                max(0.0, 1.0 - subray_bias_y),
+                max(0.0, 1.0 + subray_bias_y),
+            };
 
-        int3 vx = initial_vx - slice_dir * plane_start_idx;
-        {[loop]
-        for (uint slice_z = plane_start_idx; slice_z < plane_end_idx; ++slice_z, vx -= slice_dir) {
             float3 scatter = 0.0;
             float scatter_wt = 0.0;
 
-            const float4 center_direct_s = sample_direct_from(vx, direct_dir_idx);
             const float3 center_indirect_s =
                 0 == slice_z
                 ? atmosphere_color
@@ -108,43 +166,24 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             scatter = lerp(center_indirect_s, center_direct_s.rgb, center_direct_s.a);
             scatter_wt += 1;
 
-            if (center_direct_s.a != 1) {
-                [unroll]
-                for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
-                    const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
-                    const int3 tangent_dir = CSGI_SLICE_DIRS[tangent_dir_idx];
+            for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
+                const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
+                const int3 tangent_dir = CSGI_SLICE_DIRS[tangent_dir_idx];
 
-                    const float center_opacity_t = sample_direct_from(vx, tangent_dir_idx).a;
-                    const float4 direct_neighbor_t = sample_direct_from(vx + tangent_dir, tangent_dir_idx);
-                    const float4 direct_neighbor_s = sample_direct_from(vx + tangent_dir, direct_dir_idx);
+                float4 neighbor_direct_and_vis = tangent_neighbor_direct_and_vis[tangent_i];
+                float3 neighbor_indirect = 0 == slice_z ? atmosphere_color : sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
+                float3 neighbor_radiance = neighbor_direct_and_vis.rgb + neighbor_direct_and_vis.a * neighbor_indirect;
+                float wt = subray_tangent_weights[tangent_i] * tangent_weights[tangent_i];
 
-                    float3 neighbor_radiance = 0 == slice_z ? atmosphere_color : sample_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
-                    
-                    neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_s.rgb, direct_neighbor_s.a);
-                    #if 0
-                        // HACK: ad-hoc scale for off-axis contributions
-                        neighbor_radiance = lerp(neighbor_radiance, 0.25*direct_neighbor_t.rgb, direct_neighbor_t.a);
-                    #else
-                        neighbor_radiance = lerp(neighbor_radiance, direct_neighbor_t.rgb, direct_neighbor_t.a);
-                    #endif
-                    neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_opacity_t);
-                    neighbor_radiance = lerp(neighbor_radiance, 0.0.xxx, center_direct_s.a);
-
-                    float wt = weights[tangent_i];
-
-                    // TODO: is this right? It does fix the case of bounce on the side of 336_lrm
-                    wt *= (1 - center_opacity_t);
-                    wt *= (1 - center_direct_s.a);
-                    //wt *= (1 - 0.75 * direct_neighbor_t.a);
-
-                    scatter += neighbor_radiance * wt;
-                    scatter_wt += wt;
-                }
+                scatter += neighbor_radiance * wt;
+                scatter_wt += wt;
             }
 
-            float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
-            const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-            indirect_tex[subray_offset + vx + indirect_offset] = prequant_shift_11_11_10(radiance.rgb);
+            subray_radiance[subray] += scatter / max(scatter_wt, 1);
+        }}
+
+        {[unroll] for (uint subray = 0; subray < 4; ++subray) {
+            write_indirect_to(subray_radiance[subray], vx, indirect_dir_idx, subray);
         }}
     }
 }

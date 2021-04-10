@@ -1,7 +1,7 @@
 #include "common.hlsl"
 #include "../inc/pack_unpack.hlsl"
 
-[[vk::binding(0)]] Texture3D<float3> indirect_tex;
+[[vk::binding(0)]] Texture3D<float3> subray_indirect_tex;
 [[vk::binding(1)]] Texture3D<float4> direct_tex;
 [[vk::binding(2)]] RWTexture3D<float> direct_opacity_tex;
 [[vk::binding(3)]] RWTexture3D<float3> output_tex;
@@ -45,8 +45,15 @@ float3 subray_combine_indirect(int subray_count, uint3 vx) {
 
     [unroll]
     for (uint subray = 0; subray < subray_count; ++subray) {
-        uint3 subray_offset = uint3(0, subray * CSGI_VOLUME_DIMS, 0);
-        result += indirect_tex[vx + subray_offset];
+        #if CSGI_SUBRAY_PACKED
+            const uint3 subray_offset = uint3(0, subray, 0);
+            const int3 vx_stride = int3(1, subray_count, 1);
+        #else
+            const uint3 subray_offset = uint3(0, subray * CSGI_VOLUME_DIMS, 0);
+            const int3 vx_stride = int3(1, 1, 1);
+        #endif
+
+        result += subray_indirect_tex[vx * vx_stride + subray_offset];
     }
 
     return result / subray_count;
