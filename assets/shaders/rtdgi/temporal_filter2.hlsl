@@ -19,6 +19,11 @@
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
+    #if 0
+        output_tex[px] = input_tex[px];
+        return;
+    #endif
+
     float2 uv = get_uv(px, output_tex_size);
     
     float4 center = input_tex[px];
@@ -133,7 +138,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         history.a
     );
 #endif
-    //float4 clamped_history = history;
+    //clamped_history = history;
     //clamped_history = center;
 
     const float remapped_temporal_change = smoothstep(0.01, 0.6, temporal_change);
@@ -147,6 +152,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float current_sample_count = history.a;
     
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
+    //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);
 
     history_output_tex[px] = float4(res, min(current_sample_count, max_sample_count) + 1);
     float3 output = max(0.0.xxx, res);
@@ -175,7 +181,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output = max_sample_count / 32.0;
     //output = variance_adjusted_temporal_change;
 
-    output_tex[px] = float4(output, 1.0);
+    output_tex[px] = float4(max(0.0.xxx, output), 1.0);
     //output_tex[px] = float4(current_sample_count.xxx / 32, 1.0);
     //history_output_tex[px] = reproj.w;
 }

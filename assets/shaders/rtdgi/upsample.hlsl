@@ -49,6 +49,11 @@ static float ggx_ndf_unnorm(float a2, float cos_theta) {
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
+    #if 0
+        output_tex[px] = ssgi_tex[px / 2];
+        return;
+    #endif
+
     float4 result = 0.0.xxxx;
     float ex = 0.0;
     float ex2 = 0.0;

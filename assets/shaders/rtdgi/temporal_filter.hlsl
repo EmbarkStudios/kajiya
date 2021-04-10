@@ -4,6 +4,9 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
 
+#include "../inc/hash.hlsl"
+#include "../inc/brdf.hlsl"
+
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float4> cv_history_tex;
@@ -28,7 +31,7 @@
 void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
     
-    float4 center = input_tex[px];
+    const float4 center = input_tex[px];
     float4 reproj = reprojection_tex[px * 2];
     float4 history = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     
@@ -94,6 +97,33 @@ void main(uint2 px: SV_DispatchThreadID) {
             CsgiLookupParams::make_default()
                 .with_bent_normal(pseudo_bent_normal)
         );
+
+        // Brute force control variate calculation that matches the one
+        // used in trace_diffuse. The other one is an approximation
+        #if 0
+            control_variate = 0;
+
+            DiffuseBrdf brdf;
+            brdf.albedo = 1.0.xxx;
+            const float3x3 shading_basis = build_orthonormal_basis(normal);
+
+            const int sample_count = 32;
+            for (uint i = 0; i < sample_count; ++i) {
+                float2 urand = hammersley(i, sample_count);
+                BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
+                float3 ws_dir = mul(shading_basis, brdf_sample.wi);
+
+                control_variate += lookup_csgi(
+                    ray_hit_ws,
+                    normal,
+                    CsgiLookupParams::make_default()
+                        .with_sample_directional_radiance(ws_dir)
+                        .with_bent_normal(pseudo_bent_normal)
+                );
+            }
+
+            control_variate /= sample_count;
+        #endif
     }
     const float control_variate_luma = calculate_luma(control_variate);
 
@@ -169,6 +199,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: proper rejection (not "reproj_validity_dilated")
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
+    //res = center.rgb;
 
     const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
 
@@ -177,7 +208,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float3 spatial_input;
     if (USE_RTDGI_CONTROL_VARIATES) {
-        spatial_input = max(0.0.xxx, res + control_variate);
+        // Note: must not be clamped to properly temporally integrate.
+        // This value could well end up being negative due to control variate noise,
+        // but that is fine, as it will be clamped later.
+        spatial_input = res + control_variate;
     } else {
         spatial_input = max(0.0.xxx, res);
     }

@@ -130,10 +130,15 @@ void main() {
     float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
         (px + int2(noise_offset * 59, noise_offset * 37)) & 255
     ].xy * 255.0 / 256.0 + 0.5 / 256.0;
-#else
+#elif 0
     float2 urand = float2(
         uint_to_u01_float(hash1_mut(rng)),
         uint_to_u01_float(hash1_mut(rng))
+    );
+#else
+    float2 urand = frac(
+        hammersley((frame_constants.frame_index * 5) % 16, 16) +
+        bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][px & 255].xy * 255.0 / 256.0 + 0.5 / 256.0
     );
 #endif
 
@@ -242,6 +247,7 @@ void main() {
 
             #if USE_RTDGI_CONTROL_VARIATES
                 out0_tex[px] = float4(far_gi - control_variate, 1);
+                //out0_tex[px] = float4(control_variate, 1);
             #else
                 out0_tex[px] = float4(far_gi, 1);
             #endif
@@ -251,6 +257,7 @@ void main() {
 
         #if USE_RTDGI_CONTROL_VARIATES
             float3 out_value = total_radiance - control_variate;
+            //float3 out_value = control_variate;
         #else
             float3 out_value = total_radiance;
         #endif

@@ -54,6 +54,7 @@ void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subra
     subray_indirect_tex[subray_offset + vx * vx_stride + indirect_offset] = prequant_shift_11_11_10(radiance);
 }
 
+// 16 threads in a group seem fastest; cache behavior? Not enough threads to fill the GPU with larger groups?
 [numthreads(4, 4, 1)]
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
     const uint indirect_dir_idx = CSGI_SLICE_COUNT + dispatch_vx.z;

@@ -23,6 +23,11 @@
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
+    #if 0
+        output_tex[px] = hit0_tex[px];
+        return;
+    #endif
+    
     float4 sum = 0;
     float ex = 0;
     float ex2 = 0;
