@@ -5,7 +5,7 @@
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWTexture3D<float3> indirect_tex;
+[[vk::binding(2)]] RWTexture3D<float3> subray_indirect_tex;
 
 #define USE_DEEP_OCCLUDE 1
 
@@ -25,10 +25,31 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
         return 0.0.xxxx;
     }
 
+#if CSGI_SUBRAY_PACKED
+    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+    const int3 subray_offset = int3(0, subray, 0);
+    const int3 vx_stride = int3(1, 3, 1);
+#else
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
+    const int3 vx_stride = int3(1, 1, 1);
+#endif
 
-    return float4(indirect_tex[offset + subray_offset + vx], 1);
+    return float4(subray_indirect_tex[offset + subray_offset + vx * vx_stride], 1);
+}
+
+void write_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
+#if CSGI_SUBRAY_PACKED
+    const int3 subray_offset = int3(0, subray, 0);
+    const int3 indirect_offset = int3(dir_idx * CSGI_VOLUME_DIMS, 0, 0);
+    const int3 vx_stride = int3(1, 3, 1);
+#else
+    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
+    const int3 indirect_offset = int3(dir_idx * CSGI_VOLUME_DIMS, 0, 0);
+    const int3 vx_stride = int3(1, 1, 1);
+#endif
+
+    subray_indirect_tex[subray_offset + vx * vx_stride + indirect_offset] = prequant_shift_11_11_10(radiance);
 }
 
 [numthreads(4, 4, 1)]
@@ -46,7 +67,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
     static const uint PLANE_COUNT = CSGI_VOLUME_DIMS * 3 - 2;
 
-    #if 0
+    #if 1
     static const uint plane_start_idx = (frame_constants.frame_index % 2) * PLANE_COUNT / 2;
     static const uint plane_end_idx = PLANE_COUNT - plane_start_idx;
     #else
@@ -85,73 +106,68 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 float3(1.0, skew, 1.0),
                 float3(1.0, 1.0, skew),
             };
+            static const float subray_wt_sum = dot(subray_wts[0], 1.0.xxx);
 
-            // [unroll] for (uint subray = 0; subray < 3; ++subray) {
-            { uint subray = frame_constants.frame_index % 3;
-                float3 scatter = 0.0;
-                float scatter_wt = 0.0;
+            float3 subray_radiance[3] = {
+                0.0.xxx, 0.0.xxx, 0.0.xxx,
+            };
 
+            {[unroll] for (uint subray = 0; subray < 3; ++subray) {
+                float4 indirect_i = 0;
+
+                // Note: one of those branches is faster than none,
+                // but two or three are slower than none :shrug:
+                if (center_direct_i.a < 0.999)
                 {
-                    float4 indirect_i = 0;
-
-                    // Note: one of those branches is faster than none,
-                    // but two or three are slower than none :shrug:
-                    if (center_direct_i.a < 0.999)
-                    {
-                        indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
-                        indirect_i.rgb = lerp(atmosphere_color, indirect_i.rgb, indirect_i.a);
-                    }
-
-                    float wt = subray_wts[subray].x;
-                    float3 indirect = indirect_i.rgb;
-                    #if USE_DEEP_OCCLUDE
-                        indirect = lerp(indirect, center_direct_i2.rgb, center_direct_i2.a);
-                    #endif
-                    indirect = lerp(indirect, center_direct_i.rgb, center_direct_i.a);
-                    scatter += indirect * wt;
-                    scatter_wt += wt;
+                    indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
+                    indirect_i.rgb = lerp(atmosphere_color, indirect_i.rgb, indirect_i.a);
                 }
 
-                {
-                    float4 indirect_j = 0;
-                    //if (center_direct_j.a < 0.999)
-                    {
-                        indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
-                        indirect_j.rgb = lerp(atmosphere_color, indirect_j.rgb, indirect_j.a);
-                    }
+                float wt = subray_wts[subray].x;
+                float3 indirect = indirect_i.rgb;
+                #if USE_DEEP_OCCLUDE
+                    indirect = lerp(indirect, center_direct_i2.rgb, center_direct_i2.a);
+                #endif
+                indirect = lerp(indirect, center_direct_i.rgb, center_direct_i.a);
+                subray_radiance[subray] += indirect * wt;
+            }}
 
-                    float wt = subray_wts[subray].y;
-                    float3 indirect = indirect_j.rgb;
-                    #if USE_DEEP_OCCLUDE
-                        indirect = lerp(indirect, center_direct_j2.rgb, center_direct_j2.a);
-                    #endif
-                    indirect = lerp(indirect, center_direct_j.rgb, center_direct_j.a);
-                    scatter += indirect * wt;
-                    scatter_wt += wt;
+            {[unroll] for (uint subray = 0; subray < 3; ++subray) {
+                float4 indirect_j = 0;
+                //if (center_direct_j.a < 0.999)
+                {
+                    indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
+                    indirect_j.rgb = lerp(atmosphere_color, indirect_j.rgb, indirect_j.a);
                 }
 
-                {
-                    float4 indirect_k = 0;
-                    //if (center_direct_k.a < 0.999)
-                    {
-                        indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
-                        indirect_k.rgb = lerp(atmosphere_color, indirect_k.rgb, indirect_k.a);
-                    }
+                float wt = subray_wts[subray].y;
+                float3 indirect = indirect_j.rgb;
+                #if USE_DEEP_OCCLUDE
+                    indirect = lerp(indirect, center_direct_j2.rgb, center_direct_j2.a);
+                #endif
+                indirect = lerp(indirect, center_direct_j.rgb, center_direct_j.a);
+                subray_radiance[subray] += indirect * wt;
+            }}
 
-                    float wt = subray_wts[subray].z;
-                    float3 indirect = indirect_k.rgb;
-                    #if USE_DEEP_OCCLUDE
-                        indirect = lerp(indirect, center_direct_k2.rgb, center_direct_k2.a);
-                    #endif
-                    indirect = lerp(indirect, center_direct_k.rgb, center_direct_k.a);
-                    scatter += indirect * wt;
-                    scatter_wt += wt;
+            {[unroll] for (uint subray = 0; subray < 3; ++subray) {
+                float4 indirect_k = 0;
+                //if (center_direct_k.a < 0.999)
+                {
+                    indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
+                    indirect_k.rgb = lerp(atmosphere_color, indirect_k.rgb, indirect_k.a);
                 }
 
-                float4 radiance = float4(scatter / max(scatter_wt, 1), 1);
-                const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-                const int3 indirect_offset = int3(indirect_dir_idx * CSGI_VOLUME_DIMS, 0, 0);
-                indirect_tex[subray_offset + vx + indirect_offset] = prequant_shift_11_11_10(radiance.rgb);
+                float wt = subray_wts[subray].z;
+                float3 indirect = indirect_k.rgb;
+                #if USE_DEEP_OCCLUDE
+                    indirect = lerp(indirect, center_direct_k2.rgb, center_direct_k2.a);
+                #endif
+                indirect = lerp(indirect, center_direct_k.rgb, center_direct_k.a);
+                subray_radiance[subray] += indirect * wt;
+            }}
+
+            [unroll] for (uint subray = 0; subray < 3; ++subray) {
+                write_indirect_to(subray_radiance[subray] / subray_wt_sum, vx, indirect_dir_idx, subray);
             }
         }
     }}

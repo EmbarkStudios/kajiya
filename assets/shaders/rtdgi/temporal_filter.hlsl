@@ -165,7 +165,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     );
 #endif
     //clamped_history = center;
-    //float4 clamped_history = history;
+    //clamped_history = history;
 
     // TODO: proper rejection (not "reproj_validity_dilated")
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));

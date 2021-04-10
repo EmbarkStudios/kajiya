@@ -74,8 +74,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         float2(skew, skew) + subray_jitter
     };
 
-    //[unroll] for (uint subray = 0; subray < 4; ++subray) {
-    { uint subray = frame_constants.frame_index % 4;
+    [unroll] for (uint subray = 0; subray < 4; ++subray) {
+    //{ uint subray = frame_constants.frame_index % 4;
         float bias_x = subray_bias[subray].x;
         float bias_y = subray_bias[subray].y;
         float weights[4] = {
@@ -85,9 +85,17 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             max(0.0, 1.0 + bias_y),
         };
 
-        int3 vx = initial_vx;
+        #if 1
+        static const uint plane_start_idx = (frame_constants.frame_index % 4) * CSGI_VOLUME_DIMS / 4;
+        static const uint plane_end_idx = plane_start_idx + CSGI_VOLUME_DIMS / 4;
+        #else
+        static const uint plane_start_idx = 0;
+        static const uint plane_end_idx = CSGI_VOLUME_DIMS;
+        #endif
+
+        int3 vx = initial_vx - slice_dir * plane_start_idx;
         {[loop]
-        for (uint slice_z = 0; slice_z < CSGI_VOLUME_DIMS; ++slice_z, vx -= slice_dir) {
+        for (uint slice_z = plane_start_idx; slice_z < plane_end_idx; ++slice_z, vx -= slice_dir) {
             float3 scatter = 0.0;
             float scatter_wt = 0.0;
 

@@ -169,7 +169,7 @@ impl CsgiRenderer {
             rg.add_pass("csgi subray combine"),
             "/shaders/csgi/subray_combine.hlsl",
         )
-        .read(&indirect_cascade0)
+        .read(&mut indirect_cascade0)
         .read(&direct_cascade0)
         .read(&direct_opacity_cascade0)
         .write(&mut indirect_cascade_combined0)

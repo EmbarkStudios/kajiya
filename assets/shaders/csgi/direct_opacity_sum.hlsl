@@ -5,7 +5,12 @@
 
 #define USE_INDIRECT_CLAMP 1
 #define INDIRECT_CLAMP_DIRECTIONAL 0
+
+// A bit leaky, but better on high spec surfaces and tight corners:
 #define INDIRECT_CLAMP_AMOUNT 0.25
+
+// Almost leak free, but overdarkens
+//#define INDIRECT_CLAMP_AMOUNT 0.5
 
 [numthreads(8, 8, 1)]
 void main(uint3 vx: SV_DispatchThreadID) {

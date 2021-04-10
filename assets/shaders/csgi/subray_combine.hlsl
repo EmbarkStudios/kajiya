@@ -40,7 +40,7 @@
     #define INDIRECT_CLAMP_AMOUNT 1.0
 #endif
 
-float3 subray_combine_indirect(uint subray_count, uint3 vx) {
+float3 subray_combine_indirect(int subray_count, uint3 vx) {
     float3 result = 0.0.xxx;
 
     [unroll]
