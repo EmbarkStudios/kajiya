@@ -11,7 +11,10 @@ static const uint CSGI_VOLUME_DIMS = 64;
 #define CSGI_ACCUM_HYSTERESIS 0.25
 //#define CSGI_ACCUM_HYSTERESIS 1.0
 
-#define CSGI_SUBRAY_PACKED 0
+#define CSGI_SUBRAY_PACKED 1
+
+// Note: the "csgi subray combine" pass must be enabled if this is 0.
+#define CSGI_SUBRAY_COMBINE_DURING_SWEEP 1
 
 #define CSGI_VOLUME_CENTER float3(0, 0, 0)
 //static const float CSGI_VOLUME_SIZE = 12;

@@ -152,7 +152,9 @@ impl CsgiRenderer {
         )
         .read(&direct_cascade0)
         .read(sky_cube)
+        .read(&direct_opacity_cascade0)
         .write(&mut indirect_cascade0)
+        .write(&mut indirect_cascade_combined0)
         .dispatch([
             VOLUME_DIMS,
             VOLUME_DIMS,
@@ -162,10 +164,12 @@ impl CsgiRenderer {
         SimpleRenderPass::new_compute(rg.add_pass("csgi sweep"), "/shaders/csgi/sweep_volume.hlsl")
             .read(&direct_cascade0)
             .read(sky_cube)
+            .read(&direct_opacity_cascade0)
             .write(&mut indirect_cascade0)
+            .write(&mut indirect_cascade_combined0)
             .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
 
-        SimpleRenderPass::new_compute(
+        /*SimpleRenderPass::new_compute(
             rg.add_pass("csgi subray combine"),
             "/shaders/csgi/subray_combine.hlsl",
         )
@@ -173,7 +177,7 @@ impl CsgiRenderer {
         .read(&direct_cascade0)
         .read(&direct_opacity_cascade0)
         .write(&mut indirect_cascade_combined0)
-        .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);
+        .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);*/
 
         CsgiVolume {
             direct_cascade0,

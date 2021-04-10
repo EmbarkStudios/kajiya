@@ -6,6 +6,11 @@
 [[vk::binding(2)]] RWTexture3D<float> direct_opacity_tex;
 [[vk::binding(3)]] RWTexture3D<float3> output_tex;
 
+#if CSGI_SUBRAY_COMBINE_DURING_SWEEP
+[numthreads(8, 8, 1)]
+void main(in uint3 vx : SV_DispatchThreadID) {}
+#else
+
 #define CLAMP_STRATEGY_NONE 0
 #define CLAMP_STRATEGY_STRONG_DIRECTIONAL 1
 #define CLAMP_STRATEGY_WEAK_DIRECTIONAL 2
@@ -108,3 +113,5 @@ void main(in uint3 vx : SV_DispatchThreadID) {
 
     output_tex[vx] = prequant_shift_11_11_10(lerp(output_tex[vx], result, 1) * light_mult);
 }
+
+#endif

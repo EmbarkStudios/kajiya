@@ -5,7 +5,9 @@
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWTexture3D<float3> subray_indirect_tex;
+[[vk::binding(2)]] RWTexture3D<float> direct_opacity_tex;
+[[vk::binding(3)]] RWTexture3D<float3> subray_indirect_tex;
+[[vk::binding(4)]] RWTexture3D<float3> indirect_tex;
 
 #define USE_DEEP_OCCLUDE 1
 
@@ -20,7 +22,7 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
     return max(0.0, val);
 }
 
-float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
+float4 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
     }
@@ -38,7 +40,7 @@ float4 sample_indirect_from(int3 vx, uint dir_idx, uint subray) {
     return float4(subray_indirect_tex[offset + subray_offset + vx * vx_stride], 1);
 }
 
-void write_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
+void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
 #if CSGI_SUBRAY_PACKED
     const int3 subray_offset = int3(0, subray, 0);
     const int3 indirect_offset = int3(dir_idx * CSGI_VOLUME_DIMS, 0, 0);
@@ -75,6 +77,8 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     static const uint plane_end_idx = PLANE_COUNT;
     #endif
 
+    static const uint SUBRAY_COUNT = 3;
+
     {[loop]
     for (uint plane_idx = plane_start_idx; plane_idx < plane_end_idx; ++plane_idx) {
         // A diagonal cross-section of a 3d grid creates a 2d hexagonal grid.
@@ -93,33 +97,34 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
         if (all(vx >= 0 && vx < extent)) {
             const float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
-            const float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
-            const float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
-
             const float4 center_direct_i2 = sample_direct_from(vx + dir_i, dir_i_idx);
-            const float4 center_direct_j2 = sample_direct_from(vx + dir_j, dir_j_idx);
-            const float4 center_direct_k2 = sample_direct_from(vx + dir_k, dir_k_idx);
 
             static const float skew = 0.333;
-            static const float3 subray_wts[3] = {
+            static const float3 subray_wts[SUBRAY_COUNT] = {
                 float3(skew, 1.0, 1.0),
                 float3(1.0, skew, 1.0),
                 float3(1.0, 1.0, skew),
             };
             static const float subray_wt_sum = dot(subray_wts[0], 1.0.xxx);
 
-            float3 subray_radiance[3] = {
+            float3 subray_radiance[SUBRAY_COUNT] = {
                 0.0.xxx, 0.0.xxx, 0.0.xxx,
             };
 
-            {[unroll] for (uint subray = 0; subray < 3; ++subray) {
+            {[loop] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
                 float4 indirect_i = 0;
 
                 // Note: one of those branches is faster than none,
                 // but two or three are slower than none :shrug:
-                if (center_direct_i.a < 0.999)
+                //
+                // Also note: this only matters if this loop is [unroll]ed.
+                // Same performance weirdness applies to [loop], so it's likely not about
+                // this branch at all, but the code structure that the branch below
+                // (or [unroll] above) triggers.
+                //
+                //if (center_direct_i.a < 0.999)
                 {
-                    indirect_i = sample_indirect_from(vx + dir_i, indirect_dir_idx, subray);
+                    indirect_i = sample_subray_indirect_from(vx + dir_i, indirect_dir_idx, subray);
                     indirect_i.rgb = lerp(atmosphere_color, indirect_i.rgb, indirect_i.a);
                 }
 
@@ -132,11 +137,14 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 subray_radiance[subray] += indirect * wt;
             }}
 
-            {[unroll] for (uint subray = 0; subray < 3; ++subray) {
+            const float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
+            const float4 center_direct_j2 = sample_direct_from(vx + dir_j, dir_j_idx);
+
+            {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
                 float4 indirect_j = 0;
                 //if (center_direct_j.a < 0.999)
                 {
-                    indirect_j = sample_indirect_from(vx + dir_j, indirect_dir_idx, subray);
+                    indirect_j = sample_subray_indirect_from(vx + dir_j, indirect_dir_idx, subray);
                     indirect_j.rgb = lerp(atmosphere_color, indirect_j.rgb, indirect_j.a);
                 }
 
@@ -149,11 +157,14 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 subray_radiance[subray] += indirect * wt;
             }}
 
-            {[unroll] for (uint subray = 0; subray < 3; ++subray) {
+            const float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
+            const float4 center_direct_k2 = sample_direct_from(vx + dir_k, dir_k_idx);
+
+            {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
                 float4 indirect_k = 0;
                 //if (center_direct_k.a < 0.999)
                 {
-                    indirect_k = sample_indirect_from(vx + dir_k, indirect_dir_idx, subray);
+                    indirect_k = sample_subray_indirect_from(vx + dir_k, indirect_dir_idx, subray);
                     indirect_k.rgb = lerp(atmosphere_color, indirect_k.rgb, indirect_k.a);
                 }
 
@@ -166,9 +177,17 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 subray_radiance[subray] += indirect * wt;
             }}
 
-            [unroll] for (uint subray = 0; subray < 3; ++subray) {
-                write_indirect_to(subray_radiance[subray] / subray_wt_sum, vx, indirect_dir_idx, subray);
+            float3 combined_indirect = 0.0.xxx;
+
+            [unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
+                float3 indirect = subray_radiance[subray] / subray_wt_sum;
+                write_subray_indirect_to(indirect, vx, indirect_dir_idx, subray);
+                combined_indirect += indirect;
             }
+
+            #if CSGI_SUBRAY_COMBINE_DURING_SWEEP
+                indirect_tex[vx + int3(CSGI_VOLUME_DIMS * indirect_dir_idx, 0, 0)] = combined_indirect * (direct_opacity_tex[vx] / SUBRAY_COUNT);
+            #endif
         }
     }}
 }
