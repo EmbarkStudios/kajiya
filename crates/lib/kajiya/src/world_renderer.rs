@@ -98,7 +98,16 @@ pub struct WorldRenderer {
     pub(super) raster_simple_render_pass: Arc<RenderPass>,
     pub(super) bindless_descriptor_set: vk::DescriptorSet,
     pub(super) meshes: Vec<UploadedTriMesh>,
+
+    // ----
+    // SoA
     pub(super) instances: Vec<MeshInstance>,
+    pub(super) instance_handles: Vec<InstanceHandle>,
+    // ----
+
+    // The `usize` indexes into `instances` and `instance_handles`
+    pub(super) instance_handle_to_index: HashMap<InstanceHandle, usize>,
+
     pub(super) vertex_buffer: Mutex<Arc<Buffer>>,
     vertex_buffer_written: u64,
 
@@ -110,6 +119,7 @@ pub struct WorldRenderer {
 
     bindless_images: Vec<Arc<Image>>,
     next_bindless_image_id: usize,
+    next_instance_handle: usize,
 
     image_luts: Vec<ImageLut>,
     frame_idx: u32,
@@ -262,6 +272,8 @@ impl WorldRenderer {
             device: backend.device.clone(),
             meshes: Default::default(),
             instances: Default::default(),
+            instance_handles: Default::default(),
+            instance_handle_to_index: Default::default(),
 
             mesh_blas: Default::default(),
             tlas: Default::default(),
@@ -273,7 +285,10 @@ impl WorldRenderer {
             bindless_descriptor_set,
             bindless_images: Default::default(),
             image_luts: Default::default(),
+
             next_bindless_image_id: 0,
+            next_instance_handle: 0,
+
             render_mode: RenderMode::Standard,
             frame_idx: 0u32,
             prev_camera_matrices: None,
@@ -501,7 +516,12 @@ impl WorldRenderer {
         position: Vec3,
         rotation: Quat,
     ) -> InstanceHandle {
-        let handle = InstanceHandle(self.instances.len());
+        let handle = self.next_instance_handle;
+        self.next_instance_handle += 1;
+        let handle = InstanceHandle(handle);
+
+        let index = self.instances.len();
+
         self.instances.push(MeshInstance {
             rotation: Mat3::from_quat(rotation),
             position,
@@ -510,19 +530,42 @@ impl WorldRenderer {
             mesh,
             dynamic_parameters: InstanceDynamicParameters::default(),
         });
+        self.instance_handles.push(handle);
+
+        assert_eq!(self.instances.len(), self.instance_handles.len());
+
+        self.instance_handle_to_index.insert(handle, index);
+
         handle
     }
 
+    pub fn remove_instance(&mut self, inst: InstanceHandle) {
+        let index = self
+            .instance_handle_to_index
+            .remove(&inst)
+            .expect("no such instance");
+        self.instances.swap_remove(index);
+        self.instance_handles.swap_remove(index);
+
+        // A new instance could have been moved into this slot in the vec.
+        // Make sure `instance_handle_to_index` reflects this.
+        if let Some(new_handle) = self.instance_handles.get(index).copied() {
+            self.instance_handle_to_index.insert(new_handle, index);
+        }
+    }
+
     pub fn set_instance_transform(&mut self, inst: InstanceHandle, position: Vec3, rotation: Quat) {
-        self.instances[inst.0].position = position;
-        self.instances[inst.0].rotation = Mat3::from_quat(rotation);
+        let index = self.instance_handle_to_index[&inst];
+        self.instances[index].position = position;
+        self.instances[index].rotation = Mat3::from_quat(rotation);
     }
 
     pub fn get_instance_dynamic_parameters_mut(
         &mut self,
         inst: InstanceHandle,
     ) -> &mut InstanceDynamicParameters {
-        &mut self.instances[inst.0].dynamic_parameters
+        let index = self.instance_handle_to_index[&inst];
+        &mut self.instances[index].dynamic_parameters
     }
 
     pub(crate) fn build_ray_tracing_top_level_acceleration(&mut self) {
