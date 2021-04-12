@@ -5,7 +5,7 @@
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWTexture3D<float> direct_opacity_tex;
+[[vk::binding(2)]] Texture3D<float> direct_opacity_tex;
 [[vk::binding(3)]] RWTexture3D<float3> subray_indirect_tex;
 [[vk::binding(4)]] RWTexture3D<float3> indirect_tex;
 
