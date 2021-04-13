@@ -89,12 +89,11 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     const float jitter_amount = 0.0;
     const float2 subray_jitter = float2((uint_to_u01_float(hash1_mut(rng)) - 0.5), (uint_to_u01_float(hash1_mut(rng)) - 0.5)) * jitter_amount;
 
-    static const float skew = 0.5;
-    static const float2 subray_bias[4] = {
-        float2(-skew, -skew) + subray_jitter,
-        float2(skew, -skew) + subray_jitter,
-        float2(-skew, skew) + subray_jitter,
-        float2(skew, skew) + subray_jitter
+    static const float4 subray_weights[4] = {
+        float4(1.0, 0.0, 0.5, 0.5),
+        float4(0.0, 1.0, 0.5, 0.5),
+        float4(0.5, 0.5, 1.0, 0.0),
+        float4(0.5, 0.5, 0.0, 1.0),
     };
 
     #if 1
@@ -150,13 +149,11 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         };
 
         {[loop] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
-            const float subray_bias_x = subray_bias[subray].x;
-            const float subray_bias_y = subray_bias[subray].y;
-            const float subray_tangent_weights[SUBRAY_COUNT] = {
-                max(0.0, 1.0 - subray_bias_x),
-                max(0.0, 1.0 + subray_bias_x),
-                max(0.0, 1.0 - subray_bias_y),
-                max(0.0, 1.0 + subray_bias_y),
+            const float subray_tangent_weights[TANGENT_COUNT] = {
+                subray_weights[subray].x,
+                subray_weights[subray].y,
+                subray_weights[subray].z,
+                subray_weights[subray].w,
             };
 
             float3 scatter = 0.0;
