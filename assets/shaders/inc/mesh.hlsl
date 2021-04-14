@@ -42,10 +42,11 @@ struct MeshMaterial {
     uint normal_map;
     uint spec_map;
     uint albedo_map;
+    uint emissive_map;
     float roughness_mult;
     float metalness_factor;
     float emissive[3];
-    float map_transforms[6 * 3];
+    float map_transforms[6 * 4];
 };
 
 float2 transform_material_uv(MeshMaterial mat, float2 uv, uint map_idx) {

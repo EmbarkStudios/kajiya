@@ -78,6 +78,14 @@ PsOut main(PsIn ps) {
         normal = mul(frame_constants.view_constants.view_to_world, float4(geometric_normal, 0)).xyz;
     }
 
+    float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
+    Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
+    float3 emissive = 1.0.xxx
+        * emissive_tex.SampleBias(sampler_llr, emissive_uv, -0.5).rgb
+        * float3(material.emissive)
+        * EMISSIVE_MULT
+        * instance_dynamic_constants_dyn[push_constants.draw_index].emissive_multiplier;
+
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //metalness = 1;
     //roughness = 0.2;
@@ -87,7 +95,7 @@ PsOut main(PsIn ps) {
     gbuffer.normal = normalize(mul(instance_transforms_dyn[push_constants.draw_index].current, float4(normal, 0.0)));
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
-    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT * instance_dynamic_constants_dyn[push_constants.draw_index].emissive_multiplier;
+    gbuffer.emissive = emissive;
 
     PsOut ps_out;
     ps_out.geometric_normal = geometric_normal * 0.5 + 0.5;

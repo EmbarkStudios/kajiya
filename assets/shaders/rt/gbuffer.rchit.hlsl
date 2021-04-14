@@ -134,13 +134,22 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     normal = normalize(normal);
 #endif
 
+    float2 emissive_uv = transform_material_uv(material, uv, 3);
+    Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
+    float emissive_lod = compute_texture_lod(emissive_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float3 emissive = 1.0.xxx
+        * emissive_tex.SampleLevel(sampler_llr, emissive_uv, emissive_lod).rgb
+        * float3(material.emissive)
+        * EMISSIVE_MULT
+        * instance_dynamic_constants_dyn[InstanceIndex()].emissive_multiplier;
+
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
     gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
-    gbuffer.emissive = float3(material.emissive) * EMISSIVE_MULT * instance_dynamic_constants_dyn[InstanceIndex()].emissive_multiplier;
+    gbuffer.emissive = emissive;
 
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //gbuffer.metalness = 1;

@@ -20,7 +20,7 @@
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
     #if 0
-        output_tex[px] = input_tex[px];
+        output_tex[px] = max(0.0, input_tex[px]);
         return;
     #endif
 

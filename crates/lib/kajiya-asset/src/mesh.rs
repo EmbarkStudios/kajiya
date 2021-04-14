@@ -45,11 +45,11 @@ pub enum MeshMaterialMap {
 #[repr(C)]
 pub struct MeshMaterial {
     pub base_color_mult: [f32; 4],
-    pub maps: [u32; 3],
+    pub maps: [u32; 4],
     pub roughness_mult: f32,
     pub metalness_factor: f32,
     pub emissive: [f32; 3],
-    pub map_transforms: [[f32; 6]; 3],
+    pub map_transforms: [[f32; 6]; 4],
 }
 
 #[derive(Clone, Default)]
@@ -108,7 +108,7 @@ fn load_gltf_material(
     };
 
     const DEFAULT_MAP_TRANSFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
-    let mut map_transforms: [[f32; 6]; 3] = [DEFAULT_MAP_TRANSFORM; 3];
+    let mut map_transforms: [[f32; 6]; 4] = [DEFAULT_MAP_TRANSFORM; 4];
 
     fn texture_transform_to_matrix(xform: Option<TextureTransform>) -> [f32; 6] {
         if let Some(xform) = xform {
@@ -177,11 +177,17 @@ fn load_gltf_material(
 
     map_transforms[2] = spec_map_transform;
 
-    let emissive = if mat.emissive_texture().is_some() {
-        [0.0, 0.0, 0.0]
-    } else {
-        mat.emissive_factor()
-    };
+    let mut emissive_map = MeshMaterialMap::Placeholder([0, 0, 0, 255]);
+    if let Some(emissive_texture) = mat.emissive_texture() {
+        map_transforms[3] = texture_transform_to_matrix(emissive_texture.texture_transform());
+        if let Some(tex) =
+            get_gltf_texture_source(emissive_texture.texture()).map(make_material_map)
+        {
+            emissive_map = tex;
+        }
+    }
+
+    let emissive = mat.emissive_factor();
 
     let base_color_mult = mat.pbr_metallic_roughness().base_color_factor();
     let roughness_mult = mat.pbr_metallic_roughness().roughness_factor();
@@ -190,10 +196,10 @@ fn load_gltf_material(
     //mata.normal_texture().and_then(|tex| tex.transform())
 
     (
-        vec![normal_map, spec_map, albedo_map],
+        vec![normal_map, spec_map, albedo_map, emissive_map],
         MeshMaterial {
             base_color_mult,
-            maps: [0, 1, 2],
+            maps: [0, 1, 2, 3],
             roughness_mult,
             metalness_factor,
             emissive,
