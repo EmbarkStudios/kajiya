@@ -78,7 +78,7 @@ impl Device {
     pub fn create_ray_tracing_acceleration_scratch_buffer(
         &self,
     ) -> Result<RayTracingAccelerationScratchBuffer> {
-        const INITIAL_SIZE: usize = 1024 * 1024 * 128;
+        const INITIAL_SIZE: usize = 1024 * 1024 * 144;
 
         let buffer = self
             .create_buffer(

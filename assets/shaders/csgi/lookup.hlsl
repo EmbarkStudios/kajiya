@@ -121,9 +121,9 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
 
         float3 to_eye = get_eye_position() - pos;
 
-        for (int gi_slice_idx = 0; gi_slice_idx < CSGI_SLICE_COUNT; ++gi_slice_idx) {
+        for (int gi_slice_idx = 0; gi_slice_idx < CSGI_CARDINAL_DIRECTION_COUNT; ++gi_slice_idx) {
             const float opacity = csgi_direct_tex[gi_vx + int3(CSGI_VOLUME_DIMS * gi_slice_idx, 0, 0)].a;
-            const float3 slice_dir = CSGI_SLICE_DIRS[gi_slice_idx];
+            const float3 slice_dir = CSGI_DIRECT_DIRS[gi_slice_idx];
 
             // Already normal-biased; only shift in the tangent plane.
             const float3 offset_dir = slice_dir - normal * dot(normal, slice_dir);
@@ -138,7 +138,7 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
     const int3 gi_vx = int3(vol_pos / CSGI_VOXEL_SIZE + CSGI_VOLUME_DIMS / 2);
     if (all(gi_vx >= 0) && all(gi_vx < CSGI_VOLUME_DIMS)) {
         if (!params.direct_light_only) {
-            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI_INDIRECT_COUNT; ++gi_slice_idx) {
+            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI_TOTAL_DIRECTION_COUNT; ++gi_slice_idx) {
                 if (params.debug_single_direction != -1) {
                     if (gi_slice_idx != params.debug_single_direction) {
                         continue;
@@ -172,8 +172,8 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
 
                     if (all(gi_uv == saturate(gi_uv))) {
                         gi_uv = clamp(gi_uv, 0.5 / CSGI_VOLUME_DIMS, 1.0 - (0.5 / CSGI_VOLUME_DIMS));
-                        gi_uv.x /= CSGI_INDIRECT_COUNT;
-                        gi_uv.x += float(gi_slice_idx) / CSGI_INDIRECT_COUNT;
+                        gi_uv.x /= CSGI_TOTAL_DIRECTION_COUNT;
+                        gi_uv.x += float(gi_slice_idx) / CSGI_TOTAL_DIRECTION_COUNT;
                         total_gi += csgi_indirect_tex.SampleLevel(sampler_lnc, gi_uv, 0).rgb * wt;
                         total_gi_wt += wt;
                     }
@@ -183,8 +183,8 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
                 }
             }
         } else {
-            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI_SLICE_COUNT; ++gi_slice_idx) {
-                const float3 slice_dir = float3(CSGI_SLICE_DIRS[gi_slice_idx]);
+            for (uint gi_slice_idx = 0; gi_slice_idx < CSGI_CARDINAL_DIRECTION_COUNT; ++gi_slice_idx) {
+                const float3 slice_dir = float3(CSGI_DIRECT_DIRS[gi_slice_idx]);
                 float wt = saturate(dot(normalize(-slice_dir), normal));
                 float4 radiance_alpha = csgi_direct_tex[gi_vx + int3(CSGI_VOLUME_DIMS * gi_slice_idx, 0, 0)];
                 total_gi += radiance_alpha.rgb / max(1e-5, radiance_alpha.a) * wt;

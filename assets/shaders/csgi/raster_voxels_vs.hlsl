@@ -39,7 +39,7 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
             float2(-1, 1),
         };
 
-        const float3 slice_dir = CSGI_SLICE_DIRS[dir_idx];
+        const float3 slice_dir = CSGI_DIRECT_DIRS[dir_idx];
         const float3x3 slice_rot = build_orthonormal_basis(slice_dir);
         const float3 voxel_center = vx_to_pos(float3(voxel_x, voxel_y, voxel_z));
 

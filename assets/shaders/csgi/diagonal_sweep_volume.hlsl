@@ -11,6 +11,8 @@
 
 #define USE_DEEP_OCCLUDE 1
 
+static const uint SUBRAY_COUNT = CSGI_DIAGONAL_SUBRAY_COUNT;
+
 float4 sample_direct_from(int3 vx, uint dir_idx) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
@@ -27,29 +29,27 @@ float4 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
         return 0.0.xxxx;
     }
 
-#if CSGI_SUBRAY_PACKED
-    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 subray_offset = int3(0, subray, 0);
-    const int3 vx_stride = int3(1, 3, 1);
-#else
-    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-    const int3 vx_stride = int3(1, 1, 1);
-#endif
+    const int3 indirect_offset = int3(
+        SUBRAY_COUNT * CSGI_VOLUME_DIMS * (dir_idx - CSGI_CARDINAL_SUBRAY_COUNT)
+        + CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET,
+        0,
+        0);
 
-    return float4(subray_indirect_tex[offset + subray_offset + vx * vx_stride], 1);
+    const int3 subray_offset = int3(subray, 0, 0);
+    const int3 vx_stride = int3(SUBRAY_COUNT, 1, 1);
+
+    return float4(subray_indirect_tex[indirect_offset + subray_offset + vx * vx_stride], 1);
 }
 
 void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
-#if CSGI_SUBRAY_PACKED
-    const int3 subray_offset = int3(0, subray, 0);
-    const int3 indirect_offset = int3(dir_idx * CSGI_VOLUME_DIMS, 0, 0);
-    const int3 vx_stride = int3(1, 3, 1);
-#else
-    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-    const int3 indirect_offset = int3(dir_idx * CSGI_VOLUME_DIMS, 0, 0);
-    const int3 vx_stride = int3(1, 1, 1);
-#endif
+    const int3 indirect_offset = int3(
+        SUBRAY_COUNT * CSGI_VOLUME_DIMS * (dir_idx - CSGI_CARDINAL_SUBRAY_COUNT)
+        + CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET,
+        0,
+        0);
+
+    const int3 subray_offset = int3(subray, 0, 0);
+    const int3 vx_stride = int3(SUBRAY_COUNT, 1, 1);
 
     subray_indirect_tex[subray_offset + vx * vx_stride + indirect_offset] = prequant_shift_11_11_10(radiance);
 }
@@ -57,14 +57,14 @@ void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subra
 // 16 threads in a group seem fastest; cache behavior? Not enough threads to fill the GPU with larger groups?
 [numthreads(4, 4, 1)]
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
-    const uint indirect_dir_idx = CSGI_SLICE_COUNT + dispatch_vx.z;
+    const uint indirect_dir_idx = CSGI_CARDINAL_DIRECTION_COUNT + dispatch_vx.z;
     const int3 indirect_dir = CSGI_INDIRECT_DIRS[indirect_dir_idx];
     const uint dir_i_idx = 0 + (indirect_dir.x > 0 ? 1 : 0);
     const uint dir_j_idx = 2 + (indirect_dir.y > 0 ? 1 : 0);
     const uint dir_k_idx = 4 + (indirect_dir.z > 0 ? 1 : 0);
-    const int3 dir_i = CSGI_SLICE_DIRS[dir_i_idx];
-    const int3 dir_j = CSGI_SLICE_DIRS[dir_j_idx];
-    const int3 dir_k = CSGI_SLICE_DIRS[dir_k_idx];
+    const int3 dir_i = CSGI_DIRECT_DIRS[dir_i_idx];
+    const int3 dir_j = CSGI_DIRECT_DIRS[dir_j_idx];
+    const int3 dir_k = CSGI_DIRECT_DIRS[dir_k_idx];
 
     float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
 

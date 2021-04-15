@@ -10,7 +10,7 @@
 [[vk::binding(3)]] RWTexture3D<float3> subray_indirect_tex;
 [[vk::binding(4)]] RWTexture3D<float3> indirect_tex;
 
-static const uint SUBRAY_COUNT = 5;
+static const uint SUBRAY_COUNT = CSGI_CARDINAL_SUBRAY_COUNT;
 
 float4 sample_direct_from(int3 vx, uint dir_idx) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
@@ -29,29 +29,19 @@ float4 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
         return 0.0.xxxx;
     }
 
-#if CSGI_SUBRAY_PACKED
-    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 subray_offset = int3(0, subray, 0);
-    const int3 vx_stride = int3(1, SUBRAY_COUNT, 1);
-#else
-    const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-    const int3 vx_stride = int3(1, 1, 1);
-#endif
+    const int3 indirect_offset = int3(SUBRAY_COUNT * CSGI_VOLUME_DIMS * dir_idx, 0, 0);
 
-    return float4(subray_indirect_tex[offset + subray_offset + vx * vx_stride], 1);
+    const int3 subray_offset = int3(subray, 0, 0);
+    const int3 vx_stride = int3(SUBRAY_COUNT, 1, 1);
+
+    return float4(subray_indirect_tex[indirect_offset + subray_offset + vx * vx_stride], 1);
 }
 
 void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
-#if CSGI_SUBRAY_PACKED
-    const int3 subray_offset = int3(0, subray, 0);
-    const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 vx_stride = int3(1, SUBRAY_COUNT, 1);
-#else
-    const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
-    const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 vx_stride = int3(1, 1, 1);
-#endif
+    const int3 indirect_offset = int3(SUBRAY_COUNT * CSGI_VOLUME_DIMS * dir_idx, 0, 0);
+
+    const int3 subray_offset = int3(subray, 0, 0);
+    const int3 vx_stride = int3(SUBRAY_COUNT, 1, 1);
 
     subray_indirect_tex[subray_offset + vx * vx_stride + indirect_offset] = prequant_shift_11_11_10(radiance);
 }
@@ -64,7 +54,7 @@ void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subra
 void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
     const uint direct_dir_idx = dispatch_vx.z;
     const uint indirect_dir_idx = direct_dir_idx;
-    const int3 slice_dir = CSGI_SLICE_DIRS[direct_dir_idx];
+    const int3 slice_dir = CSGI_DIRECT_DIRS[direct_dir_idx];
 
     float3 atmosphere_color = sky_cube_tex.SampleLevel(sampler_llr, CSGI_INDIRECT_DIRS[indirect_dir_idx].xyz, 0).rgb;
 
@@ -73,7 +63,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     static const uint TANGENT_COUNT = 4;
     uint tangent_dir_indices[TANGENT_COUNT];
     {for (uint i = 0; i < TANGENT_COUNT; ++i) {
-        tangent_dir_indices[i] = ((direct_dir_idx & uint(~1)) + 2 + i) % CSGI_SLICE_COUNT;
+        tangent_dir_indices[i] = ((direct_dir_idx & uint(~1)) + 2 + i) % CSGI_CARDINAL_DIRECTION_COUNT;
     }}
 
     int slice_z_start = (direct_dir_idx & 1) ? (CSGI_VOLUME_DIMS - 1) : 0; 
@@ -112,7 +102,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
         for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
             const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
-            const int3 tangent_dir = CSGI_SLICE_DIRS[tangent_dir_idx];
+            const int3 tangent_dir = CSGI_DIRECT_DIRS[tangent_dir_idx];
 
             const float center_opacity_t = sample_direct_from(vx, tangent_dir_idx).a;
             const float4 direct_neighbor_t = sample_direct_from(vx + tangent_dir, tangent_dir_idx);
@@ -166,7 +156,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
             for (uint tangent_i = 0; tangent_i < TANGENT_COUNT; ++tangent_i) {
                 const uint tangent_dir_idx = tangent_dir_indices[tangent_i];
-                const int3 tangent_dir = CSGI_SLICE_DIRS[tangent_dir_idx];
+                const int3 tangent_dir = CSGI_DIRECT_DIRS[tangent_dir_idx];
 
                 float4 neighbor_direct_and_vis = tangent_neighbor_direct_and_vis[tangent_i];
                 float3 neighbor_indirect = 0 == slice_z ? atmosphere_color : sample_subray_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;

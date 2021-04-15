@@ -21,7 +21,7 @@
 
 #include "lookup.hlsl"
 
-//float4 CSGI_SLICE_CENTERS[CSGI_SLICE_COUNT];
+//float4 CSGI_SLICE_CENTERS[CSGI_CARDINAL_DIRECTION_COUNT];
 
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
@@ -49,7 +49,7 @@ void main() {
     const uint grid_idx = dispatch_vx.x / CSGI_VOLUME_DIMS;
     dispatch_vx.x %= CSGI_VOLUME_DIMS;
 
-    const int3 slice_dir = CSGI_SLICE_DIRS[grid_idx]; 
+    const int3 slice_dir = CSGI_DIRECT_DIRS[grid_idx]; 
 
     int slice_z_start = int(dispatch_vx.z * SWEEP_VX_COUNT);
 

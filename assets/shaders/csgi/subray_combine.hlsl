@@ -45,18 +45,17 @@ void main(in uint3 vx : SV_DispatchThreadID) {}
     #define INDIRECT_CLAMP_AMOUNT 1.0
 #endif
 
+
+// BUG: stale code; does not work; needs adjustment to the new horizontal
+// packing of subrays, and use of CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET
+
 float3 subray_combine_indirect(int subray_count, uint3 vx) {
     float3 result = 0.0.xxx;
 
     [unroll]
     for (uint subray = 0; subray < subray_count; ++subray) {
-        #if CSGI_SUBRAY_PACKED
-            const uint3 subray_offset = uint3(0, subray, 0);
-            const int3 vx_stride = int3(1, subray_count, 1);
-        #else
-            const uint3 subray_offset = uint3(0, subray * CSGI_VOLUME_DIMS, 0);
-            const int3 vx_stride = int3(1, 1, 1);
-        #endif
+        const uint3 subray_offset = uint3(0, subray, 0);
+        const int3 vx_stride = int3(1, subray_count, 1);
 
         result += subray_indirect_tex[vx * vx_stride + subray_offset];
     }
@@ -77,7 +76,7 @@ void main(in uint3 vx : SV_DispatchThreadID) {
         #if USE_INDIRECT_CLAMP
             #if 0
                 for (uint i = 0; i < 6; i += 2) {
-                    float3 direct_dir = CSGI_SLICE_DIRS[i];
+                    float3 direct_dir = CSGI_DIRECT_DIRS[i];
 
                     // Only block directions that share axes
                     if (abs(dot(direct_dir, indirect_dir)) > 0)
@@ -90,7 +89,7 @@ void main(in uint3 vx : SV_DispatchThreadID) {
                 }
             #else
                 for (uint i = 0; i < 6; ++i) {
-                    float3 direct_dir = CSGI_SLICE_DIRS[i];
+                    float3 direct_dir = CSGI_DIRECT_DIRS[i];
 
                     // Only block relevant directions
                     if (!INDIRECT_CLAMP_DIRECTIONAL || dot(direct_dir, indirect_dir) > 0) {

@@ -57,7 +57,7 @@ impl CsgiRenderer {
                     //vk::Format::B10G11R11_UFLOAT_PACK32,
                     vk::Format::R16G16B16A16_SFLOAT,
                     [
-                        VOLUME_DIMS * PRETRACE_COUNT as u32,
+                        VOLUME_DIMS * CARDINAL_DIRECTION_COUNT as u32,
                         VOLUME_DIMS,
                         VOLUME_DIMS,
                     ],
@@ -73,8 +73,8 @@ impl CsgiRenderer {
                     vk::Format::B10G11R11_UFLOAT_PACK32,
                     //vk::Format::R16G16B16A16_SFLOAT,
                     [
-                        VOLUME_DIMS * TRACE_COUNT as u32,
-                        VOLUME_DIMS * 5,
+                        VOLUME_DIMS * TOTAL_SUBRAY_COUNT as u32,
+                        VOLUME_DIMS,
                         VOLUME_DIMS,
                     ],
                 )
@@ -88,7 +88,11 @@ impl CsgiRenderer {
                 ImageDesc::new_3d(
                     vk::Format::B10G11R11_UFLOAT_PACK32,
                     //vk::Format::R16G16B16A16_SFLOAT,
-                    [VOLUME_DIMS * TRACE_COUNT as u32, VOLUME_DIMS, VOLUME_DIMS],
+                    [
+                        VOLUME_DIMS * TOTAL_DIRECTION_COUNT as u32,
+                        VOLUME_DIMS,
+                        VOLUME_DIMS,
+                    ],
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             )
@@ -106,7 +110,7 @@ impl CsgiRenderer {
         SimpleRenderPass::new_compute(rg.add_pass("csgi decay"), "/shaders/csgi/decay_volume.hlsl")
             .write(&mut direct_cascade0)
             .dispatch([
-                VOLUME_DIMS * PRETRACE_COUNT as u32,
+                VOLUME_DIMS * CARDINAL_DIRECTION_COUNT as u32,
                 VOLUME_DIMS as u32,
                 VOLUME_DIMS,
             ]);
@@ -127,7 +131,7 @@ impl CsgiRenderer {
         .trace_rays(
             tlas,
             [
-                VOLUME_DIMS * PRETRACE_COUNT as u32,
+                VOLUME_DIMS * CARDINAL_DIRECTION_COUNT as u32,
                 VOLUME_DIMS as u32,
                 VOLUME_DIMS / sweep_vx_count,
             ],
@@ -155,11 +159,7 @@ impl CsgiRenderer {
         .read(&direct_opacity_cascade0)
         .write(&mut indirect_cascade0)
         .write(&mut indirect_cascade_combined0)
-        .dispatch([
-            VOLUME_DIMS,
-            VOLUME_DIMS,
-            (TRACE_COUNT - PRETRACE_COUNT) as u32,
-        ]);
+        .dispatch([VOLUME_DIMS, VOLUME_DIMS, (DIAGONAL_DIRECTION_COUNT) as u32]);
 
         SimpleRenderPass::new_compute(rg.add_pass("csgi sweep"), "/shaders/csgi/sweep_volume.hlsl")
             .read(&direct_cascade0)
@@ -167,7 +167,7 @@ impl CsgiRenderer {
             .read(&direct_opacity_cascade0)
             .write(&mut indirect_cascade0)
             .write(&mut indirect_cascade_combined0)
-            .dispatch([VOLUME_DIMS, VOLUME_DIMS, PRETRACE_COUNT as u32]);
+            .dispatch([VOLUME_DIMS, VOLUME_DIMS, CARDINAL_DIRECTION_COUNT as u32]);
 
         /*SimpleRenderPass::new_compute(
             rg.add_pass("csgi subray combine"),
@@ -268,7 +268,7 @@ impl CsgiVolume {
                 raw_device.cmd_draw(
                     cb.raw,
                     // 6 verts (two triangles) per cube face
-                    6 * PRETRACE_COUNT as u32 * VOLUME_DIMS * VOLUME_DIMS * VOLUME_DIMS,
+                    6 * CARDINAL_DIRECTION_COUNT as u32 * VOLUME_DIMS * VOLUME_DIMS * VOLUME_DIMS,
                     1,
                     0,
                     0,
@@ -280,5 +280,12 @@ impl CsgiVolume {
     }
 }
 
-const PRETRACE_COUNT: usize = 6;
-const TRACE_COUNT: usize = 6 + 8;
+const CARDINAL_DIRECTION_COUNT: usize = 6;
+const CARDINAL_SUBRAY_COUNT: usize = 5;
+
+const DIAGONAL_DIRECTION_COUNT: usize = 8;
+const DIAGONAL_SUBRAY_COUNT: usize = 3;
+
+const TOTAL_DIRECTION_COUNT: usize = CARDINAL_DIRECTION_COUNT + DIAGONAL_DIRECTION_COUNT;
+const TOTAL_SUBRAY_COUNT: usize = CARDINAL_DIRECTION_COUNT * CARDINAL_SUBRAY_COUNT
+    + DIAGONAL_DIRECTION_COUNT * DIAGONAL_SUBRAY_COUNT;
