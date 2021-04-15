@@ -16,6 +16,7 @@ struct CsgiLookupParams {
     float directional_radiance_phong_exponent;
     float3 bent_normal;
     float max_normal_offset_scale;
+    int debug_single_direction;
 
     static CsgiLookupParams make_default() {
         CsgiLookupParams res;
@@ -29,6 +30,7 @@ struct CsgiLookupParams {
         res.directional_radiance_phong_exponent = 50.0;
         res.direct_light_only = false;
         res.max_normal_offset_scale = 2.0;
+        res.debug_single_direction = -1;
         return res;
     }
 
@@ -84,6 +86,12 @@ struct CsgiLookupParams {
         res.max_normal_offset_scale = v;
         return res;
     }
+
+    CsgiLookupParams with_debug_single_direction(uint v) {
+        CsgiLookupParams res = this;
+        res.debug_single_direction = v;
+        return res;
+    }
 };
 
 
@@ -131,21 +139,29 @@ float3 lookup_csgi(float3 pos, float3 normal, CsgiLookupParams params) {
     if (all(gi_vx >= 0) && all(gi_vx < CSGI_VOLUME_DIMS)) {
         if (!params.direct_light_only) {
             for (uint gi_slice_idx = 0; gi_slice_idx < CSGI_INDIRECT_COUNT; ++gi_slice_idx) {
+                if (params.debug_single_direction != -1) {
+                    if (gi_slice_idx != params.debug_single_direction) {
+                        continue;
+                    }
+                }
+
                 const float3 slice_dir = float3(CSGI_INDIRECT_DIRS[gi_slice_idx]);
                 float wt;
 
+                const float wrap_around_bias = 0.2;
+
                 if (params.sample_directional_radiance) {
-                    wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
+                    wt = saturate(wrap_around_bias + (1.0 - wrap_around_bias) * dot(normalize(slice_dir), params.directional_radiance_direction));
                     wt = pow(wt, params.directional_radiance_phong_exponent);
                 } else if (params.sample_specular && params.directional_radiance_phong_exponent > 0.1) {
-                    wt = saturate(dot(normalize(slice_dir), params.directional_radiance_direction));
+                    wt = saturate(wrap_around_bias + (1.0 - wrap_around_bias) * dot(normalize(slice_dir), params.directional_radiance_direction));
                     wt = pow(wt, params.directional_radiance_phong_exponent);
-                    wt *= saturate(dot(normalize(slice_dir), normal));
+                    wt *= saturate(wrap_around_bias + (1.0 - wrap_around_bias) * dot(normalize(slice_dir), normal));
                 } else if (params.sample_phase) {
-                    float cos_theta = dot(normalize(slice_dir), params.directional_radiance_direction);
+                    float cos_theta = dot(wrap_around_bias + (1.0 - wrap_around_bias) * normalize(slice_dir), params.directional_radiance_direction);
                     wt = henyey_greenstein(params.phase_g, cos_theta);
                 } else {
-                    wt = saturate(dot(normalize(slice_dir), normal));
+                    wt = saturate(wrap_around_bias + (1.0 - wrap_around_bias) * dot(normalize(slice_dir), normal));
                 }
 
                 //wt = normalize(slice_dir).x > 0.99 ? 1.0 : 0.0;

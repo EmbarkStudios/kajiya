@@ -4,7 +4,7 @@
 
 struct PsIn {
     [[vk::location(0)]] float4 color: TEXCOORD0;
-    [[vk::location(1)]] float3 normal: TEXCOORD2;
+    [[vk::location(1)]] float3 normal: TEXCOORD1;
 };
 
 struct PsOut {

@@ -154,7 +154,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 gbuffer.normal,
                 CsgiLookupParams::make_default()
                     //.with_sample_directional_radiance(gbuffer.normal)
+                    //.with_direct_light_only(true)
                     .with_bent_normal(pseudo_bent_normal)
+                    //.with_debug_single_direction(0)
+                    //.with_linear_fetch(false)
             );
             gi_irradiance = csgi_irradiance;
         }

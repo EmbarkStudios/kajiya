@@ -74,7 +74,7 @@ impl CsgiRenderer {
                     //vk::Format::R16G16B16A16_SFLOAT,
                     [
                         VOLUME_DIMS * TRACE_COUNT as u32,
-                        VOLUME_DIMS * 4,
+                        VOLUME_DIMS * 5,
                         VOLUME_DIMS,
                     ],
                 )
@@ -240,9 +240,9 @@ impl CsgiVolume {
                 &*render_pass,
                 [width, height],
                 &[
+                    (geometric_normal_ref, &ImageViewDesc::default()),
                     (gbuffer_ref, &ImageViewDesc::default()),
                     (velocity_ref, &ImageViewDesc::default()),
-                    (geometric_normal_ref, &ImageViewDesc::default()),
                 ],
                 Some((
                     depth_ref,

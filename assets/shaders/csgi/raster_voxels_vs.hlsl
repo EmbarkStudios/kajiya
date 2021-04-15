@@ -7,7 +7,7 @@
 struct VsOut {
 	float4 position: SV_Position;
     [[vk::location(0)]] float4 color: TEXCOORD0;
-    [[vk::location(1)]] float3 normal: TEXCOORD2;
+    [[vk::location(1)]] float3 normal: TEXCOORD1;
 };
 
 float3 vx_to_pos(float3 vx) {
@@ -50,9 +50,9 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
         float3 color = voxel_packed.rgb;
 
         vsout.position = cs_pos;
-        vsout.color = float4(color + 0.01, 1);
+        //vsout.color = float4(color + 0.01, 1);
         //vsout.color = float4(1.0 - exp(-0.25 * color), 1);
-        //vsout.color = float4(color, 1);
+        vsout.color = float4(color, 1);
         vsout.normal = -slice_dir;
     } else {
         vsout.position = 0;

@@ -12,3 +12,4 @@ cargo run --bin bake --release -- --scene "assets/meshes/gas_stations_fixed/scen
 cargo run --bin bake --release -- --scene "assets/meshes/viziers_observation_deck/scene.gltf" --scale 0.0075 -o viziers
 cargo run --bin bake --release -- --scene "assets/meshes/dp3_homework_4/scene.gltf" --scale 0.05 -o mini_battle
 cargo run --bin bake --release -- --scene "assets/meshes/painting_xyz_homework/scene.gltf" --scale 0.0025 -o painting_xyz_homework
+cargo run --bin bake --release -- --scene "assets/meshes/conference/scene.gltf" --scale 1.0 -o conference

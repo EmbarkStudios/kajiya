@@ -10,6 +10,8 @@
 [[vk::binding(3)]] RWTexture3D<float3> subray_indirect_tex;
 [[vk::binding(4)]] RWTexture3D<float3> indirect_tex;
 
+static const uint SUBRAY_COUNT = 5;
+
 float4 sample_direct_from(int3 vx, uint dir_idx) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
         return 0.0.xxxx;
@@ -30,7 +32,7 @@ float4 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
 #if CSGI_SUBRAY_PACKED
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray, 0);
-    const int3 vx_stride = int3(1, 4, 1);
+    const int3 vx_stride = int3(1, SUBRAY_COUNT, 1);
 #else
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
@@ -44,7 +46,7 @@ void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subra
 #if CSGI_SUBRAY_PACKED
     const int3 subray_offset = int3(0, subray, 0);
     const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-    const int3 vx_stride = int3(1, 4, 1);
+    const int3 vx_stride = int3(1, SUBRAY_COUNT, 1);
 #else
     const int3 subray_offset = int3(0, subray * CSGI_VOLUME_DIMS, 0);
     const int3 indirect_offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
@@ -85,15 +87,12 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         initial_vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
     }
 
-    uint rng = hash1(frame_constants.frame_index);
-    const float jitter_amount = 0.0;
-    const float2 subray_jitter = float2((uint_to_u01_float(hash1_mut(rng)) - 0.5), (uint_to_u01_float(hash1_mut(rng)) - 0.5)) * jitter_amount;
-
-    static const float4 subray_weights[4] = {
-        float4(1.0, 0.0, 0.5, 0.5),
-        float4(0.0, 1.0, 0.5, 0.5),
-        float4(0.5, 0.5, 1.0, 0.0),
-        float4(0.5, 0.5, 0.0, 1.0),
+    static const float4 subray_weights[SUBRAY_COUNT] = {
+        float4(1.0, 1.0, 1.0, 1.0),
+        float4(1.0, 0.15, 0.5, 0.5),
+        float4(0.15, 1.0, 0.5, 0.5),
+        float4(0.5, 0.5, 1.0, 0.15),
+        float4(0.5, 0.5, 0.15, 1.0),
     };
 
     #if 1
@@ -103,8 +102,6 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
     static const uint plane_start_idx = 0;
     static const uint plane_end_idx = CSGI_VOLUME_DIMS;
     #endif
-
-    static const uint SUBRAY_COUNT = 4;
 
     int3 vx = initial_vx - slice_dir * plane_start_idx;
     [loop]
@@ -145,7 +142,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         }
 
         float3 subray_radiance[SUBRAY_COUNT] = {
-            0.0.xxx, 0.0.xxx, 0.0.xxx, 0.0.xxx,
+            0.0.xxx, 0.0.xxx, 0.0.xxx, 0.0.xxx, 0.0.xxx,
         };
 
         {[loop] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
