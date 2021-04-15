@@ -177,7 +177,7 @@ fn load_gltf_material(
 
     map_transforms[2] = spec_map_transform;
 
-    let mut emissive_map = MeshMaterialMap::Placeholder([0, 0, 0, 255]);
+    let mut emissive_map = MeshMaterialMap::Placeholder([255, 255, 255, 255]);
     if let Some(emissive_texture) = mat.emissive_texture() {
         map_transforms[3] = texture_transform_to_matrix(emissive_texture.texture_transform());
         if let Some(tex) =
