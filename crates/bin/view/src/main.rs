@@ -48,8 +48,23 @@ struct SceneInstanceDesc {
     mesh: String,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PersistedAppState {
+    camera: FirstPersonCamera,
+    light_theta: f32,
+    light_phi: f32,
+    emissive_multiplier: f32,
+    ev_shift: f32,
+}
+
+const APP_STATE_CONFIG_FILE_PATH: &'static str = "view_state.ron";
+
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
+
+    let persisted_app_state: Option<PersistedAppState> = File::open(APP_STATE_CONFIG_FILE_PATH)
+        .ok()
+        .and_then(|f| ron::de::from_reader(f).ok());
 
     let scene_file = format!("assets/scenes/{}.ron", opt.scene);
     let scene_desc: SceneDesc = ron::de::from_reader(
@@ -71,24 +86,28 @@ fn main() -> anyhow::Result<()> {
 
     kajiya.world_renderer.world_gi_scale = opt.gi_volume_scale;
 
-    let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
+    let mut camera_state = if let Some(persisted_app_state) = &persisted_app_state {
+        persisted_app_state.camera.clone()
+    } else {
+        kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0))
+    };
     //camera.fov = 65.0;
     //camera.look_smoothness = 20.0;
     //camera.move_smoothness = 20.0;
-
-    camera.look_smoothness = 3.0;
-    camera.move_smoothness = 3.0;
+    camera_state.look_smoothness = 3.0;
+    camera_state.move_smoothness = 3.0;
 
     // Mitsuba match
     /*let mut camera = camera::FirstPersonCamera::new(Vec3::new(-2.0, 4.0, 8.0));
     camera.fov = 35.0 * 9.0 / 16.0;
     camera.look_at(Vec3::new(0.0, 0.75, 0.0));*/
 
-    camera.aspect = kajiya.window_aspect_ratio();
+    camera_state.aspect = kajiya.window_aspect_ratio();
 
     #[allow(unused_mut)]
-    let mut camera = CameraConvergenceEnforcer::new(camera);
-    camera.convergence_sensitivity = 0.0;
+    let mut camera_state = CameraConvergenceEnforcer::new(camera_state);
+    camera_state.convergence_sensitivity = 0.0;
+    let camera = &mut camera_state;
 
     let mut mouse_state: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
@@ -114,11 +133,28 @@ fn main() -> anyhow::Result<()> {
         .world_renderer
         .add_instance(car_mesh, car_pos, Quat::identity());*/
 
+    let (
+        mut light_theta_state,
+        mut light_phi_state,
+        mut emissive_multiplier_state,
+        mut ev_shift_state,
+    ) = if let Some(persisted_app_state) = persisted_app_state {
+        (
+            persisted_app_state.light_theta,
+            persisted_app_state.light_phi,
+            persisted_app_state.emissive_multiplier,
+            persisted_app_state.ev_shift,
+        )
+    } else {
+        (-4.54, 1.48, 1.0, 0.0)
+    };
+    let light_theta = &mut light_theta_state;
+    let light_phi = &mut light_phi_state;
+    let emissive_multiplier = &mut emissive_multiplier_state;
+    let ev_shift = &mut ev_shift_state;
+
     let mut show_gui = true;
-    let mut light_theta = -4.54;
-    let mut light_phi = 1.48;
-    let mut sun_direction_interp = spherical_to_cartesian(light_theta, light_phi);
-    let mut emissive_multiplier = 1.0;
+    let mut sun_direction_interp = spherical_to_cartesian(*light_theta, *light_phi);
 
     const MAX_FPS_LIMIT: u32 = 256;
     let mut max_fps = MAX_FPS_LIMIT;
@@ -192,7 +228,7 @@ fn main() -> anyhow::Result<()> {
         for inst in &render_instances {
             ctx.world_renderer
                 .get_instance_dynamic_parameters_mut(*inst)
-                .emissive_multiplier = emissive_multiplier;
+                .emissive_multiplier = *emissive_multiplier;
         }
 
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
@@ -209,15 +245,16 @@ fn main() -> anyhow::Result<()> {
         }
 
         if mouse_state.button_mask & 1 != 0 {
-            light_theta +=
+            *light_theta +=
                 (mouse_state.delta.x / ctx.render_extent[0] as f32) * -std::f32::consts::TAU;
-            light_phi += (mouse_state.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
+            *light_phi +=
+                (mouse_state.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
         }
 
         //light_phi += dt;
         //light_phi %= std::f32::consts::TAU;
 
-        let sun_direction = spherical_to_cartesian(light_theta, light_phi);
+        let sun_direction = spherical_to_cartesian(*light_theta, *light_phi);
         sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
         let frame_desc = WorldFrameDesc {
@@ -265,12 +302,13 @@ fn main() -> anyhow::Result<()> {
                     imgui::Drag::<f32>::new(im_str!("EV shift"))
                         .range(-8.0..=8.0)
                         .speed(0.01)
-                        .build(&ui, &mut ctx.world_renderer.ev_shift);
+                        .build(&ui, ev_shift);
+                    ctx.world_renderer.ev_shift = *ev_shift;
 
                     imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                         .range(0.0..=20.0)
                         .speed(0.1)
-                        .build(&ui, &mut emissive_multiplier);
+                        .build(&ui, emissive_multiplier);
                 }
 
                 /*if imgui::CollapsingHeader::new(im_str!("csgi"))
@@ -329,7 +367,23 @@ fn main() -> anyhow::Result<()> {
         }
 
         frame_desc
-    })
+    })?;
+
+    let app_state = PersistedAppState {
+        camera: camera_state.clone().into_inner(),
+        light_theta: light_theta_state,
+        light_phi: light_phi_state,
+        emissive_multiplier: emissive_multiplier_state,
+        ev_shift: ev_shift_state,
+    };
+
+    ron::ser::to_writer_pretty(
+        File::create(APP_STATE_CONFIG_FILE_PATH)?,
+        &app_state,
+        Default::default(),
+    )?;
+
+    Ok(())
 }
 
 fn spherical_to_cartesian(theta: f32, phi: f32) -> Vec3 {

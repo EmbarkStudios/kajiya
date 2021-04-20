@@ -4,3 +4,4 @@
 /assets/scenes/private-*
 *.log
 imgui.ini
+view_state.ron

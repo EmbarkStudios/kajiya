@@ -14,6 +14,7 @@ use turbosloth::*;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    platform::run_return::EventLoopExtRunReturn,
     window::WindowBuilder,
 };
 
@@ -234,17 +235,17 @@ impl SimpleMainLoop {
         self.window.inner_size().width as f32 / self.window.inner_size().height as f32
     }
 
-    pub fn run(
-        self,
-        mut frame_fn: impl (FnMut(FrameContext) -> WorldFrameDesc) + 'static,
-    ) -> anyhow::Result<()> {
+    pub fn run<'a, FrameFn>(self, mut frame_fn: FrameFn) -> anyhow::Result<()>
+    where
+        FrameFn: (FnMut(FrameContext) -> WorldFrameDesc) + 'a,
+    {
         #[allow(unused_variables, unused_mut)]
         let SimpleMainLoop {
             window,
             mut world_renderer,
             mut ui_renderer,
             mut optional,
-            event_loop,
+            mut event_loop,
             mut render_backend,
             mut rg_renderer,
             render_extent,
@@ -255,7 +256,7 @@ impl SimpleMainLoop {
         let mut last_frame_instant = std::time::Instant::now();
         let mut last_error_text = None;
 
-        event_loop.run(move |event, _, control_flow| {
+        event_loop.run_return(move |event, _, control_flow| {
             #[cfg(feature = "dear-imgui")]
             optional
                 .imgui_backend
@@ -336,6 +337,8 @@ impl SimpleMainLoop {
                 }
                 _ => (),
             }
-        })
+        });
+
+        Ok(())
     }
 }

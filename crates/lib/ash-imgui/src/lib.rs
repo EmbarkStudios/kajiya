@@ -35,6 +35,7 @@ fn get_memory_type_index(
     None
 }
 
+#[allow(dead_code)]
 fn align_up(x: u32, alignment: u32) -> u32 {
     (x + alignment - 1) & !(alignment - 1)
 }
@@ -49,6 +50,7 @@ pub struct Renderer {
     index_buffers: [vk::Buffer; Renderer::FRAME_COUNT],
     index_mem_offsets: [usize; Renderer::FRAME_COUNT],
     image_buffer: vk::Buffer,
+    #[allow(dead_code)]
     host_mem: vk::DeviceMemory,
     host_mapping: *mut c_void,
     image_width: u32,
@@ -56,6 +58,7 @@ pub struct Renderer {
     image: vk::Image,
     _local_mem: vk::DeviceMemory,
     descriptor_set: vk::DescriptorSet,
+    #[allow(dead_code)]
     atom_size: u32,
     frame_index: usize,
     image_needs_copy: bool,
@@ -314,12 +317,12 @@ impl Renderer {
                 image_base.copy_from_nonoverlapping(texture.data.as_ptr(), texture.data.len())
             };
 
-            let mapped_memory_range = vk::MappedMemoryRange {
+            /*let mapped_memory_range = vk::MappedMemoryRange {
                 memory: host_mem,
                 offset: image_mem_offset as vk::DeviceSize,
                 size: vk::DeviceSize::from(align_up(texture.data.len() as u32, atom_size)),
                 ..Default::default()
-            };
+            };*/
             /*unsafe { device.flush_mapped_memory_ranges(slice::from_ref(&mapped_memory_range)) }
             .unwrap();*/
         }
@@ -706,7 +709,7 @@ impl Renderer {
                 assert_eq!(index_offset, next_index_offset);
             }
 
-            let mapped_ranges = [
+            /*let mapped_ranges = [
                 vk::MappedMemoryRange {
                     memory: self.host_mem,
                     offset: vertex_mem_offset as vk::DeviceSize,
@@ -725,7 +728,7 @@ impl Renderer {
                     )),
                     ..Default::default()
                 },
-            ];
+            ];*/
             //unsafe { device.flush_mapped_memory_ranges(&mapped_ranges) }.unwrap();
         }
     }

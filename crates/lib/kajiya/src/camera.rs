@@ -33,6 +33,7 @@ impl<T: Camera> From<&T> for CameraMatrices {
     }
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct FirstPersonCamera {
     // Degrees
     pub yaw: f32,
@@ -233,6 +234,7 @@ impl Camera for FirstPersonCamera {
     }
 }
 
+#[derive(Clone)]
 pub struct CameraConvergenceEnforcer<CameraType: Camera> {
     camera: CameraType,
     prev_matrices: CameraMatrices,
@@ -258,6 +260,10 @@ impl<CameraType: Camera> CameraConvergenceEnforcer<CameraType> {
 
     pub fn is_converged(&self) -> bool {
         self.is_converged
+    }
+
+    pub fn into_inner(self) -> CameraType {
+        self.camera
     }
 }
 
