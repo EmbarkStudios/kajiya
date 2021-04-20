@@ -78,6 +78,25 @@ cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no
 
 _Please note that the `smol` async runtime is used for baking and run-time shader compilation. There's no custom executor yet, so the `SMOL_THREADS` environment variable controls parallelism._
 
+## Adding Meshes and Scenes
+
+To add new mesh(es), open `bake.cmd` (Win) / `bake.sh` (Linux), and add
+
+* cargo run --bin bake --release -- --scene "[path]" --scale 1.0 -o [mesh_name]
+
+To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the following content:
+
+```
+(
+    instances: [
+        (
+            position: (0, 0, 0),
+            mesh: "[mesh_name]",
+        ),
+    ]
+)
+```
+
 ### Controls
 
 * WSAD, QE - movement
