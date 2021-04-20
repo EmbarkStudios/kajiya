@@ -32,6 +32,9 @@ struct Opt {
 
     #[structopt(long)]
     no_debug: bool,
+
+    #[structopt(long, default_value = "1.0")]
+    gi_volume_scale: f32,
 }
 
 #[derive(serde::Deserialize)]
@@ -65,6 +68,8 @@ fn main() -> anyhow::Result<()> {
                 .with_resizable(false)
                 .with_decorations(!opt.no_window_decorations),
         )?;
+
+    kajiya.world_renderer.world_gi_scale = opt.gi_volume_scale;
 
     let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0));
     //camera.fov = 65.0;
