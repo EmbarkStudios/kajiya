@@ -54,7 +54,7 @@ Hardware:
 
 ## Building and running
 
-There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:
+There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, open the following file, add the path to the GLTF and run:
 
 * Windows: `bake.cmd`
 * Linux: `./bake.sh`
