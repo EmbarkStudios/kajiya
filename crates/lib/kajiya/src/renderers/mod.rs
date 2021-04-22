@@ -13,6 +13,7 @@ pub mod reference;
 pub mod reprojection;
 pub mod rtdgi;
 pub mod rtr;
+pub mod shadow_denoise;
 pub mod shadows;
 pub mod sky;
 pub mod ssgi;

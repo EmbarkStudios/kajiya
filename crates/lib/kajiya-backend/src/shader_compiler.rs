@@ -184,6 +184,7 @@ fn compile_generic_shader_hlsl_impl(
         &[
             "-spirv",
             "-enable-templates",
+            //"-enable-16bit-types",
             "-fspv-target-env=vulkan1.2",
             "-WX",  // warnings as errors
             "-Ges", // strict mode

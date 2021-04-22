@@ -9,6 +9,7 @@ pub fn light_gbuffer(
     rg: &mut RenderGraph,
     gbuffer_depth: &GbufferDepth,
     sun_shadow_mask: &rg::Handle<Image>,
+    denoised_shadow_mask: &rg::Handle<Image>,
     ssgi: &rg::Handle<Image>,
     rtr: &rg::Handle<Image>,
     rtdgi: &rg::Handle<Image>,
@@ -23,6 +24,7 @@ pub fn light_gbuffer(
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(sun_shadow_mask)
+        .read(denoised_shadow_mask)
         .read(ssgi)
         .read(rtr)
         .read(rtdgi)

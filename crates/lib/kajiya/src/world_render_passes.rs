@@ -104,6 +104,9 @@ impl WorldRenderer {
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
         let sun_shadow_mask = trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
+        let denoised_shadow_mask =
+            self.shadow_denoise
+                .render(rg, &gbuffer_depth, &sun_shadow_mask, &reprojection_map);
 
         let rtr = self.rtr.render(
             rg,
@@ -135,6 +138,7 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &sun_shadow_mask,
+            &denoised_shadow_mask,
             &ssgi_tex,
             &rtr,
             &rtdgi,

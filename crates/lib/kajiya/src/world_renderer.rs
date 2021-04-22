@@ -5,7 +5,12 @@ use crate::{
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        csgi::CsgiRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*, ssgi::*,
+        csgi::CsgiRenderer,
+        raster_meshes::*,
+        rtdgi::RtdgiRenderer,
+        rtr::*,
+        shadow_denoise::{self, ShadowDenoiseRenderer},
+        ssgi::*,
         taa::TaaRenderer,
     },
     viewport::ViewConstants,
@@ -136,6 +141,8 @@ pub struct WorldRenderer {
     pub rtdgi: RtdgiRenderer,
     pub csgi: CsgiRenderer,
     pub taa: TaaRenderer,
+    pub shadow_denoise: ShadowDenoiseRenderer,
+
     pub supersample_drift: Vec2,
     pub use_sample_drift_correction: bool,
 
@@ -301,6 +308,8 @@ impl WorldRenderer {
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
             taa: TaaRenderer::new(),
             supersample_drift: Vec2::zero(),
+            shadow_denoise: Default::default(),
+
             use_sample_drift_correction: true,
             temporal_upscale_extent,
 

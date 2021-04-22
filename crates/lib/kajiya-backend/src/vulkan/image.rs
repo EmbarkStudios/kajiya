@@ -48,6 +48,10 @@ impl ImageDesc {
         }
     }
 
+    pub fn new_1d(format: vk::Format, extent: u32) -> Self {
+        Self::new(format, ImageType::Tex1d, [extent, 1, 1])
+    }
+
     pub fn new_2d(format: vk::Format, extent: [u32; 2]) -> Self {
         let [width, height] = extent;
         Self::new(format, ImageType::Tex2d, [width, height, 1])
