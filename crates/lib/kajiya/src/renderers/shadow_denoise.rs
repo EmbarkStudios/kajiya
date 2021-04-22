@@ -77,6 +77,7 @@ impl ShadowDenoiseRenderer {
         .read(&bitpacked_shadows_image)
         .read(&prev_moments_image)
         .read(&prev_accum_image)
+        .read(reprojection_map)
         .write(&mut moments_image)
         .write(&mut spatial_input_image)
         .write(&mut metadata_image)

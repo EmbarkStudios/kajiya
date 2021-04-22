@@ -4,6 +4,7 @@
 #include "../inc/rt.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
+#include "../inc/bindless_textures.hlsl"
 
 #include "../inc/hash.hlsl"
 #include "../inc/math.hlsl"
@@ -15,11 +16,19 @@
 float3 sample_sun_direction(uint2 px) {
     const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
 
+#if 0
     uint rng = hash3(uint3(px, frame_constants.frame_index));
     float2 urand = float2(
         uint_to_u01_float(hash1_mut(rng)),
         uint_to_u01_float(hash1_mut(rng))
     );
+#else
+    // 256x256 blue noise
+    const uint noise_offset = frame_constants.frame_index;
+    float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
+        (px + int2(noise_offset * 59, noise_offset * 37)) & 255
+    ].xy * 255.0 / 256.0 + 0.5 / 256.0;
+#endif
 
     return mul(basis, uniform_sample_cone(urand, 0.998));
 }

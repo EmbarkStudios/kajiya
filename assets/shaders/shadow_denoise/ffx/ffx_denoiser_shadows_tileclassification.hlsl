@@ -339,12 +339,14 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
     FFX_DNSR_Shadows_WriteTileMetaData(gid, gtid, false, false);
 
     float depth = FFX_DNSR_Shadows_ReadDepth(did);
-    const float2 velocity = FFX_DNSR_Shadows_GetClosestVelocity(did.xy, depth); // Must happen before we deactivate lanes
+    //const float2 velocity = FFX_DNSR_Shadows_GetClosestVelocity(did.xy, depth); // Must happen before we deactivate lanes
+    const float4 reproj = reprojection_tex[did.xy];
     const float local_neighborhood = FFX_DNSR_Shadows_ComputeLocalNeighborhood(did, gtid);
 
     const float2 texel_size = FFX_DNSR_Shadows_GetInvBufferDimensions();
     const float2 uv = (did.xy + 0.5f) * texel_size;
-    const float2 history_uv = uv - velocity;
+    //const float2 history_uv = uv - velocity;
+    const float2 history_uv = uv + reproj.xy;
     const int2 history_pos = history_uv * FFX_DNSR_Shadows_GetBufferDimensions();
 
     const uint2 tile_index = FFX_DNSR_Shadows_GetTileIndexFromPixelPosition(did);
@@ -360,9 +362,13 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
         bool hit_light = shadow_tile & FFX_DNSR_Shadows_GetBitMaskFromPixelPosition(did);
         const float shadow_current = hit_light ? 1.0 : 0.0;
 
+        const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+        const float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+
         // Perform moments and variance calculations
         {
-            bool is_disoccluded = FFX_DNSR_Shadows_IsDisoccluded(did, depth, velocity);
+            //bool is_disoccluded = FFX_DNSR_Shadows_IsDisoccluded(did, depth, velocity);
+            bool is_disoccluded = dot(quad_reproj_valid, 1.0.xxxx) < 4.0;
             const float3 previous_moments = is_disoccluded ? float3(0.0f, 0.0f, 0.0f) // Can't trust previous moments on disocclusion
                 : FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(history_pos);
 

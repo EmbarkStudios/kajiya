@@ -1,4 +1,5 @@
 use crate::{
+    bindless_descriptor_set,
     frame_desc::WorldFrameDesc,
     renderers::{
         deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
@@ -103,7 +104,12 @@ impl WorldRenderer {
             .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
-        let sun_shadow_mask = trace_sun_shadow_mask(rg, &gbuffer_depth.depth, &tlas);
+        let sun_shadow_mask = trace_sun_shadow_mask(
+            rg,
+            &gbuffer_depth.depth,
+            &tlas,
+            self.bindless_descriptor_set,
+        );
         let denoised_shadow_mask =
             self.shadow_denoise
                 .render(rg, &gbuffer_depth, &sun_shadow_mask, &reprojection_map);

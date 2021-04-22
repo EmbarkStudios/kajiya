@@ -4,10 +4,11 @@
 [[vk::binding(0)]] Texture2D<uint> bitpacked_shadow_mask_tex;
 [[vk::binding(1)]] Texture2D<float3> prev_moments_tex;
 [[vk::binding(2)]] Texture2D<float> prev_accum_tex;
-[[vk::binding(3)]] RWTexture2D<float3> output_moments_tex;
-[[vk::binding(4)]] RWTexture2D<float2> temporal_output_tex;
-[[vk::binding(5)]] RWTexture2D<uint> meta_output_tex;
-[[vk::binding(6)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(4)]] RWTexture2D<float3> output_moments_tex;
+[[vk::binding(5)]] RWTexture2D<float2> temporal_output_tex;
+[[vk::binding(6)]] RWTexture2D<uint> meta_output_tex;
+[[vk::binding(7)]] cbuffer _ {
     float4 input_tex_size;
     uint2 bitpacked_shadow_mask_extent;
 };

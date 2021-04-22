@@ -9,6 +9,7 @@ pub fn trace_sun_shadow_mask(
     rg: &mut RenderGraph,
     depth_img: &rg::Handle<Image>,
     tlas: &rg::Handle<RayTracingAcceleration>,
+    bindless_descriptor_set: vk::DescriptorSet,
 ) -> rg::Handle<Image> {
     let mut output_img = rg.create(depth_img.desc().format(vk::Format::R8_UNORM));
 
@@ -24,6 +25,7 @@ pub fn trace_sun_shadow_mask(
     )
     .read_aspect(&depth_img, vk::ImageAspectFlags::DEPTH)
     .write(&mut output_img)
+    .raw_descriptor_set(1, bindless_descriptor_set)
     .trace_rays(tlas, output_img.desc().extent);
 
     output_img
