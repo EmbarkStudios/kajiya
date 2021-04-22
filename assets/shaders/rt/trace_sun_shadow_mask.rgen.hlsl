@@ -33,7 +33,7 @@ float3 sample_sun_direction(uint2 px) {
             ].xy * 255.0 / 256.0 + 0.5 / 256.0;
         #endif
 
-        return mul(basis, uniform_sample_cone(urand, 0.998));
+        return mul(basis, uniform_sample_cone(urand, cos(0.03)));
     #else
         return SUN_DIRECTION;
     #endif
