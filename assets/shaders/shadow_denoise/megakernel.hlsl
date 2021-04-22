@@ -86,7 +86,10 @@ void FFX_DNSR_Shadows_WriteReprojectionResults(uint2 px, float2 shadow_clamped_v
 }
 
 void FFX_DNSR_Shadows_WriteMoments(uint2 px, float3 moments) {
-    //moments.z = min(moments.z, 32);
+    // Don't accumulate more samples than a certain number,
+    // so that our variance estimate is quick, and contact shadows turn crispy sooner.
+    moments.z = min(moments.z, 32);
+
     output_moments_tex[px] = moments;
 }
 

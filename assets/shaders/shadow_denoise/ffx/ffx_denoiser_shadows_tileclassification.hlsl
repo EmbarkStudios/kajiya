@@ -375,10 +375,10 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
             const float old_m = previous_moments.x;
             const float old_s = previous_moments.y;
             const float sample_count = previous_moments.z + 1.0f;
-            const float new_m = old_m + (shadow_current - old_m) / sample_count;
-            const float new_s = old_s + (shadow_current - old_m) * (shadow_current - new_m);
+            const float new_m = lerp(old_m, shadow_current, 1.0 / sample_count);
+            const float new_s = lerp(old_s, (shadow_current - old_m) * (shadow_current - new_m), 1.0 / sample_count);
 
-            variance = (sample_count > 1.0f ? new_s / (sample_count - 1.0f) : 1.0f);
+            variance = new_s;
             moments_current = float3(new_m, new_s, sample_count);
         }
 

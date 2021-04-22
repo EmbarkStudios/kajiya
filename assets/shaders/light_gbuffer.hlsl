@@ -284,7 +284,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //output = sun_shadow_mask_tex[px].x;
     //output = denoised_shadow_mask_tex[px].x;
-    //output = denoised_shadow_mask_tex[px].y * 0.01;
+    //output = sqrt(denoised_shadow_mask_tex[px].y) * 0.1;
     //output = denoised_shadow_mask_tex[px].z * 0.1;
 
     #if 0
