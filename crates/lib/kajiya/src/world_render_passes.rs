@@ -53,7 +53,7 @@ impl WorldRenderer {
                 ));
 
                 let mut depth_img = rg.create(ImageDesc::new_2d(
-                    vk::Format::D24_UNORM_S8_UINT,
+                    vk::Format::D32_SFLOAT,
                     frame_desc.render_extent,
                 ));
                 rg::imageops::clear_depth(rg, &mut depth_img);
@@ -104,12 +104,8 @@ impl WorldRenderer {
             .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
-        let sun_shadow_mask = trace_sun_shadow_mask(
-            rg,
-            &gbuffer_depth.depth,
-            &tlas,
-            self.bindless_descriptor_set,
-        );
+        let sun_shadow_mask =
+            trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
         let denoised_shadow_mask =
             self.shadow_denoise
                 .render(rg, &gbuffer_depth, &sun_shadow_mask, &reprojection_map);

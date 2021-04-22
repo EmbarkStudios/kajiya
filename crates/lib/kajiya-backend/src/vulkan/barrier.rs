@@ -336,7 +336,7 @@ fn image_aspect_mask_from_format(format: vk::Format) -> vk::ImageAspectFlags {
     match format {
         vk::Format::D16_UNORM => vk::ImageAspectFlags::DEPTH,
         vk::Format::X8_D24_UNORM_PACK32 => vk::ImageAspectFlags::DEPTH,
-        vk::Format::D32_SFLOAT => vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+        vk::Format::D32_SFLOAT => vk::ImageAspectFlags::DEPTH,
         vk::Format::S8_UINT => vk::ImageAspectFlags::STENCIL,
         vk::Format::D16_UNORM_S8_UINT => {
             vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL
@@ -356,15 +356,21 @@ pub fn image_aspect_mask_from_access_type_and_format(
     access_type: AccessType,
     format: vk::Format,
 ) -> Option<vk::ImageAspectFlags> {
-    match get_access_info(access_type).image_layout {
+    let image_layout = get_access_info(access_type).image_layout;
+
+    match image_layout {
         vk::ImageLayout::GENERAL
         | vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL
         | vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
         | vk::ImageLayout::DEPTH_STENCIL_READ_ONLY_OPTIMAL
+        | vk::ImageLayout::DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL
         | vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
         | vk::ImageLayout::TRANSFER_SRC_OPTIMAL
         | vk::ImageLayout::TRANSFER_DST_OPTIMAL => Some(image_aspect_mask_from_format(format)),
-        _ => None,
+        _ => {
+            //println!("{:?}", image_layout);
+            None
+        }
     }
 
     /*let info = get_access_info(access_type);

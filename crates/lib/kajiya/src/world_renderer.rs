@@ -208,9 +208,7 @@ impl WorldRenderer {
                     // velocity
                     RenderPassAttachmentDesc::new(vk::Format::R16G16B16A16_SFLOAT).garbage_input(),
                 ],
-                depth_attachment: Some(RenderPassAttachmentDesc::new(
-                    vk::Format::D24_UNORM_S8_UINT,
-                )),
+                depth_attachment: Some(RenderPassAttachmentDesc::new(vk::Format::D32_SFLOAT)),
             },
         )?;
 

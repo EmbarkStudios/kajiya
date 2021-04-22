@@ -675,8 +675,8 @@ pub fn create_render_pass(
         })
         .chain(desc.depth_attachment.as_ref().map(|a| {
             a.to_vk(
-                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-                vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+                vk::ImageLayout::DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
+                vk::ImageLayout::DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
             )
         }))
         .collect::<Vec<_>>();

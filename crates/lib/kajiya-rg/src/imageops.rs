@@ -25,7 +25,7 @@ pub fn clear_depth(rg: &mut RenderGraph, img: &mut rg::Handle<Image>) {
                     stencil: 0,
                 },
                 std::slice::from_ref(&vk::ImageSubresourceRange {
-                    aspect_mask: vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL,
+                    aspect_mask: vk::ImageAspectFlags::DEPTH,
                     level_count: 1,
                     layer_count: 1,
                     ..Default::default()

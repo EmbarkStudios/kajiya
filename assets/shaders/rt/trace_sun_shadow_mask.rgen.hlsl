@@ -10,8 +10,9 @@
 #include "../inc/math.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0, 0)]] Texture2D<float> depth_tex;
-[[vk::binding(1, 0)]] RWTexture2D<float4> output_tex;
+[[vk::binding(0)]] Texture2D<float> depth_tex;
+[[vk::binding(1)]] Texture2D<float3> geometric_normal_tex;
+[[vk::binding(2)]] RWTexture2D<float4> output_tex;
 
 #define USE_SOFT_SHADOWS 1
 
@@ -60,9 +61,13 @@ void main() {
 
     float4 eye_ws = mul(frame_constants.view_constants.view_to_world, float4(0, 0, 0, 1));
 
-    const float3 bias_dir = normalize(eye_ws.xyz / eye_ws.w - pt_ws.xyz);
+    const float3 normal_vs = geometric_normal_tex[px] * 2.0 - 1.0;
+    const float3 normal_ws = mul(frame_constants.view_constants.view_to_world, float4(normal_vs, 0.0)).xyz;
 
-    const float3 ray_origin = pt_ws.xyz + bias_dir * (length(pt_vs.xyz) + 10 * length(pt_ws.xyz)) * 1e-4;
+    const float3 bias_dir = normal_ws;
+    const float bias_amount = (-pt_vs.z + length(pt_ws.xyz)) * 1e-5;
+    const float3 ray_origin = pt_ws.xyz + bias_dir * bias_amount;
+
     const bool is_shadowed = rt_is_shadowed(
         acceleration_structure,
         new_ray(

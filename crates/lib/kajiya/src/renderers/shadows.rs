@@ -5,13 +5,15 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 
+use super::GbufferDepth;
+
 pub fn trace_sun_shadow_mask(
     rg: &mut RenderGraph,
-    depth_img: &rg::Handle<Image>,
+    gbuffer_depth: &GbufferDepth,
     tlas: &rg::Handle<RayTracingAcceleration>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) -> rg::Handle<Image> {
-    let mut output_img = rg.create(depth_img.desc().format(vk::Format::R8_UNORM));
+    let mut output_img = rg.create(gbuffer_depth.depth.desc().format(vk::Format::R8_UNORM));
 
     SimpleRenderPass::new_rt(
         rg.add_pass("trace shadow mask"),
@@ -23,7 +25,8 @@ pub fn trace_sun_shadow_mask(
         ],
         &[],
     )
-    .read_aspect(&depth_img, vk::ImageAspectFlags::DEPTH)
+    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+    .read(&gbuffer_depth.geometric_normal)
     .write(&mut output_img)
     .raw_descriptor_set(1, bindless_descriptor_set)
     .trace_rays(tlas, output_img.desc().extent);

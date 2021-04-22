@@ -169,7 +169,7 @@ pub fn raster_sdf(
     );
     let cube_index_buffer = pass.read(raster_sdf_data.cube_index_buffer, AccessType::IndexBuffer);
 
-    let depth_ref = pass.raster(depth_img, AccessType::DepthStencilAttachmentWrite);
+    let depth_ref = pass.raster(depth_img, AccessType::DepthAttachmentWriteStencilReadOnly);
     let color_ref = pass.raster(color_img, AccessType::ColorAttachmentWrite);
 
     pass.render(move |api| {
@@ -182,7 +182,7 @@ pub fn raster_sdf(
             Some((
                 depth_ref,
                 &ImageViewDesc::builder()
-                    .aspect_mask(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                    .aspect_mask(vk::ImageAspectFlags::DEPTH)
                     .build()
                     .unwrap(),
             )),

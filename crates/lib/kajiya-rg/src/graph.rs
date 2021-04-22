@@ -567,8 +567,17 @@ fn image_access_mask_to_usage_flags(access_mask: vk::AccessFlags) -> vk::ImageUs
         }
         vk::AccessFlags::TRANSFER_READ => vk::ImageUsageFlags::TRANSFER_SRC,
         vk::AccessFlags::TRANSFER_WRITE => vk::ImageUsageFlags::TRANSFER_DST,
+
         _ if access_mask == vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE => {
             vk::ImageUsageFlags::STORAGE
+        }
+
+        // Appears with DepthAttachmentWriteStencilReadOnly
+        _ if access_mask
+            == vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
+                | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE =>
+        {
+            vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT
         }
         _ => panic!("Invalid image access mask: {:?}", access_mask),
     }

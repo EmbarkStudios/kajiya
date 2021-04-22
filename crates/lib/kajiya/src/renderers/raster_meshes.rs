@@ -60,7 +60,7 @@ pub fn raster_meshes(
 
     let depth_ref = pass.raster(
         &mut gbuffer_depth.depth,
-        AccessType::DepthStencilAttachmentWrite,
+        AccessType::DepthAttachmentWriteStencilReadOnly,
     );
 
     let geometric_normal_ref = pass.raster(
@@ -123,7 +123,7 @@ pub fn raster_meshes(
             Some((
                 depth_ref,
                 &ImageViewDesc::builder()
-                    .aspect_mask(vk::ImageAspectFlags::DEPTH | vk::ImageAspectFlags::STENCIL)
+                    .aspect_mask(vk::ImageAspectFlags::DEPTH)
                     .build()
                     .unwrap(),
             )),
