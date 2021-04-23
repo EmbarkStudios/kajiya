@@ -15,11 +15,11 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
     * Multi-bounce temporally-recurrent voxel-based diffuse
     * Short-range ray-traced diffuse for high-frequency details
     * Single bounce specular, falling back to diffuse after the first hit
-* Sun with ray-traced shadows (not soft yet)
+* Sun with ray-traced soft shadows
 * Standard PBR with GGX and roughness/metalness
     * Multi-scattering BRDF, energy-preserving metalness
 * Reference path-tracing mode
-* Sky rendering based on Felix Westin's shaders
+* Physically-based rendering
 * Temporal anti-aliasing
 * Natural tone mapping
 * Physically-based glare
@@ -114,4 +114,18 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 * There's a hard limit on mesh data and instance count. Exceeding those limits will result in Vulkan validation errors / driver crashes.
 * Window (framebuffer) resizing is not implemented.
 * The voxel GI uses a fixed-size volume around the origin. It will get cascades later.
-* Denoising needs more work.
+    * Use `--gi-volume-scale` to change its extent in the `view` app
+* Denoising needs more work (always).
+
+## Acknowledgments
+
+This project is made possible by the awesome open source Rust community, and benefits from too many crates to mention here. Special thanks go to:
+
+* Felix Westin for his [MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere), which this project uses for sky rendering
+* AMD, especially Dominik Baumeister and Guillaume Boissé for the [FidelityFX Shadow Denoiser](https://gpuopen.com/fidelityfx-denoiser/), which forms the basis of shadow denoising in `kajiya`.
+* Maik Klein for the Vulkan wrapper [ash](https://github.com/MaikKlein/ash), making it easy for `kajiya` to talk to the GPU.
+* Traverse Research and Jasper Bekkers for a number of highly relevant crates:
+  * Bindings to the DXC shader compiler: [hassle-rs](https://github.com/Traverse-Research/hassle-rs)
+  * SPIR-V reflection utilities: [rspirv-reflect](https://github.com/Traverse-Research/rspirv-reflect)
+  * Vulkan memory management: [gpu-allocator](https://github.com/Traverse-Research/gpu-allocator)
+  * Blue noise sampling: [blue-noise-sampler](https://github.com/Jasper-Bekkers/blue-noise-sampler)

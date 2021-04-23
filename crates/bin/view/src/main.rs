@@ -153,7 +153,7 @@ fn main() -> anyhow::Result<()> {
     let emissive_multiplier = &mut emissive_multiplier_state;
     let ev_shift = &mut ev_shift_state;
 
-    let mut show_gui = true;
+    let mut show_gui = false;
     let mut sun_direction_interp = spherical_to_cartesian(*light_theta, *light_phi);
 
     const MAX_FPS_LIMIT: u32 = 256;
