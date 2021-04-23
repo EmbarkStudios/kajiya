@@ -89,7 +89,7 @@ CenterSampleInfo fetch_center_filtered(int2 dst_px) {
     float dev_wt_sum = 0.0;
 
     // Stretch the kernel if samples become too sparse due to drastic upsampling
-    const float kernel_distance_mult = min(1.0, 1.5 * input_tex_size.x / output_tex_size.x);
+    const float kernel_distance_mult = min(1.0, 1.2 * input_tex_size.x / output_tex_size.x);
 
     int k = 1;
     for (int y = -k; y <= k; ++y) {
@@ -98,14 +98,15 @@ CenterSampleInfo fetch_center_filtered(int2 dst_px) {
             float2 src_sample_loc = base_src_sample_loc + float2(x, y) / input_resolution_scale;
 
             float4 col = float4(rgb_to_ycbcr(decode_rgb(input_tex[src_px].rgb)), 1);
-            float2 sample_center_offset = jitter * float2(1, -1) / input_resolution_scale - (src_sample_loc - dst_sample_loc);
+            float2 sample_center_offset = -jitter * float2(1, -1) / input_resolution_scale - (src_sample_loc - dst_sample_loc);
+
             float dist2 = dot(sample_center_offset, sample_center_offset);
             float dist = sqrt(dist2);
 
             float wt = mitchell_netravali(dist * kernel_distance_mult);
             float dev_wt = exp2(-dist2);
 
-            res += col * dev_wt;
+            res += col * wt;
 
             ex += col.xyz * dev_wt;
             ex2 += col.xyz * col.xyz * dev_wt;
@@ -116,7 +117,7 @@ CenterSampleInfo fetch_center_filtered(int2 dst_px) {
     const int sample_count = (k * 2 + 1) * (k * 2 + 1);
     const float ideal_coverage = 1.0 + 4 * 0.5 + 4 * 0.25;
 
-    float2 sample_center_offset = jitter / input_resolution_scale * float2(1, -1) - (base_src_sample_loc - dst_sample_loc);
+    float2 sample_center_offset = -jitter / input_resolution_scale * float2(1, -1) - (base_src_sample_loc - dst_sample_loc);
 
     CenterSampleInfo info;
     info.color = res.rgb / max(1e-5, res.a);
@@ -165,6 +166,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     CenterSampleInfo center_sample = fetch_center_filtered(px);
     const float3 center = center_sample.color;
 #else
+    CenterSampleInfo center_sample = fetch_center_filtered(px);
     const float3 center = rgb_to_ycbcr(decode_rgb(input_tex[px].rgb));
 #endif
 

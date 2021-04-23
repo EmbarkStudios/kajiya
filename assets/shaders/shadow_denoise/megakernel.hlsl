@@ -93,8 +93,9 @@ void FFX_DNSR_Shadows_WriteMoments(uint2 px, float3 moments) {
     output_moments_tex[px] = moments;
 }
 
-float3 FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(uint2 px) {
-    return prev_moments_tex[px];
+float3 FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(float2 uv) {
+    //return prev_moments_tex[px];
+    return prev_moments_tex.SampleLevel(sampler_lnc, uv, 0);
 }
 
 float FFX_DNSR_Shadows_ReadHistory(float2 uv) {

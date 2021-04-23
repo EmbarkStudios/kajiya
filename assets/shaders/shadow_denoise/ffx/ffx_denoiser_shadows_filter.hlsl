@@ -182,7 +182,18 @@ void FFX_DNSR_Shadows_DenoiseFromGroupSharedMemory(uint2 did, uint2 gtid, inout 
 
     // Iterate filter kernel
     const int k = 1;
-    const float kernel[3] = { 1.0f, 2.0f / 3.0f, 1.0f / 6.0f };
+
+    // Narrow down the kernel when variance is already low.
+    // Very ad-hoc; helps with thin/small shadow casters.
+    const float kernel_sharpening = max(1e-10, 1.0 - exp(-3 * std_deviation));
+    //const float kernel_sharpening = 1;
+    //const float kernel_sharpening = 1e-10;
+    
+    const float kernel[3] = {
+        1.0f,
+        exp2(-0.5849625007211563 / kernel_sharpening),  // 2/3
+        exp2(-2.584962500721156 / kernel_sharpening),   // 1/6
+    };
 
     for (int y = -k; y <= k; ++y)
     {

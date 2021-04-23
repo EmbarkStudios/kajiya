@@ -370,7 +370,7 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
             //bool is_disoccluded = FFX_DNSR_Shadows_IsDisoccluded(did, depth, velocity);
             bool is_disoccluded = dot(quad_reproj_valid, 1.0.xxxx) < 4.0;
             const float3 previous_moments = is_disoccluded ? float3(0.0f, 0.0f, 0.0f) // Can't trust previous moments on disocclusion
-                : FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(history_pos);
+                : FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(history_uv);
 
             const float old_m = previous_moments.x;
             const float old_s = previous_moments.y;
@@ -402,6 +402,7 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
             }
 
             shadow_clamped = clamp(shadow_previous, nmin, nmax);
+            //shadow_clamped = shadow_previous;
 
             // Reduce history weighting
             float const sigma = 20.0f;
@@ -421,6 +422,9 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
         // Perform the temporal blend
         const float history_weight = sqrt(max(8.0f - moments_current.z, 0.0f) / 8.0f);
         shadow_clamped = lerp(shadow_clamped, shadow_current, lerp(0.05f, 1.0f, history_weight));
+
+        //shadow_clamped = lerp(shadow_clamped, shadow_current, 1.0 / max(1.0, 0.5*moments_current.z));
+        //shadow_clamped = shadow_current;
     }
 
     // Output the results of the temporal pass 

@@ -92,6 +92,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
     
     #if USE_SOFT_SHADOWS
         float shadow_mask = denoised_shadow_mask_tex[px].x;
+
+        /*// Makes the shadow jitter follow the scene, but is actually leaky. TODO.
+        float shadow_mask = denoised_shadow_mask_tex.SampleLevel(
+            sampler_lnc,
+            uv - frame_constants.view_constants.sample_offset_pixels * output_tex_size.zw,
+        0).x;*/
     #else
         float shadow_mask = sun_shadow_mask_tex[px];
     #endif
@@ -282,8 +288,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = gbuffer.albedo;
     //output = ssgi.rgb;
 
+    //output = shadow_mask;
     //output = sun_shadow_mask_tex[px].x;
     //output = denoised_shadow_mask_tex[px].x;
+    //output = denoised_shadow_mask_tex[px].y * 10;
     //output = sqrt(denoised_shadow_mask_tex[px].y) * 0.1;
     //output = denoised_shadow_mask_tex[px].z * 0.1;
 

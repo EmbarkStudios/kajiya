@@ -92,7 +92,7 @@ impl ShadowDenoiseRenderer {
             rg,
             1,
             &spatial_input_image,
-            &mut temp,
+            &mut accum_image,
             &metadata_image,
             gbuffer_depth,
             bitpacked_shadow_mask_extent,
@@ -101,8 +101,8 @@ impl ShadowDenoiseRenderer {
         Self::filter_spatial(
             rg,
             2,
-            &temp,
-            &mut spatial_input_image,
+            &accum_image,
+            &mut temp,
             &metadata_image,
             gbuffer_depth,
             bitpacked_shadow_mask_extent,
@@ -111,14 +111,14 @@ impl ShadowDenoiseRenderer {
         Self::filter_spatial(
             rg,
             4,
-            &spatial_input_image,
-            &mut accum_image,
+            &temp,
+            &mut spatial_input_image,
             &metadata_image,
             gbuffer_depth,
             bitpacked_shadow_mask_extent,
         );
 
-        accum_image.into()
+        spatial_input_image.into()
     }
 
     fn filter_spatial(
