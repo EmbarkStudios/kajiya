@@ -57,7 +57,7 @@ struct PersistedAppState {
     ev_shift: f32,
 }
 
-const APP_STATE_CONFIG_FILE_PATH: &'static str = "view_state.ron";
+const APP_STATE_CONFIG_FILE_PATH: &str = "view_state.ron";
 
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();

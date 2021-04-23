@@ -1,7 +1,6 @@
 use super::{GbufferDepth, PingPongTemporalResource};
 use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, SimpleRenderPass, TemporalRenderGraph};
-use rg::TemporalRenderGraphState;
 
 pub struct ShadowDenoiseRenderer {
     accum: PingPongTemporalResource,
@@ -53,11 +52,11 @@ impl ShadowDenoiseRenderer {
             rg,
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
-                .format(vk::Format::R32G32B32A32_SFLOAT),
+                .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
         let spatial_image_desc =
-            ImageDesc::new_2d(vk::Format::R32G32_SFLOAT, gbuffer_desc.extent_2d());
+            ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, gbuffer_desc.extent_2d());
 
         let (mut accum_image, prev_accum_image) = self.accum.get_output_and_history(
             rg,
