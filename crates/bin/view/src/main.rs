@@ -48,7 +48,7 @@ struct SceneInstanceDesc {
     mesh: String,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct PersistedAppState {
     camera: FirstPersonCamera,
     light_theta: f32,
@@ -138,7 +138,7 @@ fn main() -> anyhow::Result<()> {
         mut light_phi_state,
         mut emissive_multiplier_state,
         mut ev_shift_state,
-    ) = if let Some(persisted_app_state) = persisted_app_state {
+    ) = if let Some(persisted_app_state) = persisted_app_state.clone() {
         (
             persisted_app_state.light_theta,
             persisted_app_state.light_phi,
@@ -242,6 +242,13 @@ fn main() -> anyhow::Result<()> {
                     ctx.world_renderer.render_mode = RenderMode::Standard;
                 }
             };
+        }
+
+        if keyboard.was_just_pressed(VirtualKeyCode::Delete) {
+            if let Some(persisted_app_state) = persisted_app_state.as_ref() {
+                *light_theta = persisted_app_state.light_theta;
+                *light_phi = persisted_app_state.light_phi;
+            }
         }
 
         if mouse_state.button_mask & 1 != 0 {
