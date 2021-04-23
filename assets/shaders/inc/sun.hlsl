@@ -15,7 +15,11 @@
     static const float3 SUN_COLOR = 1.0;
 #else
     #if USE_FELIX_ATMOSPHERE
-        static const float3 SUN_COLOR = 20.0 * Absorb(IntegrateOpticalDepth(0.0.xxx, SUN_DIRECTION));
+        float3 sun_color_in_direction(float3 dir) {
+            return 20.0 * Absorb(IntegrateOpticalDepth(0.0.xxx, dir));
+        }
+
+        #define SUN_COLOR (sun_color_in_direction(SUN_DIRECTION))
     #else
         static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
     #endif

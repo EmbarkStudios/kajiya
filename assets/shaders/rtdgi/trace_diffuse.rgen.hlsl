@@ -18,6 +18,9 @@
 #define ROUGHNESS_BIAS 0.5
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
 
+// Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
+#define USE_SOFT_SHADOWS 0
+
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -60,6 +63,25 @@ float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDi
 	float v = (0.5f+value)/256.0f;
 	return v;
 }
+
+float3 sample_sun_direction(uint2 px) {
+    #if USE_SOFT_SHADOWS
+        if (frame_constants.sun_angular_radius_cos < 1.0) {
+            const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
+
+            // 256x256 blue noise
+            const uint noise_offset = frame_constants.frame_index;
+            float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
+                (px + int2(noise_offset * 59, noise_offset * 37)) & 255
+            ].xy * 255.0 / 256.0 + 0.5 / 256.0;
+
+            return mul(basis, uniform_sample_cone(urand, frame_constants.sun_angular_radius_cos));
+        }
+    #endif
+
+    return SUN_DIRECTION;
+}
+
 
 static const float SKY_DIST = 1e5;
 
@@ -178,7 +200,7 @@ void main() {
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1.0);
 
         if (primary_hit.is_hit) {
-            const float3 to_light_norm = SUN_DIRECTION;
+            const float3 to_light_norm = sample_sun_direction(px);
             const bool is_shadowed =
                 rt_is_shadowed(
                     acceleration_structure,

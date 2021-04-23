@@ -82,7 +82,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float3 output = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             if (dot(outgoing_ray.Direction, SUN_DIRECTION) > sun_angular_radius_cos) {
                 // TODO: what's the correct value?
-                output += SUN_COLOR * 200 * sun_radius_ratio * sun_radius_ratio;
+                output += 800 * sun_color_in_direction(outgoing_ray.Direction) * sun_radius_ratio * sun_radius_ratio;
             }
         #else
             float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);

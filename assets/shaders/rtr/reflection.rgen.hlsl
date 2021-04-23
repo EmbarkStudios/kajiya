@@ -15,6 +15,7 @@
 #define USE_HEAVY_BIAS 0
 #define USE_SHORT_RAYS_FOR_ROUGH 1
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
+#define USE_SOFT_SHADOWS 1
 
 #define USE_CSGI 1
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
@@ -75,6 +76,24 @@ float blue_noise_sampler(int pixel_i, int pixel_j, int sampleIndex, int sampleDi
 	// convert to float and return
 	float v = (0.5f+value)/256.0f;
 	return v;
+}
+
+float3 sample_sun_direction(uint2 px) {
+    #if USE_SOFT_SHADOWS
+        if (frame_constants.sun_angular_radius_cos < 1.0) {
+            const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
+
+            // 256x256 blue noise
+            const uint noise_offset = frame_constants.frame_index;
+            float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
+                (px + int2(noise_offset * 59, noise_offset * 37)) & 255
+            ].xy * 255.0 / 256.0 + 0.5 / 256.0;
+
+            return mul(basis, uniform_sample_cone(urand, frame_constants.sun_angular_radius_cos));
+        }
+    #endif
+
+    return SUN_DIRECTION;
 }
 
 static const float SKY_DIST = 1e5;
@@ -203,7 +222,7 @@ void main() {
         if (primary_hit.is_hit) {
             float3 total_radiance = 0.0.xxx;
             {
-                const float3 to_light_norm = SUN_DIRECTION;
+                const float3 to_light_norm = sample_sun_direction(px);
                 const bool is_shadowed =
                     rt_is_shadowed(
                         acceleration_structure,
