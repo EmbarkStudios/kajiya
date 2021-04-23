@@ -1,14 +1,17 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/frame_constants.hlsl"
+#include "../inc/unjitter_taa.hlsl"
+#include "../inc/soft_color_clamp.hlsl"
 
-[[vk::binding(0)]] Texture2D<uint> bitpacked_shadow_mask_tex;
-[[vk::binding(1)]] Texture2D<float3> prev_moments_tex;
-[[vk::binding(2)]] Texture2D<float> prev_accum_tex;
-[[vk::binding(3)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(4)]] RWTexture2D<float3> output_moments_tex;
-[[vk::binding(5)]] RWTexture2D<float2> temporal_output_tex;
-[[vk::binding(6)]] RWTexture2D<uint> meta_output_tex;
-[[vk::binding(7)]] cbuffer _ {
+[[vk::binding(0)]] Texture2D<float4> shadow_mask_tex;
+[[vk::binding(1)]] Texture2D<uint> bitpacked_shadow_mask_tex;
+[[vk::binding(2)]] Texture2D<float4> prev_moments_tex;
+[[vk::binding(3)]] Texture2D<float4> prev_accum_tex;
+[[vk::binding(4)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(5)]] RWTexture2D<float4> output_moments_tex;
+[[vk::binding(6)]] RWTexture2D<float2> temporal_output_tex;
+[[vk::binding(7)]] RWTexture2D<uint> meta_output_tex;
+[[vk::binding(8)]] cbuffer _ {
     float4 input_tex_size;
     uint2 bitpacked_shadow_mask_extent;
 };
@@ -85,7 +88,7 @@ void FFX_DNSR_Shadows_WriteReprojectionResults(uint2 px, float2 shadow_clamped_v
     temporal_output_tex[px] = shadow_clamped_variance;
 }
 
-void FFX_DNSR_Shadows_WriteMoments(uint2 px, float3 moments) {
+void FFX_DNSR_Shadows_WriteMoments(uint2 px, float4 moments) {
     // Don't accumulate more samples than a certain number,
     // so that our variance estimate is quick, and contact shadows turn crispy sooner.
     moments.z = min(moments.z, 32);
@@ -93,13 +96,41 @@ void FFX_DNSR_Shadows_WriteMoments(uint2 px, float3 moments) {
     output_moments_tex[px] = moments;
 }
 
-float3 FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(float2 uv) {
+float FFX_DNSR_Shadows_HitsLight(uint2 px) {
+    #if 0
+        return shadow_mask_tex[px].x;
+    #else
+        const float4 reproj = reprojection_tex[px];
+        const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+        const float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+        const bool is_disoccluded = dot(quad_reproj_valid, 1.0.xxxx) < 4.0;
+
+        if (is_disoccluded) {
+            // Take care around geometric complexity or discontinuities,
+            // conservatively returning just the central sample
+            return shadow_mask_tex[px].x;
+        } else {
+            // Otherwise, try to undo the TAA jitter to get a better estimate
+            // of how the shadow looks like at the center of the pixel
+            UnjitteredSampleInfo center_sample = sample_image_unjitter_taa(
+                TextureImage::from_parts(shadow_mask_tex, input_tex_size.xy),
+                px,
+                input_tex_size.xy,
+                frame_constants.view_constants.sample_offset_pixels,
+                IdentityImageRemap::create()
+            );
+            return center_sample.color.x;
+        }
+    #endif
+}
+
+float4 FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(float2 uv) {
     //return prev_moments_tex[px];
     return prev_moments_tex.SampleLevel(sampler_lnc, uv, 0);
 }
 
 float FFX_DNSR_Shadows_ReadHistory(float2 uv) {
-    return prev_accum_tex.SampleLevel(sampler_lnc, uv, 0);
+    return prev_accum_tex.SampleLevel(sampler_lnc, uv, 0).x;
 }
 
 bool FFX_DNSR_Shadows_IsFirstFrame() {

@@ -74,6 +74,7 @@ impl ShadowDenoiseRenderer {
             rg.add_pass("shadow megakernel"),
             "/shaders/shadow_denoise/megakernel.hlsl",
         )
+        .read(&shadow_mask)
         .read(&bitpacked_shadows_image)
         .read(&prev_moments_image)
         .read(&prev_accum_image)

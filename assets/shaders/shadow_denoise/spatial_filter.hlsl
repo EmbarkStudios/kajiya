@@ -29,7 +29,7 @@ float4x4 FFX_DNSR_Shadows_GetProjectionInverse() {
 }
 
 float FFX_DNSR_Shadows_GetDepthSimilaritySigma() {
-    return 0.05;
+    return 0.01;
 }
 
 bool FFX_DNSR_Shadows_IsShadowReciever(uint2 px) {

@@ -130,7 +130,8 @@ float FFX_DNSR_Shadows_GetShadowSimilarity(float x1, float x2, float sigma)
 
 float FFX_DNSR_Shadows_GetDepthSimilarity(float x1, float x2, float sigma)
 {
-    return exp(-abs(x1 - x2) / sigma);
+    float depth_diff = 1.0 - (x1 / x2);
+    return exp2(-abs(depth_diff) / sigma);
 }
 
 float FFX_DNSR_Shadows_GetNormalSimilarity(float3 x1, float3 x2)
@@ -138,33 +139,40 @@ float FFX_DNSR_Shadows_GetNormalSimilarity(float3 x1, float3 x2)
     return pow(saturate(dot(x1, x2)), 32.0f);
 }
 
-float FFX_DNSR_Shadows_GetLinearDepth(uint2 did, float depth)
-{
-    const float2 uv = (did + 0.5f) * FFX_DNSR_Shadows_GetInvBufferDimensions();
-    const float2 ndc = 2.0f * float2(uv.x, 1.0f - uv.y) - 1.0f;
-
-    float4 projected = mul(FFX_DNSR_Shadows_GetProjectionInverse(), float4(ndc, depth, 1));
-    return abs(projected.z / projected.w);
-}
-
 float FFX_DNSR_Shadows_FetchFilteredVarianceFromGroupSharedMemory(int2 pos)
 {
-    const int k = 1;
-    float variance = 0.0f;
-    const float kernel[2][2] =
-    {
-        { 1.0f / 4.0f, 1.0f / 8.0f  },
-        { 1.0f / 8.0f, 1.0f / 16.0f }
-    };
-    for (int y = -k; y <= k; ++y)
-    {
-        for (int x = -k; x <= k; ++x)
+    #if 0
+        const int k = 1;
+        float variance = 0.0f;
+        const float kernel[2][2] =
         {
-            const float w = kernel[abs(x)][abs(y)];
-            variance += w * FFX_DNSR_Shadows_LoadInputFromGroupSharedMemory(pos + int2(x, y)).y;
+            { 1.0f / 4.0f, 1.0f / 8.0f  },
+            { 1.0f / 8.0f, 1.0f / 16.0f }
+        };
+        for (int y = -k; y <= k; ++y)
+        {
+            for (int x = -k; x <= k; ++x)
+            {
+                const float w = kernel[abs(x)][abs(y)];
+                variance += w * FFX_DNSR_Shadows_LoadInputFromGroupSharedMemory(pos + int2(x, y)).y;
+            }
         }
-    }
-    return variance;
+        return variance;
+    #else
+        const int k = 1;
+        float variance = FFX_DNSR_Shadows_LoadInputFromGroupSharedMemory(pos).y;
+        /*for (int y = -k; y <= k; ++y)
+        {
+            for (int x = -k; x <= k; ++x)
+            {
+                variance = min(
+                    variance,
+                    10 * FFX_DNSR_Shadows_LoadInputFromGroupSharedMemory(pos + int2(x, y)
+                ).y);
+            }
+        }*/
+        return variance;
+    #endif
 }
 
 void FFX_DNSR_Shadows_DenoiseFromGroupSharedMemory(uint2 did, uint2 gtid, inout float weight_sum, inout float2 shadow_sum, float depth, uint stepsize)
@@ -178,17 +186,16 @@ void FFX_DNSR_Shadows_DenoiseFromGroupSharedMemory(uint2 did, uint2 gtid, inout 
 
     const float variance = FFX_DNSR_Shadows_FetchFilteredVarianceFromGroupSharedMemory(gtid);
     const float std_deviation = sqrt(max(variance + 1e-9f, 0.0f));
-    const float depth_center = FFX_DNSR_Shadows_GetLinearDepth(did, depth);    // linearize the depth value
+    const float depth_center = depth;    // linearize the depth value
 
     // Iterate filter kernel
     const int k = 1;
 
     // Narrow down the kernel when variance is already low.
     // Very ad-hoc; helps with thin/small shadow casters.
-    const float kernel_sharpening = max(1e-10, 1.0 - exp(-3 * std_deviation));
+    //const float kernel_sharpening = max(1e-10, 1.0 - exp(-3.0 * std_deviation));
+    const float kernel_sharpening = max(1e-10, 1.0 - max(0.0, 1.0 - 2.0 * std_deviation) * max(0.0, 1.0 - 2.0 * std_deviation));
     //const float kernel_sharpening = 1;
-    //const float kernel_sharpening = 1e-10;
-    
     const float kernel[3] = {
         1.0f,
         exp2(-0.5849625007211563 / kernel_sharpening),  // 2/3
@@ -209,9 +216,6 @@ void FFX_DNSR_Shadows_DenoiseFromGroupSharedMemory(uint2 did, uint2 gtid, inout 
             float2 shadow_neigh = FFX_DNSR_Shadows_LoadInputFromGroupSharedMemory(gtid_idx);
 
             float sky_pixel_multiplier = ((x == 0 && y == 0) || depth_neigh >= 1.0f || depth_neigh <= 0.0f) ? 0 : 1; // Zero weight for sky pixels
-
-            // Fetch our filtering values
-            depth_neigh = FFX_DNSR_Shadows_GetLinearDepth(did_idx, depth_neigh);
 
             // Evaluate the edge-stopping function
             float w = kernel[abs(x)] * kernel[abs(y)];  // kernel weight

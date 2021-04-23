@@ -302,8 +302,13 @@ void FFX_DNSR_Shadows_ClearTargets(uint2 did, uint2 gtid, uint2 gid, float shado
     FFX_DNSR_Shadows_WriteTileMetaData(gid, gtid, true, all_in_light);
     FFX_DNSR_Shadows_WriteReprojectionResults(did, float2(shadow_value, 0)); // mean, variance
 
-    float temporal_sample_count = is_shadow_receiver ? 1 : 0;
-    FFX_DNSR_Shadows_WriteMoments(did, float3(shadow_value, 0, temporal_sample_count));// mean, variance, temporal sample count
+    // Tom: The original count for receivers here was 1, but this causes
+    // any previously fully lit tiles stand out as they enter the penumbra
+    // due to their different convergence rate.
+    // By using a value > 1 here, the pixels are considered (partially) converged.
+    float temporal_sample_count = is_shadow_receiver ? 8 : 0;
+
+    FFX_DNSR_Shadows_WriteMoments(did, float4(shadow_value, 0, temporal_sample_count, shadow_value));// mean, variance, temporal sample count, local neighborhood
 }
 
 void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
@@ -354,22 +359,29 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
 
     const uint shadow_tile = FFX_DNSR_Shadows_ReadRaytracedShadowMask(linear_tile_index);
 
-    float3 moments_current = 0;
+    float4 moments_current = 0;
     float variance = 0;
     float shadow_clamped = 0;
     if (is_shadow_receiver) // do not process sky pixels
     {
-        bool hit_light = shadow_tile & FFX_DNSR_Shadows_GetBitMaskFromPixelPosition(did);
-        const float shadow_current = hit_light ? 1.0 : 0.0;
+        #if 0
+            bool hit_light = shadow_tile & FFX_DNSR_Shadows_GetBitMaskFromPixelPosition(did);
+            float shadow_current = hit_light ? 1.0 : 0.0;
+        #else
+            float shadow_current = FFX_DNSR_Shadows_HitsLight(did);
+        #endif
+
 
         const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
         const float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
+
+        float4 previous_moments;
 
         // Perform moments and variance calculations
         {
             //bool is_disoccluded = FFX_DNSR_Shadows_IsDisoccluded(did, depth, velocity);
             bool is_disoccluded = dot(quad_reproj_valid, 1.0.xxxx) < 4.0;
-            const float3 previous_moments = is_disoccluded ? float3(0.0f, 0.0f, 0.0f) // Can't trust previous moments on disocclusion
+            previous_moments = is_disoccluded ? float4(0.0f, 0.0f, 0.0f, 0.0f) // Can't trust previous moments on disocclusion
                 : FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(history_uv);
 
             const float old_m = previous_moments.x;
@@ -379,7 +391,7 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
             const float new_s = lerp(old_s, (shadow_current - old_m) * (shadow_current - new_m), 1.0 / sample_count);
 
             variance = new_s;
-            moments_current = float3(new_m, new_s, sample_count);
+            moments_current = float4(new_m, new_s, sample_count, local_neighborhood);
         }
 
         // Retrieve local neighborhood and reproject
@@ -389,10 +401,13 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
 
             spatial_variance = max(spatial_variance - mean * mean, 0.0f);
 
+            const float n_deviations = 0.5;
+            //const float n_deviations = 1.0;
+
             // Compute the clamping bounding box
             const float std_deviation = sqrt(spatial_variance);
-            const float nmin = mean - 0.5f * std_deviation;
-            const float nmax = mean + 0.5f * std_deviation;
+            const float nmin = mean - n_deviations * std_deviation;
+            const float nmax = mean + n_deviations * std_deviation;
 
             // Clamp reprojected sample to local neighborhood
             float shadow_previous = shadow_current;
@@ -401,14 +416,24 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
                 shadow_previous = FFX_DNSR_Shadows_ReadHistory(history_uv);
             }
 
-            shadow_clamped = clamp(shadow_previous, nmin, nmax);
-            //shadow_clamped = shadow_previous;
-
             // Reduce history weighting
-            float const sigma = 20.0f;
-            float const temporal_discontinuity = (shadow_previous - mean) / max(0.5f * std_deviation, 0.001f);
+            float const sigma = 2.0f;
+            float const temporal_discontinuity = (previous_moments.w - moments_current.w) / max(0.5f * std_deviation, 0.001f);
             float const sample_counter_damper = exp(-temporal_discontinuity * temporal_discontinuity / sigma);
-            moments_current.z *= sample_counter_damper;
+
+            // Tom: scaling by too low a value causes all sorts of artifacts,
+            // e.g. the edge of a soft shadow moving away becomes overly bright.
+            moments_current.z *= max(0.5, sample_counter_damper);
+
+            //shadow_clamped = clamp(shadow_previous, nmin, nmax);
+            //shadow_clamped = shadow_previous;
+            shadow_clamped = soft_color_clamp(
+                shadow_current,
+                shadow_previous,
+                mean,
+                //std_deviation * clamp(sample_counter_damper, 0.1, 1.0)
+                std_deviation * 0.5
+            ).x;
 
             // Boost variance on first frames
             if (moments_current.z < 16.0f)
@@ -417,6 +442,12 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
                 variance = max(variance, spatial_variance);
                 variance *= variance_boost;
             }
+
+            // Tom: Boost spatial filtering upon change
+            // Note: Doesn't seem to help much
+            //variance *= 1 + smoothstep(0.4, 1.0, temporal_discontinuity) * 10;
+
+            //shadow_current = ;
         }
 
         // Perform the temporal blend
