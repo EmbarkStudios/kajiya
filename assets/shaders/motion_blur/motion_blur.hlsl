@@ -34,10 +34,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     const float2 uv = get_uv(px, output_tex_size);
-    const float blur_scale = 0.5;
+    float blur_scale = 0.5;
 
     // TODO: Fixed shutter time (add time_delta_seconds)
-    // blur_scale /= frame_constant.time_delta_seconds * 60.0;
+    blur_scale /= frame_constants.dt_seconds * 60.0;
 
     // Scramble tile coordinates to diffuse the tile quantization in noise
     int noise1;

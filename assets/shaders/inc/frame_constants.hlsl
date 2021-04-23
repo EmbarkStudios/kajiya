@@ -28,6 +28,7 @@ struct FrameConstants {
     uint frame_index;
     float world_gi_scale;
     float global_fog_thickness;
+    float dt_seconds;
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;

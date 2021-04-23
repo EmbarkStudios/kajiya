@@ -43,6 +43,7 @@ struct FrameConstants {
     frame_idx: u32,
     world_gi_scale: f32,
     global_fog_thickness: f32,
+    dt_seconds: f32,
 }
 
 #[repr(C)]
@@ -689,6 +690,7 @@ impl WorldRenderer {
         &mut self,
         dynamic_constants: &mut DynamicConstants,
         frame_desc: &WorldFrameDesc,
+        dt_seconds: f32,
     ) -> FrameConstantsLayout {
         let mut view_constants = ViewConstants::builder(
             frame_desc.camera_matrices,
@@ -730,6 +732,7 @@ impl WorldRenderer {
             frame_idx: self.frame_idx,
             world_gi_scale: self.world_gi_scale,
             global_fog_thickness: self.global_fog_thickness,
+            dt_seconds,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

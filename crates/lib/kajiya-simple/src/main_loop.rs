@@ -318,8 +318,11 @@ impl SimpleMainLoop {
                         Ok(()) => {
                             rg_renderer.draw_frame(
                                 |dynamic_constants| {
-                                    world_renderer
-                                        .prepare_frame_constants(dynamic_constants, &frame_desc)
+                                    world_renderer.prepare_frame_constants(
+                                        dynamic_constants,
+                                        &frame_desc,
+                                        dt,
+                                    )
                                 },
                                 &mut render_backend.swapchain,
                             );
