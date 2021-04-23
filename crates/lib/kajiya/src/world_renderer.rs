@@ -5,13 +5,8 @@ use crate::{
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        csgi::CsgiRenderer,
-        raster_meshes::*,
-        rtdgi::RtdgiRenderer,
-        rtr::*,
-        shadow_denoise::{self, ShadowDenoiseRenderer},
-        ssgi::*,
-        taa::TaaRenderer,
+        csgi::CsgiRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
+        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
     viewport::ViewConstants,
 };
@@ -39,11 +34,15 @@ use vulkan::buffer::{Buffer, BufferDesc};
 #[derive(Copy, Clone)]
 struct FrameConstants {
     view_constants: ViewConstants,
+
     sun_direction: [f32; 4],
+
+    sun_angular_radius_cos: f32,
     frame_idx: u32,
     world_gi_scale: f32,
     global_fog_thickness: f32,
-    dt_seconds: f32,
+
+    delta_time_seconds: f32,
 }
 
 #[repr(C)]
@@ -150,6 +149,7 @@ pub struct WorldRenderer {
 
     pub world_gi_scale: f32,
     pub global_fog_thickness: f32,
+    pub sun_size_multiplier: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -312,6 +312,7 @@ impl WorldRenderer {
             ev_shift: 0.0,
             world_gi_scale: 1.0,
             global_fog_thickness: 0.0,
+            sun_size_multiplier: 1.0, // Sun as seen from Earth
         })
     }
 
@@ -690,7 +691,7 @@ impl WorldRenderer {
         &mut self,
         dynamic_constants: &mut DynamicConstants,
         frame_desc: &WorldFrameDesc,
-        dt_seconds: f32,
+        delta_time_seconds: f32,
     ) -> FrameConstantsLayout {
         let mut view_constants = ViewConstants::builder(
             frame_desc.camera_matrices,
@@ -721,6 +722,8 @@ impl WorldRenderer {
             frame_desc.render_extent,
         );
 
+        let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
+
         let globals_offset = dynamic_constants.push(&FrameConstants {
             view_constants,
             sun_direction: [
@@ -729,10 +732,11 @@ impl WorldRenderer {
                 frame_desc.sun_direction.z,
                 0.0,
             ],
+            sun_angular_radius_cos: (self.sun_size_multiplier * real_sun_angular_radius).cos(),
             frame_idx: self.frame_idx,
             world_gi_scale: self.world_gi_scale,
             global_fog_thickness: self.global_fog_thickness,
-            dt_seconds,
+            delta_time_seconds,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

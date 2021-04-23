@@ -37,7 +37,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float blur_scale = 0.5;
 
     // TODO: Fixed shutter time (add time_delta_seconds)
-    blur_scale /= frame_constants.dt_seconds * 60.0;
+    blur_scale /= frame_constants.delta_time_seconds * 60.0;
 
     // Scramble tile coordinates to diffuse the tile quantization in noise
     int noise1;

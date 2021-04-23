@@ -316,6 +316,11 @@ fn main() -> anyhow::Result<()> {
                         .range(0.0..=20.0)
                         .speed(0.1)
                         .build(&ui, emissive_multiplier);
+
+                    imgui::Drag::<f32>::new(im_str!("Sun size"))
+                        .range(0.0..=10.0)
+                        .speed(0.02)
+                        .build(&ui, &mut ctx.world_renderer.sun_size_multiplier);
                 }
 
                 /*if imgui::CollapsingHeader::new(im_str!("csgi"))

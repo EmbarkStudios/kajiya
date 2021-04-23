@@ -24,11 +24,15 @@ struct ViewConstants {
 
 struct FrameConstants {
     ViewConstants view_constants;
+
     float4 sun_direction;
+
+    float sun_angular_radius_cos;
     uint frame_index;
     float world_gi_scale;
     float global_fog_thickness;
-    float dt_seconds;
+
+    float delta_time_seconds;
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;

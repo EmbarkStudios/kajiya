@@ -18,26 +18,20 @@
 
 float3 sample_sun_direction(uint2 px) {
     #if USE_SOFT_SHADOWS
-        const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
+        if (frame_constants.sun_angular_radius_cos < 1.0) {
+            const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
 
-        #if 0
-            uint rng = hash3(uint3(px, frame_constants.frame_index));
-            float2 urand = float2(
-                uint_to_u01_float(hash1_mut(rng)),
-                uint_to_u01_float(hash1_mut(rng))
-            );
-        #else
             // 256x256 blue noise
             const uint noise_offset = frame_constants.frame_index;
             float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
                 (px + int2(noise_offset * 59, noise_offset * 37)) & 255
             ].xy * 255.0 / 256.0 + 0.5 / 256.0;
-        #endif
 
-        return mul(basis, uniform_sample_cone(urand, cos(0.03)));
-    #else
-        return SUN_DIRECTION;
+            return mul(basis, uniform_sample_cone(urand, frame_constants.sun_angular_radius_cos));
+        }
     #endif
+
+    return SUN_DIRECTION;
 }
 
 [shader("raygeneration")]

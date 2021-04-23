@@ -106,9 +106,13 @@ impl WorldRenderer {
 
         let sun_shadow_mask =
             trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
-        let denoised_shadow_mask =
+
+        let denoised_shadow_mask = if self.sun_size_multiplier > 0.0f32 {
             self.shadow_denoise
-                .render(rg, &gbuffer_depth, &sun_shadow_mask, &reprojection_map);
+                .render(rg, &gbuffer_depth, &sun_shadow_mask, &reprojection_map)
+        } else {
+            sun_shadow_mask.into()
+        };
 
         let rtr = self.rtr.render(
             rg,
@@ -139,7 +143,6 @@ impl WorldRenderer {
         light_gbuffer(
             rg,
             &gbuffer_depth,
-            &sun_shadow_mask,
             &denoised_shadow_mask,
             &ssgi_tex,
             &rtr,

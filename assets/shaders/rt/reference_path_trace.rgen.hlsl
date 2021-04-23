@@ -30,6 +30,7 @@ static const bool USE_PIXEL_FILTER = true;
 static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
+static const bool USE_SOFT_SHADOWS = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
@@ -45,6 +46,16 @@ float3 sample_environment_light(float3 dir) {
     return col;
 }
 
+float3 sample_sun_direction(float2 urand) {
+    if (USE_SOFT_SHADOWS) {
+        if (frame_constants.sun_angular_radius_cos < 1.0) {
+            const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
+            return mul(basis, uniform_sample_cone(urand, frame_constants.sun_angular_radius_cos));
+        }
+    }
+
+    return SUN_DIRECTION;
+}
 
 // Approximate Gaussian remap
 // https://www.shadertoy.com/view/MlVSzw
@@ -121,7 +132,9 @@ void main() {
 
             const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, cone_spread_angle);
             if (primary_hit.is_hit) {
-                const float3 to_light_norm = SUN_DIRECTION;
+                const float3 to_light_norm = sample_sun_direction(
+                    float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng)))
+                );
                 
                 const bool is_shadowed =
                     (INDIRECT_ONLY && path_length == 0) ||
