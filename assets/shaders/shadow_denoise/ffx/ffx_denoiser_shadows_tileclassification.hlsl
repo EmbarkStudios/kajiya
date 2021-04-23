@@ -446,16 +446,13 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
             // Tom: Boost spatial filtering upon change
             // Note: Doesn't seem to help much
             //variance *= 1 + smoothstep(0.4, 1.0, temporal_discontinuity) * 10;
-
-            //shadow_current = ;
         }
 
         // Perform the temporal blend
-        const float history_weight = sqrt(max(8.0f - moments_current.z, 0.0f) / 8.0f);
-        shadow_clamped = lerp(shadow_clamped, shadow_current, lerp(0.05f, 1.0f, history_weight));
 
-        //shadow_clamped = lerp(shadow_clamped, shadow_current, 1.0 / max(1.0, 0.5*moments_current.z));
-        //shadow_clamped = shadow_current;
+        // Tom: unclear whata the previous temporal weight calculation was doing.
+        // Replaced with a linear blend.
+        shadow_clamped = lerp(shadow_clamped, shadow_current, 1.0 / max(1.0, moments_current.z));
     }
 
     // Output the results of the temporal pass 
