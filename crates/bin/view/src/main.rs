@@ -310,7 +310,6 @@ fn main() -> anyhow::Result<()> {
                         .range(-8.0..=8.0)
                         .speed(0.01)
                         .build(&ui, ev_shift);
-                    ctx.world_renderer.ev_shift = *ev_shift;
 
                     imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                         .range(0.0..=20.0)
@@ -372,6 +371,8 @@ fn main() -> anyhow::Result<()> {
                 }
             });
         }
+
+        ctx.world_renderer.ev_shift = *ev_shift;
 
         frame_desc
     })?;
