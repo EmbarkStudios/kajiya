@@ -109,9 +109,11 @@ void main() {
         //const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray, 1.0);
 
         // TODO: cone spread angle (or use a different rchit shader without cones)
-        const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray, 1e2);
+        // Note: rt_trace_gbuffer_nocull _might_ be more watertight (needs research)
+        // but it does end up losing a lot of energy near geometric complexity
+        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1e2);
         if (primary_hit.is_hit) {
-            float3 total_radiance = 0.0.xxx;
+            float4 total_radiance = 0.0.xxxx;
             {
                 const float3 to_light_norm = SUN_DIRECTION;
                 const bool is_shadowed =
@@ -146,6 +148,8 @@ void main() {
                 const float normal_cutoff = dot(float3(slice_dir), -gbuffer_normal);
 
                 if (normal_cutoff > 1e-3) {
+                    float3 radiance_contribution = 0.0.xxx;
+
                     const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
 
     #if 0
@@ -155,40 +159,26 @@ void main() {
 
                     LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
                     const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-                    total_radiance += brdf_value * light_radiance;
+                    radiance_contribution += brdf_value * light_radiance;
     #else
-                    total_radiance +=
+                    radiance_contribution +=
                         light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
     #endif
 
-                    total_radiance += gbuffer.emissive;
+                    radiance_contribution += gbuffer.emissive;
 
-                    //total_radiance = gbuffer.albedo + 0.1;
-
-                    #if 0
-                        const float3 pos_ws = primary_hit.position;
-                        float4 pos_vs = mul(frame_constants.view_constants.world_to_view, float4(pos_ws, 1));
-                        const float view_dot = -normalize(pos_vs.xyz).z;
-
-                        float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
-
-                        total_radiance +=
-                            100 * smoothstep(0.997, 1.0, view_dot) * bounce_albedo * max(0.0, dot(gbuffer_normal, -v_ws)) / M_PI;
-                    #endif
+                    //radiance_contribution = gbuffer.albedo + 0.1;
 
                     if (USE_MULTIBOUNCE) {
-                        const float phong_exponent =
-                            lerp(1.0, clamp(2.0 / pow(gbuffer.roughness, 2) - 2, 1.0, 50.0), gbuffer.metalness);
-
-                        total_radiance += lookup_csgi(
+                        radiance_contribution += lookup_csgi(
                             primary_hit.position,
                             gbuffer_normal,
                             CsgiLookupParams::make_default()
                                 .with_linear_fetch(false)
-                                //.with_sample_specular(reflect(outgoing_ray.Direction, gbuffer.normal))
-                                //.with_directional_radiance_phong_exponent(phong_exponent)
-                        ) * bounce_albedo * MULTIBOUNCE_SCALE;
+                        ) * bounce_albedo * MULTIBOUNCE_SCALE;;
                     }
+
+                    total_radiance += float4(radiance_contribution, 1.0);
                 }
             }
 
@@ -199,7 +189,8 @@ void main() {
             csgi_direct_tex[vx + output_offset] = lerp(
                 // Cancel the decay that runs just before this pass
                 csgi_direct_tex[vx + output_offset] / (1.0 - CSGI_ACCUM_HYSTERESIS),
-                float4(total_radiance, 1),
+                //total_radiance,
+                float4(total_radiance.xyz, 1.0),
                 blend_factor
             );
             vx += slice_dir;

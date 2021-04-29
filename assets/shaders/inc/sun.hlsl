@@ -20,6 +20,7 @@
         }
 
         #define SUN_COLOR (sun_color_in_direction(SUN_DIRECTION))
+        //#define SUN_COLOR 0.0
     #else
         static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
     #endif

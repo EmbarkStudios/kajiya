@@ -213,18 +213,6 @@ void main() {
                     total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
                     total_radiance += gbuffer.emissive * throughput;
-
-                    #if 0
-                        const float3 pos_ws = primary_hit.position;
-                        float4 pos_vs = mul(frame_constants.view_constants.world_to_view, float4(pos_ws, 1));
-                        const float view_dot = -normalize(pos_vs.xyz).z;
-
-                        float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
-
-                        total_radiance +=
-                            throughput *
-                            100 * smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
-                    #endif
                 }
 
                 float3 urand;
