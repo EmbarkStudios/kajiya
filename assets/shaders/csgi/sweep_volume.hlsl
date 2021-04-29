@@ -24,9 +24,9 @@ float4 sample_direct_from(int3 vx, uint dir_idx) {
     return max(0.0, val);
 }
 
-float4 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
+float3 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray, float3 fallback_color) {
     if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
-        return 0.0.xxxx;
+        return fallback_color;
     }
 
     const int3 indirect_offset = int3(SUBRAY_COUNT * CSGI_VOLUME_DIMS * dir_idx, 0, 0);
@@ -34,7 +34,7 @@ float4 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
     const int3 subray_offset = int3(subray, 0, 0);
     const int3 vx_stride = int3(SUBRAY_COUNT, 1, 1);
 
-    return float4(subray_indirect_tex[indirect_offset + subray_offset + vx * vx_stride], 1);
+    return subray_indirect_tex[indirect_offset + subray_offset + vx * vx_stride];
 }
 
 void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subray) {
@@ -111,12 +111,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             float4 neighbor_direct_and_vis = float4(0.0.xxx, 1.0);
             
             neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(direct_neighbor_s.rgb, 0.0), direct_neighbor_s.a);
-            #if 0
-                // HACK: ad-hoc scale for off-axis contributions
-                neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(0.25 * direct_neighbor_t.rgb, 0.0), direct_neighbor_t.a);
-            #else
-                neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(direct_neighbor_t.rgb, 0.0), direct_neighbor_t.a);
-            #endif
+            neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, float4(direct_neighbor_t.rgb, 0.0), direct_neighbor_t.a);
             neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, 0.0.xxxx, center_opacity_t);
             neighbor_direct_and_vis = lerp(neighbor_direct_and_vis, 0.0.xxxx, center_direct_s.a);
 
@@ -147,9 +142,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             float scatter_wt = 0.0;
 
             const float3 center_indirect_s =
-                0 == slice_z
-                ? atmosphere_color
-                : sample_subray_indirect_from(vx + slice_dir, direct_dir_idx, subray).rgb;
+                sample_subray_indirect_from(vx + slice_dir, direct_dir_idx, subray, atmosphere_color);
 
             scatter = lerp(center_indirect_s, center_direct_s.rgb, center_direct_s.a);
             scatter_wt += 1;
@@ -159,7 +152,9 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 const int3 tangent_dir = CSGI_DIRECT_DIRS[tangent_dir_idx];
 
                 float4 neighbor_direct_and_vis = tangent_neighbor_direct_and_vis[tangent_i];
-                float3 neighbor_indirect = 0 == slice_z ? atmosphere_color : sample_subray_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray).rgb;
+                float3 neighbor_indirect =
+                    sample_subray_indirect_from(vx + slice_dir + tangent_dir, indirect_dir_idx, subray, atmosphere_color);
+                    
                 float3 neighbor_radiance = neighbor_direct_and_vis.rgb + neighbor_direct_and_vis.a * neighbor_indirect;
                 float wt = subray_tangent_weights[tangent_i] * tangent_weights[tangent_i];
 

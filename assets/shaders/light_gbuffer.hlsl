@@ -291,6 +291,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = gbuffer.metalness;
     //output = gbuffer.roughness;
     //output = gbuffer.albedo;
+    //output = gbuffer.normal * 0.5 + 0.5;
     //output = ssgi.rgb;
 
     //output = shadow_mask;

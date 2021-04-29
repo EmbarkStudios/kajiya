@@ -154,6 +154,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //gbuffer.metalness = 1;
     //gbuffer.roughness = 0.2;
+    //gbuffer.albedo = 1;
 
     payload.gbuffer_packed = gbuffer.pack();
     payload.t = RayTCurrent();
