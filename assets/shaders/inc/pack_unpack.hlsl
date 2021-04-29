@@ -168,8 +168,7 @@ float3 rgb9e5_to_float3(uint v) {
 float3 prequant_shift_11_11_10(float3 v) {
     static const float3 F_11_11_10_MANTISSA_BITS = float3(6, 6, 5);
 
-    float3 exponent;
-    frexp(v, exponent);
+    const float3 exponent = ceil(log2(v));
 
     // Add a 0.5 just below what the format can represent
     return v + exp2(exponent - F_11_11_10_MANTISSA_BITS - 2);
