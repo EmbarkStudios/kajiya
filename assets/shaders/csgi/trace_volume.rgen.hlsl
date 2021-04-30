@@ -21,18 +21,24 @@
 
 #include "lookup.hlsl"
 
-//float4 CSGI_SLICE_CENTERS[CSGI_CARDINAL_DIRECTION_COUNT];
-
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
 #define USE_RAY_JITTER 1
+
+// Shrunk a bit to reduce the chance of going across walls
 #define RAY_JITTER_AMOUNT 0.75
+
+// Most correct, most leaky.
+// TODO: the "wiggle room" around each cell could be estimate by looking at hit distances
+// of perpendicular rays, and finding a conservative bounding box. This would allow wide jittering,
+// while avoiding excessive sampling in blocked directions.
+//
+// Another approach would be to shoot rays from a single point, but in a range of angles,
+// aiming for a set of points on the neighboring cell's entry face. This would have the downside
+// of preventing the strided ray tracing optimization.
 //#define RAY_JITTER_AMOUNT 1.0
 
 #define USE_MULTIBOUNCE 1
-
-// HACK; TODO: find all the energy loss
-#define MULTIBOUNCE_SCALE 1.0
 
 static const float SKY_DIST = 1e5;
 
@@ -59,7 +65,6 @@ void main() {
     }
 
     uint rng = hash1(frame_constants.frame_index);
-    //uint dir_i = frame_constants.frame_index % CSGI_NEIGHBOR_DIR_COUNT;
 
     #if USE_RAY_JITTER
         const float jitter_amount = RAY_JITTER_AMOUNT;
@@ -175,7 +180,7 @@ void main() {
                             gbuffer_normal,
                             CsgiLookupParams::make_default()
                                 .with_linear_fetch(false)
-                        ) * bounce_albedo * MULTIBOUNCE_SCALE;;
+                        ) * bounce_albedo;
                     }
 
                     total_radiance += float4(radiance_contribution, 1.0);

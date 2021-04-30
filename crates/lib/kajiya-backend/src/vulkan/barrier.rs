@@ -332,7 +332,7 @@ pub fn get_access_info(access_type: AccessType) -> AccessInfo {
     }
 }
 
-fn image_aspect_mask_from_format(format: vk::Format) -> vk::ImageAspectFlags {
+pub fn image_aspect_mask_from_format(format: vk::Format) -> vk::ImageAspectFlags {
     match format {
         vk::Format::D16_UNORM => vk::ImageAspectFlags::DEPTH,
         vk::Format::X8_D24_UNORM_PACK32 => vk::ImageAspectFlags::DEPTH,

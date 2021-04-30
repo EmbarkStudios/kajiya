@@ -115,6 +115,10 @@ pub struct PredefinedDescriptorSet {
     pub bindings: HashMap<u32, rspirv_reflect::DescriptorInfo>,
 }
 
+pub struct GraphDebugHook {
+    pub render_scope: gpu_profiler::RenderScopeDesc,
+}
+
 pub struct RenderGraph {
     passes: Vec<RecordedPass>,
     resources: Vec<GraphResourceInfo>,
@@ -123,6 +127,9 @@ pub struct RenderGraph {
     pub(crate) raster_pipelines: Vec<RgRasterPipeline>,
     pub(crate) rt_pipelines: Vec<RgRtPipeline>,
     pub predefined_descriptor_set_layouts: HashMap<u32, PredefinedDescriptorSet>,
+
+    pub debug_hook: Option<GraphDebugHook>,
+    pub debugged_resource: Option<Handle<Image>>,
 }
 
 pub trait ImportExportToRenderGraph
@@ -290,6 +297,8 @@ impl RenderGraph {
             raster_pipelines: Vec::new(),
             rt_pipelines: Vec::new(),
             predefined_descriptor_set_layouts: HashMap::new(),
+            debug_hook: None,
+            debugged_resource: None,
         }
     }
 
@@ -378,6 +387,10 @@ pub struct CompiledRenderGraph {
     rt_pipelines: Vec<RtPipelineHandle>,
 }
 
+struct PendingDebugPass {
+    img: Handle<Image>,
+}
+
 impl RenderGraph {
     pub fn add_pass<'s>(&'s mut self, name: &str) -> PassBuilder<'s> {
         let pass_idx = self.passes.len();
@@ -385,7 +398,7 @@ impl RenderGraph {
         PassBuilder {
             rg: self,
             pass_idx,
-            pass: Some(RecordedPass::new(name)),
+            pass: Some(RecordedPass::new(name, pass_idx)),
         }
     }
 
@@ -549,7 +562,70 @@ impl RenderGraph {
     }
 
     pub(crate) fn record_pass(&mut self, pass: RecordedPass) {
+        let debug_pass = self.hook_debug_pass(&pass);
         self.passes.push(pass);
+
+        if let Some(debug_pass) = debug_pass {
+            let src_handle = debug_pass.img;
+            let src_desc = *src_handle.desc();
+
+            let mut dst = self.create(src_desc);
+            let debug_pass = self.add_pass("debug");
+
+            crate::SimpleRenderPass::new_compute(debug_pass, "/shaders/copy_color.hlsl")
+                .read(&src_handle)
+                .write(&mut dst)
+                .dispatch(src_desc.extent);
+
+            self.debugged_resource = Some(dst);
+        }
+    }
+
+    fn hook_debug_pass(&mut self, pass: &RecordedPass) -> Option<PendingDebugPass> {
+        let scope_hook = &self.debug_hook.as_ref()?.render_scope;
+
+        if pass.name == scope_hook.name && pass.idx as u64 == scope_hook.id {
+            fn is_debug_compatible(desc: &ImageDesc) -> bool {
+                kajiya_backend::vulkan::barrier::image_aspect_mask_from_format(desc.format)
+                    == vk::ImageAspectFlags::COLOR
+                    && desc.image_type == ImageType::Tex2d
+            }
+
+            // Grab the first compatible image written by this pass
+            let (src_handle, src_desc) = pass.write.iter().find_map(|src_ref| {
+                let src = &self.resources[src_ref.handle.id as usize];
+                match src {
+                    // Resources created by the render graph can be used as-is, as long as they have a color aspect
+                    GraphResourceInfo::Created(GraphResourceCreateInfo {
+                        desc: GraphResourceDesc::Image(img_desc),
+                    }) if is_debug_compatible(&img_desc) => Some((src_ref.handle, *img_desc)),
+
+                    // Imported resources must also support vk::ImageUsageFlags::SAMPLED because their
+                    // usage flags are supplied externally, and not derived by the graph
+                    GraphResourceInfo::Imported(GraphResourceImportInfo::Image {
+                        resource: img,
+                        ..
+                    }) if img.desc.usage.contains(vk::ImageUsageFlags::SAMPLED)
+                        && is_debug_compatible(&img.desc) =>
+                    {
+                        Some((src_ref.handle, img.desc))
+                    }
+                    _ => None,
+                }
+            })?;
+
+            let src_handle: Handle<Image> = Handle {
+                raw: src_handle,
+                desc: TypeEquals::same(src_desc)
+                    .mip_levels(1)
+                    .format(vk::Format::B10G11R11_UFLOAT_PACK32),
+                marker: PhantomData,
+            };
+
+            Some(PendingDebugPass { img: src_handle })
+        } else {
+            None
+        }
     }
 }
 
@@ -684,7 +760,13 @@ impl CompiledRenderGraph {
 
         for (pass_idx, pass) in self.rg.passes.into_iter().enumerate() {
             let vk_query_idx = {
-                let query_id = gpu_profiler::create_gpu_query(pass.name.as_str(), pass_idx);
+                let query_id = gpu_profiler::create_gpu_query(
+                    gpu_profiler::RenderScopeDesc {
+                        name: pass.name.clone(),
+                        id: pass_idx as _,
+                    },
+                    pass_idx,
+                );
                 let vk_query_idx = params.profiler_data.get_query_id(query_id);
 
                 unsafe {
@@ -867,15 +949,17 @@ pub(crate) struct RecordedPass {
     pub write: Vec<PassResourceRef>,
     pub render_fn: Option<Box<DynRenderFn>>,
     pub name: String,
+    pub idx: usize,
 }
 
 impl RecordedPass {
-    fn new(name: &str) -> Self {
+    fn new(name: &str, idx: usize) -> Self {
         Self {
             read: Default::default(),
             write: Default::default(),
             render_fn: Default::default(),
             name: name.to_owned(),
+            idx,
         }
     }
 }

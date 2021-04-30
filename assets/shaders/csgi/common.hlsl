@@ -30,21 +30,6 @@ static const uint CSGI_TOTAL_DIRECTION_COUNT = CSGI_CARDINAL_DIRECTION_COUNT + C
 #define CSGI_VOLUME_SIZE (12.0 * frame_constants.world_gi_scale)
 #define CSGI_VOXEL_SIZE (float(CSGI_VOLUME_SIZE) / float(CSGI_VOLUME_DIMS))
 
-static const uint CSGI_NEIGHBOR_DIR_COUNT = 9;
-static const int3 CSGI_NEIGHBOR_DIRS[CSGI_NEIGHBOR_DIR_COUNT] = {
-    int3(0, 0, -1),
-
-    int3(1, 0, -1),
-    int3(-1, 0, -1),
-    int3(0, 1, -1),
-    int3(0, -1, -1),
-
-    int3(1, 1, -1),
-    int3(-1, 1, -1),
-    int3(1, -1, -1),
-    int3(-1, -1, -1)
-};
-
 static const int3 CSGI_DIRECT_DIRS[CSGI_CARDINAL_DIRECTION_COUNT] = {
     int3(-1, 0, 0),
     int3(1, 0, 0),

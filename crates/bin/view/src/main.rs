@@ -294,9 +294,20 @@ fn main() -> anyhow::Result<()> {
                     ui.text(format!("CPU frame time: {:.3}ms", ctx.dt * 1000.0));
 
                     let mut sum = 0.0;
-                    for (name, ms) in gpu_stats.get_ordered_name_ms() {
-                        ui.text(format!("{}: {:.3}ms", name, ms));
+                    for (scope, ms) in gpu_stats.get_ordered() {
+                        if scope.name == "debug" {
+                            continue;
+                        }
+
+                        ui.text(format!("{}: {:.3}ms", scope.name, ms));
                         sum += ms;
+
+                        let hit = ui.is_item_hovered();
+                        if hit {
+                            ctx.world_renderer.rg_debug_hook = Some(kajiya::rg::GraphDebugHook {
+                                render_scope: scope.clone(),
+                            });
+                        }
                     }
 
                     ui.text(format!("total: {:.3}ms", sum));

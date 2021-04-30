@@ -170,8 +170,10 @@ impl WorldRenderer {
             self.ev_shift,
         );
 
+        let final_output = rg.debugged_resource.take().unwrap_or(post_processed);
+
         rg.export(
-            post_processed,
+            final_output,
             vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
     }

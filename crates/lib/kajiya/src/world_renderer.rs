@@ -133,6 +133,7 @@ pub struct WorldRenderer {
 
     supersample_offsets: Vec<Vec2>,
 
+    pub rg_debug_hook: Option<rg::GraphDebugHook>,
     pub render_mode: RenderMode,
     pub reset_reference_accumulation: bool,
 
@@ -292,6 +293,7 @@ impl WorldRenderer {
             next_bindless_image_id: 0,
             next_instance_handle: 0,
 
+            rg_debug_hook: None,
             render_mode: RenderMode::Standard,
             frame_idx: 0u32,
             prev_camera_matrices: None,

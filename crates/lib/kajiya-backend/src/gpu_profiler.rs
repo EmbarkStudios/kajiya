@@ -15,8 +15,14 @@ impl Default for GpuProfilerQueryId {
     }
 }
 
-pub fn create_gpu_query(name: &str, user_id: usize) -> GpuProfilerQueryId {
-    GPU_PROFILER.lock().create_gpu_query(name, user_id)
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct RenderScopeDesc {
+    pub name: String,
+    pub id: u64,
+}
+
+pub fn create_gpu_query(scope: RenderScopeDesc, user_id: usize) -> GpuProfilerQueryId {
+    GPU_PROFILER.lock().create_gpu_query(scope, user_id)
 }
 
 pub fn report_durations_ticks(
@@ -40,30 +46,30 @@ pub fn get_stats() -> GpuProfilerStats {
     GPU_PROFILER.lock().stats.clone()
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub struct GpuProfilerScopeId(String, usize);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct GpuProfilerScopeId(RenderScopeDesc, usize);
 
 impl GpuProfilerScopeId {
-    pub fn new(s: String, user_id: usize) -> Self {
+    pub fn new(s: RenderScopeDesc, user_id: usize) -> Self {
         Self(s, user_id)
     }
 }
 
 // TODO: currently merges multiple invocations in a frame into a single bucket, and averages it
 // should instead report the count per frame along with correct per-hit timing
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GpuProfilerScope {
-    pub name: String,
+    pub scope: RenderScopeDesc,
     pub hits: Vec<u64>, // nanoseconds
     pub write_head: u32,
 }
 
 impl GpuProfilerScope {
-    fn with_name(name: String) -> GpuProfilerScope {
+    fn new(scope: RenderScopeDesc) -> GpuProfilerScope {
         GpuProfilerScope {
             hits: vec![0u64; 64],
             write_head: 0,
-            name,
+            scope,
         }
     }
 }
@@ -79,7 +85,7 @@ impl GpuProfilerScope {
     }
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Clone)]
 pub struct GpuProfilerStats {
     pub scopes: HashMap<GpuProfilerScopeId, GpuProfilerScope>,
     pub order: Vec<GpuProfilerScopeId>,
@@ -87,7 +93,7 @@ pub struct GpuProfilerStats {
 
 struct ActiveQuery {
     id: GpuProfilerQueryId,
-    name: String,
+    scope: RenderScopeDesc,
     user_id: usize,
 }
 
@@ -98,25 +104,25 @@ impl GpuProfilerStats {
         duration: u64,
         active_query: ActiveQuery,
     ) {
-        let scope_id = GpuProfilerScopeId::new(active_query.name.clone(), active_query.user_id);
+        let scope_id = GpuProfilerScopeId::new(active_query.scope.clone(), active_query.user_id);
         self.order.push(scope_id.clone());
 
         let mut entry = self
             .scopes
             .entry(scope_id)
-            .or_insert_with(|| GpuProfilerScope::with_name(active_query.name));
+            .or_insert_with(|| GpuProfilerScope::new(active_query.scope));
 
         let len = entry.hits.len();
         entry.hits[entry.write_head as usize % len] = duration;
         entry.write_head += 1;
     }
 
-    pub fn get_ordered_name_ms(&self) -> Vec<(String, f64)> {
+    pub fn get_ordered(&self) -> Vec<(RenderScopeDesc, f64)> {
         self.order
             .iter()
             .map(|scope_id| {
                 let scope = &self.scopes[scope_id];
-                (scope.name.clone(), scope.average_duration_millis())
+                (scope.scope.clone(), scope.average_duration_millis())
             })
             .collect()
     }
@@ -160,20 +166,14 @@ impl GpuProfiler {
         }
     }
 
-    fn create_gpu_query(&mut self, name: &str, user_id: usize) -> GpuProfilerQueryId {
+    fn create_gpu_query(&mut self, scope: RenderScopeDesc, user_id: usize) -> GpuProfilerQueryId {
         let id = GpuProfilerQueryId(self.next_query_id);
         self.next_query_id += 1;
         self.frame_query_ids.push(id);
 
         // TODO: prune old ones
-        self.active_queries.insert(
-            id,
-            ActiveQuery {
-                id,
-                name: name.to_string(),
-                user_id,
-            },
-        );
+        self.active_queries
+            .insert(id, ActiveQuery { id, scope, user_id });
         assert!(self.active_queries.len() < 8192);
         id
     }
