@@ -4,6 +4,7 @@ use kajiya_backend::Image;
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
 pub mod deferred;
+pub mod dof;
 pub mod half_res;
 pub mod lighting;
 pub mod motion_blur;

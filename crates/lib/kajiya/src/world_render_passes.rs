@@ -198,11 +198,13 @@ impl WorldRenderer {
             );
         }
 
+        let dof = crate::renderers::dof::dof(rg, &debug_out_tex, &gbuffer_depth.depth);
+
         let anti_aliased = anti_aliased.unwrap_or_else(|| {
             self.taa
                 .render(
                     rg,
-                    &debug_out_tex,
+                    &dof,
                     &reprojection_map,
                     &gbuffer_depth.depth,
                     self.temporal_upscale_extent,
