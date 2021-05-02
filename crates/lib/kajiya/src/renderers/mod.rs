@@ -5,6 +5,7 @@ use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
 pub mod csgi;
 pub mod deferred;
+pub mod dof;
 pub mod half_res;
 pub mod motion_blur;
 pub mod post;

@@ -154,12 +154,11 @@ impl WorldRenderer {
             self.debug_shading_mode,
         );
 
-        let anti_aliased = self.taa.render(
-            rg,
-            &debug_out_tex,
-            &reprojection_map,
-            self.temporal_upscale_extent,
-        );
+        let dof = crate::renderers::dof::dof(rg, &debug_out_tex, &gbuffer_depth.depth);
+
+        let anti_aliased =
+            self.taa
+                .render(rg, &dof, &reprojection_map, self.temporal_upscale_extent);
         let motion_blurred =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
 
