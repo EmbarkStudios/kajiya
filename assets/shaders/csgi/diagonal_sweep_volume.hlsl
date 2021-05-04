@@ -72,7 +72,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
     #if 1
     static const uint plane_start_idx = (frame_constants.frame_index % 2) * PLANE_COUNT / 2;
-    static const uint plane_end_idx = PLANE_COUNT - plane_start_idx;
+    static const uint plane_end_idx = (frame_constants.frame_index % 2 + 1) * PLANE_COUNT / 2;
     #else
     static const uint plane_start_idx = 0;
     static const uint plane_end_idx = PLANE_COUNT;
