@@ -14,6 +14,8 @@
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
 //[[vk::binding(6)]] RWTexture2D<float4> bent_normal_out_tex;
 
+#define USE_AO_ONLY 1
+
 [[vk::binding(6)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
@@ -21,19 +23,20 @@
 
 #if 1
     // Micro-occlusion settings used for denoising
-    // TODO: fork the SSGI shader into just cheapo GTAO
 
-    static const uint SSGI_HALF_SAMPLE_COUNT = 8;
-
-    // TODO: better units (pxels? degrees?)
-    #define SSGI_KERNEL_RADIUS (0.1 * frame_constants.world_gi_scale)
-    #define MAX_KERNEL_RADIUS_CS (0.4 * frame_constants.world_gi_scale)
+    static const uint SSGI_HALF_SAMPLE_COUNT = 6;
+    #define SSGI_KERNEL_RADIUS (50.0 * output_tex_size.w)
+    #define MAX_KERNEL_RADIUS_CS 0.4
+    #define USE_KERNEL_DISTANCE_SCALING 0
+    #define USE_RANDOM_JITTER 0
 #else
     // Crazy settings for testing with the Cornell Box
 
     static const uint SSGI_HALF_SAMPLE_COUNT = 32;
-    static const float SSGI_KERNEL_RADIUS = 5;
-    static const float MAX_KERNEL_RADIUS_CS = 100.0;
+    #define SSGI_KERNEL_RADIUS 5
+    #define MAX_KERNEL_RADIUS_CS 100.0
+    #define USE_KERNEL_DISTANCE_SCALING 1
+    #define USE_RANDOM_JITTER 1
 #endif
 
 static const float temporal_rotations[] = { 60.0, 300.0, 180.0, 240.0, 120.0, 0.0 };
@@ -84,14 +87,8 @@ float integrate_arc(float h1, float h2, float n) {
     return 0.25 * (a + b);
 }
 
-float update_horizion_angle(float prev, float cur) {
-#if 0
-    // Soft occlusion heuristic; useful for wider AO/GI; disabled because the currently used radius is tiny
-    float t = min(1.0, 0.5 / float(SSGI_HALF_SAMPLE_COUNT));
-    return cur > prev ? cur : lerp(prev, cur, t);
-#else
-    return cur > prev ? cur : prev;
-#endif
+float update_horizion_angle(float prev, float cur, float blend) {
+    return cur > prev ? lerp(prev, cur, blend) : prev;
 }
 
 float intersect_dir_plane_onesided(float3 dir, float3 normal, float3 pt) {
@@ -112,11 +109,16 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
         float sample_vs_offset_len = length(sample_vs_offset);
 
         float sample_theta_cos = dot(sample_vs_offset, v_vs) / sample_vs_offset_len;
-        if (sample_vs_offset_len < kernel_radius) {
+        const float sample_distance_normalized = sample_vs_offset_len / kernel_radius;
+
+        if (sample_distance_normalized < 1) {
+            //const float sample_influence = 1;
+            const float sample_influence = 1.0 - sample_distance_normalized * sample_distance_normalized;
+
             bool sample_visible = sample_theta_cos >= theta_cos_max;
             float theta_cos_prev = theta_cos_max;
             float theta_delta = theta_cos_max;
-            theta_cos_max = update_horizion_angle(theta_cos_max, sample_theta_cos);
+            theta_cos_max = update_horizion_angle(theta_cos_max, sample_theta_cos, sample_influence);
             theta_delta = theta_cos_max - theta_delta;
 
             if (sample_visible) {
@@ -164,7 +166,7 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
         prev_sample_vs = sample_vs;
     } else {
         // Sky; assume no occlusion
-        theta_cos_max = update_horizion_angle(theta_cos_max, -1);
+        theta_cos_max = update_horizion_angle(theta_cos_max, -1, 1);
     }
 
     return theta_cos_max;
@@ -199,8 +201,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float spatial_offset_noise = (1.0 / 4.0) * ((px.y - px.x) & 3);
     float temporal_offset_noise = temporal_offsets[frame_constants.frame_index / 6 % 4];
 
+#if USE_RANDOM_JITTER
     uint seed0 = hash3(uint3(frame_constants.frame_index, px.x, px.y));
     spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
+#endif
 
     float ss_angle = frac(spatial_direction_noise + temporal_direction_noise) * M_PI;
     float rand_offset = frac(spatial_offset_noise + temporal_offset_noise);
@@ -210,14 +214,19 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float kernel_radius_shrinkage;
     {
         // Convert AO radius into world scale
-        float cs_kernel_radius_rescale = kernel_radius * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
-        cs_slice_dir *= cs_kernel_radius_rescale;
+        #if USE_KERNEL_DISTANCE_SCALING
+            const float cs_kernel_radius_scaled = kernel_radius * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
+        #else
+            const float cs_kernel_radius_scaled = kernel_radius;
+        #endif
+
+        cs_slice_dir *= cs_kernel_radius_scaled;
 
         // Calculate AO radius shrinkage (if camera is too close to a surface)
         float max_kernel_radius_cs = MAX_KERNEL_RADIUS_CS;
 
         //float max_kernel_radius_cs = 100;
-        kernel_radius_shrinkage = min(1.0, max_kernel_radius_cs / cs_kernel_radius_rescale);
+        kernel_radius_shrinkage = min(1.0, max_kernel_radius_cs / cs_kernel_radius_scaled);
     }
 
     // Shrink the AO radius
@@ -285,7 +294,13 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float inv_ao = integrate_arc(h1p, h2p, n_angle);
     col.a = max(0.0, inv_ao);
-    col.rgb = color_accum.rgb;
+    
+    #if USE_AO_ONLY
+        col.rgb = col.a;
+    #else
+        col.rgb = color_accum.rgb;
+    #endif
+
     col *= slice_contrib_weight;
 
     /*float bent_normal_angle = h1p + h2p - n_angle * 2;

@@ -9,7 +9,7 @@
 #include "../inc/hash.hlsl"
 
 #define USE_SSAO_STEERING 1
-#define USE_DYNAMIC_KERNEL_RADIUS 1
+#define USE_DYNAMIC_KERNEL_RADIUS 0
 
 [[vk::binding(0)]] Texture2D<float4> hit0_tex;
 [[vk::binding(1)]] Texture2D<float4> half_view_normal_tex;
@@ -37,14 +37,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float4 center_val_valid_packed = hit0_tex[px];
     const float3 center_val = center_val_valid_packed.rgb;
     const float center_validity = center_val_valid_packed.a;
-    const float center_ssao = ssao_tex[px * 2].a;
+    const float center_ssao = ssao_tex[px * 2].r;
     const float rel_std_dev = 1;//abs(center_validity);
 
     const float2 uv = get_uv(px, output_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
-
-    const float world_space_kernel_radius = 0.5 * frame_constants.world_gi_scale;
-    const float filter_radius_ss = center_ssao * world_space_kernel_radius * frame_constants.view_constants.view_to_clip[1][1] / -view_ray_context.ray_hit_vs().z;
 
     #define USE_POISSON 1
 
@@ -68,7 +65,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #if USE_DYNAMIC_KERNEL_RADIUS
         const uint filter_idx =
             input_gi_stable
-                ? uint(clamp(filter_radius_ss * 7.0, 0.0, 7.0))
+                ? uint(clamp(center_ssao * 3.0, 0.0, 7.0))
                 : 7;
     #else
         const uint filter_idx = 3;
@@ -84,7 +81,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
             const float sample_depth = half_depth_tex[sample_px];
             const float3 sample_val = hit0_tex[sample_px].rgb;
-            const float sample_ssao = ssao_tex[sample_px * 2].a;
+            const float sample_ssao = ssao_tex[sample_px * 2].r;
 
             if (sample_depth != 0) {
                 float wt = 1;

@@ -30,7 +30,7 @@ impl SsgiRenderer {
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
+                .format(vk::Format::R16_SFLOAT),
         );
 
         SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/shaders/ssgi/ssgi.hlsl")
@@ -71,7 +71,7 @@ impl SsgiRenderer {
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::empty())
                     .half_res()
-                    .format(vk::Format::R16G16B16A16_SFLOAT),
+                    .format(vk::Format::R16_SFLOAT),
             );
 
             SimpleRenderPass::new_compute(
@@ -110,7 +110,7 @@ impl SsgiRenderer {
     }
 
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
-        ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, extent)
+        ImageDesc::new_2d(vk::Format::R16_SFLOAT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
@@ -120,7 +120,7 @@ impl SsgiRenderer {
         depth: &rg::Handle<Image>,
         gbuffer: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+        let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16_SFLOAT));
 
         SimpleRenderPass::new_compute(rg.add_pass("ssgi upsample"), "/shaders/ssgi/upsample.hlsl")
             .read(ssgi)

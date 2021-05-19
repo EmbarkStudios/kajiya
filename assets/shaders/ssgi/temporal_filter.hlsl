@@ -9,8 +9,7 @@
 };
 SamplerState sampler_lnc;
 
-//#define LINEAR_TO_WORKING(x) sqrt(x)
-//#define WORKING_TO_LINEAR(x) ((x)*(x))
+#define USE_AO_ONLY 1
 
 #define LINEAR_TO_WORKING(x) x
 #define WORKING_TO_LINEAR(x) x
@@ -50,6 +49,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     
 	float4 clamped_history = clamp(history, nmin, nmax);
     float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / 12.0, reproj.z));
+
+    #if USE_AO_ONLY
+        res = res.r;
+    #endif
     
     output_tex[px] = LINEAR_TO_WORKING(res);
     //output_tex[px] = reproj.w;
