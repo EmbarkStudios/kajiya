@@ -148,7 +148,12 @@ void main(uint2 px: SV_DispatchThreadID) {
     box_size *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
     box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
-    const float n_deviations = 1.5 * lerp(0.75, 1.0, reproj.w);
+    // The image tends to flicker more when temporally upsampling.
+    // This is a stop-gap solution to reduce the flicker at the cost of responsiveness.
+    const float resolution_scale_dev_boost = 1.0 / input_resolution_scale.x;
+
+    const float n_deviations = 1.5 * lerp(0.75, 1.0, reproj.w) * resolution_scale_dev_boost;
+
 	float3 nmin = center - dev * box_size * n_deviations;
 	float3 nmax = center + dev * box_size * n_deviations;
 

@@ -35,7 +35,7 @@ UnjitteredSampleInfo sample_image_unjitter_taa(
     float dev_wt_sum = 0.0;
 
     // Stretch the kernel if samples become too sparse due to drastic upsampling
-    const float kernel_distance_mult = min(1.0, 1.2 * input_tex_size.x / output_tex_size.x);
+    const float kernel_distance_mult = min(1.0, 1.2 * input_resolution_scale.x);
 
     int k = 1;
     for (int y = -k; y <= k; ++y) {
@@ -50,7 +50,7 @@ UnjitteredSampleInfo sample_image_unjitter_taa(
             float dist = sqrt(dist2);
 
             float wt = mitchell_netravali(dist * kernel_distance_mult);
-            float dev_wt = exp2(-dist2);
+            float dev_wt = exp2(-dist2 * input_resolution_scale.x);
 
             res += col * wt;
 
