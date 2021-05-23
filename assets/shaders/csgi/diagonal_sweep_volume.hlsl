@@ -1,6 +1,7 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/pack_unpack.hlsl"
+#include "../inc/math.hlsl"
 #include "common.hlsl"
 
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
@@ -13,22 +14,18 @@
 
 static const uint SUBRAY_COUNT = CSGI_DIAGONAL_SUBRAY_COUNT;
 
-float4 sample_direct_from(int3 vx, uint dir_idx) {
-    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
-        return 0.0.xxxx;
-    }
+bool is_vx_inside_volume(int3 vx) {
+    return all(vx >= 0 && vx < CSGI_VOLUME_DIMS);
+}
 
+float4 sample_direct_from(int3 vx, uint dir_idx) {
     const int3 offset = int3(CSGI_VOLUME_DIMS * dir_idx, 0, 0);
     float4 val = direct_tex[offset + vx];
     val.rgb /= max(0.01, val.a);
     return max(0.0, val);
 }
 
-float3 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray, float3 fallback_color) {
-    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
-        return fallback_color;
-    }
-
+float3 sample_subray_indirect_from(int3 vx, uint dir_idx, uint subray) {
     const int3 indirect_offset = int3(
         SUBRAY_COUNT * CSGI_VOLUME_DIMS * (dir_idx - CSGI_CARDINAL_DIRECTION_COUNT)
         + CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET,
@@ -54,10 +51,7 @@ void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subra
     subray_indirect_tex[subray_offset + vx * vx_stride + indirect_offset] = prequant_shift_11_11_10(radiance);
 }
 
-// 16 threads in a group seem fastest; cache behavior? Not enough threads to fill the GPU with larger groups?
-[numthreads(4, 4, 1)]
-void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
-    const uint indirect_dir_idx = CSGI_CARDINAL_DIRECTION_COUNT + dispatch_vx.z;
+void diagonal_sweep_volume(const uint2 dispatch_vx, const uint indirect_dir_idx) {
     const int3 indirect_dir = CSGI_INDIRECT_DIRS[indirect_dir_idx];
     const uint dir_i_idx = 0 + (indirect_dir.x > 0 ? 1 : 0);
     const uint dir_j_idx = 2 + (indirect_dir.y > 0 ? 1 : 0);
@@ -96,9 +90,27 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
 
         vx = indirect_dir > 0 ? (CSGI_VOLUME_DIMS - vx - 1) : vx;
 
-        if (all(vx >= 0 && vx < extent)) {
-            const float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
-            const float4 center_direct_i2 = sample_direct_from(vx + dir_i, dir_i_idx);
+        [branch]
+        if (is_vx_inside_volume(vx)) {
+            float4 center_direct_i = sample_direct_from(vx, dir_i_idx);
+            float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
+            float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
+
+            const bool vx_i_in = is_vx_inside_volume(vx + dir_i);
+            const bool vx_j_in = is_vx_inside_volume(vx + dir_j);
+            const bool vx_k_in = is_vx_inside_volume(vx + dir_k);
+
+            #if USE_DEEP_OCCLUDE
+            {
+                const float4 center_direct_i2 = vx_i_in ? sample_direct_from(vx + dir_i, dir_i_idx) : 0.0.xxxx;
+                const float4 center_direct_j2 = vx_j_in ? sample_direct_from(vx + dir_j, dir_j_idx) : 0.0.xxxx;
+                const float4 center_direct_k2 = vx_k_in ? sample_direct_from(vx + dir_k, dir_k_idx) : 0.0.xxxx;
+
+                center_direct_i = prelerp(center_direct_i, center_direct_i2);
+                center_direct_j = prelerp(center_direct_j, center_direct_j2);
+                center_direct_k = prelerp(center_direct_k, center_direct_k2);
+            }
+            #endif
 
             static const float skew = 0.333;
             static const float3 subray_wts[SUBRAY_COUNT] = {
@@ -112,77 +124,78 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
                 0.0.xxx, 0.0.xxx, 0.0.xxx,
             };
 
-            {[loop] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
-                float3 indirect = 0;
-
-                // Note: one of those branches is faster than none,
-                // but two or three are slower than none :shrug:
-                //
-                // Also note: this only matters if this loop is [unroll]ed.
-                // Same performance weirdness applies to [loop], so it's likely not about
-                // this branch at all, but the code structure that the branch below
-                // (or [unroll] above) triggers.
-                //
-                //if (center_direct_i.a < 0.999)
-                {
-                    indirect = sample_subray_indirect_from(vx + dir_i, indirect_dir_idx, subray, atmosphere_color);
-                }
+// Equivalent; speed varies depending on optimizer mood
+#if 0
+            {for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
+                float3 indirect = vx_i_in ? sample_subray_indirect_from(vx + dir_i, indirect_dir_idx, subray) : atmosphere_color;
 
                 float wt = subray_wts[subray].x;
-                #if USE_DEEP_OCCLUDE
-                    indirect = lerp(indirect, center_direct_i2.rgb, center_direct_i2.a);
-                #endif
                 indirect = lerp(indirect, center_direct_i.rgb, center_direct_i.a);
-                subray_radiance[subray] += indirect * wt;
+                subray_radiance[subray] += indirect * wt / subray_wt_sum;
             }}
 
-            const float4 center_direct_j = sample_direct_from(vx, dir_j_idx);
-            const float4 center_direct_j2 = sample_direct_from(vx + dir_j, dir_j_idx);
-
-            {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
-                float3 indirect = 0;
-                //if (center_direct_j.a < 0.999)
-                {
-                    indirect = sample_subray_indirect_from(vx + dir_j, indirect_dir_idx, subray, atmosphere_color);
-                }
+            {for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
+                float3 indirect = vx_j_in ? sample_subray_indirect_from(vx + dir_j, indirect_dir_idx, subray) : atmosphere_color;
 
                 float wt = subray_wts[subray].y;
-                #if USE_DEEP_OCCLUDE
-                    indirect = lerp(indirect, center_direct_j2.rgb, center_direct_j2.a);
-                #endif
                 indirect = lerp(indirect, center_direct_j.rgb, center_direct_j.a);
-                subray_radiance[subray] += indirect * wt;
+                subray_radiance[subray] += indirect * wt / subray_wt_sum;
             }}
 
-            const float4 center_direct_k = sample_direct_from(vx, dir_k_idx);
-            const float4 center_direct_k2 = sample_direct_from(vx + dir_k, dir_k_idx);
-
-            {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
-                float3 indirect = 0;
-                //if (center_direct_k.a < 0.999)
-                {
-                    indirect = sample_subray_indirect_from(vx + dir_k, indirect_dir_idx, subray, atmosphere_color);
-                }
+            {for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
+                float3 indirect = vx_k_in ? sample_subray_indirect_from(vx + dir_k, indirect_dir_idx, subray) : atmosphere_color;
 
                 float wt = subray_wts[subray].z;
-                #if USE_DEEP_OCCLUDE
-                    indirect = lerp(indirect, center_direct_k2.rgb, center_direct_k2.a);
-                #endif
                 indirect = lerp(indirect, center_direct_k.rgb, center_direct_k.a);
-                subray_radiance[subray] += indirect * wt;
+                subray_radiance[subray] += indirect * wt / subray_wt_sum;
             }}
+#else
+            {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
+                float3 indirect_i = vx_i_in ? sample_subray_indirect_from(vx + dir_i, indirect_dir_idx, subray) : atmosphere_color;
+                float3 indirect_j = vx_j_in ? sample_subray_indirect_from(vx + dir_j, indirect_dir_idx, subray) : atmosphere_color;
+                float3 indirect_k = vx_k_in ? sample_subray_indirect_from(vx + dir_k, indirect_dir_idx, subray) : atmosphere_color;
+
+                indirect_i = lerp(indirect_i, center_direct_i.rgb, center_direct_i.a);
+                indirect_j = lerp(indirect_j, center_direct_j.rgb, center_direct_j.a);
+                indirect_k = lerp(indirect_k, center_direct_k.rgb, center_direct_k.a);
+
+                const float3 wt = subray_wts[subray];
+                subray_radiance[subray] = (indirect_i * wt.x + indirect_j * wt.y + indirect_k * wt.z) / subray_wt_sum;
+            }}
+#endif
 
             float3 combined_indirect = 0.0.xxx;
 
-            [unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
-                float3 indirect = subray_radiance[subray] / subray_wt_sum;
+            {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
+                float3 indirect = subray_radiance[subray];
                 write_subray_indirect_to(indirect, vx, indirect_dir_idx, subray);
                 combined_indirect += indirect;
-            }
+            }}
 
             #if CSGI_SUBRAY_COMBINE_DURING_SWEEP
-                indirect_tex[vx + int3(CSGI_VOLUME_DIMS * indirect_dir_idx, 0, 0)] = combined_indirect * (direct_opacity_tex[vx] / SUBRAY_COUNT);
+                indirect_tex[vx + int3(CSGI_VOLUME_DIMS * indirect_dir_idx, 0, 0)]
+                    = combined_indirect * (direct_opacity_tex[vx] / SUBRAY_COUNT);
             #endif
         }
     }}
+}
+
+// 16 threads in a group seem fastest; cache behavior? Not enough threads to fill the GPU with larger groups?
+[numthreads(4, 4, 1)]
+void main(uint3 dispatch_vx : SV_DispatchThreadID) {
+    #if 1
+        switch (dispatch_vx.z) {
+            case 0: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 0); break;
+            case 1: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 1); break;
+            case 2: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 2); break;
+            case 3: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 3); break;
+            case 4: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 4); break;
+            case 5: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 5); break;
+            case 6: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 6); break;
+            case 7: diagonal_sweep_volume(dispatch_vx.xy, CSGI_CARDINAL_DIRECTION_COUNT + 7); break;
+        }
+    #else
+        const uint indirect_dir_idx = CSGI_CARDINAL_DIRECTION_COUNT + dispatch_vx.z;
+        diagonal_sweep_volume(dispatch_vx.xy, indirect_dir_idx);
+    #endif
 }

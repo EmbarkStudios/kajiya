@@ -35,4 +35,17 @@ float3 uniform_sample_cone(float2 urand, float cos_theta_max) {
     return float3(sin_theta * cos(phi), sin_theta * sin(phi), cos_theta);
 }
 
+// Calculates vector d such that
+// lerp(a, d.rgb, d.a) equals lerp(lerp(a, b.rgb, b.a), c.rgb, c.a)
+//
+// Lerp[a_, b_, c_] := a  (1-c) + b  c
+// FullSimplify[Lerp[a,(b(c (1 -  e)) + d e) /(c + e - c e), 1-(1-c)(1-e)]] == FullSimplify[Lerp[Lerp[a, b, c], d, e]]
+float4 prelerp(float4 b, float4 c) {
+    float denom = b.a + c.a * (1.0 - b.a);
+    return denom > 1e-5 ? float4(
+        (b.rgb * (b.a * (1.0 - c.a)) + c.rgb * c.a) / denom,
+        1.0 - (1.0 - b.a) * (1.0 - c.a)
+    ) : 0.0.xxxx;
+}
+
 #endif

@@ -159,7 +159,7 @@ impl CsgiRenderer {
         .read(&direct_opacity_cascade0)
         .write(&mut indirect_cascade0)
         .write(&mut indirect_cascade_combined0)
-        .dispatch([VOLUME_DIMS, VOLUME_DIMS, (DIAGONAL_DIRECTION_COUNT) as u32]);
+        .dispatch([VOLUME_DIMS, VOLUME_DIMS, DIAGONAL_DIRECTION_COUNT as u32]);
 
         SimpleRenderPass::new_compute(rg.add_pass("csgi sweep"), "/shaders/csgi/sweep_volume.hlsl")
             .read(&direct_cascade0)
