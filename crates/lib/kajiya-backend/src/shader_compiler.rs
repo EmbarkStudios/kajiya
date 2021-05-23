@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::file::LoadFile;
 use anyhow::{anyhow, bail, Result};
 use byte_slice_cast::IntoByteVec;
 use relative_path::{RelativePath, RelativePathBuf};
@@ -8,7 +9,6 @@ use std::{
     path::PathBuf,
 };
 use turbosloth::*;
-use crate::file::LoadFile;
 
 pub struct CompiledShader {
     pub name: String,
@@ -26,7 +26,6 @@ impl LazyWorker for CompileShader {
     type Output = Result<CompiledShader>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-
         let ext = self
             .path
             .extension()
@@ -43,7 +42,7 @@ impl LazyWorker for CompileShader {
             "glsl" => unimplemented!(),
             "spv" => {
                 let spirv = LoadFile::new(self.path.clone())?.run(ctx).await?;
-                Ok(CompiledShader{ name, spirv })
+                Ok(CompiledShader { name, spirv })
             }
             "hlsl" => {
                 let file_path = self.path.to_str().unwrap().to_owned();
