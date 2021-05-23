@@ -44,6 +44,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float hist_vsum = 0.0;
     float hist_vsum2 = 0.0;
 
+    float dev_sum = 0.0;
+
 	const int k = 2;
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
@@ -58,6 +60,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 			vsum2 += neigh * neigh * w;
 			wsum += w;
 
+            dev_sum += neigh.a * neigh.a * w;
+
             //hist_diff += (neigh_luma - hist_luma) * (neigh_luma - hist_luma) * w;
             hist_diff += abs(neigh_luma - hist_luma) / max(1e-5, neigh_luma + hist_luma) * w;
             hist_vsum += hist_luma * w;
@@ -71,6 +75,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     hist_diff /= wsum;
     hist_vsum /= wsum;
     hist_vsum2 /= wsum;
+    dev_sum /= wsum;
 
     const float2 moments_history = variance_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     //const float center_luma = calculate_luma(center.rgb);
@@ -80,12 +85,20 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float center_temporal_dev = sqrt(max(0.0, moments_history.y - moments_history.x * moments_history.x));
 
     float center_dev = center.a;
-    
-    // TODO: this version reduces flicker in pica and on skeletons in battle, but has halos in cornell_box
-    //dev.rgb *= center_dev / max(1e-8, clamp(calculate_luma(dev.rgb), center_dev * 0.1, center_dev * 3.0));
 
-    dev.rgb *= center_dev / max(1e-8, calculate_luma(dev.rgb));
-    //dev.rgb = center_dev;
+    // Spatial-only variance estimate (dev.rgb) has halos around edges (lighting discontinuities)
+    
+    // Temporal variance estimate with a spatial boost
+    // TODO: this version reduces flicker in pica and on skeletons in battle, but has halos in cornell_box
+    //dev.rgb = center_dev * dev.rgb / max(1e-8, clamp(calculate_luma(dev.rgb), center_dev * 0.1, center_dev * 3.0));
+
+    // Spatiotemporal variance estimate
+    // TODO: this version seems to work best, but needs to take care near sky
+    // TODO: also probably needs to be rgb :P
+    dev.rgb = sqrt(dev_sum);
+
+    // Temporal variance estimate with spatial colors
+    //dev.rgb *= center_dev / max(1e-8, calculate_luma(dev.rgb));
 
     float3 hist_dev = sqrt(abs(hist_vsum2 - hist_vsum * hist_vsum));
     //dev.rgb *= 0.1 / max(1e-5, clamp(hist_dev, dev.rgb * 0.1, dev.rgb * 10.0));
@@ -96,15 +109,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     //temporal_change = 0.02 * temporal_change / max(1e-5, calculate_luma(dev.rgb));
     //temporal_change = WaveActiveSum(temporal_change) / WaveActiveSum(1);
 
-    float box_size = 1;
     const float n_deviations = 5.0;// * WaveActiveMin(light_stability);
     //dev = max(dev, history * 0.1);
     //dev = min(dev, history * 0.01);
-    //const float box_center_lerp = box_size * box_size;
-    const float box_center_lerp = 0;
-	float4 nmin = lerp(center, ex, box_center_lerp) - dev * box_size * n_deviations;
-	float4 nmax = lerp(center, ex, box_center_lerp) + dev * box_size * n_deviations;
-#else
+	float4 nmin = center - dev * n_deviations;
+	float4 nmax = center + dev * n_deviations;
 #endif
 
 #if 0
