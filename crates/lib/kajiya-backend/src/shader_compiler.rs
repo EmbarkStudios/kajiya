@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::file::LoadFile;
 use anyhow::{anyhow, bail, Result};
 use byte_slice_cast::IntoByteVec;
 use relative_path::{RelativePath, RelativePathBuf};
@@ -8,6 +9,7 @@ use std::{
     path::PathBuf,
 };
 use turbosloth::*;
+
 pub struct CompiledShader {
     pub name: String,
     pub spirv: Vec<u8>,
@@ -24,14 +26,6 @@ impl LazyWorker for CompileShader {
     type Output = Result<CompiledShader>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-        let file_path = self.path.to_str().unwrap().to_owned();
-        let source = shader_prepper::process_file(
-            &file_path,
-            &mut ShaderIncludeProvider { ctx },
-            String::new(),
-        );
-        let source = source.map_err(|err| anyhow!("{}", err))?;
-
         let ext = self
             .path
             .extension()
@@ -46,7 +40,18 @@ impl LazyWorker for CompileShader {
 
         match ext.as_str() {
             "glsl" => unimplemented!(),
+            "spv" => {
+                let spirv = LoadFile::new(self.path.clone())?.run(ctx).await?;
+                Ok(CompiledShader { name, spirv })
+            }
             "hlsl" => {
+                let file_path = self.path.to_str().unwrap().to_owned();
+                let source = shader_prepper::process_file(
+                    &file_path,
+                    &mut ShaderIncludeProvider { ctx },
+                    String::new(),
+                );
+                let source = source.map_err(|err| anyhow!("{}", err))?;
                 let target_profile = format!("{}_6_4", self.profile);
                 let spirv = compile_generic_shader_hlsl_impl(&name, &source, &target_profile)?;
 
