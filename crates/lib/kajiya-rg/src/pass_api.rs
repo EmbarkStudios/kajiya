@@ -403,6 +403,23 @@ impl<'api, 'a, 'exec_params, 'constants> BoundComputePipeline<'api, 'a, 'exec_pa
             );
         }
     }
+
+    pub fn push_constants(&self, command_buffer: vk::CommandBuffer, offset: u32, constants: &[u8]) {
+        unsafe {
+            self.api
+                .resources
+                .execution_params
+                .device
+                .raw
+                .cmd_push_constants(
+                    command_buffer,
+                    self.pipeline.pipeline_layout,
+                    vk::ShaderStageFlags::COMPUTE,
+                    offset,
+                    constants,
+                )
+        }
+    }
 }
 
 pub struct BoundRasterPipeline<'api, 'a, 'exec_params, 'constants> {

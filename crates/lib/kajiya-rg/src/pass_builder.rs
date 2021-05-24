@@ -179,9 +179,16 @@ impl<'rg> PassBuilder<'rg> {
     }
 
     pub fn register_compute_pipeline(&mut self, path: impl AsRef<Path>) -> RgComputePipelineHandle {
-        let id = self.rg.compute_pipelines.len();
+        let desc = ComputePipelineDesc::builder().build().unwrap();
+        self.register_compute_pipeline_with_desc(path, desc)
+    }
 
-        let mut desc = ComputePipelineDesc::builder().build().unwrap();
+    pub fn register_compute_pipeline_with_desc(
+        &mut self,
+        path: impl AsRef<Path>,
+        mut desc: ComputePipelineDesc,
+    ) -> RgComputePipelineHandle {
+        let id = self.rg.compute_pipelines.len();
 
         for (set_idx, layout) in &self.rg.predefined_descriptor_set_layouts {
             desc.descriptor_set_opts[*set_idx as usize] = Some((

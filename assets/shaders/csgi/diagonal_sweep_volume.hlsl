@@ -72,8 +72,6 @@ void diagonal_sweep_volume(const uint2 dispatch_vx, const uint indirect_dir_idx)
     static const uint plane_end_idx = PLANE_COUNT;
     #endif
 
-    static const uint SUBRAY_COUNT = 3;
-
     {[loop]
     for (uint plane_idx = plane_start_idx; plane_idx < plane_end_idx; ++plane_idx) {
         // A diagonal cross-section of a 3d grid creates a 2d hexagonal grid.
@@ -82,7 +80,7 @@ void diagonal_sweep_volume(const uint2 dispatch_vx, const uint indirect_dir_idx)
 
         const int sum_to = plane_idx;
         const int extent = CSGI_VOLUME_DIMS;
-        const int xmin = max(0, sum_to - (extent-1) * 2);
+        const int xmin = max(0, sum_to - (extent - 1) * 2);
         const int vx_x = dispatch_vx.x + xmin;
         const int ymin = max(0, sum_to - (extent - 1) - vx_x);
         const int vx_y = dispatch_vx.y + ymin;
