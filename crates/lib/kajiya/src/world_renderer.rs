@@ -13,10 +13,7 @@ use crate::{
 use glam::{Mat3, Quat, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
-    ash::{
-        version::DeviceV1_0,
-        vk::{self, ImageView},
-    },
+    ash::vk::{self, ImageView},
     dynamic_constants::DynamicConstants,
     vk_sync::{self, AccessType},
     vulkan::{self, image::*, shader::*, RenderBackend},

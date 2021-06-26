@@ -63,9 +63,8 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "ash"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06063a002a77d2734631db74e8f4ce7148b77fe522e6bca46f2ae7774fd48112"
+version = "0.32.0"
+source = "git+https://github.com/MaikKlein/ash#a75d8e7e889bd75ac08f226539c04c7848823fcc"
 dependencies = [
  "libloading 0.7.0",
 ]
@@ -83,8 +82,7 @@ dependencies = [
 [[package]]
 name = "ash-window"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d058436a3a8410c6e9b625c4e763ea6eaba97d771c303fc2c8e3595b666ffa3"
+source = "git+https://github.com/MaikKlein/ash#a75d8e7e889bd75ac08f226539c04c7848823fcc"
 dependencies = [
  "ash",
  "raw-window-handle",
@@ -964,9 +962,8 @@ dependencies = [
 
 [[package]]
 name = "gpu-allocator"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "500f716d753a8a2d0f6c469beed21e8e9f912dbdf1e85825062df0691423a0a5"
+version = "0.7.0"
+source = "git+https://github.com/MaikKlein/gpu-allocator?branch=main#28f313d440e6a1aafe854f08d029159d1bfd5a0f"
 dependencies = [
  "ash",
  "backtrace",
@@ -2248,7 +2245,7 @@ dependencies = [
 [[package]]
 name = "vk-sync"
 version = "0.1.6"
-source = "git+https://github.com/zedrian/vk-sync-rs.git?rev=e28c05d#e28c05def9b606429f5b8c912c3be34ab9c360ba"
+source = "git+https://github.com/MaikKlein/vk-sync-rs#adea5cf4442477b6816a3b98c58a41983b2a0f0d"
 dependencies = [
  "ash",
 ]

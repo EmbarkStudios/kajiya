@@ -6,7 +6,7 @@ use super::{
     },
     swapchain::SwapchainImage,
 };
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 
 pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
     create_compute_pipeline(

@@ -1,11 +1,6 @@
 use std::collections::HashMap;
 
-use kajiya_backend::{
-    ash::{version::DeviceV1_0, vk},
-    rspirv_reflect,
-    vulkan::device,
-    MAX_BINDLESS_DESCRIPTOR_COUNT,
-};
+use kajiya_backend::{ash::vk, rspirv_reflect, vulkan::device, MAX_BINDLESS_DESCRIPTOR_COUNT};
 
 lazy_static::lazy_static! {
     pub static ref BINDLESS_DESCRIPTOR_SET_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [

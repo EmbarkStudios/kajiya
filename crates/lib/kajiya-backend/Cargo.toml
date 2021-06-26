@@ -10,14 +10,17 @@ edition = "2018"
 #derive_builder = { git = "https://github.com/colin-kiegel/rust-derive-builder.git", rev = "44f629c", features = ["logging"] }   # dyn Error instead of String
 anyhow = "1.0"
 arrayvec = "0.5"
-ash = "0.32"
-ash-window = "0.6"
+# ash = "0.32"
+ash = {git = "https://github.com/MaikKlein/ash" }
+# ash-window = "0.6"
+ash-window = {git = "https://github.com/MaikKlein/ash" }
 byte-slice-cast = "0.3"
 derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 futures = "0.3"
 glam = "0.12"
-gpu-allocator = { version = "0.6.0", features = ["vulkan_device_address"] }
+# gpu-allocator = { version = "0.6.0", features = ["vulkan_device_address"] }
+gpu-allocator = { git = "https://github.com/MaikKlein/gpu-allocator", branch ="main" }
 hassle-rs = "0.4"
 hotwatch = "0.4"
 lazy_static = "1.4"
@@ -30,7 +33,8 @@ rspirv-reflect = { git = "https://github.com/Traverse-Research/rspirv-reflect.gi
 shader-prepper = "0.2"
 smol = "1.2.5"
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
-vk-sync = { git = "https://github.com/zedrian/vk-sync-rs.git", rev = "e28c05d" }
+#vk-sync = { git = "https://github.com/zedrian/vk-sync-rs.git", rev = "e28c05d" }
+vk-sync = { git = "https://github.com/MaikKlein/vk-sync-rs" }
 
 [features]
 default = ["ray-tracing"]

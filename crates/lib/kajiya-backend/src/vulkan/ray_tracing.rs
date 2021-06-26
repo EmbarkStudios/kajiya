@@ -10,7 +10,7 @@ use super::{
     },
 };
 use anyhow::{Context, Result};
-use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
+use ash::vk;
 use byte_slice_cast::AsSliceOf;
 use glam::{Mat3, Vec3};
 use parking_lot::Mutex;

@@ -3,11 +3,7 @@ use super::{
     profiler::VkProfilerData,
 };
 use anyhow::Result;
-use ash::{
-    extensions::khr,
-    version::{DeviceV1_0, InstanceV1_0, InstanceV1_1},
-    vk,
-};
+use ash::{extensions::khr, vk};
 use gpu_allocator::{AllocatorDebugSettings, VulkanAllocator, VulkanAllocatorCreateDesc};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -310,6 +306,7 @@ impl Device {
                     log_allocations: true,
                     ..Default::default()
                 },
+                buffer_device_address: true,
             });
 
             let universal_queue = Queue {

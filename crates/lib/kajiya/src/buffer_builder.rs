@@ -1,7 +1,4 @@
-use kajiya_backend::{
-    ash::{version::DeviceV1_0, vk},
-    vulkan,
-};
+use kajiya_backend::{ash::vk, vulkan};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::ops::Range;

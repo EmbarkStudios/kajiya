@@ -1,6 +1,6 @@
 use super::device::Device;
 use anyhow::Result;
-use ash::{version::DeviceV1_0, version::DeviceV1_2, vk};
+use ash::vk;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 
 pub struct Buffer {

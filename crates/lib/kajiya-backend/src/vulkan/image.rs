@@ -1,6 +1,6 @@
 use super::device::Device;
 use anyhow::{Context, Result};
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use derive_builder::Builder;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 use parking_lot::Mutex;

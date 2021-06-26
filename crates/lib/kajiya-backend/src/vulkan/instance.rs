@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ash::{extensions::ext, version::EntryV1_0, vk};
+use ash::{extensions::ext, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{

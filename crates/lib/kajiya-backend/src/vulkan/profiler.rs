@@ -1,4 +1,4 @@
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation, SubAllocation, VulkanAllocator};
 
 use crate::{gpu_profiler::GpuProfilerQueryId, Device};

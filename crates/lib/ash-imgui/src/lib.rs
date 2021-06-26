@@ -2,7 +2,6 @@
 #![allow(clippy::unneeded_field_pattern, clippy::cast_ptr_alignment)]
 
 use arrayvec::ArrayVec;
-use ash::version::DeviceV1_0;
 use ash::{vk, Device};
 use imgui::internal::RawWrapper;
 use imgui::{Context, DrawCmd, DrawCmdParams, DrawData, DrawIdx, DrawVert};
