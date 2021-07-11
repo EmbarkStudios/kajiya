@@ -34,7 +34,7 @@ impl ViewConstants {
             render_extent,
             camera_matrices: camera_matrices.into(),
             prev_camera_matrices: prev_camera_matrices.into(),
-            pixel_offset: Vec2::zero(),
+            pixel_offset: Vec2::ZERO,
         }
     }
 
@@ -42,12 +42,12 @@ impl ViewConstants {
         let sample_offset_pixels = v;
         let sample_offset_clip = Vec2::new((2.0 * v.x) / width as f32, (2.0 * v.y) / height as f32);
 
-        let mut jitter_matrix = Mat4::identity();
+        let mut jitter_matrix = Mat4::IDENTITY;
         jitter_matrix.w_axis = (-sample_offset_clip).extend(0.0).extend(1.0);
         //jitter_matrix.m14 = -sample_offset_clip.x;
         //jitter_matrix.m24 = -sample_offset_clip.y;
 
-        let mut jitter_matrix_inv = Mat4::identity();
+        let mut jitter_matrix_inv = Mat4::IDENTITY;
         jitter_matrix_inv.w_axis = sample_offset_clip.extend(0.0).extend(1.0);
         //jitter_matrix_inv.m14 = sample_offset_clip.x;
         //jitter_matrix_inv.m24 = sample_offset_clip.y;
@@ -85,8 +85,8 @@ impl VieportConstantBuilder {
         let mut res = ViewConstants {
             view_to_clip: self.camera_matrices.view_to_clip,
             clip_to_view: self.camera_matrices.clip_to_view,
-            view_to_sample: Mat4::zero(),
-            sample_to_view: Mat4::zero(),
+            view_to_sample: Mat4::ZERO,
+            sample_to_view: Mat4::ZERO,
             world_to_view: self.camera_matrices.world_to_view,
             view_to_world: self.camera_matrices.view_to_world,
 
@@ -97,8 +97,8 @@ impl VieportConstantBuilder {
             prev_world_to_prev_view: self.prev_camera_matrices.world_to_view,
             prev_view_to_prev_world: self.prev_camera_matrices.view_to_world,
 
-            sample_offset_pixels: Vec2::zero(),
-            sample_offset_clip: Vec2::zero(),
+            sample_offset_pixels: Vec2::ZERO,
+            sample_offset_clip: Vec2::ZERO,
         };
 
         res.set_pixel_offset(self.pixel_offset, self.render_extent);

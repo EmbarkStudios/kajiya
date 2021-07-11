@@ -10,7 +10,7 @@ edition = "2018"
 kajiya-backend = { path = "../kajiya-backend" }
 anyhow = "1.0"
 byteorder = "1.4"
-glam = "0.12"
+glam = "0.17"
 gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "4298aac", features = ["KHR_texture_transform"] } # texture transform
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
 log = "0.4"

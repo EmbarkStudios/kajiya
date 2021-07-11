@@ -531,7 +531,7 @@ impl WorldRenderer {
         self.instances.push(MeshInstance {
             rotation: Mat3::from_quat(rotation),
             position,
-            prev_rotation: Mat3::identity(),
+            prev_rotation: Mat3::IDENTITY,
             prev_position: position,
             mesh,
             dynamic_parameters: InstanceDynamicParameters::default(),
@@ -682,7 +682,7 @@ impl WorldRenderer {
                 self.prepare_render_graph_standard(rg, frame_desc)
             }
             RenderMode::Reference => {
-                self.taa.current_supersample_offset = Vec2::zero();
+                self.taa.current_supersample_offset = Vec2::ZERO;
 
                 self.prepare_render_graph_reference(rg, frame_desc)
             }

@@ -16,7 +16,7 @@ byte-slice-cast = "0.3"
 derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 futures = "0.3"
-glam = "0.12"
+glam = "0.17"
 gpu-allocator = { version = "0.6.0", features = ["vulkan_device_address"] }
 hassle-rs = "0.4"
 hotwatch = "0.4"

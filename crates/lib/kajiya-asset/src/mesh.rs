@@ -339,7 +339,7 @@ impl LazyWorker for LoadGltfScene {
             let xform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(self.scale),
                 self.rotation,
-                Vec3::zero(),
+                Vec3::ZERO,
             );
             for node in scene.nodes() {
                 iter_gltf_node_tree(&node, xform, &mut process_node);

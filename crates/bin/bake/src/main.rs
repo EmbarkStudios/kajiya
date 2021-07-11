@@ -31,7 +31,7 @@ fn main() -> Result<()> {
             path: opt.scene,
             scale: opt.scale,
             //rotation: Quat::from_rotation_y(std::f32::consts::FRAC_PI_2),
-            rotation: Quat::identity(),
+            rotation: Quat::IDENTITY,
         }
         .into_lazy();
 

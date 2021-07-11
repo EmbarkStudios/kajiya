@@ -85,7 +85,7 @@ impl FirstPersonCamera {
     // https://stackoverflow.com/a/27497022
     #[allow(dead_code)]
     pub fn look_at(&mut self, target: Vec3) {
-        let q = Mat4::look_at_rh(self.interp_pos, target, Vec3::unit_y())
+        let q = Mat4::look_at_rh(self.interp_pos, target, Vec3::Y)
             .to_scale_rotation_translation()
             .1
             .conjugate()
@@ -114,9 +114,9 @@ impl FirstPersonCamera {
     }
 
     fn calc_rotation_quat(&self) -> Quat {
-        let yaw_rot: Quat = Quat::from_axis_angle(Vec3::unit_y(), self.yaw.to_radians());
-        let pitch_rot: Quat = Quat::from_axis_angle(Vec3::unit_x(), self.pitch.to_radians());
-        let roll_rot: Quat = Quat::from_axis_angle(Vec3::unit_z(), self.roll.to_radians());
+        let yaw_rot: Quat = Quat::from_axis_angle(Vec3::Y, self.yaw.to_radians());
+        let pitch_rot: Quat = Quat::from_axis_angle(Vec3::X, self.pitch.to_radians());
+        let roll_rot: Quat = Quat::from_axis_angle(Vec3::Z, self.roll.to_radians());
         yaw_rot * (pitch_rot * roll_rot)
     }
 
@@ -130,12 +130,12 @@ impl FirstPersonCamera {
             position,
             near_dist: 0.01, // 1mm
             aspect: 1.6,
-            interp_rot: Quat::from_axis_angle(Vec3::unit_y(), -0.0f32.to_radians()),
+            interp_rot: Quat::from_axis_angle(Vec3::Y, -0.0f32.to_radians()),
             interp_pos: position,
             move_smoothness: 1.0,
             look_smoothness: 1.0,
             move_speed: 0.2,
-            interp_move_vec: Vec3::zero(),
+            interp_move_vec: Vec3::ZERO,
         }
     }
 }
@@ -148,15 +148,12 @@ impl Camera for FirstPersonCamera {
 
         let move_input_interp = 1.0 - (-input.dt * 30.0 / self.move_smoothness.max(1e-5)).exp();
         self.interp_move_vec = self.interp_move_vec.lerp(input.move_vec, move_input_interp);
-        self.interp_move_vec *= Vec3::select(
-            input.move_vec.cmpeq(Vec3::zero()),
-            Vec3::zero(),
-            Vec3::one(),
-        );
+        self.interp_move_vec *=
+            Vec3::select(input.move_vec.cmpeq(Vec3::ZERO), Vec3::ZERO, Vec3::ONE);
         self.interp_move_vec *= Vec3::select(
             input.move_vec.signum().cmpeq(self.interp_move_vec.signum()),
-            Vec3::one(),
-            -Vec3::one(),
+            Vec3::ONE,
+            -Vec3::ONE,
         );
 
         let move_dist = input.dt * 60.0;
@@ -190,7 +187,7 @@ impl Camera for FirstPersonCamera {
                         Vec4::new(0.0, 0.0, znear, 0.0),
                     )
 
-                    /*let mut m = Mat4::zero();
+                    /*let mut m = Mat4::ZERO;
                     m.m11 = w;
                     m.m22 = h;
                     m.m34 = znear;
@@ -205,7 +202,7 @@ impl Camera for FirstPersonCamera {
                         Vec4::new(0.0, 0.0, -1.0, 0.0),
                     )
 
-                    /*let mut m = Mat4::zero();
+                    /*let mut m = Mat4::ZERO;
                     m.m11 = 1.0 / w;
                     m.m22 = 1.0 / h;
                     m.m34 = -1.0;

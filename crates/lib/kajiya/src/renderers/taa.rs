@@ -18,7 +18,7 @@ impl TaaRenderer {
     pub fn new() -> Self {
         Self {
             temporal_tex: PingPongTemporalResource::new("taa"),
-            current_supersample_offset: Vec2::zero(),
+            current_supersample_offset: Vec2::ZERO,
         }
     }
 }

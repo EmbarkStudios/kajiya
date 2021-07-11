@@ -19,25 +19,25 @@ impl From<&InputState> for FirstPersonCameraInput {
             pitch_delta = -0.1 * input_state.mouse.delta.y;
         }
 
-        let mut move_vec = Vec3::zero();
+        let mut move_vec = Vec3::ZERO;
 
         if input_state.keys.is_down(VirtualKeyCode::W) {
-            move_vec += Vec3::unit_z() * -1.0;
+            move_vec += Vec3::Z * -1.0;
         }
         if input_state.keys.is_down(VirtualKeyCode::S) {
-            move_vec += Vec3::unit_z() * 1.0;
+            move_vec += Vec3::Z * 1.0;
         }
         if input_state.keys.is_down(VirtualKeyCode::A) {
-            move_vec += Vec3::unit_x() * -1.0;
+            move_vec += Vec3::X * -1.0;
         }
         if input_state.keys.is_down(VirtualKeyCode::D) {
-            move_vec += Vec3::unit_x() * 1.0;
+            move_vec += Vec3::X * 1.0;
         }
         if input_state.keys.is_down(VirtualKeyCode::Q) {
-            move_vec += Vec3::unit_y() * -1.0;
+            move_vec += Vec3::Y * -1.0;
         }
         if input_state.keys.is_down(VirtualKeyCode::E) {
-            move_vec += Vec3::unit_y() * 1.0;
+            move_vec += Vec3::Y * 1.0;
         }
 
         move_vec *= 0.5;

@@ -11,7 +11,7 @@ kajiya = { path = "../kajiya" }
 
 anyhow = "1.0"
 ash-imgui = { path = "../ash-imgui" }
-glam = "0.12"
+glam = "0.17"
 imgui = { version = "0.7" }
 imgui-winit-support = { version = "0.7" }
 log = "0.4"

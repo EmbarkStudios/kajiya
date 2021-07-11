@@ -120,18 +120,18 @@ fn main() -> anyhow::Result<()> {
         render_instances.push(kajiya.world_renderer.add_instance(
             mesh,
             instance.position.into(),
-            Quat::identity(),
+            Quat::IDENTITY,
         ));
     }
 
     /*let car_mesh = kajiya
         .world_renderer
         .add_baked_mesh("/baked/336_lrm.mesh")?;
-    let mut car_pos = Vec3::unit_y() * -0.01;
+    let mut car_pos = Vec3::Y * -0.01;
     let mut car_rot = 0.0f32;
     let car_inst = kajiya
         .world_renderer
-        .add_instance(car_mesh, car_pos, Quat::identity());*/
+        .add_instance(car_mesh, car_pos, Quat::IDENTITY);*/
 
     let (
         mut light_theta_state,

@@ -66,8 +66,8 @@ pub struct MouseState {
 impl Default for MouseState {
     fn default() -> Self {
         Self {
-            pos: Vec2::zero(),
-            delta: Vec2::zero(),
+            pos: Vec2::ZERO,
+            delta: Vec2::ZERO,
             button_mask: 0,
         }
     }

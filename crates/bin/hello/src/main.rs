@@ -17,7 +17,7 @@ fn main() -> anyhow::Result<()> {
 
     let car_inst = kajiya
         .world_renderer
-        .add_instance(car_mesh, Vec3::zero(), Quat::identity());
+        .add_instance(car_mesh, Vec3::ZERO, Quat::IDENTITY);
 
     let mut car_rot = 0.0f32;
 
@@ -25,7 +25,7 @@ fn main() -> anyhow::Result<()> {
         car_rot += 0.5 * ctx.dt;
         ctx.world_renderer.set_instance_transform(
             car_inst,
-            Vec3::zero(),
+            Vec3::ZERO,
             Quat::from_rotation_y(car_rot),
         );
 
