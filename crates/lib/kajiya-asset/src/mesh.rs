@@ -405,7 +405,8 @@ impl<T> FlatVec<T> {
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         unsafe {
-            let data = (&self.offset as *const u64 as *const u8).add(self.offset as usize);
+            let data = (std::ptr::addr_of!(self.offset) as *const u64 as *const u8)
+                .add(self.offset as usize);
             std::slice::from_raw_parts(data as *const T, self.len as usize)
         }
     }
@@ -413,7 +414,8 @@ impl<T> FlatVec<T> {
     #[inline(always)]
     pub fn as_ptr(&self) -> *const T {
         unsafe {
-            let data = (&self.offset as *const u64 as *const u8).add(self.offset as usize);
+            let data = (std::ptr::addr_of!(self.offset) as *const u64 as *const u8)
+                .add(self.offset as usize);
             data as *const T
         }
     }
