@@ -80,7 +80,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: move to its own pass
 #if USE_SHARPEN
-    static const float sharpen_amount = 0.3;
+    static const float sharpen_amount = 0.1;
 
 	float neighbors = 0;
 	float wt_sum = 0;
