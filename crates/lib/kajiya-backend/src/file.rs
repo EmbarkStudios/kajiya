@@ -39,7 +39,15 @@ pub fn canonical_path_from_vfs(path: impl Into<PathBuf>) -> anyhow::Result<PathB
 
     for (mount_point, mounted_path) in VFS_MOUNT_POINTS.lock().iter() {
         if let Ok(rel_path) = path.strip_prefix(mount_point) {
-            return Ok(mounted_path.join(rel_path).canonicalize()?);
+            return Ok(mounted_path
+                .join(rel_path)
+                .canonicalize()
+                .with_context(|| {
+                    format!(
+                        "Mounted parent folder: {:?}. Relative path: {:?}",
+                        mounted_path, rel_path
+                    )
+                })?);
         }
     }
 
