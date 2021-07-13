@@ -16,7 +16,10 @@
 #else
     #if USE_FELIX_ATMOSPHERE
         float3 sun_color_in_direction(float3 dir) {
-            return 20.0 * Absorb(IntegrateOpticalDepth(0.0.xxx, dir));
+            return
+                20.0 *
+                frame_constants.sun_color_multiplier.rgb *
+                Absorb(IntegrateOpticalDepth(0.0.xxx, dir));
         }
 
         #define SUN_COLOR (sun_color_in_direction(SUN_DIRECTION))

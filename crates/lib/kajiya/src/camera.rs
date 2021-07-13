@@ -18,6 +18,10 @@ impl CameraMatrices {
             .truncate()
             .normalize()
     }
+
+    pub fn aspect_ratio(&self) -> f32 {
+        self.view_to_clip.y_axis.y / self.view_to_clip.x_axis.x
+    }
 }
 
 pub trait Camera {

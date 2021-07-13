@@ -42,6 +42,9 @@ struct FrameConstants {
     world_gi_scale: f32,
     global_fog_thickness: f32,
 
+    sun_color_multiplier: [f32; 4],
+    sky_ambient: [f32; 4],
+
     delta_time_seconds: f32,
 }
 
@@ -151,6 +154,8 @@ pub struct WorldRenderer {
     pub world_gi_scale: f32,
     pub global_fog_thickness: f32,
     pub sun_size_multiplier: f32,
+    pub sun_color_multiplier: Vec3,
+    pub sky_ambient: Vec3,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -315,6 +320,8 @@ impl WorldRenderer {
             world_gi_scale: 1.0,
             global_fog_thickness: 0.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth
+            sun_color_multiplier: Vec3::ONE,
+            sky_ambient: Vec3::ZERO,
         })
     }
 
@@ -739,6 +746,18 @@ impl WorldRenderer {
             frame_idx: self.frame_idx,
             world_gi_scale: self.world_gi_scale,
             global_fog_thickness: self.global_fog_thickness,
+            sun_color_multiplier: [
+                self.sun_color_multiplier.x,
+                self.sun_color_multiplier.y,
+                self.sun_color_multiplier.z,
+                0.0,
+            ],
+            sky_ambient: [
+                self.sky_ambient.x,
+                self.sky_ambient.y,
+                self.sky_ambient.z,
+                0.0,
+            ],
             delta_time_seconds,
         });
 

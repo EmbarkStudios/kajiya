@@ -32,6 +32,9 @@ struct FrameConstants {
     float world_gi_scale;
     float global_fog_thickness;
 
+    float4 sun_color_multiplier;
+    float4 sky_ambient;
+
     float delta_time_seconds;
 };
 

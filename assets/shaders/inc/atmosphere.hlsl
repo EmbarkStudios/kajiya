@@ -2,6 +2,7 @@
 #define ATMOSPHERE_HLSL
 
 #include "atmosphere_felix.hlsl"
+#include "frame_constants.hlsl"
 
 #define USE_FELIX_ATMOSPHERE 1
 
@@ -18,7 +19,10 @@ float3 atmosphere_default(float3 wi, float3 light_dir) {
     float3 lightColor = 1.0.xxx;
 
     float3 transmittance;
-    return IntegrateScattering(rayStart, rayDir, rayLength, lightDir, lightColor, transmittance);
+    return
+        frame_constants.sky_ambient.rgb +
+        frame_constants.sun_color_multiplier.rgb *
+            IntegrateScattering(rayStart, rayDir, rayLength, lightDir, lightColor, transmittance);
 }
 
 #endif
