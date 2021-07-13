@@ -527,11 +527,12 @@ impl WorldRenderer {
         let handle = InstanceHandle(handle);
 
         let index = self.instances.len();
+        let rotation_mat = Mat3::from_quat(rotation);
 
         self.instances.push(MeshInstance {
-            rotation: Mat3::from_quat(rotation),
+            rotation: rotation_mat,
             position,
-            prev_rotation: Mat3::IDENTITY,
+            prev_rotation: rotation_mat,
             prev_position: position,
             mesh,
             dynamic_parameters: InstanceDynamicParameters::default(),
