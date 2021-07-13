@@ -27,6 +27,11 @@
 #define SHUFFLE_SUBPIXELS 1
 #define BORROW_SAMPLES 1
 
+// Calculates hit points of neighboring samples, and rejects them if those land
+// in the negative hemisphere of the sample being calculated.
+// Adds quite a bit of ALU, but fixes some halos around corners.
+#define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
+
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
 }
@@ -152,6 +157,19 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 //rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
                 rejection_bias *= exp2(-10.0 * abs(depth / sample_depth - 1.0));
             #endif
+
+            #if REJECT_NEGATIVE_HEMISPHERE_REUSE
+            {
+                // TODO: use the input texture size instead
+                const float2 sample_uv = get_uv(sample_px, output_tex_size * float4(0.5.xx, 2.0.xx));
+                
+                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+                const float3 sample_origin_ws = sample_ray_ctx.ray_hit_ws();
+                const float3 sample_hit_ws = sample_origin_ws + packed1.xyz * packed0.w;
+                rejection_bias *= dot(sample_hit_ws - view_ray_context.ray_hit_ws(), gbuffer.normal) > 0;
+            }
+            #endif
+                
 
     #if !USE_APPROX_BRDF
                 /*const float2 sample_uv = get_uv(sample_px, output_tex_size * float4(0.5.xx, 2.0.xx));
