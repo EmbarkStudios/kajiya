@@ -4,10 +4,7 @@ use anyhow::Context;
 
 use camera_input::InputState;
 use imgui::im_str;
-use kajiya_simple::{
-    cameras::first_person::{CameraController, FirstPersonCamera},
-    *,
-};
+use kajiya_simple::{cameras::first_person::FirstPersonCamera, *};
 
 use std::fs::File;
 use structopt::StructOpt;
@@ -212,7 +209,7 @@ fn main() -> anyhow::Result<()> {
             keys: keyboard.clone(),
             dt: ctx.dt,
         };
-        camera.update(&input_state);
+        camera.update(input_state.into());
 
         // Reset accumulation of the path tracer whenever the camera moves
         /*if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))

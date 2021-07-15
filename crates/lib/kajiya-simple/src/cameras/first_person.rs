@@ -1,12 +1,6 @@
 use glam::{Mat4, Quat, Vec3};
 use kajiya::camera::*;
 
-pub trait CameraController {
-    type InputType;
-
-    fn update<InputType: Into<Self::InputType>>(&mut self, input: InputType);
-}
-
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct FirstPersonCamera {
     // Degrees
@@ -107,12 +101,8 @@ impl FirstPersonCamera {
     }
 }
 
-impl CameraController for FirstPersonCamera {
-    type InputType = FirstPersonCameraInput;
-
-    fn update<InputType: Into<Self::InputType>>(&mut self, input: InputType) {
-        let input = input.into();
-
+impl FirstPersonCamera {
+    pub fn update(&mut self, input: FirstPersonCameraInput) {
         let move_input_interp = 1.0 - (-input.dt * 30.0 / self.move_smoothness.max(1e-5)).exp();
         self.interp_move_vec = self.interp_move_vec.lerp(input.move_vec, move_input_interp);
         self.interp_move_vec *=
@@ -136,24 +126,9 @@ impl CameraController for FirstPersonCamera {
         self.interp_rot = self.interp_rot.normalize();
         self.interp_pos = self.interp_pos.lerp(self.position, pos_interp);
     }
-}
 
-impl CameraBody for FirstPersonCamera {
-    fn look(&self) -> CameraBodyMatrices {
-        let view_to_world = {
-            let translation = Mat4::from_translation(self.interp_pos);
-            translation * Mat4::from_quat(self.interp_rot)
-        };
-
-        let world_to_view = {
-            let inv_translation = Mat4::from_translation(-self.interp_pos);
-            Mat4::from_quat(self.interp_rot.conjugate()) * inv_translation
-        };
-
-        CameraBodyMatrices {
-            world_to_view,
-            view_to_world,
-        }
+    pub fn look(&self) -> CameraBodyMatrices {
+        CameraBodyMatrices::from_position_rotation(self.interp_pos, self.interp_rot)
     }
 }
 

@@ -1,9 +1,5 @@
 use crate::math::*;
 
-pub trait CameraBody {
-    fn look(&self) -> CameraBodyMatrices;
-}
-
 impl CameraBodyMatrices {
     pub fn through(self, lens: &CameraLens) -> CameraMatrices {
         let lens = lens.calc_matrices();
@@ -52,6 +48,25 @@ pub struct CameraMatrices {
     pub view_to_world: Mat4,
 }
 
+impl CameraBodyMatrices {
+    pub fn from_position_rotation(position: Vec3, rotation: Quat) -> Self {
+        let view_to_world = {
+            let translation = Mat4::from_translation(position);
+            translation * Mat4::from_quat(rotation)
+        };
+
+        let world_to_view = {
+            let inv_translation = Mat4::from_translation(-position);
+            Mat4::from_quat(rotation.conjugate()) * inv_translation
+        };
+
+        Self {
+            world_to_view,
+            view_to_world,
+        }
+    }
+}
+
 impl CameraMatrices {
     pub fn eye_position(&self) -> Vec3 {
         (self.view_to_world * Vec4::new(0.0, 0.0, 0.0, 1.0)).truncate()
@@ -70,46 +85,37 @@ impl CameraMatrices {
 
 impl CameraLens {
     fn calc_matrices(&self) -> CameraLensMatrices {
-        let (view_to_clip, clip_to_view) = {
-            let fov = self.vertical_fov.to_radians();
-            let znear = self.near_plane_distance;
+        let fov = self.vertical_fov.to_radians();
+        let znear = self.near_plane_distance;
 
-            let h = (0.5 * fov).cos() / (0.5 * fov).sin();
-            let w = h / self.aspect_ratio;
+        let h = (0.5 * fov).cos() / (0.5 * fov).sin();
+        let w = h / self.aspect_ratio;
 
-            (
-                {
-                    Mat4::from_cols(
-                        Vec4::new(w, 0.0, 0.0, 0.0),
-                        Vec4::new(0.0, h, 0.0, 0.0),
-                        Vec4::new(0.0, 0.0, 0.0, -1.0),
-                        Vec4::new(0.0, 0.0, znear, 0.0),
-                    )
+        /*let mut m = Mat4::ZERO;
+        m.m11 = w;
+        m.m22 = h;
+        m.m34 = znear;
+        m.m43 = -1.0;
+        m*/
+        let view_to_clip = Mat4::from_cols(
+            Vec4::new(w, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, h, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, -1.0),
+            Vec4::new(0.0, 0.0, znear, 0.0),
+        );
 
-                    /*let mut m = Mat4::ZERO;
-                    m.m11 = w;
-                    m.m22 = h;
-                    m.m34 = znear;
-                    m.m43 = -1.0;
-                    m*/
-                },
-                {
-                    Mat4::from_cols(
-                        Vec4::new(1.0 / w, 0.0, 0.0, 0.0),
-                        Vec4::new(0.0, 1.0 / h, 0.0, 0.0),
-                        Vec4::new(0.0, 0.0, 0.0, 1.0 / znear),
-                        Vec4::new(0.0, 0.0, -1.0, 0.0),
-                    )
-
-                    /*let mut m = Mat4::ZERO;
-                    m.m11 = 1.0 / w;
-                    m.m22 = 1.0 / h;
-                    m.m34 = -1.0;
-                    m.m43 = 1.0 / znear;
-                    m*/
-                },
-            )
-        };
+        /*let mut m = Mat4::ZERO;
+        m.m11 = 1.0 / w;
+        m.m22 = 1.0 / h;
+        m.m34 = -1.0;
+        m.m43 = 1.0 / znear;
+        m*/
+        let clip_to_view = Mat4::from_cols(
+            Vec4::new(1.0 / w, 0.0, 0.0, 0.0),
+            Vec4::new(0.0, 1.0 / h, 0.0, 0.0),
+            Vec4::new(0.0, 0.0, 0.0, 1.0 / znear),
+            Vec4::new(0.0, 0.0, -1.0, 0.0),
+        );
 
         CameraLensMatrices {
             view_to_clip,
