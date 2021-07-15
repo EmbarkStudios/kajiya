@@ -4,7 +4,10 @@ use anyhow::Context;
 
 use camera_input::InputState;
 use imgui::im_str;
-use kajiya_simple::*;
+use kajiya_simple::{
+    cameras::first_person::{CameraController, FirstPersonCamera},
+    *,
+};
 
 use std::fs::File;
 use structopt::StructOpt;
@@ -89,7 +92,7 @@ fn main() -> anyhow::Result<()> {
     let mut camera_state = if let Some(persisted_app_state) = &persisted_app_state {
         persisted_app_state.camera.clone()
     } else {
-        kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0))
+        FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0))
     };
     //camera.fov = 65.0;
     //camera.look_smoothness = 20.0;
@@ -102,11 +105,14 @@ fn main() -> anyhow::Result<()> {
     camera.fov = 35.0 * 9.0 / 16.0;
     camera.look_at(Vec3::new(0.0, 0.75, 0.0));*/
 
-    camera_state.aspect = kajiya.window_aspect_ratio();
+    let lens = CameraLens {
+        aspect_ratio: kajiya.window_aspect_ratio(),
+        ..Default::default()
+    };
 
-    #[allow(unused_mut)]
-    let mut camera_state = CameraConvergenceEnforcer::new(camera_state);
-    camera_state.convergence_sensitivity = 0.0;
+    //#[allow(unused_mut)]
+    //let mut camera_state = CameraConvergenceEnforcer::new(camera_state);
+    //camera_state.convergence_sensitivity = 0.0;
     let camera = &mut camera_state;
 
     let mut mouse_state: MouseState = Default::default();
@@ -209,11 +215,11 @@ fn main() -> anyhow::Result<()> {
         camera.update(&input_state);
 
         // Reset accumulation of the path tracer whenever the camera moves
-        if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
+        /*if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
             && ctx.world_renderer.render_mode == RenderMode::Reference
         {
             ctx.world_renderer.reset_reference_accumulation = true;
-        }
+        }*/
 
         /*if keyboard.is_down(VirtualKeyCode::Z) {
             car_pos.x += mouse_state.delta.x / 100.0;
@@ -234,11 +240,11 @@ fn main() -> anyhow::Result<()> {
         if keyboard.was_just_pressed(VirtualKeyCode::Space) {
             match ctx.world_renderer.render_mode {
                 RenderMode::Standard => {
-                    camera.convergence_sensitivity = 1.0;
+                    //camera.convergence_sensitivity = 1.0;
                     ctx.world_renderer.render_mode = RenderMode::Reference;
                 }
                 RenderMode::Reference => {
-                    camera.convergence_sensitivity = 0.0;
+                    //camera.convergence_sensitivity = 0.0;
                     ctx.world_renderer.render_mode = RenderMode::Standard;
                 }
             };
@@ -265,7 +271,7 @@ fn main() -> anyhow::Result<()> {
         sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
         let frame_desc = WorldFrameDesc {
-            camera_matrices: camera.calc_matrices(),
+            camera_matrices: camera.look().through(&lens),
             render_extent: ctx.render_extent,
             //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
             sun_direction: sun_direction_interp,
@@ -389,7 +395,7 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     let app_state = PersistedAppState {
-        camera: camera_state.clone().into_inner(),
+        camera: camera_state.clone(),
         light_theta: light_theta_state,
         light_phi: light_phi_state,
         emissive_multiplier: emissive_multiplier_state,

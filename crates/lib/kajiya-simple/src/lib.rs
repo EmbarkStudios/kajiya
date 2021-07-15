@@ -1,6 +1,8 @@
 mod input;
 mod main_loop;
 
+pub mod cameras;
+
 pub use glam::*;
 pub use input::*;
 pub use kajiya::{

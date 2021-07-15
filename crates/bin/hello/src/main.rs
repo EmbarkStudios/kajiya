@@ -1,4 +1,4 @@
-use kajiya_simple::*;
+use kajiya_simple::{cameras::first_person::*, *};
 
 fn main() -> anyhow::Result<()> {
     let mut kajiya = SimpleMainLoop::builder().resolution([1920, 1080]).build(
@@ -7,9 +7,13 @@ fn main() -> anyhow::Result<()> {
             .with_resizable(false),
     )?;
 
-    let mut camera = kajiya::camera::FirstPersonCamera::new(Vec3::new(0.0, 1.0, 2.5));
+    let mut camera = FirstPersonCamera::new(Vec3::new(0.0, 1.0, 2.5));
     camera.look_at(Vec3::new(0.0, 0.25, 0.0));
-    camera.aspect = kajiya.window_aspect_ratio();
+
+    let lens = CameraLens {
+        aspect_ratio: kajiya.window_aspect_ratio(),
+        ..Default::default()
+    };
 
     let car_mesh = kajiya
         .world_renderer
@@ -30,7 +34,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         WorldFrameDesc {
-            camera_matrices: camera.calc_matrices(),
+            camera_matrices: camera.look().through(&lens),
             render_extent: ctx.render_extent,
             sun_direction: Vec3::new(4.0, 1.0, 1.0).normalize(),
         }

@@ -1175,7 +1175,6 @@ dependencies = [
  "raw-window-handle",
  "relative-path",
  "ron",
- "serde",
  "smol",
  "structopt",
  "thiserror",
@@ -1271,6 +1270,7 @@ dependencies = [
  "kajiya-imgui",
  "log",
  "parking_lot",
+ "serde",
  "turbosloth",
  "winit",
 ]

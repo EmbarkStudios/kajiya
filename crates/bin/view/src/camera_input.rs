@@ -1,6 +1,5 @@
 use glam::Vec3;
-use kajiya::camera::*;
-use kajiya_simple::{KeyboardState, MouseState};
+use kajiya_simple::{cameras::first_person::FirstPersonCameraInput, KeyboardState, MouseState};
 use winit::event::VirtualKeyCode;
 
 pub struct InputState {

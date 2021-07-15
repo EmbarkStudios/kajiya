@@ -21,7 +21,7 @@ derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 fern = { version = "0.6", features = ["colored"] }
 futures = "0.3"
-glam = { version = "0.17", features = ["serde"] }
+glam = { version = "0.17" }
 hassle-rs = "0.4"
 hotwatch = "0.4"
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
@@ -32,7 +32,6 @@ parking_lot = "0.11"
 raw-window-handle = "0.3"
 relative-path = "1.3"
 ron = "0.6.2"
-serde = { version = "1.0", features = ["derive"] }
 smol = "1.2.5"
 structopt = "0.3"
 thiserror = "1.0"
