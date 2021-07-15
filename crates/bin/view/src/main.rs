@@ -103,22 +103,32 @@ fn main() -> anyhow::Result<()> {
     //camera_state.convergence_sensitivity = 0.0;
     //let camera = &mut camera_state;
 
-    let (camera_state, camera_input) = if let Some(persisted_app_state) = &persisted_app_state {
-        FirstPerson::from_position_rotation(
-            persisted_app_state.camera_position,
-            persisted_app_state.camera_rotation,
-        )
-    } else {
-        FirstPerson::from_position_rotation(Vec3::new(0.0, 1.0, 8.0), Quat::IDENTITY)
+    let mut camera_state = {
+        let (position, rotation) = if let Some(state) = &persisted_app_state {
+            (state.camera_position, state.camera_rotation)
+        } else {
+            (Vec3::new(0.0, 1.0, 8.0), Quat::IDENTITY)
+        };
+
+        CameraRig::new()
+            .with(YawPitch::new().position(position).rotation(rotation))
+            .with(Smooth::new().move_smoothness(1.0).look_smoothness(1.0))
+            .build()
     };
-    let mut camera_state = camera_state.interpolated(InterpolatedDesc {
-        move_smoothness: 0.5,
-        look_smoothness: 0.3,
-    });
     let camera = &mut camera_state;
 
-    let mut mouse_state: MouseState = Default::default();
+    let mut mouse: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
+
+    let mut keymap = KeyboardMap::new()
+        .bind(VirtualKeyCode::W, KeyMap::new("move_fwd", 1.0))
+        .bind(VirtualKeyCode::S, KeyMap::new("move_fwd", -1.0))
+        .bind(VirtualKeyCode::A, KeyMap::new("move_right", -1.0))
+        .bind(VirtualKeyCode::D, KeyMap::new("move_right", 1.0))
+        .bind(VirtualKeyCode::Q, KeyMap::new("move_up", 1.0))
+        .bind(VirtualKeyCode::E, KeyMap::new("move_up", -1.0))
+        .bind(VirtualKeyCode::LShift, KeyMap::new("boost", 1.0))
+        .bind(VirtualKeyCode::LControl, KeyMap::new("boost", -1.0));
 
     let mut render_instances = vec![];
     for instance in scene_desc.instances {
@@ -167,8 +177,6 @@ fn main() -> anyhow::Result<()> {
     const MAX_FPS_LIMIT: u32 = 256;
     let mut max_fps = MAX_FPS_LIMIT;
 
-    let mut new_mouse_state: MouseState = Default::default();
-
     kajiya.run(move |mut ctx| {
         // TODO
         /*// Limit framerate. Not particularly precise.
@@ -177,47 +185,16 @@ fn main() -> anyhow::Result<()> {
             return;
         }*/
 
-        let mut keyboard_events: Vec<KeyboardInput> = Vec::new();
+        keyboard.update(&ctx.events);
+        mouse.update(&ctx.events);
+        let input = keymap.map(&keyboard, ctx.dt);
+        let move_vec = camera.transform.rotation
+            * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
+            * 10.0f32.powf(input["boost"]);
 
-        for event in ctx.events {
-            match event {
-                WindowEvent::KeyboardInput { input, .. } => {
-                    keyboard_events.push(*input);
-                }
-                WindowEvent::CursorMoved { position, .. } => {
-                    new_mouse_state.pos = Vec2::new(position.x as f32, position.y as f32);
-                }
-                WindowEvent::MouseInput { state, button, .. } => {
-                    let button_id = match button {
-                        MouseButton::Left => 0,
-                        MouseButton::Middle => 1,
-                        MouseButton::Right => 2,
-                        _ => 0,
-                    };
-
-                    if let ElementState::Pressed = state {
-                        new_mouse_state.button_mask |= 1 << button_id;
-                    } else {
-                        new_mouse_state.button_mask &= !(1 << button_id);
-                    }
-                }
-                _ => (),
-            }
-        }
-
-        keyboard.update(std::mem::take(&mut keyboard_events), ctx.dt);
-        mouse_state.update(&new_mouse_state);
-        new_mouse_state = mouse_state;
-
-        let input_state = InputState {
-            mouse: mouse_state,
-            keys: keyboard.clone(),
-            dt: ctx.dt,
-        };
-
-        camera_input
-            .send(FirstPersonCameraInput::from(input_state).relative_to(&camera.transform()))
-            .unwrap();
+        let camera_driver = camera.driver_mut::<YawPitch>();
+        camera_driver.rotate_yaw_pitch(-mouse.delta.x, -mouse.delta.y);
+        camera_driver.translate(move_vec * ctx.dt * 2.0);
         camera.update(ctx.dt);
 
         // Reset accumulation of the path tracer whenever the camera moves
@@ -263,11 +240,9 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        if mouse_state.button_mask & 1 != 0 {
-            *light_theta +=
-                (mouse_state.delta.x / ctx.render_extent[0] as f32) * -std::f32::consts::TAU;
-            *light_phi +=
-                (mouse_state.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
+        if mouse.button_mask & 1 != 0 {
+            *light_theta += (mouse.delta.x / ctx.render_extent[0] as f32) * -std::f32::consts::TAU;
+            *light_phi += (mouse.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
         }
 
         //light_phi += dt;
@@ -277,10 +252,7 @@ fn main() -> anyhow::Result<()> {
         sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
         let frame_desc = WorldFrameDesc {
-            camera_matrices: camera
-                .transform()
-                .into_translation_rotation()
-                .through(&lens),
+            camera_matrices: camera.transform.into_translation_rotation().through(&lens),
             render_extent: ctx.render_extent,
             //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
             sun_direction: sun_direction_interp,
@@ -404,8 +376,8 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     let app_state = PersistedAppState {
-        camera_position: camera_state.transform().translation,
-        camera_rotation: camera_state.transform().rotation,
+        camera_position: camera_state.transform.translation,
+        camera_rotation: camera_state.transform.rotation,
         light_theta: light_theta_state,
         light_phi: light_phi_state,
         emissive_multiplier: emissive_multiplier_state,
