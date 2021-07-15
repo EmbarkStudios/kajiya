@@ -3,8 +3,9 @@ mod camera_input;
 use anyhow::Context;
 
 use camera_input::InputState;
+use game_camera::*;
 use imgui::im_str;
-use kajiya_simple::{cameras::first_person::FirstPersonCamera, *};
+use kajiya_simple::*;
 
 use std::fs::File;
 use structopt::StructOpt;
@@ -50,7 +51,8 @@ struct SceneInstanceDesc {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct PersistedAppState {
-    camera: FirstPersonCamera,
+    camera_position: Vec3,
+    camera_rotation: Quat,
     light_theta: f32,
     light_phi: f32,
     emissive_multiplier: f32,
@@ -86,17 +88,6 @@ fn main() -> anyhow::Result<()> {
 
     kajiya.world_renderer.world_gi_scale = opt.gi_volume_scale;
 
-    let mut camera_state = if let Some(persisted_app_state) = &persisted_app_state {
-        persisted_app_state.camera.clone()
-    } else {
-        FirstPersonCamera::new(Vec3::new(0.0, 1.0, 8.0))
-    };
-    //camera.fov = 65.0;
-    //camera.look_smoothness = 20.0;
-    //camera.move_smoothness = 20.0;
-    camera_state.look_smoothness = 3.0;
-    camera_state.move_smoothness = 3.0;
-
     // Mitsuba match
     /*let mut camera = camera::FirstPersonCamera::new(Vec3::new(-2.0, 4.0, 8.0));
     camera.fov = 35.0 * 9.0 / 16.0;
@@ -110,6 +101,20 @@ fn main() -> anyhow::Result<()> {
     //#[allow(unused_mut)]
     //let mut camera_state = CameraConvergenceEnforcer::new(camera_state);
     //camera_state.convergence_sensitivity = 0.0;
+    //let camera = &mut camera_state;
+
+    let (camera_state, camera_input) = if let Some(persisted_app_state) = &persisted_app_state {
+        FirstPerson::from_position_rotation(
+            persisted_app_state.camera_position,
+            persisted_app_state.camera_rotation,
+        )
+    } else {
+        FirstPerson::from_position_rotation(Vec3::new(0.0, 1.0, 8.0), Quat::IDENTITY)
+    };
+    let mut camera_state = camera_state.interpolated(InterpolatedDesc {
+        move_smoothness: 0.5,
+        look_smoothness: 0.3,
+    });
     let camera = &mut camera_state;
 
     let mut mouse_state: MouseState = Default::default();
@@ -209,7 +214,11 @@ fn main() -> anyhow::Result<()> {
             keys: keyboard.clone(),
             dt: ctx.dt,
         };
-        camera.update(input_state.into());
+
+        camera_input
+            .send(FirstPersonCameraInput::from(input_state).relative_to(&camera.transform()))
+            .unwrap();
+        camera.update(ctx.dt);
 
         // Reset accumulation of the path tracer whenever the camera moves
         /*if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
@@ -268,7 +277,10 @@ fn main() -> anyhow::Result<()> {
         sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
         let frame_desc = WorldFrameDesc {
-            camera_matrices: camera.look().through(&lens),
+            camera_matrices: camera
+                .transform()
+                .into_translation_rotation()
+                .through(&lens),
             render_extent: ctx.render_extent,
             //sun_direction: (Vec3::new(-6.0, 4.0, -6.0)).normalize(),
             sun_direction: sun_direction_interp,
@@ -392,7 +404,8 @@ fn main() -> anyhow::Result<()> {
     })?;
 
     let app_state = PersistedAppState {
-        camera: camera_state.clone(),
+        camera_position: camera_state.transform().translation,
+        camera_rotation: camera_state.transform().rotation,
         light_theta: light_theta_state,
         light_phi: light_phi_state,
         emissive_multiplier: emissive_multiplier_state,

@@ -1,5 +1,6 @@
+use game_camera::FirstPersonCameraInput;
 use glam::Vec3;
-use kajiya_simple::{cameras::first_person::FirstPersonCameraInput, KeyboardState, MouseState};
+use kajiya_simple::{KeyboardState, MouseState};
 use winit::event::VirtualKeyCode;
 
 pub struct InputState {
@@ -53,7 +54,6 @@ impl From<InputState> for FirstPersonCameraInput {
             move_vec,
             yaw_delta,
             pitch_delta,
-            dt: input_state.dt,
         }
     }
 }

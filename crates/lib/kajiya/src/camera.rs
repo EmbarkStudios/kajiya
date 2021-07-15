@@ -1,13 +1,37 @@
 use crate::math::*;
 
-impl CameraBodyMatrices {
-    pub fn through(self, lens: &CameraLens) -> CameraMatrices {
+pub trait IntoCameraBodyMatrices {
+    fn into_camera_body_matrices(self) -> CameraBodyMatrices;
+}
+
+impl IntoCameraBodyMatrices for CameraBodyMatrices {
+    fn into_camera_body_matrices(self) -> CameraBodyMatrices {
+        self
+    }
+}
+
+impl IntoCameraBodyMatrices for (Vec3, Quat) {
+    fn into_camera_body_matrices(self) -> CameraBodyMatrices {
+        CameraBodyMatrices::from_position_rotation(self.0, self.1)
+    }
+}
+
+pub trait LookThroughCamera {
+    fn through(self, lens: &CameraLens) -> CameraMatrices;
+}
+
+impl<T> LookThroughCamera for T
+where
+    T: IntoCameraBodyMatrices,
+{
+    fn through(self, lens: &CameraLens) -> CameraMatrices {
+        let body = self.into_camera_body_matrices();
         let lens = lens.calc_matrices();
         CameraMatrices {
             view_to_clip: lens.view_to_clip,
             clip_to_view: lens.clip_to_view,
-            world_to_view: self.world_to_view,
-            view_to_world: self.view_to_world,
+            world_to_view: body.world_to_view,
+            view_to_world: body.view_to_world,
         }
     }
 }

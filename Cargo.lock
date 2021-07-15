@@ -905,6 +905,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "game-camera"
+version = "0.1.0"
+dependencies = [
+ "glam",
+]
+
+[[package]]
 name = "gif"
 version = "0.11.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2231,6 +2238,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "futures",
+ "game-camera",
  "glam",
  "imgui",
  "kajiya",

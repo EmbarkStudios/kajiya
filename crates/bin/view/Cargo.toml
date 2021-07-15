@@ -9,6 +9,7 @@ edition = "2018"
 [dependencies]
 kajiya = { path = "../../lib/kajiya" }
 kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
+game-camera = { path = "../../../../game-camera" }
 
 anyhow = "1.0"
 futures = "0.3"
