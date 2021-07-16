@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use game_camera::*;
+use dolly::*;
 use imgui::im_str;
 use kajiya_simple::*;
 

@@ -662,6 +662,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "dolly"
+version = "0.1.0"
+dependencies = [
+ "glam",
+]
+
+[[package]]
 name = "downcast-rs"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -902,13 +909,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31b6d751ae2c7f11320402d34e41349dd1016f8d5d45e48c4312bc8625af50c"
 dependencies = [
  "byteorder",
-]
-
-[[package]]
-name = "game-camera"
-version = "0.1.0"
-dependencies = [
- "glam",
 ]
 
 [[package]]
@@ -2237,8 +2237,8 @@ name = "view"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "dolly",
  "futures",
- "game-camera",
  "glam",
  "imgui",
  "kajiya",
