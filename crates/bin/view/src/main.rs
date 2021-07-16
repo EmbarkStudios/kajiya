@@ -1,6 +1,6 @@
 use anyhow::Context;
 
-use dolly::*;
+use dolly::prelude::*;
 use imgui::im_str;
 use kajiya_simple::*;
 
