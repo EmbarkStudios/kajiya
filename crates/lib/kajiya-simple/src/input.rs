@@ -1,9 +1,9 @@
 #![allow(dead_code)]
 
 use glam::Vec2;
-use std::{collections::HashMap, hash::Hash};
-use winit::event::WindowEvent;
+use std::collections::HashMap;
 pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
+use winit::{dpi::PhysicalPosition, event::WindowEvent};
 
 #[derive(Clone)]
 pub struct KeyState {
@@ -49,29 +49,35 @@ impl KeyboardState {
 
 #[derive(Clone, Copy)]
 pub struct MouseState {
-    pub pos: Vec2,
+    pub physical_position: PhysicalPosition<f64>,
     pub delta: Vec2,
-    pub button_mask: u32,
+    pub buttons_held: u32,
+    pub buttons_pressed: u32,
+    pub buttons_released: u32,
 }
 
 impl Default for MouseState {
     fn default() -> Self {
         Self {
-            pos: Vec2::ZERO,
+            physical_position: PhysicalPosition { x: 0.0, y: 0.0 },
             delta: Vec2::ZERO,
-            button_mask: 0,
+            buttons_held: 0,
+            buttons_pressed: 0,
+            buttons_released: 0,
         }
     }
 }
 
 impl MouseState {
     pub fn update(&mut self, events: &[WindowEvent]) {
-        let prev_pos = self.pos;
+        let prev_physical_position = self.physical_position;
+        self.buttons_pressed = 0;
+        self.buttons_released = 0;
 
         for event in events {
             match event {
                 WindowEvent::CursorMoved { position, .. } => {
-                    self.pos = Vec2::new(position.x as f32, position.y as f32);
+                    self.physical_position = *position;
                 }
                 WindowEvent::MouseInput { state, button, .. } => {
                     let button_id = match button {
@@ -82,16 +88,21 @@ impl MouseState {
                     };
 
                     if let ElementState::Pressed = state {
-                        self.button_mask |= 1 << button_id;
+                        self.buttons_held |= 1 << button_id;
+                        self.buttons_pressed |= 1 << button_id;
                     } else {
-                        self.button_mask &= !(1 << button_id);
+                        self.buttons_held &= !(1 << button_id);
+                        self.buttons_released |= 1 << button_id;
                     }
                 }
                 _ => (),
             }
         }
 
-        self.delta = self.pos - prev_pos;
+        self.delta = Vec2::new(
+            (self.physical_position.x - prev_physical_position.x) as f32,
+            (self.physical_position.y - prev_physical_position.y) as f32,
+        );
     }
 }
 

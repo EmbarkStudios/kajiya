@@ -1,8 +1,5 @@
-mod camera_input;
-
 use anyhow::Context;
 
-use camera_input::InputState;
 use game_camera::*;
 use imgui::im_str;
 use kajiya_simple::*;
@@ -110,9 +107,10 @@ fn main() -> anyhow::Result<()> {
             (Vec3::new(0.0, 1.0, 8.0), Quat::IDENTITY)
         };
 
-        CameraRig::new()
-            .with(YawPitch::new().position(position).rotation(rotation))
-            .with(Smooth::new().move_smoothness(1.0).look_smoothness(1.0))
+        CameraRig::builder()
+            .with(Positional::new(position))
+            .with(YawPitch::new().rotation(rotation))
+            .with(Smooth::new_move_look(1.0, 1.0))
             .build()
     };
     let camera = &mut camera_state;
@@ -187,14 +185,21 @@ fn main() -> anyhow::Result<()> {
 
         keyboard.update(&ctx.events);
         mouse.update(&ctx.events);
+
         let input = keymap.map(&keyboard, ctx.dt);
         let move_vec = camera.transform.rotation
             * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
+                .clamp_length_max(1.0)
             * 10.0f32.powf(input["boost"]);
 
-        let camera_driver = camera.driver_mut::<YawPitch>();
-        camera_driver.rotate_yaw_pitch(-mouse.delta.x, -mouse.delta.y);
-        camera_driver.translate(move_vec * ctx.dt * 2.0);
+        if (mouse.buttons_held & (1 << 2)) != 0 {
+            camera
+                .driver_mut::<YawPitch>()
+                .rotate_yaw_pitch(-0.1 * mouse.delta.x, -0.1 * mouse.delta.y);
+        }
+        camera
+            .driver_mut::<Positional>()
+            .translate(move_vec * ctx.dt * 2.5);
         camera.update(ctx.dt);
 
         // Reset accumulation of the path tracer whenever the camera moves
@@ -240,7 +245,7 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        if mouse.button_mask & 1 != 0 {
+        if mouse.buttons_held & 1 != 0 {
             *light_theta += (mouse.delta.x / ctx.render_extent[0] as f32) * -std::f32::consts::TAU;
             *light_phi += (mouse.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
         }
