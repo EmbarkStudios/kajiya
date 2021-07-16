@@ -1,4 +1,4 @@
-use kajiya_simple::{cameras::first_person::*, *};
+use kajiya_simple::*;
 
 fn main() -> anyhow::Result<()> {
     let mut kajiya = SimpleMainLoop::builder().resolution([1920, 1080]).build(
@@ -7,8 +7,10 @@ fn main() -> anyhow::Result<()> {
             .with_resizable(false),
     )?;
 
-    let mut camera = FirstPersonCamera::new(Vec3::new(0.0, 1.0, 2.5));
-    camera.look_at(Vec3::new(0.0, 0.25, 0.0));
+    let camera = (
+        Vec3::new(0.0, 1.0, 2.5),
+        Quat::from_rotation_x(-18.0f32.to_radians()),
+    );
 
     let lens = CameraLens {
         aspect_ratio: kajiya.window_aspect_ratio(),
@@ -34,7 +36,7 @@ fn main() -> anyhow::Result<()> {
         );
 
         WorldFrameDesc {
-            camera_matrices: camera.look().through(&lens),
+            camera_matrices: camera.through(&lens),
             render_extent: ctx.render_extent,
             sun_direction: Vec3::new(4.0, 1.0, 1.0).normalize(),
         }
