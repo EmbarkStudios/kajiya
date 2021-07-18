@@ -318,7 +318,7 @@ impl Renderer {
                 .build();
             let storage_buffer_info = vk::DescriptorBufferInfo::builder()
                 .buffer(dynamic_constants.raw)
-                .range(vk::WHOLE_SIZE)
+                .range(16384)
                 .build();
 
             let descriptor_set_writes = [

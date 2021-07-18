@@ -235,7 +235,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                         DescriptorSetBinding::DynamicStorageBuffer {
                             buffer: vk::DescriptorBufferInfo::builder()
                                 .buffer(self.resources.dynamic_constants.buffer.raw)
-                                .range(vk::WHOLE_SIZE)
+                                .range(16384)
                                 .build(),
                             offset: *offset,
                         }
