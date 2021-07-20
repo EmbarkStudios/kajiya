@@ -75,7 +75,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         output_tex[px] = float4(ray_len_tex[px].xxx * 0.1, 1);
         return;
     #elif 0
-        output_tex[px] = input_tex[px];
+        output_tex[px] = float4(input_tex[px].rgb, 128);
         return;
     #endif
 
@@ -92,7 +92,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
     const float3 reflector_vs = view_ray_context.ray_hit_vs();
-    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs();
+    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs() * refl_ray_length;
 
     const float4 reflection_hit_cs = mul(frame_constants.view_constants.view_to_sample, float4(reflection_hit_vs, 1));
     const float4 prev_hit_cs = mul(frame_constants.view_constants.clip_to_prev_clip, reflection_hit_cs);
@@ -188,6 +188,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float box_size = 1;
     const float n_deviations = 2.5 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity_dilated;
+    //const float n_deviations = 5 * reproj_validity_dilated;
+
 	//float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	//float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
 	float4 nmin = center - dev * box_size * n_deviations;
@@ -202,8 +204,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
     float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
 #else
-    float h0_score = 1;
-    float h1_score = 0;
+    float h0_score = 0;
+    float h1_score = 1;
 #endif
 
     const float score_sum = h0_score + h1_score;
@@ -228,7 +230,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
     float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
-    //float4 clamped_history = history0 * h0_score + history1 * h1_score;
+
+    // HACK: disables clamp
+    //clamped_history = history0 * h0_score + history1 * h1_score;
 
     //float sample_count = history0.w * h0_score + history1.w * h1_score;
     //sample_count *= reproj.z;
@@ -247,6 +251,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     res.w = min(current_sample_count, max_sample_count) + 1;
     //res.w = sample_count + 1;
     //res.w = refl_ray_length * 20;
+    //res.w = (dev / ex).x * 16;
+    //res.w = 2 * exp2(-20 * (dev / ex).x);
+    //res.w = refl_ray_length;
 
     //res.rgb = working_to_linear(dev).rgb / max(1e-8, working_to_linear(ex).rgb);
     res = working_to_linear(res);

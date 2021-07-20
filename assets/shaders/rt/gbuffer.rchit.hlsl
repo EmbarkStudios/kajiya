@@ -156,6 +156,8 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     //gbuffer.roughness = 0.2;
     //gbuffer.albedo = 1;
 
+    //gbuffer.albedo = 0.7;
+
     payload.gbuffer_packed = gbuffer.pack();
     payload.t = RayTCurrent();
 }

@@ -3,7 +3,6 @@
 [[vk::binding(0)]] Texture3D<float4> direct_tex;
 [[vk::binding(1)]] RWTexture3D<float> direct_opacity_tex;
 
-#define USE_INDIRECT_CLAMP 1
 #define INDIRECT_CLAMP_DIRECTIONAL 0
 
 // A bit leaky, but better on high spec surfaces and tight corners:

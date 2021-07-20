@@ -127,4 +127,12 @@ float depth_to_view_z(float depth) {
     return rcp(depth * -frame_constants.view_constants.clip_to_view._43);
 }
 
+float3 direction_view_to_world(float3 v) {
+    return mul(frame_constants.view_constants.view_to_world, float4(v, 0)).xyz;
+}
+
+float3 world_to_view(float3 v) {
+    return mul(frame_constants.view_constants.world_to_view, float4(v, 0)).xyz;
+}
+
 #endif

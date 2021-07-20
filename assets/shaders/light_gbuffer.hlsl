@@ -8,6 +8,7 @@
 #include "inc/layered_brdf.hlsl"
 #include "inc/uv.hlsl"
 #include "inc/bindless_textures.hlsl"
+#include "rtr/rtr_settings.hlsl"
 
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
@@ -198,7 +199,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
         ;
 
     if (USE_RTR && debug_shading_mode != SHADING_MODE_RTX_OFF) {
-        total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+        #if !RTR_RENDER_SCALED_BY_FG
+            total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+        #else
+            total_radiance += rtr_tex[px].xyz;
+        #endif
     }
 
     //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
@@ -224,7 +229,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = rtr_tex[px].www / 16.0;
 
     if (debug_shading_mode == SHADING_MODE_REFLECTIONS) {
-        output = rtr_tex[px].xyz;
+        #if !RTR_RENDER_SCALED_BY_FG
+            output = rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+        #else
+            output = rtr_tex[px].xyz;
+        #endif
     }
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;

@@ -91,7 +91,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
     const float3 reflector_vs = view_ray_context.ray_hit_vs();
-    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs();
+    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs() * refl_ray_length;
 
     const float4 reflection_hit_cs = mul(frame_constants.view_constants.view_to_sample, float4(reflection_hit_vs, 1));
     const float4 prev_hit_cs = mul(frame_constants.view_constants.clip_to_prev_clip, reflection_hit_cs);

@@ -92,6 +92,7 @@ fn main() -> anyhow::Result<()> {
 
     let lens = CameraLens {
         aspect_ratio: kajiya.window_aspect_ratio(),
+        //vertical_fov: 12.0,
         ..Default::default()
     };
 
@@ -323,6 +324,11 @@ fn main() -> anyhow::Result<()> {
                         .range(0.0..=10.0)
                         .speed(0.02)
                         .build(&ui, &mut ctx.world_renderer.sun_size_multiplier);
+
+                    ui.checkbox(
+                        im_str!("Reflection reservoir resampling"),
+                        &mut ctx.world_renderer.rtr.reservoir_resampling,
+                    );
                 }
 
                 /*if imgui::CollapsingHeader::new(im_str!("csgi"))

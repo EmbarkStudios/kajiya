@@ -10,6 +10,7 @@
 #include "../inc/rt.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
+#include "rtr_settings.hlsl"
 
 #define USE_TEMPORAL_JITTER 1
 #define USE_HEAVY_BIAS 0
@@ -19,6 +20,9 @@
 
 #define USE_CSGI 1
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
+
+// Debug bias in sample reuse with position-based hit storage
+#define COLOR_CODE_GROUND_SKY_BLACK_WHITE 0
 
 // Strongly reduces roughness of secondary hits
 #define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
@@ -44,10 +48,11 @@
 [[vk::binding(4)]] StructuredBuffer<uint> sobol_buf;
 [[vk::binding(5)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(6)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex;
-[[vk::binding(9)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(10)]] cbuffer _ {
+[[vk::binding(7)]] RWTexture2D<float4> out2_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_direct_tex;
+[[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(11)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -96,7 +101,9 @@ float3 sample_sun_direction(uint2 px) {
     return SUN_DIRECTION;
 }
 
-static const float SKY_DIST = 1e5;
+// Large enough to mean "far away" and small enough so that
+// the hit points/vectors fit within fp16.
+static const float SKY_DIST = 1e4;
 
 [shader("raygeneration")]
 void main() {
@@ -120,14 +127,15 @@ void main() {
     }
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
+
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
 
     float4 gbuffer_packed = gbuffer_tex[hi_px];
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
 
-    const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
+    const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
     const float3 ray_dir_ws = normalize(view_ray_context.ray_dir_ws_h.xyz);
-    float3 wo = mul(-ray_dir_ws, shading_basis);
+    float3 wo = mul(-ray_dir_ws, tangent_to_world);
 
     const float3 ray_hit_ws = view_ray_context.ray_hit_ws();
     const float3 ray_hit_vs = view_ray_context.ray_hit_vs();
@@ -154,10 +162,10 @@ void main() {
 #endif
 
     const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
-    //uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), seed);
+    uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), seed);
 
-    const float depth_slice = exp2(round(log2(-ray_hit_vs.z)));
-    uint rng = hash3(int3(ray_hit_ws / max(1e-8, depth_slice) * 1024));
+    //const float depth_slice = exp2(round(log2(-ray_hit_vs.z)));
+    //uint rng = hash3(int3(ray_hit_ws / max(1e-8, depth_slice) * 1024));
     //rng = hash_combine2(hash1(rng), seed);
 
 #if 1
@@ -204,7 +212,7 @@ void main() {
         const bool use_short_ray = gbuffer.roughness > 0.55 && USE_SHORT_RAYS_FOR_ROUGH;
 
         RayDesc outgoing_ray;
-        outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
+        outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
         outgoing_ray.Origin = refl_ray_origin;
         outgoing_ray.TMin = 0;
 
@@ -214,13 +222,12 @@ void main() {
             outgoing_ray.TMax = SKY_DIST;
         }
 
-        out1_tex[px] = float4(outgoing_ray.Direction, clamp(brdf_sample.pdf, 1e-5, 1e5));
-
         // TODO: cone spread angle
         const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1.0);
 
         if (primary_hit.is_hit) {
             float3 total_radiance = 0.0.xxx;
+            float3 reflected_normal_vs;
             {
                 const float3 to_light_norm = sample_sun_direction(px);
                 const bool is_shadowed =
@@ -235,9 +242,11 @@ void main() {
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
                 gbuffer.roughness = lerp(gbuffer.roughness, 1.0, roughness_bias);
-                const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-                const float3 wi = mul(to_light_norm, shading_basis);
-                float3 wo = mul(-outgoing_ray.Direction, shading_basis);
+                const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+                const float3 wi = mul(to_light_norm, tangent_to_world);
+                float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
+
+                reflected_normal_vs = world_to_view(gbuffer.normal);
 
                 LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
 
@@ -294,7 +303,32 @@ void main() {
                 }
             }
 
-            out0_tex[px] = float4(total_radiance, primary_hit.ray_t);
+            const float3 direction_vs = world_to_view(outgoing_ray.Direction);
+            const float to_surface_area_measure =
+                #if RTR_APPROX_MEASURE_CONVERSION
+                    1
+                #else
+                    abs(brdf_sample.wi.z * dot(reflected_normal_vs, -direction_vs))
+                #endif
+                / max(1e-10, primary_hit.ray_t * primary_hit.ray_t);
+
+            #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
+                out0_tex[px] = float4(0.0.xxx, 1);
+            #else
+                out0_tex[px] = float4(total_radiance, 1);
+            #endif
+
+            out1_tex[px] = float4(
+                #if RTR_RAY_HIT_STORED_AS_POSITION
+                    view_ray_context.ray_hit_vs() +
+                #endif
+                direction_vs * primary_hit.ray_t,
+                #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
+                    to_surface_area_measure *
+                #endif
+                brdf_sample.pdf
+            );
+            out2_tex[px] = float4(reflected_normal_vs, 0);
         } else {
             //out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
 
@@ -310,9 +344,35 @@ void main() {
                 far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             }
 
-            out0_tex[px] = float4(far_gi, SKY_DIST);
+            const float3 direction_vs = world_to_view(outgoing_ray.Direction);
+            const float to_surface_area_measure = 
+                #if RTR_APPROX_MEASURE_CONVERSION
+                    1
+                #else
+                    brdf_sample.wi.z
+                #endif
+                / (SKY_DIST * SKY_DIST);
+
+            #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
+                out0_tex[px] = float4(2.0.xxx, 1);
+            #else
+                out0_tex[px] = float4(far_gi, 1);
+            #endif
+
+            out1_tex[px] = float4(
+                #if RTR_RAY_HIT_STORED_AS_POSITION
+                    view_ray_context.ray_hit_vs() +
+                #endif
+                direction_vs * SKY_DIST,
+                #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
+                    to_surface_area_measure *
+                #endif
+                brdf_sample.pdf
+            );
+            out2_tex[px] = float4(-direction_vs, 0);
         }
     } else {
-        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
+        out0_tex[px] = float4(0.0.xxx, 0);
+        out1_tex[px] = 0.0.xxxx;
     }
 }

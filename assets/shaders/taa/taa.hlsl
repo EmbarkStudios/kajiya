@@ -19,6 +19,8 @@
 // and sharpening the content.
 #define FILTER_CURRENT_FRAME 1
 #define USE_ACCUMULATION 1
+#define USE_NEIGHBORHOOD_CLAMPING 1
+#define TARGET_SAMPLE_COUNT 12
 
 #define ENCODING_VARIANT 2
 
@@ -146,7 +148,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float local_contrast = dev.x / (ex.x + 1e-5);
     float box_size = 1.0;
     box_size *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
-    box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
+    //box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
     // The image tends to flicker more when temporally upsampling.
     // This is a stop-gap solution to reduce the flicker at the cost of responsiveness.
@@ -165,15 +167,18 @@ void main(uint2 px: SV_DispatchThreadID) {
         //float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
         //blend_factor = lerp(1.0, 1.0 / 12.0, dot(quad_reproj_valid, 0.25));
         //blend_factor = lerp(1.0, 1.0 / 12.0, min(1.0, dot(quad_reproj_valid, 1.0)));
-        blend_factor = 1.0 / 12.0;
+        blend_factor = 1.0 / TARGET_SAMPLE_COUNT;
 
         // HACK: when used with quad rejection, this reduces shimmering,
         // but increases ghosting; mostly useful for upsampling
         //blend_factor = min(blend_factor, WaveReadLaneAt(blend_factor, WaveGetLaneIndex() ^ 1));
         //blend_factor = min(blend_factor, WaveReadLaneAt(blend_factor, WaveGetLaneIndex() ^ 8));
 
+    #if USE_NEIGHBORHOOD_CLAMPING
         float3 clamped_history = clamp(history, nmin, nmax);
-		//float3 clamped_history = history;
+    #else
+		float3 clamped_history = history;
+    #endif
 
         // "Anti-flicker"
         float clamp_dist = (min(abs(history.x - nmin.x), abs(history.x - nmax.x))) / max(max(history.x, ex.x), 1e-5);

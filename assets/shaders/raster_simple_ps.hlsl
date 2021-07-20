@@ -88,7 +88,7 @@ PsOut main(PsIn ps) {
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //metalness = 1;
-    //roughness = 0.2;
+    //roughness = 0.1;
     //albedo = 1;
 
     GbufferData gbuffer = GbufferData::create_zero();
@@ -97,6 +97,8 @@ PsOut main(PsIn ps) {
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
+
+    //gbuffer.albedo = 0.7;
 
     PsOut ps_out;
     ps_out.geometric_normal = geometric_normal * 0.5 + 0.5;

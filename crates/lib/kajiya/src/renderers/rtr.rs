@@ -19,6 +19,8 @@ pub struct RtrRenderer {
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
     sobol_buf: Arc<Buffer>,
+
+    pub reservoir_resampling: bool,
 }
 
 fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
@@ -49,6 +51,7 @@ impl RtrRenderer {
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
+            reservoir_resampling: false,
         }
     }
 }
@@ -79,12 +82,12 @@ impl RtrRenderer {
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
-        let mut refl1_tex = rg.create(
-            gbuffer_desc
-                .usage(vk::ImageUsageFlags::empty())
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        // When using PDFs stored wrt to the surface area metric, their values can be tiny or giant,
+        // so fp32 is necessary. The projected solid angle metric is less sensitive, but that shader
+        // variant is heavier. Overall the surface area metric and fp32 combo is faster on my RTX 2080.
+        let mut refl1_tex = rg.create(refl0_tex.desc().format(vk::Format::R32G32B32A32_SFLOAT));
+
+        let mut refl2_tex = rg.create(refl0_tex.desc().format(vk::Format::R8G8B8A8_SNORM));
 
         let ranking_tile_buf = rg.import(
             self.ranking_tile_buf.clone(),
@@ -115,6 +118,7 @@ impl RtrRenderer {
         .read(&sobol_buf)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)
+        .write(&mut refl2_tex)
         .read(&csgi_volume.direct_cascade0)
         .read(&csgi_volume.indirect_cascade0)
         .read(sky_cube)
@@ -143,6 +147,39 @@ impl RtrRenderer {
                 .format(vk::Format::R16_SFLOAT),
         );
 
+        if self.reservoir_resampling {
+            let mut refl0_exchanged_tex = rg.create(*refl0_tex.desc());
+            let mut refl1_exchanged_tex = rg.create(*refl1_tex.desc());
+            let mut refl2_exchanged_tex = rg.create(*refl2_tex.desc());
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass("reflection exchange"),
+                "/shaders/rtr/exchange.hlsl",
+            )
+            .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&refl0_tex)
+            .read(&refl1_tex)
+            .read(&refl2_tex)
+            .read(&history_tex)
+            .read(&reprojection_map)
+            .read(&*half_view_normal_tex)
+            .read(&*half_depth_tex)
+            .write(&mut refl0_exchanged_tex)
+            .write(&mut refl1_exchanged_tex)
+            .write(&mut refl2_exchanged_tex)
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .constants((
+                refl0_exchanged_tex.desc().extent_inv_extent_2d(),
+                SPATIAL_RESOLVE_OFFSETS,
+            ))
+            .dispatch(refl0_exchanged_tex.desc().extent);
+
+            refl0_tex = refl0_exchanged_tex;
+            refl1_tex = refl1_exchanged_tex;
+            refl2_tex = refl2_exchanged_tex;
+        }
+
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection resolve"),
             "/shaders/rtr/resolve.hlsl",
@@ -151,12 +188,14 @@ impl RtrRenderer {
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&refl0_tex)
         .read(&refl1_tex)
+        .read(&refl2_tex)
         .read(&history_tex)
         .read(&reprojection_map)
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
         .write(&mut resolved_tex)
         .write(&mut ray_len_tex)
+        .raw_descriptor_set(1, bindless_descriptor_set)
         .constants((
             resolved_tex.desc().extent_inv_extent_2d(),
             SPATIAL_RESOLVE_OFFSETS,

@@ -686,6 +686,7 @@ impl WorldRenderer {
             RenderMode::Standard => {
                 self.taa.current_supersample_offset = self.supersample_offsets
                     [self.frame_idx as usize % self.supersample_offsets.len()];
+                //self.taa.current_supersample_offset = Vec2::ZERO;
 
                 self.prepare_render_graph_standard(rg, frame_desc)
             }
