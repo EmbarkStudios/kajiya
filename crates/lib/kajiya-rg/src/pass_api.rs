@@ -10,7 +10,7 @@ use super::{
 use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
     chunky_list::TempList,
-    dynamic_constants::DynamicConstants,
+    dynamic_constants::{DynamicConstants, MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH},
     vulkan::shader::FramebufferCacheKey,
     vulkan::shader::ShaderPipelineCommon,
     vulkan::shader::MAX_COLOR_ATTACHMENTS,
@@ -226,7 +226,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                         DescriptorSetBinding::DynamicBuffer {
                             buffer: vk::DescriptorBufferInfo::builder()
                                 .buffer(self.resources.dynamic_constants.buffer.raw)
-                                .range(16384)
+                                .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
                                 .build(),
                             offset: *offset,
                         }

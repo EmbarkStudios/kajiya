@@ -314,7 +314,7 @@ impl Renderer {
         {
             let uniform_buffer_info = vk::DescriptorBufferInfo::builder()
                 .buffer(dynamic_constants.raw)
-                .range(16384)
+                .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
                 .build();
             let storage_buffer_info = vk::DescriptorBufferInfo::builder()
                 .buffer(dynamic_constants.raw)
