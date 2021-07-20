@@ -33,7 +33,6 @@ Not actively used:
 * Screen-space ambient occlusion (GTAO)
     * Currently plugged in as a cross-bilateral feature guide for GI denoising
 * Screen-space diffuse bounce based on GTAO
-    * Still runs, but not displayed by default
 
 Traces of code:
 
