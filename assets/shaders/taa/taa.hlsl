@@ -251,5 +251,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 		float3 result = encode_rgb(ycbcr_to_rgb(center / coverage));
 	#endif
 
+    //result = float3(abs(reprojection_tex[px / 2].xy) * 100, 0);
     output_tex[px] = float4(result, coverage);
 }
