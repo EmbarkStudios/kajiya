@@ -22,7 +22,7 @@
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture2D<float3> shadow_mask_tex;
+[[vk::binding(2)]] Texture2D<float> shadow_mask_tex;
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
@@ -100,13 +100,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     pt_ws /= pt_ws.w;
 
     const float3 to_light_norm = SUN_DIRECTION;
-    
     float shadow_mask = shadow_mask_tex[px].x;
-    /*// Makes the shadow jitter follow the scene, but is actually leaky. TODO.
-    float shadow_mask = shadow_mask_tex.SampleLevel(
-        sampler_lnc,
-        uv - frame_constants.view_constants.sample_offset_pixels * output_tex_size.zw,
-    0).x;*/
 
     if (debug_shading_mode == SHADING_MODE_RTX_OFF) {
         shadow_mask = 1;
@@ -308,6 +302,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = shadow_mask_tex[px].y * 10;
     //output = sqrt(shadow_mask_tex[px].y) * 0.1;
     //output = shadow_mask_tex[px].z * 0.1;
+
+    //output.xz += 1;
+    //output.rgb /= max(1e-5, calculate_luma(output));
 
     #if 0
         output = lookup_csgi(

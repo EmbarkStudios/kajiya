@@ -158,14 +158,22 @@ impl WorldRenderer {
             rg,
             &debug_out_tex,
             &reprojection_map,
+            &gbuffer_depth.depth,
             self.temporal_upscale_extent,
         );
-        let motion_blurred =
-            motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
+
+        let motion_blurred = motion_blur(
+            rg,
+            &anti_aliased.color,
+            &gbuffer_depth.depth,
+            &reprojection_map,
+        );
 
         let post_processed = post_process(
             rg,
             &motion_blurred,
+            //&anti_aliased.color,
+            &anti_aliased.debug,
             self.bindless_descriptor_set,
             self.ev_shift,
         );
@@ -203,8 +211,13 @@ impl WorldRenderer {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let post_processed =
-            post_process(rg, &accum_img, self.bindless_descriptor_set, self.ev_shift);
+        let post_processed = post_process(
+            rg,
+            &accum_img,
+            &accum_img, // hack
+            self.bindless_descriptor_set,
+            self.ev_shift,
+        );
 
         rg.export(
             post_processed,

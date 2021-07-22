@@ -1,6 +1,6 @@
 #include "../inc/samplers.hlsl"
 #include "../inc/frame_constants.hlsl"
-#include "../inc/unjitter_taa.hlsl"
+#include "../inc/image.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> shadow_mask_tex;
@@ -97,40 +97,45 @@ void FFX_DNSR_Shadows_WriteMoments(uint2 px, float4 moments) {
 }
 
 float FFX_DNSR_Shadows_HitsLight(uint2 px) {
-    #if 0
-        return shadow_mask_tex[px].x;
-    #else
-        const float4 reproj = reprojection_tex[px];
-        const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
-        const float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
-        const bool is_disoccluded = dot(quad_reproj_valid, 1.0.xxxx) < 4.0;
+    return shadow_mask_tex[px].x;
+}
 
-        if (is_disoccluded) {
-            // Take care around geometric complexity or discontinuities,
-            // conservatively returning just the central sample
-            return shadow_mask_tex[px].x;
-        } else {
-            // Otherwise, try to undo the TAA jitter to get a better estimate
-            // of how the shadow looks like at the center of the pixel
-            UnjitteredSampleInfo center_sample = sample_image_unjitter_taa(
-                TextureImage::from_parts(shadow_mask_tex, input_tex_size.xy),
-                px,
-                input_tex_size.xy,
-                frame_constants.view_constants.sample_offset_pixels,
-                IdentityImageRemap::create()
-            );
-            return center_sample.color.x;
-        }
+struct HistoryRemap {
+    static HistoryRemap create() {
+        HistoryRemap res;
+        return res;
+    }
+
+    float4 remap(float4 v) {
+        return v;
+    }
+};
+
+float4 FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(float2 uv) {
+    #if 1
+        float4 moments = image_sample_catmull_rom(
+            TextureImage::from_parts(prev_moments_tex, input_tex_size.xy),
+            uv,
+            HistoryRemap::create()
+        );
+        // Clamp EX2 and sample count
+        moments.yz = max(0, moments.yz);
+        return moments;
+    #else
+        return prev_moments_tex.SampleLevel(sampler_lnc, uv, 0);
     #endif
 }
 
-float4 FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(float2 uv) {
-    //return prev_moments_tex[px];
-    return prev_moments_tex.SampleLevel(sampler_lnc, uv, 0);
-}
-
 float FFX_DNSR_Shadows_ReadHistory(float2 uv) {
-    return prev_accum_tex.SampleLevel(sampler_lnc, uv, 0).x;
+    #if 1
+        return image_sample_catmull_rom(
+            TextureImage::from_parts(prev_accum_tex, input_tex_size.xy),
+            uv,
+            HistoryRemap::create()
+        ).x;
+    #else
+        return prev_accum_tex.SampleLevel(sampler_lnc, uv, 0).x;
+    #endif
 }
 
 bool FFX_DNSR_Shadows_IsFirstFrame() {

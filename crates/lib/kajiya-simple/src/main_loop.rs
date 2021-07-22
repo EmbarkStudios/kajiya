@@ -121,7 +121,7 @@ impl SimpleMainLoopBuilder {
     /// and will be upscaled to the target resolution by TAA. Greater values mean faster
     /// rendering, but temporal shimmering artifacts and blurriness.
     pub fn temporal_upsampling(mut self, temporal_upsampling: f32) -> Self {
-        self.temporal_upsampling = temporal_upsampling.clamp(1.0, 2.0);
+        self.temporal_upsampling = temporal_upsampling.clamp(1.0, 8.0);
         self
     }
 

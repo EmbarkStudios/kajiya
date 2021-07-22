@@ -259,15 +259,17 @@ impl WorldRenderer {
             &vertex_buffer,
         );
 
-        let supersample_offsets = (0..16)
-            .map(|i| {
-                Vec2::new(
-                    radical_inverse(i % 16 + 1, 2) - 0.5,
-                    radical_inverse(i % 16 + 1, 3) - 0.5,
-                )
-            })
+        let supersample_count = 128;
+        let supersample_offsets = (1..=supersample_count)
+            .map(|i| Vec2::new(radical_inverse(i, 2) - 0.5, radical_inverse(i, 3) - 0.5))
             .collect();
         //let supersample_offsets = vec![Vec2::new(0.0, -0.5), Vec2::new(0.0, 0.5)];
+        /*let supersample_offsets = vec![
+            Vec2::new(0.25, 0.25),
+            Vec2::new(0.25, -0.25),
+            Vec2::new(-0.25, 0.25),
+            Vec2::new(-0.25, -0.25),
+        ];*/
 
         let accel_scratch = backend
             .device

@@ -177,12 +177,10 @@ fn main() -> anyhow::Result<()> {
     let mut max_fps = MAX_FPS_LIMIT;
 
     kajiya.run(move |mut ctx| {
-        // TODO
-        /*// Limit framerate. Not particularly precise.
-        if max_fps != MAX_FPS_LIMIT && dt < 1.0 / max_fps as f32 {
-            std::thread::sleep(std::time::Duration::from_micros(1));
-            return;
-        }*/
+        // Limit framerate. Not particularly precise.
+        if max_fps != MAX_FPS_LIMIT {
+            std::thread::sleep(std::time::Duration::from_micros(1_000_000 / max_fps as u64));
+        }
 
         keyboard.update(&ctx.events);
         mouse.update(&ctx.events);

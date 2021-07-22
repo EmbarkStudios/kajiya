@@ -38,7 +38,7 @@ struct IdentityImageRemap {
 ///     float4 remap(float4 v);
 /// }
 template<typename Remap>
-float3 image_sample_catmull_rom(TextureImage img, float2 P, Remap remap = IdentityImageRemap::create()) {
+float4 image_sample_catmull_rom(TextureImage img, float2 P, Remap remap = IdentityImageRemap::create()) {
     // https://www.shadertoy.com/view/MllSzX
 
     float2 pixel = P * img.size() + 0.5;
@@ -49,30 +49,30 @@ float3 image_sample_catmull_rom(TextureImage img, float2 P, Remap remap = Identi
     //pixel = floor(pixel) / output_tex_size.xy - float2(c_onePixel/2.0);
     int2 ipixel = int2(pixel) - 1;
     
-    float3 C00 = remap.remap(img.fetch(ipixel + int2(-1 ,-1))).rgb;
-    float3 C10 = remap.remap(img.fetch(ipixel + int2( 0, -1))).rgb;
-    float3 C20 = remap.remap(img.fetch(ipixel + int2( 1, -1))).rgb;
-    float3 C30 = remap.remap(img.fetch(ipixel + int2( 2,-1))).rgb;
+    float4 C00 = remap.remap(img.fetch(ipixel + int2(-1 ,-1)));
+    float4 C10 = remap.remap(img.fetch(ipixel + int2( 0, -1)));
+    float4 C20 = remap.remap(img.fetch(ipixel + int2( 1, -1)));
+    float4 C30 = remap.remap(img.fetch(ipixel + int2( 2,-1)));
     
-    float3 C01 = remap.remap(img.fetch(ipixel + int2(-1 , 0))).rgb;
-    float3 C11 = remap.remap(img.fetch(ipixel + int2( 0, 0))).rgb;
-    float3 C21 = remap.remap(img.fetch(ipixel + int2( 1, 0))).rgb;
-    float3 C31 = remap.remap(img.fetch(ipixel + int2( 2, 0))).rgb;
+    float4 C01 = remap.remap(img.fetch(ipixel + int2(-1 , 0)));
+    float4 C11 = remap.remap(img.fetch(ipixel + int2( 0, 0)));
+    float4 C21 = remap.remap(img.fetch(ipixel + int2( 1, 0)));
+    float4 C31 = remap.remap(img.fetch(ipixel + int2( 2, 0)));
     
-    float3 C02 = remap.remap(img.fetch(ipixel + int2(-1 , 1))).rgb;
-    float3 C12 = remap.remap(img.fetch(ipixel + int2( 0, 1))).rgb;
-    float3 C22 = remap.remap(img.fetch(ipixel + int2( 1, 1))).rgb;
-    float3 C32 = remap.remap(img.fetch(ipixel + int2( 2, 1))).rgb;
+    float4 C02 = remap.remap(img.fetch(ipixel + int2(-1 , 1)));
+    float4 C12 = remap.remap(img.fetch(ipixel + int2( 0, 1)));
+    float4 C22 = remap.remap(img.fetch(ipixel + int2( 1, 1)));
+    float4 C32 = remap.remap(img.fetch(ipixel + int2( 2, 1)));
     
-    float3 C03 = remap.remap(img.fetch(ipixel + int2(-1 , 2))).rgb;
-    float3 C13 = remap.remap(img.fetch(ipixel + int2( 0, 2))).rgb;
-    float3 C23 = remap.remap(img.fetch(ipixel + int2( 1 , 2))).rgb;
-    float3 C33 = remap.remap(img.fetch(ipixel + int2( 2, 2))).rgb;
+    float4 C03 = remap.remap(img.fetch(ipixel + int2(-1 , 2)));
+    float4 C13 = remap.remap(img.fetch(ipixel + int2( 0, 2)));
+    float4 C23 = remap.remap(img.fetch(ipixel + int2( 1 , 2)));
+    float4 C33 = remap.remap(img.fetch(ipixel + int2( 2, 2)));
     
-    float3 CP0X = cubic_hermite(C00, C10, C20, C30, frc.x);
-    float3 CP1X = cubic_hermite(C01, C11, C21, C31, frc.x);
-    float3 CP2X = cubic_hermite(C02, C12, C22, C32, frc.x);
-    float3 CP3X = cubic_hermite(C03, C13, C23, C33, frc.x);
+    float4 CP0X = cubic_hermite(C00, C10, C20, C30, frc.x);
+    float4 CP1X = cubic_hermite(C01, C11, C21, C31, frc.x);
+    float4 CP2X = cubic_hermite(C02, C12, C22, C32, frc.x);
+    float4 CP3X = cubic_hermite(C03, C13, C23, C33, frc.x);
     
     return cubic_hermite(CP0X, CP1X, CP2X, CP3X, frc.y);
 }
