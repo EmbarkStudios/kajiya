@@ -1,7 +1,9 @@
-use crate::shader_compiler::{CompileShader, CompiledShader};
-use crate::vulkan::{
-    ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
-    shader::*,
+use crate::{
+    shader_compiler::{CompileShader, CompiledShader},
+    vulkan::{
+        ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
+        shader::*,
+    },
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};

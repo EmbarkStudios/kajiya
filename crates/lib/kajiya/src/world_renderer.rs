@@ -19,8 +19,7 @@ use kajiya_backend::{
     },
     dynamic_constants::DynamicConstants,
     vk_sync::{self, AccessType},
-    vulkan::{self, image::*, shader::*, RenderBackend},
-    vulkan::{device, ray_tracing::*},
+    vulkan::{self, device, image::*, ray_tracing::*, shader::*, RenderBackend},
 };
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]

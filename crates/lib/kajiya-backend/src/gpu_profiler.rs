@@ -1,8 +1,7 @@
 #![allow(dead_code)]
 #![allow(unused_variables)]
 
-use std::collections::HashMap;
-use std::default::Default;
+use std::{collections::HashMap, default::Default};
 
 use parking_lot::Mutex;
 

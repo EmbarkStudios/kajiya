@@ -13,5 +13,9 @@ pub use file::{canonical_path_from_vfs, set_vfs_mount_point};
 pub use gpu_allocator;
 pub use rspirv_reflect;
 pub use vk_sync;
-pub use vulkan::shader::{MAX_BINDLESS_DESCRIPTOR_COUNT, MAX_DESCRIPTOR_SETS};
-pub use vulkan::{device::Device, image::*, RenderBackend};
+pub use vulkan::{
+    device::Device,
+    image::*,
+    shader::{MAX_BINDLESS_DESCRIPTOR_COUNT, MAX_DESCRIPTOR_SETS},
+    RenderBackend,
+};

@@ -11,14 +11,14 @@ use kajiya_backend::{
     ash::{version::DeviceV1_0, vk},
     chunky_list::TempList,
     dynamic_constants::{DynamicConstants, MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH},
-    vulkan::shader::FramebufferCacheKey,
-    vulkan::shader::ShaderPipelineCommon,
-    vulkan::shader::MAX_COLOR_ATTACHMENTS,
     vulkan::{
         device::{CommandBuffer, Device},
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
-        shader::{ComputePipeline, RasterPipeline},
+        shader::{
+            ComputePipeline, FramebufferCacheKey, RasterPipeline, ShaderPipelineCommon,
+            MAX_COLOR_ATTACHMENTS,
+        },
     },
 };
 

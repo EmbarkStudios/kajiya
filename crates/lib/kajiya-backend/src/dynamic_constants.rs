@@ -1,5 +1,4 @@
-use crate::bytes::as_byte_slice;
-use crate::vulkan;
+use crate::{bytes::as_byte_slice, vulkan};
 use ash::vk;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
