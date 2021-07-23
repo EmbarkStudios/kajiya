@@ -190,7 +190,15 @@ pub struct GpuSrv;
 pub struct GpuUav;
 pub struct GpuRt;
 
-pub trait GpuViewType {}
-impl GpuViewType for GpuSrv {}
-impl GpuViewType for GpuUav {}
-impl GpuViewType for GpuRt {}
+pub trait GpuViewType {
+    const IS_WRITABLE: bool;
+}
+impl GpuViewType for GpuSrv {
+    const IS_WRITABLE: bool = false;
+}
+impl GpuViewType for GpuUav {
+    const IS_WRITABLE: bool = true;
+}
+impl GpuViewType for GpuRt {
+    const IS_WRITABLE: bool = true;
+}

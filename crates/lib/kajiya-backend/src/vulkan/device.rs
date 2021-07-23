@@ -158,6 +158,11 @@ impl Device {
             vk::KhrPushDescriptorFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
             vk::KhrDrawIndirectCountFn::name().as_ptr(),
+            // DLSS
+            b"VK_NVX_binary_import\0".as_ptr() as *const i8,
+            b"VK_NVX_image_view_handle\0".as_ptr() as *const i8,
+            //b"VK_EXT_buffer_device_address\0".as_ptr() as *const i8,
+            //b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
         ];
 
         #[cfg(feature = "ray-tracing")]

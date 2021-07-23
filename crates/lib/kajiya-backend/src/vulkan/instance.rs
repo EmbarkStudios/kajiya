@@ -32,7 +32,7 @@ impl DeviceBuilder {
 
 pub struct Instance {
     pub(crate) entry: ash::Entry,
-    pub(crate) raw: ash::Instance,
+    pub raw: ash::Instance,
     #[allow(dead_code)]
     pub(crate) debug_callback: Option<vk::DebugReportCallbackEXT>,
     #[allow(dead_code)]
@@ -143,6 +143,8 @@ unsafe extern "system" fn vulkan_debug_callback(
         // https://www.khronos.org/registry/vulkan/specs/1.2-extensions/man/html/vkCmdPushDescriptorSetKHR.html
         // This documentation claims that it's necessary to push immutable samplers.
     } else if message.starts_with("Validation Performance Warning") {
+    } else if message.starts_with("Validation Warning: [ VUID_Undefined ]") {
+        log::warn!("{}\n", message);
     } else {
         panic!("{}\n", message);
     }

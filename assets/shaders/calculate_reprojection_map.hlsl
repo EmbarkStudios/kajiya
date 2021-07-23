@@ -23,7 +23,6 @@ void main(uint2 px: SV_DispatchThreadID) {
         float4 pos_vs = mul(frame_constants.view_constants.clip_to_view, pos_cs);
 
         float4 prev_vs = pos_vs;
-        prev_vs.xyz += float4(velocity_tex[px].xyz, 0).xyz;
         
         float4 prev_cs = mul(frame_constants.view_constants.view_to_clip, prev_vs);
         float4 prev_pcs = mul(frame_constants.view_constants.clip_to_prev_clip, prev_cs);

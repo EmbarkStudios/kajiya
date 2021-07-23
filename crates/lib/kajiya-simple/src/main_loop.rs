@@ -196,8 +196,12 @@ impl SimpleMainLoop {
         )?;
 
         let lazy_cache = LazyCache::create();
-        let world_renderer =
-            WorldRenderer::new(temporal_upscale_extent, &render_backend, &lazy_cache)?;
+        let world_renderer = WorldRenderer::new(
+            render_extent,
+            temporal_upscale_extent,
+            &render_backend,
+            &lazy_cache,
+        )?;
         let ui_renderer = UiRenderer::default();
 
         let rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;

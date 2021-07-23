@@ -29,6 +29,9 @@ use rg::renderer::FrameConstantsLayout;
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 
+#[cfg(feature = "dlss")]
+use crate::renderers::dlss::DlssRenderer;
+
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct FrameConstants {
@@ -146,6 +149,11 @@ pub struct WorldRenderer {
     pub taa: TaaRenderer,
     pub shadow_denoise: ShadowDenoiseRenderer,
 
+    #[cfg(feature = "dlss")]
+    pub dlss: DlssRenderer,
+    #[cfg(feature = "dlss")]
+    pub use_dlss: bool,
+
     pub debug_mode: RenderDebugMode,
     pub debug_shading_mode: usize,
     pub ev_shift: f32,
@@ -196,6 +204,7 @@ fn load_gpu_image_asset(
 
 impl WorldRenderer {
     pub(crate) fn new_empty(
+        #[allow(unused_variables)] render_extent: [u32; 2],
         temporal_upscale_extent: [u32; 2],
         backend: &RenderBackend,
     ) -> anyhow::Result<Self> {
@@ -274,6 +283,9 @@ impl WorldRenderer {
             .device
             .create_ray_tracing_acceleration_scratch_buffer()?;
 
+        #[cfg(feature = "dlss")]
+        let dlss = DlssRenderer::new(backend, render_extent, temporal_upscale_extent);
+
         Ok(Self {
             raster_simple_render_pass,
 
@@ -312,6 +324,11 @@ impl WorldRenderer {
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
+
+            #[cfg(feature = "dlss")]
+            dlss,
+            #[cfg(feature = "dlss")]
+            use_dlss: true,
 
             temporal_upscale_extent,
 
@@ -689,10 +706,20 @@ impl WorldRenderer {
                     [self.frame_idx as usize % self.supersample_offsets.len()];
                 //self.taa.current_supersample_offset = Vec2::ZERO;
 
+                #[cfg(feature = "dlss")]
+                {
+                    self.dlss.current_supersample_offset = self.taa.current_supersample_offset;
+                }
+
                 self.prepare_render_graph_standard(rg, frame_desc)
             }
             RenderMode::Reference => {
                 self.taa.current_supersample_offset = Vec2::ZERO;
+
+                #[cfg(feature = "dlss")]
+                {
+                    self.dlss.current_supersample_offset = self.taa.current_supersample_offset;
+                }
 
                 self.prepare_render_graph_reference(rg, frame_desc)
             }

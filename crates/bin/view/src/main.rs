@@ -327,6 +327,11 @@ fn main() -> anyhow::Result<()> {
                         im_str!("Reflection reservoir resampling"),
                         &mut ctx.world_renderer.rtr.reservoir_resampling,
                     );
+
+                    #[cfg(feature = "dlss")]
+                    {
+                        ui.checkbox(im_str!("Use DLSS"), &mut ctx.world_renderer.use_dlss);
+                    }
                 }
 
                 /*if imgui::CollapsingHeader::new(im_str!("csgi"))

@@ -5,3 +5,5 @@
 *.log
 imgui.ini
 view_state.ron
+nvngx*
+nvsdk*

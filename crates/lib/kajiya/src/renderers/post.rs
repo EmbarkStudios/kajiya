@@ -144,7 +144,7 @@ fn edge_preserving_filter_luminance(
 pub fn post_process(
     rg: &mut RenderGraph,
     input: &rg::Handle<Image>,
-    debug_input: &rg::Handle<Image>,
+    //debug_input: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
     ev_shift: f32,
 ) -> rg::Handle<Image> {
@@ -158,7 +158,7 @@ pub fn post_process(
 
     SimpleRenderPass::new_compute(rg.add_pass("post combine"), "/shaders/post_combine.hlsl")
         .read(input)
-        .read(debug_input)
+        //.read(debug_input)
         .read(&blur_pyramid)
         .read(&rev_blur_pyramid)
         //.read(&blurred_luminance)

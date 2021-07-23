@@ -70,7 +70,7 @@ impl ShadowDenoiseRenderer {
         ));
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("shadow megakernel"),
+            rg.add_pass("shadow temporal"),
             "/shaders/shadow_denoise/megakernel.hlsl",
         )
         .read(&shadow_mask)

@@ -19,6 +19,9 @@ pub mod sky;
 pub mod ssgi;
 pub mod taa;
 
+#[cfg(feature = "dlss")]
+pub mod dlss;
+
 pub struct GbufferDepth {
     pub geometric_normal: rg::Handle<Image>,
     pub gbuffer: rg::Handle<Image>,

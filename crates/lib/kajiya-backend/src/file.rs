@@ -1,6 +1,7 @@
 use anyhow::Context as _;
 use hotwatch::Hotwatch;
 use lazy_static::lazy_static;
+use normpath::PathExt;
 use parking_lot::Mutex;
 use std::{collections::HashMap, fs::File, path::PathBuf};
 use turbosloth::*;
@@ -13,6 +14,7 @@ lazy_static! {
 lazy_static! {
     static ref VFS_MOUNT_POINTS: Mutex<HashMap<String, PathBuf>> = Mutex::new(
         vec![
+            ("/kajiya".to_owned(), PathBuf::from(".")),
             ("/shaders".to_owned(), PathBuf::from("assets/shaders")),
             ("/images".to_owned(), PathBuf::from("assets/images")),
             ("/baked".to_owned(), PathBuf::from("baked"))
@@ -30,6 +32,7 @@ pub fn set_vfs_mount_point(mount_point: impl Into<String>, path: impl Into<PathB
 
 pub fn set_standard_vfs_mount_points(kajiya_path: impl Into<PathBuf>) {
     let kajiya_path = kajiya_path.into();
+    set_vfs_mount_point("/kajiya", &kajiya_path);
     set_vfs_mount_point("/shaders", kajiya_path.join("assets/shaders"));
     set_vfs_mount_point("/images", kajiya_path.join("assets/images"));
 }
@@ -48,6 +51,32 @@ pub fn canonical_path_from_vfs(path: impl Into<PathBuf>) -> anyhow::Result<PathB
                         mounted_path, rel_path
                     )
                 })?);
+        }
+    }
+
+    if path.strip_prefix("/").is_ok() {
+        anyhow::bail!("No vfs mount point for '{:?}'", path);
+    }
+
+    Ok(path)
+}
+
+pub fn normalized_path_from_vfs(path: impl Into<PathBuf>) -> anyhow::Result<PathBuf> {
+    let path = path.into();
+
+    for (mount_point, mounted_path) in VFS_MOUNT_POINTS.lock().iter() {
+        if let Ok(rel_path) = path.strip_prefix(mount_point) {
+            return Ok(mounted_path
+                .join(rel_path)
+                .normalize()
+                .with_context(|| {
+                    format!(
+                        "Mounted parent folder: {:?}. Relative path: {:?}",
+                        mounted_path, rel_path
+                    )
+                })?
+                .as_path()
+                .to_owned());
         }
     }
 

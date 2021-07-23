@@ -154,26 +154,44 @@ impl WorldRenderer {
             self.debug_shading_mode,
         );
 
-        let anti_aliased = self.taa.render(
-            rg,
-            &debug_out_tex,
-            &reprojection_map,
-            &gbuffer_depth.depth,
-            self.temporal_upscale_extent,
-        );
+        #[allow(unused_mut)]
+        let mut anti_aliased = None;
 
-        let motion_blurred = motion_blur(
-            rg,
-            &anti_aliased.color,
-            &gbuffer_depth.depth,
-            &reprojection_map,
-        );
+        #[cfg(feature = "dlss")]
+        if self.use_dlss {
+            anti_aliased = Some(
+                self.dlss
+                    .render(
+                        rg,
+                        &debug_out_tex,
+                        &reprojection_map,
+                        &gbuffer_depth.depth,
+                        self.temporal_upscale_extent,
+                    )
+                    .into(),
+            );
+        }
+
+        let anti_aliased = anti_aliased.unwrap_or_else(|| {
+            self.taa
+                .render(
+                    rg,
+                    &debug_out_tex,
+                    &reprojection_map,
+                    &gbuffer_depth.depth,
+                    self.temporal_upscale_extent,
+                )
+                .color
+        });
+
+        let motion_blurred =
+            motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
 
         let post_processed = post_process(
             rg,
             &motion_blurred,
-            //&anti_aliased.color,
-            &anti_aliased.debug,
+            //&anti_aliased,
+            //            &anti_aliased.debug,
             self.bindless_descriptor_set,
             self.ev_shift,
         );
@@ -214,7 +232,7 @@ impl WorldRenderer {
         let post_processed = post_process(
             rg,
             &accum_img,
-            &accum_img, // hack
+            //&accum_img, // hack
             self.bindless_descriptor_set,
             self.ev_shift,
         );

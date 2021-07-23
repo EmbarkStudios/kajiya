@@ -25,6 +25,7 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
 * Physically-based glare
 * Basic motion blur
 * Contrast-adaptive sharpening
+* DLSS support
 * GLTF mesh loading (no animations yet)
 * A render graph running it all
 
@@ -115,6 +116,27 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 * The voxel GI uses a fixed-size volume around the origin. It will get cascades later.
     * Use `--gi-volume-scale` to change its extent in the `view` app
 * Denoising needs more work (always).
+
+## Using DLSS
+
+DLSS is supported on Nvidia RTX GPUs, and `kajiya` can currently use it when running on Windows.
+
+Nvidia's DLSS EULA prohibits distribution of the DLSS SDK, so you will have to obtain it yourself. The stand-alone SDK currently requires an NVIDIA Developer Program membership, _however_ the Unreal Enigine 5 plugin does not, yet it contains the necessary files.
+
+Therefore, the easiest way to get DLSS into `kajiya` is to [download the UE5 DLSS plugin](https://developer.nvidia.com/dlss-getting-started#ue-version), and extract the necessary files:
+
+* Copy `DLSS/Binaries/ThirdParty/Win64/nvngx_dlss.dll` to the root `kajiya` folder (where this README resides).
+* Copy `DLSS/Source/ThirdParty/NGX` to `crates/lib/ngx_dlss/NGX`
+
+When building `kajiya`, use the `dlss` Cargo feature, and specify temporal upsampling, e.g.:
+
+```
+cargo run --bin view --release --features dlss -- --scene battle --no-debug --temporal-upsampling 1.5 --width 1920 --height 1080
+```
+
+This will run DLSS _Quality_ mode. `--temporal-upsampling 2.0` corresponds to _Performance_.
+
+Please note that while DLSS works well for AAA-style content, it currently struggles with flat colors and smooth gradients. The built-in `kajiya` TAA and its temporal upsampling tends to look better there.
 
 ## Acknowledgments
 
