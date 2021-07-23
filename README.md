@@ -121,12 +121,20 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 
 DLSS is supported on Nvidia RTX GPUs, and `kajiya` can currently use it when running on Windows.
 
+#### SDK
+
 Nvidia's DLSS EULA prohibits distribution of the DLSS SDK, so you will have to obtain it yourself. The stand-alone SDK currently requires an NVIDIA Developer Program membership, _however_ the Unreal Enigine 5 plugin does not, yet it contains the necessary files.
 
 Therefore, the easiest way to get DLSS into `kajiya` is to [download the UE5 DLSS plugin](https://developer.nvidia.com/dlss-getting-started#ue-version), and extract the necessary files:
 
 * Copy `DLSS/Binaries/ThirdParty/Win64/nvngx_dlss.dll` to the root `kajiya` folder (where this README resides).
 * Copy `DLSS/Source/ThirdParty/NGX` to `crates/lib/ngx_dlss/NGX`
+
+#### Rust bindings
+
+Please make sure you can run `bindgen`, which is necessary to generate a Rust binding to the SDK. Here's the official [installation instructions and requirements page](https://rust-lang.github.io/rust-bindgen/requirements.html). If `cargo` complains about `libclang.dll`, it's probably this.
+
+#### Usage
 
 When building `kajiya`, use the `dlss` Cargo feature, and specify temporal upsampling, e.g.:
 
