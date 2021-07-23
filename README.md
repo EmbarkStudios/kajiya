@@ -125,10 +125,10 @@ DLSS is supported on Nvidia RTX GPUs, and `kajiya` can currently use it when run
 
 Nvidia's DLSS EULA prohibits distribution of the DLSS SDK, so you will have to obtain it yourself. The stand-alone SDK currently requires an NVIDIA Developer Program membership, _however_ the Unreal Enigine 5 plugin does not, yet it contains the necessary files.
 
-Therefore, the easiest way to get DLSS into `kajiya` is to [download the UE5 DLSS plugin](https://developer.nvidia.com/dlss-getting-started#ue-version), and extract the necessary files:
+Therefore, the easiest way to get DLSS into `kajiya` is to [download the UE5 DLSS plugin](https://developer.nvidia.com/dlss-getting-started#ue-version), and extract the following:
 
 * Copy `DLSS/Binaries/ThirdParty/Win64/nvngx_dlss.dll` to the root `kajiya` folder (where this README resides).
-* Copy `DLSS/Source/ThirdParty/NGX` to `crates/lib/ngx_dlss/NGX`
+* Copy the entire `DLSS/Source/ThirdParty/NGX` folder to `crates/lib/ngx_dlss/NGX`
 
 #### Rust bindings
 
