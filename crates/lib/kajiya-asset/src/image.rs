@@ -4,9 +4,18 @@ use image::{imageops::FilterType, DynamicImage, GenericImageView as _};
 use kajiya_backend::{ash::vk, file::LoadFile, ImageDesc};
 use turbosloth::*;
 
+#[derive(Clone, Hash)]
 pub struct RawRgba8Image {
     pub data: Vec<u8>,
     pub dimensions: [u32; 2],
+}
+#[async_trait]
+impl LazyWorker for RawRgba8Image {
+    type Output = anyhow::Result<RawRgba8Image>;
+
+    async fn run(self, _ctx: RunContext) -> Self::Output {
+        Ok(self)
+    }
 }
 
 #[derive(Clone, Hash)]

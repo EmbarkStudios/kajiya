@@ -37,7 +37,7 @@ pub struct TexParams {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum MeshMaterialMap {
-    Asset { path: PathBuf, params: TexParams },
+    Asset { id: usize, params: TexParams },
     Placeholder([u8; 4]),
 }
 
@@ -63,6 +63,7 @@ pub struct TriangleMesh {
     pub indices: Vec<u32>,
     pub materials: Vec<MeshMaterial>, // global
     pub maps: Vec<MeshMaterialMap>,   // global
+    pub images: Vec<image::RgbaImage>,
 }
 
 fn iter_gltf_node_tree<F: FnMut(&gltf::scene::Node, Mat4)>(
@@ -86,27 +87,7 @@ fn get_gltf_texture_source(tex: gltf::texture::Texture) -> Option<String> {
     }
 }
 
-fn load_gltf_material(
-    mat: &gltf::material::Material,
-    parent_path: &Path,
-) -> (Vec<MeshMaterialMap>, MeshMaterial) {
-    let make_asset_path = move |path: String| -> PathBuf {
-        let mut asset_name: std::path::PathBuf = parent_path.into();
-        asset_name.pop();
-        asset_name.push(&path);
-        asset_name
-    };
-
-    let make_material_map = |path: String| -> MeshMaterialMap {
-        MeshMaterialMap::Asset {
-            path: make_asset_path(path),
-            params: TexParams {
-                gamma: TexGamma::Linear,
-                use_mips: true,
-            },
-        }
-    };
-
+fn load_gltf_material(mat: &gltf::material::Material) -> (Vec<MeshMaterialMap>, MeshMaterial) {
     const DEFAULT_MAP_TRANSFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
     let mut map_transforms: [[f32; 6]; 4] = [DEFAULT_MAP_TRANSFORM; 4];
 
@@ -132,21 +113,21 @@ fn load_gltf_material(
     let (albedo_map, albedo_map_transform) = mat
         .pbr_metallic_roughness()
         .base_color_texture()
-        .and_then(|tex| {
+        .map(|tex| {
             let transform = texture_transform_to_matrix(tex.texture_transform());
 
-            Some((
-                get_gltf_texture_source(tex.texture()).map(|path: String| -> MeshMaterialMap {
-                    MeshMaterialMap::Asset {
-                        path: make_asset_path(path),
-                        params: TexParams {
-                            gamma: TexGamma::Srgb,
-                            use_mips: true,
-                        },
-                    }
-                })?,
+            let params = TexParams {
+                gamma: TexGamma::Srgb,
+                use_mips: true,
+            };
+
+            (
+                MeshMaterialMap::Asset {
+                    id: tex.texture().index(),
+                    params,
+                },
                 transform,
-            ))
+            )
         })
         .unwrap_or((
             MeshMaterialMap::Placeholder([255, 255, 255, 255]),
@@ -158,17 +139,29 @@ fn load_gltf_material(
     // TODO: add texture transform to the normal map in the `gltf` crate
     let normal_map = mat
         .normal_texture()
-        .and_then(|tex| get_gltf_texture_source(tex.texture()).map(make_material_map))
+        .map(|tex| MeshMaterialMap::Asset {
+            id: tex.texture().index(),
+            params: TexParams {
+                gamma: TexGamma::Linear,
+                use_mips: true,
+            },
+        })
         .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]));
 
     let (spec_map, spec_map_transform) = mat
         .pbr_metallic_roughness()
         .metallic_roughness_texture()
-        .and_then(|tex| {
-            Some((
-                get_gltf_texture_source(tex.texture()).map(make_material_map)?,
+        .map(|tex| {
+            (
+                MeshMaterialMap::Asset {
+                    id: tex.texture().index(),
+                    params: TexParams {
+                        gamma: TexGamma::Linear,
+                        use_mips: true,
+                    },
+                },
                 texture_transform_to_matrix(tex.texture_transform()),
-            ))
+            )
         })
         .unwrap_or((
             MeshMaterialMap::Placeholder([127, 127, 255, 255]),
@@ -180,11 +173,14 @@ fn load_gltf_material(
     let mut emissive_map = MeshMaterialMap::Placeholder([255, 255, 255, 255]);
     if let Some(emissive_texture) = mat.emissive_texture() {
         map_transforms[3] = texture_transform_to_matrix(emissive_texture.texture_transform());
-        if let Some(tex) =
-            get_gltf_texture_source(emissive_texture.texture()).map(make_material_map)
-        {
-            emissive_map = tex;
-        }
+
+        emissive_map = MeshMaterialMap::Asset {
+            id: emissive_texture.texture().index(),
+            params: TexParams {
+                gamma: TexGamma::Linear,
+                use_mips: true,
+            },
+        };
     }
 
     let emissive = mat.emissive_factor();
@@ -231,11 +227,37 @@ impl LazyWorker for LoadGltfScene {
     type Output = anyhow::Result<TriangleMesh>;
 
     async fn run(self, _ctx: RunContext) -> Self::Output {
-        let (gltf, buffers, _imgs) = gltf::import(&self.path)
+        let (gltf, buffers, imgs) = gltf::import(&self.path)
             .with_context(|| format!("Loading GLTF scene from {:?}", self.path))?;
 
+        let images: Vec<_> = imgs
+            .iter()
+            .map(|data| match data.format {
+                gltf::image::Format::R8G8B8A8 => {
+                    image::RgbaImage::from_raw(data.width, data.height, data.pixels.clone())
+                        .unwrap()
+                }
+                gltf::image::Format::R8 => {
+                    let gray_image =
+                        image::GrayImage::from_raw(data.width, data.height, data.pixels.clone())
+                            .unwrap();
+                    image::DynamicImage::ImageLuma8(gray_image).to_rgba8()
+                }
+                gltf::image::Format::R8G8B8 => {
+                    let image =
+                        image::RgbImage::from_raw(data.width, data.height, data.pixels.clone())
+                            .unwrap();
+                    image::DynamicImage::ImageRgb8(image).to_rgba8()
+                }
+                rest => unimplemented!("{:?}", rest),
+            })
+            .collect();
+
         if let Some(scene) = gltf.default_scene() {
-            let mut res: TriangleMesh = TriangleMesh::default();
+            let mut res: TriangleMesh = TriangleMesh {
+                images,
+                ..Default::default()
+            };
 
             let mut process_node = |node: &gltf::scene::Node, xform: Mat4| {
                 if let Some(mesh) = node.mesh() {
@@ -245,8 +267,7 @@ impl LazyWorker for LoadGltfScene {
                         let res_material_index = res.materials.len() as u32;
 
                         {
-                            let (mut maps, mut material) =
-                                load_gltf_material(&prim.material(), &self.path);
+                            let (mut maps, mut material) = load_gltf_material(&prim.material());
 
                             let map_base = res.maps.len() as u32;
                             for id in material.maps.iter_mut() {
@@ -727,10 +748,6 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
         .iter()
         .map(|map| {
             let (image, params) = match map {
-                MeshMaterialMap::Asset { path, params } => (
-                    super::image::LoadImage::new(&path).unwrap().into_lazy(),
-                    *params,
-                ),
                 MeshMaterialMap::Placeholder(values) => (
                     super::image::CreatePlaceholderImage::new(*values).into_lazy(),
                     TexParams {
@@ -738,6 +755,16 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
                         use_mips: false,
                     },
                 ),
+                MeshMaterialMap::Asset { id, params } => {
+                    let image = &mesh.images[*id];
+                    let dimensions = [image.width(), image.height()];
+                    let raw_image = crate::image::RawRgba8Image {
+                        dimensions,
+                        data: image.clone().into_raw(),
+                    }
+                    .into_lazy();
+                    (raw_image, *params)
+                }
             };
 
             crate::image::CreateGpuImage { image, params }.into_lazy()
