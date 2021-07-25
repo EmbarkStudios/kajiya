@@ -230,28 +230,28 @@ impl LazyWorker for LoadGltfScene {
         let (gltf, buffers, imgs) = gltf::import(&self.path)
             .with_context(|| format!("Loading GLTF scene from {:?}", self.path))?;
 
-        let images: Vec<_> = imgs
-            .iter()
-            .map(|data| match data.format {
-                gltf::image::Format::R8G8B8A8 => {
-                    image::RgbaImage::from_raw(data.width, data.height, data.pixels.clone())
-                        .unwrap()
+        let images: Result<Vec<_>, anyhow::Error> = imgs
+            .into_iter()
+            .enumerate()
+            .map(|(idx, data)| {
+                match data.format {
+                    gltf::image::Format::R8G8B8A8 => {
+                        image::RgbaImage::from_raw(data.width, data.height, data.pixels)
+                    }
+                    gltf::image::Format::R8 => {
+                        image::GrayImage::from_raw(data.width, data.height, data.pixels)
+                            .map(|image| image::DynamicImage::ImageLuma8(image).to_rgba8())
+                    }
+                    gltf::image::Format::R8G8B8 => {
+                        image::RgbImage::from_raw(data.width, data.height, data.pixels)
+                            .map(|image| image::DynamicImage::ImageRgb8(image).to_rgba8())
+                    }
+                    format => unimplemented!("Format '{:?}' not yet supported", format),
                 }
-                gltf::image::Format::R8 => {
-                    let gray_image =
-                        image::GrayImage::from_raw(data.width, data.height, data.pixels.clone())
-                            .unwrap();
-                    image::DynamicImage::ImageLuma8(gray_image).to_rgba8()
-                }
-                gltf::image::Format::R8G8B8 => {
-                    let image =
-                        image::RgbImage::from_raw(data.width, data.height, data.pixels.clone())
-                            .unwrap();
-                    image::DynamicImage::ImageRgb8(image).to_rgba8()
-                }
-                rest => unimplemented!("{:?}", rest),
+                .with_context(|| format!("Unable to load image at index {}", idx))
             })
             .collect();
+        let images = images?;
 
         if let Some(scene) = gltf.default_scene() {
             let mut res: TriangleMesh = TriangleMesh {
