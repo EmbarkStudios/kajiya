@@ -159,8 +159,12 @@ impl Device {
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
             vk::KhrDrawIndirectCountFn::name().as_ptr(),
             // DLSS
-            b"VK_NVX_binary_import\0".as_ptr() as *const i8,
-            b"VK_NVX_image_view_handle\0".as_ptr() as *const i8,
+            #[cfg(feature = "dlss")]
+            {
+                b"VK_NVX_binary_import\0".as_ptr() as *const i8
+            },
+            #[cfg(feature = "dlss")]
+            vk::NvxImageViewHandleFn::name().as_ptr(),
             //b"VK_EXT_buffer_device_address\0".as_ptr() as *const i8,
             //b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
         ];
@@ -172,7 +176,6 @@ impl Device {
                     vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
                     vk::KhrDeferredHostOperationsFn::name().as_ptr(), // rt dep
                     vk::KhrBufferDeviceAddressFn::name().as_ptr(),    // rt dep
-                    vk::KhrPipelineLibraryFn::name().as_ptr(),        // rt dep
                     vk::KhrAccelerationStructureFn::name().as_ptr(),
                     vk::KhrRayTracingPipelineFn::name().as_ptr(),
                     //vk::KhrRayQueryFn::name().as_ptr(),
