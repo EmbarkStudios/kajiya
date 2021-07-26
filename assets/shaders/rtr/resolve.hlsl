@@ -306,11 +306,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // of the center pixel, and blowing it up.
                 //
                 // TODO: actually seems to distort the lobe, so maybe nuke it.
-                if (sample_i > 0)
+                //if (sample_i > 0)
                 {
                     // TODO: this borks things when using reservoir exchange because
                     // the PDFs in neighbor_sampling_pdf are reservoir PDFs and not BRDF PDFs
-                    mis_weight = neighbor_sampling_pdf / (spec.pdf + neighbor_sampling_pdf);
+                    //mis_weight = neighbor_sampling_pdf / (spec.pdf + neighbor_sampling_pdf);
 
                     // YOLO fix; only valid when using exhange
                     //mis_weight = packed0.w / (spec.pdf * to_psa_metric + packed0.w);

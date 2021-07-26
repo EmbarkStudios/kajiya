@@ -265,7 +265,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                         / center_to_hit_dist2;
                 #endif
 
-                float neighbor_sampling_pdf_psa = neighbor_sampling_pdf;
+                const float neighbor_sampling_pdf_psa = neighbor_sampling_pdf;
                 neighbor_sampling_pdf /= to_psa_metric;
 
                 if (spec_weight > 0 && rejection_bias > 0) {
@@ -334,7 +334,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
 //            hit0_output_tex[px] = float4(reservoir_value0.rgb, reservoir_rate / avg_reservoir_rate);
     //hit0_output_tex[px] = float4(reservoir_value0.rgb / (reservoir_rate / avg_reservoir_rate), reservoir_rate > 0 ? 1 : 0);
     //hit0_output_tex[px] = float4(reservoir_value0.rgb, reservoir_rate > 0 ? (picked_brdf_val / avg_brdf_val) : 0);
-    hit0_output_tex[px] = float4(reservoir_value0.rgb, reservoir_pdf);
+
+    hit0_output_tex[px] = float4(
+        reservoir_value0.rgb,
+        // Make sure it doesn't get clipped
+        reservoir_pdf > 0 ? clamp(reservoir_pdf, FP16_MIN_POS, FP16_MAX) : 0
+    );
 
     //hit1_output_tex[px] = float4(reservoir_value1.rgb, reservoir_pdf);
     hit1_output_tex[px] = float4(reservoir_value1.rgb, reservoir_pdf * (reservoir_rate / reservoir_rate_sum));
