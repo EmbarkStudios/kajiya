@@ -43,7 +43,7 @@ GbufferDataPacked GbufferData::pack() {
     res.x = asfloat(pack_color_888(albedo));
     res.y = pack_normal_11_10_11(normal);
 
-    float2 roughness_metalness = float2(roughness * roughness, metalness);
+    float2 roughness_metalness = float2(sqrt(roughness), metalness);
     res.z = asfloat(pack_2x16f_uint(roughness_metalness));
     res.w = asfloat(float3_to_rgb9e5(emissive));
 
@@ -58,7 +58,7 @@ GbufferData GbufferDataPacked::unpack() {
     res.normal = unpack_normal();
 
     float2 roughness_metalness = unpack_2x16f_uint(data0.z);
-    res.roughness = sqrt(roughness_metalness.x);
+    res.roughness = roughness_metalness.x * roughness_metalness.x;
     res.metalness = roughness_metalness.y;
     res.emissive = rgb9e5_to_float3(data0.w);
 

@@ -52,9 +52,9 @@ PsOut main(PsIn ps) {
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     const float4 metalness_roughness = spec_tex.SampleBias(sampler_llr, spec_uv, -0.5);
+    float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
 
-    float roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
-    //roughness = 0.01;
+    float roughness = clamp(perceptual_roughness * perceptual_roughness, 1e-3, 1.0);
     float metalness = metalness_roughness.z * material.metalness_factor;//lerp(metalness_roughness.z, 1.0, material.metalness_factor);
 
     //albedo *= lerp(0.75, 1.0, metalness);

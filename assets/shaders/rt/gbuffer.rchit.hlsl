@@ -92,6 +92,9 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     float spec_lod = compute_texture_lod(spec_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, spec_uv, spec_lod);
+    float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
+
+    float roughness = clamp(perceptual_roughness * perceptual_roughness, 1e-3, 1.0);
     float metalness = metalness_roughness.z * material.metalness_factor;
 
     //albedo *= lerp(0.75, 1.0, metalness);
@@ -146,7 +149,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
-    gbuffer.roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
+    gbuffer.roughness = roughness;
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;

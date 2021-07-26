@@ -170,10 +170,14 @@ fn load_gltf_material(
                 texture_transform_to_matrix(tex.texture_transform()),
             ))
         })
-        .unwrap_or((
-            MeshMaterialMap::Placeholder([127, 127, 255, 255]),
-            DEFAULT_MAP_TRANSFORM,
-        ));
+        .unwrap_or({
+            let roughness = 255;
+            let metalness = 255;
+            (
+                MeshMaterialMap::Placeholder([127, roughness, metalness, 255]),
+                DEFAULT_MAP_TRANSFORM,
+            )
+        });
 
     map_transforms[2] = spec_map_transform;
 
