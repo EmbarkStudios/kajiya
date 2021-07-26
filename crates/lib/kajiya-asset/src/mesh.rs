@@ -23,6 +23,8 @@ use std::{
 };
 use turbosloth::*;
 
+use crate::image::ImageSource;
+
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub enum TexGamma {
     Linear,
@@ -37,7 +39,10 @@ pub struct TexParams {
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum MeshMaterialMap {
-    Asset { path: PathBuf, params: TexParams },
+    Image {
+        source: ImageSource,
+        params: TexParams,
+    },
     Placeholder([u8; 4]),
 }
 
@@ -63,6 +68,7 @@ pub struct TriangleMesh {
     pub indices: Vec<u32>,
     pub materials: Vec<MeshMaterial>, // global
     pub maps: Vec<MeshMaterialMap>,   // global
+    pub images: Vec<ImageSource>,
 }
 
 fn iter_gltf_node_tree<F: FnMut(&gltf::scene::Node, Mat4)>(
@@ -88,25 +94,8 @@ fn get_gltf_texture_source(tex: gltf::texture::Texture) -> Option<String> {
 
 fn load_gltf_material(
     mat: &gltf::material::Material,
-    parent_path: &Path,
+    document_images: &[ImageSource],
 ) -> (Vec<MeshMaterialMap>, MeshMaterial) {
-    let make_asset_path = move |path: String| -> PathBuf {
-        let mut asset_name: std::path::PathBuf = parent_path.into();
-        asset_name.pop();
-        asset_name.push(&path);
-        asset_name
-    };
-
-    let make_material_map = |path: String| -> MeshMaterialMap {
-        MeshMaterialMap::Asset {
-            path: make_asset_path(path),
-            params: TexParams {
-                gamma: TexGamma::Linear,
-                use_mips: true,
-            },
-        }
-    };
-
     const DEFAULT_MAP_TRANSFORM: [f32; 6] = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
     let mut map_transforms: [[f32; 6]; 4] = [DEFAULT_MAP_TRANSFORM; 4];
 
@@ -136,15 +125,13 @@ fn load_gltf_material(
             let transform = texture_transform_to_matrix(tex.texture_transform());
 
             Some((
-                get_gltf_texture_source(tex.texture()).map(|path: String| -> MeshMaterialMap {
-                    MeshMaterialMap::Asset {
-                        path: make_asset_path(path),
-                        params: TexParams {
-                            gamma: TexGamma::Srgb,
-                            use_mips: true,
-                        },
-                    }
-                })?,
+                MeshMaterialMap::Image {
+                    source: document_images[tex.texture().source().index()].clone(),
+                    params: TexParams {
+                        gamma: TexGamma::Srgb,
+                        use_mips: true,
+                    },
+                },
                 transform,
             ))
         })
@@ -158,7 +145,13 @@ fn load_gltf_material(
     // TODO: add texture transform to the normal map in the `gltf` crate
     let normal_map = mat
         .normal_texture()
-        .and_then(|tex| get_gltf_texture_source(tex.texture()).map(make_material_map))
+        .map(|tex| MeshMaterialMap::Image {
+            source: document_images[tex.texture().source().index()].clone(),
+            params: TexParams {
+                gamma: TexGamma::Linear,
+                use_mips: true,
+            },
+        })
         .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]));
 
     let (spec_map, spec_map_transform) = mat
@@ -166,7 +159,13 @@ fn load_gltf_material(
         .metallic_roughness_texture()
         .and_then(|tex| {
             Some((
-                get_gltf_texture_source(tex.texture()).map(make_material_map)?,
+                MeshMaterialMap::Image {
+                    source: document_images[tex.texture().source().index()].clone(),
+                    params: TexParams {
+                        gamma: TexGamma::Linear,
+                        use_mips: true,
+                    },
+                },
                 texture_transform_to_matrix(tex.texture_transform()),
             ))
         })
@@ -182,12 +181,14 @@ fn load_gltf_material(
     map_transforms[2] = spec_map_transform;
 
     let mut emissive_map = MeshMaterialMap::Placeholder([255, 255, 255, 255]);
-    if let Some(emissive_texture) = mat.emissive_texture() {
-        map_transforms[3] = texture_transform_to_matrix(emissive_texture.texture_transform());
-        if let Some(tex) =
-            get_gltf_texture_source(emissive_texture.texture()).map(make_material_map)
-        {
-            emissive_map = tex;
+    if let Some(tex) = mat.emissive_texture() {
+        map_transforms[3] = texture_transform_to_matrix(tex.texture_transform());
+        emissive_map = MeshMaterialMap::Image {
+            source: document_images[tex.texture().source().index()].clone(),
+            params: TexParams {
+                gamma: TexGamma::Linear,
+                use_mips: true,
+            },
         }
     }
 
@@ -235,7 +236,7 @@ impl LazyWorker for LoadGltfScene {
     type Output = anyhow::Result<TriangleMesh>;
 
     async fn run(self, _ctx: RunContext) -> Self::Output {
-        let (gltf, buffers, _imgs) = gltf::import(&self.path)
+        let (gltf, buffers, imgs) = crate::import_gltf::import(&self.path)
             .with_context(|| format!("Loading GLTF scene from {:?}", self.path))?;
 
         if let Some(scene) = gltf.default_scene() {
@@ -250,7 +251,7 @@ impl LazyWorker for LoadGltfScene {
 
                         {
                             let (mut maps, mut material) =
-                                load_gltf_material(&prim.material(), &self.path);
+                                load_gltf_material(&prim.material(), imgs.as_slice());
 
                             let map_base = res.maps.len() as u32;
                             for id in material.maps.iter_mut() {
@@ -446,6 +447,10 @@ pub fn flatten_plain_field<T: Copy + Sized>(writer: &mut impl std::io::Write, da
         .unwrap();
 }
 
+pub fn flatten_bytes(writer: &mut impl std::io::Write, data: &[u8]) {
+    writer.write_all(data).unwrap();
+}
+
 pub struct DeferredBlob {
     pub fixup_addr: usize, // offset within parent
     pub nested: FlattenCtx,
@@ -555,6 +560,23 @@ macro_rules! def_asset {
         for item in $field.iter() {
             def_asset!(@flatten &mut nested; item; $($type)+ );
         }
+        $output.deferred.push(DeferredBlob {
+            fixup_addr,
+            nested,
+        });
+    };
+
+    // Bytes
+    (@proto_ty Bytes) => {
+        bytes::Bytes
+    };
+    (@flat_ty Bytes) => {
+        FlatVec<u8>
+    };
+    (@flatten $output:expr; $field:expr; Bytes) => {
+        let fixup_addr = flatten_vec_header(&mut $output.bytes, $field.len());
+        let mut nested = FlattenCtx::default();
+        flatten_bytes(&mut $output.bytes, $field);
         $output.deferred.push(DeferredBlob {
             fixup_addr,
             nested,
@@ -731,8 +753,8 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
         .iter()
         .map(|map| {
             let (image, params) = match map {
-                MeshMaterialMap::Asset { path, params } => (
-                    super::image::LoadImage::new(&path).unwrap().into_lazy(),
+                MeshMaterialMap::Image { source, params } => (
+                    super::image::LoadImage::new(source).unwrap().into_lazy(),
                     *params,
                 ),
                 MeshMaterialMap::Placeholder(values) => (

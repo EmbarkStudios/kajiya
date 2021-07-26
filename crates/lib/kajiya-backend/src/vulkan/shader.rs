@@ -8,6 +8,7 @@ use crate::{chunky_list::TempList, shader_compiler::get_cs_local_size_from_spirv
 use arrayvec::ArrayVec;
 use ash::{version::DeviceV1_0, vk};
 use byte_slice_cast::AsSliceOf as _;
+use bytes::Bytes;
 use derive_builder::Builder;
 use parking_lot::Mutex;
 use std::{
@@ -768,13 +769,13 @@ impl<ShaderCode> PipelineShader<ShaderCode> {
 
 pub fn create_raster_pipeline(
     device: &Device,
-    shaders: &[PipelineShader<&[u8]>],
+    shaders: &[PipelineShader<Bytes>],
     desc: &RasterPipelineDesc,
 ) -> anyhow::Result<RasterPipeline> {
     let stage_layouts = shaders
         .iter()
         .map(|desc| {
-            rspirv_reflect::Reflection::new_from_spirv(desc.code)
+            rspirv_reflect::Reflection::new_from_spirv(&desc.code)
                 .unwrap()
                 .get_descriptor_sets()
                 .unwrap()

@@ -13,6 +13,7 @@ arrayvec = "0.5"
 ash = "0.32"
 ash-window = "0.6"
 byte-slice-cast = "0.3"
+bytes = "1.0"
 derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 futures = "0.3"

@@ -15,6 +15,7 @@ use ash::{
     vk,
 };
 use byte_slice_cast::AsSliceOf;
+use bytes::Bytes;
 use glam::{Mat3, Vec3};
 use parking_lot::Mutex;
 
@@ -698,13 +699,13 @@ impl RayTracingPipelineDesc {
 
 pub fn create_ray_tracing_pipeline(
     device: &Device,
-    shaders: &[PipelineShader<&[u8]>],
+    shaders: &[PipelineShader<Bytes>],
     desc: &RayTracingPipelineDesc,
 ) -> anyhow::Result<RayTracingPipeline> {
     let stage_layouts = shaders
         .iter()
         .map(|desc| {
-            rspirv_reflect::Reflection::new_from_spirv(desc.code)
+            rspirv_reflect::Reflection::new_from_spirv(&desc.code)
                 .unwrap_or_else(|err| panic!("Failed compiling shader {:?}:\n{:?}", desc.desc, err))
                 .get_descriptor_sets()
                 .unwrap()
@@ -742,7 +743,7 @@ pub fn create_ray_tracing_pipeline(
         let mut hit_entry_count = 0;
 
         let create_shader_module =
-            |desc: &PipelineShader<&[u8]>| -> (ash::vk::ShaderModule, String) {
+            |desc: &PipelineShader<Bytes>| -> (ash::vk::ShaderModule, String) {
                 let shader_info = vk::ShaderModuleCreateInfo::builder()
                     .code(desc.code.as_slice_of::<u32>().unwrap());
 

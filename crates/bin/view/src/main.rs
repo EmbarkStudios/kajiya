@@ -90,9 +90,8 @@ fn main() -> anyhow::Result<()> {
     camera.fov = 35.0 * 9.0 / 16.0;
     camera.look_at(Vec3::new(0.0, 0.75, 0.0));*/
 
-    let lens = CameraLens {
+    let mut lens = CameraLens {
         aspect_ratio: kajiya.window_aspect_ratio(),
-        //vertical_fov: 12.0,
         ..Default::default()
     };
 
@@ -317,6 +316,11 @@ fn main() -> anyhow::Result<()> {
                         .range(0.0..=20.0)
                         .speed(0.1)
                         .build(&ui, emissive_multiplier);
+
+                    imgui::Drag::<f32>::new(im_str!("Field of view"))
+                        .range(1.0..=120.0)
+                        .speed(1.0)
+                        .build(&ui, &mut lens.vertical_fov);
 
                     imgui::Drag::<f32>::new(im_str!("Sun size"))
                         .range(0.0..=10.0)

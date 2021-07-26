@@ -254,10 +254,14 @@ name = "bake"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-channel",
+ "async-executor",
+ "easy-parallel",
  "futures",
  "glam",
  "kajiya-asset",
  "kajiya-backend",
+ "num_cpus",
  "smol",
  "structopt",
  "turbosloth",
@@ -359,6 +363,12 @@ name = "byteorder"
 version = "1.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
+
+[[package]]
+name = "bytes"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b700ce4376041dcd0a327fd0097c41095743c4c8af8887265942faf1100bd040"
 
 [[package]]
 name = "cache-padded"
@@ -1291,7 +1301,9 @@ name = "kajiya-asset"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "base64 0.12.3",
  "byteorder",
+ "bytes",
  "glam",
  "gltf",
  "image",
@@ -1299,6 +1311,7 @@ dependencies = [
  "log",
  "serde",
  "turbosloth",
+ "urlencoding",
 ]
 
 [[package]]
@@ -1310,6 +1323,7 @@ dependencies = [
  "ash",
  "ash-window",
  "byte-slice-cast",
+ "bytes",
  "derive_builder",
  "failure",
  "futures",
@@ -1732,6 +1746,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a64b1ec5cda2586e284722486d802acf1f7dbdc623e2bfc57e65ca1cd099290"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "num_cpus"
+version = "1.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
+dependencies = [
+ "hermit-abi",
+ "libc",
 ]
 
 [[package]]
@@ -2386,6 +2410,12 @@ name = "unicode-xid"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7fe0bb3479651439c9112f72b6c505038574c9fbb575ed1bf3b797fa39dd564"
+
+[[package]]
+name = "urlencoding"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "68b90931029ab9b034b300b797048cf23723400aa757e8a2bfb9d748102f9821"
 
 [[package]]
 name = "vec-arena"

@@ -48,7 +48,7 @@ impl LazyWorker for UploadGpuImage {
                 image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
                     src.dimensions[0],
                     src.dimensions[1],
-                    src.data.clone(),
+                    src.data.to_vec(),
                 )
                 .unwrap(),
             );

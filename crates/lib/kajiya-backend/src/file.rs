@@ -1,4 +1,5 @@
 use anyhow::Context as _;
+use bytes::Bytes;
 use hotwatch::Hotwatch;
 use lazy_static::lazy_static;
 use normpath::PathExt;
@@ -101,7 +102,7 @@ impl LoadFile {
 
 #[async_trait]
 impl LazyWorker for LoadFile {
-    type Output = anyhow::Result<Vec<u8>>;
+    type Output = anyhow::Result<Bytes>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
         let invalidation_trigger = ctx.get_invalidation_trigger();
@@ -119,7 +120,7 @@ impl LazyWorker for LoadFile {
         std::io::Read::read_to_end(&mut File::open(&self.path)?, &mut buffer)
             .with_context(|| format!("LazyWorker: trying to read {:?}", self.path))?;
 
-        Ok(buffer)
+        Ok(Bytes::from(buffer))
     }
 
     fn debug_description(&self) -> Option<std::borrow::Cow<'static, str>> {

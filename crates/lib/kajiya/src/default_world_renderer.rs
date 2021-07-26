@@ -23,7 +23,8 @@ impl WorldRenderer {
         world_renderer.add_image_lut(crate::lut_renderers::BrdfFgLutComputer, 0);
 
         {
-            let image = LoadImage::new("/images/bluenoise/256_256/LDR_RGBA_0.png")?.into_lazy();
+            let image =
+                LoadImage::from_path("/images/bluenoise/256_256/LDR_RGBA_0.png")?.into_lazy();
             let blue_noise_img = smol::block_on(
                 UploadGpuImage {
                     image,

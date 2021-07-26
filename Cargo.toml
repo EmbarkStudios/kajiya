@@ -18,3 +18,6 @@ members = [
 # Official ray-tracing extensions
 rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 spirv_headers = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
+
+[profile.release]
+debug = true

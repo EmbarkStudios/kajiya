@@ -317,7 +317,7 @@ impl PipelineCache {
                             .shaders
                             .iter()
                             .map(|shader| PipelineShader {
-                                code: shader.code.spirv.as_slice(),
+                                code: shader.code.spirv.clone(),
                                 desc: shader.desc.clone(),
                             })
                             .collect::<Vec<_>>();
@@ -335,7 +335,7 @@ impl PipelineCache {
                             .shaders
                             .iter()
                             .map(|shader| PipelineShader {
-                                code: shader.code.spirv.as_slice(),
+                                code: shader.code.spirv.clone(),
                                 desc: shader.desc.clone(),
                             })
                             .collect::<Vec<_>>();
