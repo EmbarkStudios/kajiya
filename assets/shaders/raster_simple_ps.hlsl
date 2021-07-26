@@ -42,7 +42,12 @@ PsOut main(PsIn ps) {
     float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
-    float3 albedo = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
+    float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5);
+    if (albedo_texel.a < 0.5) {
+        discard;
+    }
+
+    float3 albedo = albedo_texel.xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
 
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
