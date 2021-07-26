@@ -46,4 +46,4 @@ easy-parallel = "3.1.0"
 
 [features]
 default = []
-dlss = [ "ngx_dlss" ]
+dlss = [ "ngx_dlss", "kajiya-backend/dlss" ]

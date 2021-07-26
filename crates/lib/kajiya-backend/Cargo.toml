@@ -38,3 +38,4 @@ vk-sync = { git = "https://github.com/zedrian/vk-sync-rs.git", rev = "e28c05d" }
 default = ["ray-tracing"]
 #default = []
 ray-tracing = []
+dlss = []
