@@ -130,7 +130,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
             w_sum = 1;
         #endif
     } else {
-        result = 0.0.xxxx;
+        output_tex[px] = 0;
+        return;
     }
 
 #if 0
