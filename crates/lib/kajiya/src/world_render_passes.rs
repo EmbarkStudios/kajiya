@@ -113,16 +113,6 @@ impl WorldRenderer {
             sun_shadow_mask.into()
         };
 
-        let rtr = self.rtr.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &csgi_volume,
-        );
-
         let rtdgi = self.rtdgi.render(
             rg,
             &gbuffer_depth,
@@ -133,6 +123,36 @@ impl WorldRenderer {
             &csgi_volume,
             &ssgi_tex,
         );
+
+        // TODO: don't iter over all the things
+        let any_triangle_lights = self
+            .instances
+            .iter()
+            .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
+
+        let mut rtr = self.rtr.trace(
+            rg,
+            &gbuffer_depth,
+            &reprojection_map,
+            &sky_cube,
+            self.bindless_descriptor_set,
+            &tlas,
+            &csgi_volume,
+            &rtdgi,
+        );
+
+        if any_triangle_lights {
+            // Render specular lighting into the RTR image so they can be jointly filtered
+            self.lighting.render_specular(
+                &mut rtr.resolved_tex,
+                rg,
+                &gbuffer_depth,
+                self.bindless_descriptor_set,
+                &tlas,
+            );
+        }
+
+        let rtr = rtr.filter_temporal(rg, &gbuffer_depth, &reprojection_map);
 
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(
             vk::Format::R16G16B16A16_SFLOAT,
@@ -184,12 +204,16 @@ impl WorldRenderer {
                 .color
         });
 
-        let motion_blurred =
+        let mut final_post_input =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
+
+        if self.debug_mode == RenderDebugMode::CsgiRadiance {
+            csgi_volume.fullscreen_debug_radiance(rg, &mut final_post_input);
+        }
 
         let post_processed = post_process(
             rg,
-            &motion_blurred,
+            &final_post_input,
             //&anti_aliased,
             //            &anti_aliased.debug,
             self.bindless_descriptor_set,

@@ -2,6 +2,7 @@
 #include "color.hlsl"
 
 #define LAYERED_BRDF_FORCE_DIFFUSE_ONLY 0
+#define LAYERED_BRDF_FORCE_SPECULAR_ONLY 0
 
 // Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo
 // is spread between the specular and diffuse layers. Scaling both the specular
@@ -70,6 +71,11 @@ struct LayeredBrdf {
         #endif
 
         const BrdfValue spec = specular_brdf.evaluate(wo, wi);
+
+        #if LAYERED_BRDF_FORCE_SPECULAR_ONLY
+            return spec.value;
+        #endif
+
         return (
             spec.value * energy_preservation.preintegrated_reflection_mult +
             diff.value * spec.transmission_fraction
@@ -89,6 +95,10 @@ struct LayeredBrdf {
 
         const BrdfValue spec = specular_brdf.evaluate(wo, wi);
 
+        #if LAYERED_BRDF_FORCE_SPECULAR_ONLY
+            return spec.value;
+        #endif
+
         // TODO: multi-scattering on the interface can secondary lobes away from
         // the evaluated direction, which is particularly apparent for directional lights.
         // In the latter case, the following term works better.
@@ -107,6 +117,10 @@ struct LayeredBrdf {
     BrdfSample sample(float3 wo, float3 urand) {
         #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
             return diffuse_brdf.sample(wo, urand.xy);
+        #endif
+
+        #if LAYERED_BRDF_FORCE_SPECULAR_ONLY
+            return specular_brdf.sample(wo, urand.xy);
         #endif
 
         BrdfSample brdf_sample;

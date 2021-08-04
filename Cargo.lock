@@ -738,7 +738,7 @@ dependencies = [
 [[package]]
 name = "dolly"
 version = "0.1.0"
-source = "git+https://github.com/h3r2tic/dolly.git#c75053a3da520e0a478c767d8911434d6b195e8f"
+source = "git+https://github.com/h3r2tic/dolly.git#810375e93b4afe6981d6e9eda594e152b37832af"
 dependencies = [
  "glam",
 ]

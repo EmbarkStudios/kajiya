@@ -10,6 +10,13 @@
 
 [numthreads(8, 8, 1)]
 void main(in int2 px : SV_DispatchThreadID) {
-    int2 src_px = int2(((px + 0.25) / output_tex_size.xy) * input_tex_size.xy);
+    uint2 hi_px_subpixels[4] = {
+        uint2(0, 0),
+        uint2(1, 1),
+        uint2(1, 0),
+        uint2(0, 1),
+    };
+    const int2 src_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+
 	output_tex[px] = input_tex[src_px];
 }

@@ -1,6 +1,8 @@
 #ifndef HASH_HLSL
 #define HASH_HLSL
 
+#include "math_const.hlsl"
+
 uint hash1(uint x) {
 	x += (x << 10u);
 	x ^= (x >>  6u);
@@ -36,6 +38,10 @@ uint hash3(uint3 v) {
 	return hash_combine2(v.x, hash2(v.yz));
 }
 
+uint hash4(uint4 v) {
+	return hash_combine2(v.x, hash3(v.yzw));
+}
+
 float uint_to_u01_float(uint h) {
 	static const uint mantissaMask = 0x007FFFFFu;
 	static const uint one = 0x3F800000u;
@@ -45,19 +51,6 @@ float uint_to_u01_float(uint h) {
 
 	float  r2 = asfloat( h );
 	return r2 - 1.0;
-}
-
-float radical_inverse_vdc(uint bits) {
-    bits = (bits << 16u) | (bits >> 16u);
-    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
-    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
-    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
-}
-
-float2 hammersley(uint i, uint n) {
-    return float2(float(i + 1) / n, radical_inverse_vdc(i + 1));
 }
 
 #endif 

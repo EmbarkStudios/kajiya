@@ -185,6 +185,10 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                             .execution_params
                             .frame_constants_layout
                             .instance_dynamic_parameters_offset,
+                        self.resources
+                            .execution_params
+                            .frame_constants_layout
+                            .triangle_lights_offset,
                     ],
                 );
             }

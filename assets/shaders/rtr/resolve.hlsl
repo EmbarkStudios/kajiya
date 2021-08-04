@@ -7,6 +7,7 @@
 #include "../inc/layered_brdf.hlsl"
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
+#include "../inc/blue_noise.hlsl"
 #include "rtr_settings.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -18,9 +19,10 @@
 [[vk::binding(6)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(7)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(8)]] Texture2D<float> half_depth_tex;
-[[vk::binding(9)]] RWTexture2D<float4> output_tex;
-[[vk::binding(10)]] RWTexture2D<float> ray_len_out_tex;
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(9)]] Texture2D<float2> ray_len_history_tex;
+[[vk::binding(10)]] RWTexture2D<float4> output_tex;
+[[vk::binding(11)]] RWTexture2D<float2> ray_len_output_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
@@ -56,11 +58,30 @@ bool is_wave_alive(uint mask, uint idx) {
     return (mask & (1u << idx)) != 0;
 }
 
+// Get tangent vectors for the basis for specular filtering.
+// Based on "Fast Denoising with Self Stabilizing Recurrent Blurs" by Dmitry Zhdan
+void get_specular_filter_kernel_basis(float3 v, float3 n, float roughness, float scale, out float3 t1, out float3 t2) {
+    float3 dominant = specular_dominant_direction(n, v, roughness);
+    float3 reflected = reflect(-dominant, n);
+
+    t1 = normalize(cross(n, reflected)) * scale;
+    t2 = cross(reflected, t1);
+}
+
+// Encode ray length in a space which heavily favors short ones.
+// For temporal averaging of distance to ray hits.
+float squish_ray_len(float len, float squish_strength) {
+    return exp2(-clamp(squish_strength * len, 0, 100));
+}
+
+// Ditto, decode.
+float unsquish_ray_len(float len, float squish_strength) {
+    return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
+}
+
 [numthreads(8, 8, 1)]
-void main(uint2 px : SV_DispatchThreadID) {
-    uint2 orig_px = px;
-    //px &= ~1;
-    //px |= 1;
+void main(const uint2 px : SV_DispatchThreadID) {
+    const uint2 half_px = px / 2;
 
     const float2 uv = get_uv(px, output_tex_size);
     const float depth = depth_tex[px];
@@ -71,8 +92,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     #if !BORROW_SAMPLES && SHORT_CIRCUIT_NO_BORROW_SAMPLES
-        output_tex[px] = float4(hit0_tex[px / 2].rgb, 0.0);
-        ray_len_out_tex[px] = 1;
+        output_tex[px] = float4(hit0_tex[half_px].rgb, 0.0);
+        ray_len_output_tex[px] = 1;
         return;
     #endif
 
@@ -82,7 +103,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     
     // Clamp to fix moire on mirror-like surfaces
-    gbuffer.roughness = max(gbuffer.roughness, 3e-4);
+    gbuffer.roughness = max(gbuffer.roughness, RTR_ROUGHNESS_CLAMP);
 
     const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
     float3 wo = mul(-normalize(view_ray_context.ray_dir_ws()), tangent_to_world);
@@ -110,11 +131,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Project lobe footprint onto the reflector, and find the desired convolution size
     #if RTR_RAY_HIT_STORED_AS_POSITION
-        const float surf_to_hit_dist = length(hit1_tex[px / 2].xyz - view_ray_context.ray_hit_vs());
+        const float surf_to_hit_dist = length(hit1_tex[half_px].xyz - view_ray_context.ray_hit_vs());
     #else
-        const float surf_to_hit_dist = length(hit1_tex[px / 2].xyz);
+        const float surf_to_hit_dist = length(hit1_tex[half_px].xyz);
     #endif
-    const float eye_to_surf_dist = -view_ray_context.ray_hit_vs().z;
+    const float eye_to_surf_dist = length(view_ray_context.ray_hit_vs());
     const float filter_spread = surf_to_hit_dist / (surf_to_hit_dist + eye_to_surf_dist);
 
     // Reduce size estimate variance by shrinking it across neighbors
@@ -129,6 +150,15 @@ void main(uint2 px : SV_DispatchThreadID) {
         float ex2 = history.w;
         history_error = abs(ex * ex - ex2) / max(1e-8, ex);
     }
+
+    const float ray_squish_strength = 4;
+
+    const float ray_len_avg = unsquish_ray_len(lerp(
+        squish_ray_len(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_strength),
+        squish_ray_len(surf_to_hit_dist, ray_squish_strength),
+        0.1),ray_squish_strength);
+    //const float ray_len_avg = unsquish_ray_len(ray_len_avg_squished);
+
     //history_error = lerp(2.0, history_error, reprojection_params.z);
 
     /*const uint wave_mask = WaveActiveBallot(true).x;
@@ -144,8 +174,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     //const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
     //sample_count = WaveActiveMax(sample_count);
-    //const uint sample_count = BORROW_SAMPLES ? 16 : 1;
-    const uint sample_count = BORROW_SAMPLES ? clamp(error_adjusted_filter_size * 128, 6, 16) : 1;
+    const uint sample_count = BORROW_SAMPLES ? 8 : 1;
+    //const uint sample_count = BORROW_SAMPLES ? clamp(error_adjusted_filter_size * 128, 6, 16) : 1;
 
     // Choose one of a few pre-baked sample sets based on the footprint
     const uint filter_idx = uint(clamp(error_adjusted_filter_size * 8, 0, 7));
@@ -162,22 +192,91 @@ void main(uint2 px : SV_DispatchThreadID) {
     float ex = 0.0;
     float ex2 = 0.0;
 
-    const float3 normal_vs = world_to_view(gbuffer.normal);
+    const float3 normal_vs = direction_world_to_view(gbuffer.normal);
 
-    //for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+    static const float GOLDEN_ANGLE = 2.39996323;
+
+    // The footprint of our kernel increases with roughness, and scales with distance.
+    // The latter is a simple relationship of distance to camera and distance to hit point,
+    // and for the roughness factor we can bound a cone.
+    //
+    // According to 4-9-3-DistanceBasedRoughnessLobeBounding.nb
+    // in "Moving Frostbite to PBR" by Seb and Charles, the cutoff angle tangent should be:
+    // sqrt(energy_frac / (1.0 - energy_frac)) * roughness
+    // That doesn't work however, resulting in a kernel which grows too slowly with
+    // increasing roughness. Unclear why -- related to the cone being derived
+    // for the NDF which exists in half-angle space?
+    //
+    // What does work however is a square root relationship (constants arbitrary):
+    const float tan_theta = sqrt(gbuffer.roughness) * 0.1;
+    
+    const float kernel_size_vs = ray_len_avg / (ray_len_avg + eye_to_surf_dist);
+    float kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
+    //kernel_size_ws += 0.05 * history_error;
+    kernel_size_ws *= tan_theta;
+
+    // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
+    // TODO: use pixels maybe
+    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, 0.001, 0.01) * eye_to_surf_dist;
+    
+    float3 kernel_t1, kernel_t2;
+    get_specular_filter_kernel_basis(
+        -normalize(view_ray_context.ray_dir_ws()),
+        gbuffer.normal,
+        gbuffer.roughness,
+        kernel_size_ws,
+        kernel_t1, kernel_t2);
+
+    // Offset to avoid correlation with ray generation
+    float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
+
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+    //for (uint sample_i = 7; sample_i < 8; ++sample_i) {
     //for (uint sample_i_ = 0; sample_i_ < 8; ++sample_i_) { uint sample_i = sample_i_ == 0 ? 0 : sample_i_ + 8;
+
+        #if 0
+            // TODO: precalculate temporal variants
+            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+        #elif 0
+            int2 sample_offset; {
+                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+                float radius_inc = lerp(0.333, 1.0, saturate(error_adjusted_filter_size / 8));
+                float radius = 1.5 + float(sample_i) * radius_inc;
+                sample_offset = float2(cos(ang), sin(ang)) * radius;
+            }
+        #else
+            int2 sample_offset; {
+                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+                //float radius_inc = lerp(0.333, 1.0, saturate(error_adjusted_filter_size / 8));
+                float radius = (float(sample_i) + 0.5) * 0.5;
+
+                float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
+                float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
+                float3 sample_cs = position_world_to_clip(sample_ws);
+                float2 sample_uv = cs_to_uv(sample_cs.xy);
+                // ad-hoc elongation fix based on stochastic ssr slides
+                //sample_uv = (sample_uv - uv) * float2(lerp(saturate(wo.z * 2), 1.0, sqrt(gbuffer.roughness)), 1.0) + uv;
+                int2 sample_px = sample_uv * output_tex_size.xy / 2;
+                sample_offset = sample_px - half_px;
+            }
+        #endif
         
-        // TODO: precalculate temporal variants
-        int2 sample_px = px / 2 + spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+        int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
 
         float4 packed0 = hit0_tex[sample_px];
 
         if (packed0.w > 0 && sample_depth != 0) {
-
-            //const float2 sample_uv = get_uv(sample_px, output_tex_size * float4(0.5.xx, 2.0.xx));// TODO: use the input texture size instead
-            const float2 sample_uv = get_uv(sample_px * 2, output_tex_size);
+            // Note: must match the raygen
+            uint2 hi_px_subpixels[4] = {
+                uint2(0, 0),
+                uint2(1, 1),
+                uint2(1, 0),
+                uint2(0, 1),
+            };
+            const float2 sample_uv = get_uv(
+                sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+                output_tex_size);
 
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
@@ -201,7 +300,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 //return;
             }
 
-            float3 wi = mul(normalize(direction_view_to_world(center_to_hit_vs)), tangent_to_world);
+            float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
 
             float sample_hit_to_center_vis = 1;
 
@@ -319,20 +418,21 @@ void main(uint2 px : SV_DispatchThreadID) {
                 //spec_weight *= sample_hit_to_center_vis;
 
                 #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                    const float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                    //contrib_wt = 1;
                     contrib_accum += float4(
                         packed0.rgb
                         ,
                         1
                     ) * contrib_wt;
                 #else
-                    const float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
                     contrib_accum += float4(
                         packed0.rgb * spec.value_over_pdf
                         ,
                         1
                     ) * contrib_wt;
-                #endif                
+                #endif
 
                 brdf_weight_accum += spec.value_over_pdf * contrib_wt;
 
@@ -341,7 +441,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 ex2 += luma * luma * contrib_wt;
 
                 // Aggressively bias towards closer hits
-                ray_len_accum += exp2(-clamp(0.1 * length(center_to_hit_vs), 0, 100)) * contrib_wt;
+                ray_len_accum += squish_ray_len(surf_to_hit_dist, ray_squish_strength) * contrib_wt;
             }
         }
     }
@@ -372,8 +472,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         contrib_accum.rgb *= max(1e-8, brdf_weight_accum);
     #endif
 
-    ray_len_accum = max(0.0, -10 * log2(ray_len_accum));
-
+    ray_len_accum = unsquish_ray_len(ray_len_accum, ray_squish_strength);
+    
     float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);
     //float relative_error = max(0.0, ex2 - ex * ex);
@@ -389,7 +489,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     //out_color = abs(ex2 - ex*ex) / max(1e-5, ex);
     //out_color = history.w;
 
-    //out_color = half_view_normal_tex[px / 2].xyz * 0.5 + 0.5;
-    output_tex[orig_px] = float4(out_color, ex2);
-    ray_len_out_tex[orig_px] = ray_len_accum;
+    //out_color = half_view_normal_tex[half_px].xyz * 0.5 + 0.5;
+    output_tex[px] = float4(out_color, ex2);
+    ray_len_output_tex[px] = float2(ray_len_accum, ray_len_avg);
 }

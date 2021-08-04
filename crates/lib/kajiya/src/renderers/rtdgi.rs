@@ -122,24 +122,9 @@ impl RtdgiRenderer {
         input_color: &rg::Handle<Image>,
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
+        reprojected_history_tex: &rg::Handle<Image>,
+        mut temporal_output_tex: rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let (mut temporal_output_tex, history_tex) = self
-            .temporal2_tex
-            .get_output_and_history(rg, Self::temporal_tex_desc(input_color.desc().extent_2d()));
-
-        let mut reprojected_history_tex =
-            rg.create(Self::temporal_tex_desc(input_color.desc().extent_2d()));
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("rtdgi reproject"),
-            "/shaders/rtdgi/fullres_reproject.hlsl",
-        )
-        .read(&history_tex)
-        .read(reprojection_map)
-        .write(&mut reprojected_history_tex)
-        .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
-        .dispatch(reprojected_history_tex.desc().extent);
-
         let (mut temporal_variance_output_tex, variance_history_tex) =
             self.temporal2_variance_tex.get_output_and_history(
                 rg,
@@ -222,14 +207,24 @@ impl RtdgiRenderer {
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
-        let mut hit0_tex = rg.create(
-            gbuffer_desc
-                .usage(vk::ImageUsageFlags::empty())
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        let (temporal_output_tex, history_tex) = self
+            .temporal2_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
-        let mut hit1_tex = rg.create(
+        let mut reprojected_history_tex =
+            rg.create(Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("rtdgi reproject"),
+            "/shaders/rtdgi/fullres_reproject.hlsl",
+        )
+        .read(&history_tex)
+        .read(reprojection_map)
+        .write(&mut reprojected_history_tex)
+        .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
+        .dispatch(reprojected_history_tex.desc().extent);
+
+        let mut hit0_tex = rg.create(
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
@@ -260,13 +255,15 @@ impl RtdgiRenderer {
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&reprojected_history_tex)
+        .read(ssao_img)
         .read(&ranking_tile_buf)
         .read(&scambling_tile_buf)
         .read(&sobol_buf)
         .write(&mut hit0_tex)
-        .write(&mut hit1_tex)
         .read(&csgi_volume.direct_cascade0)
         .read(&csgi_volume.indirect_cascade0)
+        .read(&csgi_volume.indirect_subray_cascade0)
         .read(sky_cube)
         .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
@@ -289,12 +286,7 @@ impl RtdgiRenderer {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
-        let mut upsampled_tex = rg.create(
-            gbuffer_depth
-                .gbuffer
-                .desc()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        let mut upsampled_tex = rg.create(gbuffer_desc.format(vk::Format::R16G16B16A16_SFLOAT));
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi upsample"),
             "/shaders/rtdgi/upsample.hlsl",
@@ -310,9 +302,17 @@ impl RtdgiRenderer {
             upsampled_tex.desc().extent_inv_extent_2d(),
             super::rtr::SPATIAL_RESOLVE_OFFSETS,
         ))
+        .raw_descriptor_set(1, bindless_descriptor_set)
         .dispatch(upsampled_tex.desc().extent);
 
-        let filtered_tex = self.temporal2(rg, &upsampled_tex, gbuffer_depth, reprojection_map);
+        let filtered_tex = self.temporal2(
+            rg,
+            &upsampled_tex,
+            gbuffer_depth,
+            reprojection_map,
+            &reprojected_history_tex,
+            temporal_output_tex,
+        );
 
         filtered_tex.into()
     }

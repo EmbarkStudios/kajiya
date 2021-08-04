@@ -17,8 +17,6 @@ static const uint CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET =
 
 static const uint CSGI_TOTAL_DIRECTION_COUNT = CSGI_CARDINAL_DIRECTION_COUNT + CSGI_DIAGONAL_DIRECTION_COUNT;
 
-//#define CSGI_ACCUM_HYSTERESIS 0.05
-//#define CSGI_ACCUM_HYSTERESIS 0.15
 #define CSGI_ACCUM_HYSTERESIS 0.25
 //#define CSGI_ACCUM_HYSTERESIS 1.0
 
@@ -55,4 +53,18 @@ static const int3 CSGI_INDIRECT_DIRS[CSGI_TOTAL_DIRECTION_COUNT] = {
     int3(1, -1, 1),
     int3(-1, 1, 1),
     int3(1, 1, 1),
+};
+
+static const float4 CSGI_CARDINAL_SUBRAY_TANGENT_WEIGHTS[CSGI_CARDINAL_SUBRAY_COUNT] = {
+    float4(1.0, 1.0, 1.0, 1.0),
+    float4(2.5, 0.15, 0.75, 0.75),
+    float4(0.15, 2.5, 0.75, 0.75),
+    float4(0.75, 0.75, 2.5, 0.15),
+    float4(0.75, 0.75, 0.15, 2.5),
+};
+
+static const float3 CSGI_DIAGONAL_SUBRAY_TANGENT_WEIGHTS[CSGI_DIAGONAL_SUBRAY_COUNT] = {
+    float3(0.5, 1.0, 1.0),
+    float3(1.0, 0.5, 1.0),
+    float3(1.0, 1.0, 0.5),
 };

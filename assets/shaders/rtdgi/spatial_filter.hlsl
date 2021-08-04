@@ -45,9 +45,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     #define USE_POISSON 1
 
+    float spatial_sharpness = 0.25;//lerp(0.5, 0.25, saturate(center_ssao));
     #if !USE_POISSON
 
-    float spatial_sharpness = 0.25;//lerp(0.5, 0.25, saturate(center_ssao));
     int k = 2;
     int skip = 3;
 
@@ -68,12 +68,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 ? uint(clamp(center_ssao * 3.0, 0.0, 7.0))
                 : 7;
     #else
-        const uint filter_idx = 3;
+        const uint filter_idx = 5;
     #endif
 
     {
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy * 2;
+            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
     #endif
 
             const int2 sample_px = px + sample_offset;
@@ -85,11 +85,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
             if (sample_depth != 0) {
                 float wt = 1;
-
-                #if !USE_POISSON
-                    wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
-                #endif
-
+                wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
                 wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 20);
                 wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
@@ -102,6 +98,17 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 float luma = calculate_luma(sample_val);
                 ex += luma * wt;
                 ex2 += luma * luma * wt;
+            }
+
+            // Adaptive stopping
+            if (sample_i >= 3) {
+                float var = abs(ex2 / sum.a - (ex / sum.a) * (ex / sum.a));
+                var *= (sample_i + 1) / sample_i;   // Bessel's correction, 0-based
+                float rel_dev = sqrt(var) / (abs(ex) / sum.a);
+                if (rel_dev < 0.3)
+                {
+                    break;
+                }
             }
         }
     }

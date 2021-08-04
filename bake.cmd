@@ -15,3 +15,4 @@ set BAKE=target\release\bake
 %BAKE% --scene "assets/meshes/painting_xyz_homework/scene.gltf" --scale 0.0025 -o painting_xyz_homework
 %BAKE% --scene "assets/meshes/conference/scene.gltf" --scale 1.0 -o conference
 %BAKE% --scene "assets/meshes/roughness-scale/scene.gltf" --scale 0.5 -o roughness-scale
+%BAKE% --scene "assets/meshes/emissive/triangle.glb" --scale 0.333 -o emissive-triangle

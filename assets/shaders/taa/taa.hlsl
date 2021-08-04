@@ -25,6 +25,7 @@
 #define RESET_ACCUMULATION 0
 #define USE_NEIGHBORHOOD_CLAMPING 1
 #define TARGET_SAMPLE_COUNT 6
+#define SHORT_CIRCUIT 0
 
 
 struct InputRemap {
@@ -63,6 +64,11 @@ float4 fetch_blurred_history(int2 px, int k, float sigma) {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
+    #if SHORT_CIRCUIT
+        output_tex[px] = lerp(input_tex[px], float4(encode_rgb(history_tex[px].rgb), 1), 1.0 - 1.0 / TARGET_SAMPLE_COUNT);
+        return;
+    #endif
+
     //debug_output_tex[px] = 0;
 
     const float2 input_resolution_scale = input_tex_size.xy / output_tex_size.xy;

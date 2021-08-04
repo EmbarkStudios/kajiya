@@ -7,10 +7,11 @@
 #include "../inc/brdf_lut.hlsl"
 #include "../inc/layered_brdf.hlsl"
 #include "../inc/rt.hlsl"
-#include "../inc/hash.hlsl"
+#include "../inc/quasi_random.hlsl"
 #include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
+#include "../inc/lights/triangle.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
@@ -32,6 +33,10 @@ static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
 static const bool USE_SOFT_SHADOWS = true;
 
+static const bool USE_LIGHTS = true;
+static const bool USE_EMISSIVE = true;
+static const bool RESET_ACCUMULATION = !true;
+
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
 
@@ -44,17 +49,6 @@ float3 sample_environment_light(float3 dir) {
     float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
     col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
     return col;
-}
-
-float3 sample_sun_direction(float2 urand) {
-    if (USE_SOFT_SHADOWS) {
-        if (frame_constants.sun_angular_radius_cos < 1.0) {
-            const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
-            return mul(basis, uniform_sample_cone(urand, frame_constants.sun_angular_radius_cos));
-        }
-    }
-
-    return SUN_DIRECTION;
 }
 
 // Approximate Gaussian remap
@@ -130,10 +124,16 @@ void main() {
                 outgoing_ray.TMax = MAX_RAY_LENGTH;
             }
 
-            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, cone_spread_angle);
+            GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
+                .with_cone_width(cone_spread_angle)
+                .with_cull_back_faces(true || 0 == path_length)
+                .with_path_length(path_length)
+                .trace(acceleration_structure);
+
             if (primary_hit.is_hit) {
                 const float3 to_light_norm = sample_sun_direction(
-                    float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng)))
+                    float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))),
+                    false
                 );
                 
                 const bool is_shadowed =
@@ -151,7 +151,12 @@ void main() {
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
 
                 if (dot(gbuffer.normal, outgoing_ray.Direction) >= 0.0) {
-                    break;
+                    if (0 == path_length) {
+                        // Flip the normal for primary hits so we don't see blackness
+                        gbuffer.normal = -gbuffer.normal;
+                    } else {
+                        break;
+                    }
                 }
 
                 if (FURNACE_TEST && !FURNACE_TEST_EXCLUDE_DIFFUSE) {
@@ -167,6 +172,11 @@ void main() {
                     gbuffer.albedo = 1.0;
                     gbuffer.metalness = 0.0;
                 }
+
+                // For reflection comparison against RTR
+                /*if (path_length == 0) {
+                    gbuffer.albedo = 0;
+                }*/
 
                 if (ONLY_SPECULAR_FIRST_BOUNCE && path_length == 0) {
                     gbuffer.albedo = 1.0;
@@ -184,10 +194,10 @@ void main() {
                 //gbuffer.roughness = 0.07;
                 //gbuffer.roughness = clamp((int(primary_hit.position.x * 0.2) % 5) / 5.0, 1e-4, 1.0);
 
-                const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-                const float3 wi = mul(to_light_norm, shading_basis);
+                const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+                const float3 wi = mul(to_light_norm, tangent_to_world);
 
-                float3 wo = mul(-outgoing_ray.Direction, shading_basis);
+                float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
 
                 // Hack for shading normals facing away from the outgoing ray's direction:
                 // We flip the outgoing ray along the shading normal, so that the reflection's curvature
@@ -212,7 +222,52 @@ void main() {
                     const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                     total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
-                    total_radiance += gbuffer.emissive * throughput;
+                    if (USE_EMISSIVE) {
+                        total_radiance += gbuffer.emissive * throughput;
+                    }
+                    
+                    if (USE_LIGHTS && frame_constants.triangle_light_count > 0/* && path_length > 0*/) {   // rtr comp
+                        const float light_selection_pmf = 1.0 / frame_constants.triangle_light_count;
+                        const uint light_idx = hash1_mut(rng) % frame_constants.triangle_light_count;
+                        //const float light_selection_pmf = 1;
+                        //for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1)
+                        {
+                            const float2 urand = float2(
+                                uint_to_u01_float(hash1_mut(rng)),
+                                uint_to_u01_float(hash1_mut(rng))
+                            );
+
+                            TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
+                            LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
+                            const float3 shadow_ray_origin = primary_hit.position;
+                            const float3 to_light_ws = light_sample.pos - primary_hit.position;
+                            const float dist_to_light2 = dot(to_light_ws, to_light_ws);
+                            const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+
+                            const float to_psa_metric =
+                                max(0.0, dot(to_light_norm_ws, gbuffer.normal))
+                                * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
+                                / dist_to_light2;
+
+                            if (to_psa_metric > 0.0) {
+                                float3 wi = mul(to_light_norm_ws, tangent_to_world);
+
+                                const bool is_shadowed =
+                                    rt_is_shadowed(
+                                        acceleration_structure,
+                                        new_ray(
+                                            shadow_ray_origin,
+                                            to_light_norm_ws,
+                                            1e-3,
+                                            sqrt(dist_to_light2) - 2e-3
+                                    ));
+
+                                total_radiance +=
+                                    is_shadowed ? 0 :
+                                        throughput * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf;
+                            }
+                        }
+                    }
                 }
 
                 float3 urand;
@@ -247,7 +302,7 @@ void main() {
                     }
 
                     outgoing_ray.Origin = primary_hit.position;
-                    outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
+                    outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
                     outgoing_ray.TMin = 1e-4;
                     throughput *= brdf_sample.value_over_pdf;
                 } else {
@@ -281,7 +336,8 @@ void main() {
     }
 
     float4 cur = radiance_sample_count_packed;
-    float4 prev = output_tex[px];
+    //float4 prev = RESET_ACCUMULATION ? 0 : output_tex[px];
+    float4 prev = float4(output_tex[px].rgb, 8);
 
     //if (prev.w < 32)
     {

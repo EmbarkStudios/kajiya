@@ -4,8 +4,10 @@
 #include "../inc/color.hlsl"
 #include "../inc/bilinear.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
+#include "rtr_settings.hlsl"
 
 #define USE_DUAL_REPROJECTION 1
+#define USE_NEIGHBORHOOD_CLAMP 1
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
@@ -74,7 +76,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     #if 0
         output_tex[px] = float4(ray_len_tex[px].xxx * 0.1, 1);
         return;
-    #elif 0
+    #elif !RTR_USE_TEMPORAL_FILTERS
         output_tex[px] = float4(input_tex[px].rgb, 128);
         return;
     #endif
@@ -231,8 +233,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
     float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
 
-    // HACK: disables clamp
-    //clamped_history = history0 * h0_score + history1 * h1_score;
+    #if !USE_NEIGHBORHOOD_CLAMP
+        clamped_history = history0 * h0_score + history1 * h1_score;
+    #endif
 
     //float sample_count = history0.w * h0_score + history1.w * h1_score;
     //sample_count *= reproj.z;

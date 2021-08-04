@@ -6,9 +6,10 @@
 #include "../inc/brdf_lut.hlsl"
 #include "../inc/layered_brdf.hlsl"
 #include "../inc/rt.hlsl"
-#include "../inc/hash.hlsl"
+#include "../inc/quasi_random.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
+#include "../inc/lights/triangle.hlsl"
 
 #include "common.hlsl"
 
@@ -20,6 +21,8 @@
 }
 
 #include "lookup.hlsl"
+
+#define USE_SOFT_SHADOWS 0
 
 // TODO: maybe trace multiple rays per frame instead. The delay is not awesome.
 // Or use a more advanced temporal integrator, e.g. variance-aware exponential smoothing
@@ -39,6 +42,8 @@
 //#define RAY_JITTER_AMOUNT 1.0
 
 #define USE_MULTIBOUNCE 1
+#define USE_EMISSIVE 1
+#define USE_LIGHTS 1
 
 static const float SKY_DIST = 1e5;
 
@@ -64,7 +69,7 @@ void main() {
         slice_z_start += SWEEP_VX_COUNT - 1;
     }
 
-    uint rng = hash1(frame_constants.frame_index);
+    uint rng = hash4(uint4(dispatch_vx, frame_constants.frame_index));
 
     #if USE_RAY_JITTER
         const float jitter_amount = RAY_JITTER_AMOUNT;
@@ -111,26 +116,20 @@ void main() {
             ray_length_int
         );
 
-        //const GbufferPathVertex primary_hit = rt_trace_gbuffer_nocull(acceleration_structure, outgoing_ray, 1.0);
-
         // TODO: cone spread angle (or use a different rchit shader without cones)
-        // Note: rt_trace_gbuffer_nocull _might_ be more watertight (needs research)
+        // Note: rt_trace_gbuffer_nocull might be more watertight (needs research)
         // but it does end up losing a lot of energy near geometric complexity
-        const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1e2);
+        // Note2: actually without _nocull, the GI can spread through backfaces, causing major leaks in scenes which
+        // appear watertight, but are leaky from the outside, e.g. "kitchen-interior"
+        const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
+            .with_cone_width(1e2)
+            .with_cull_back_faces(false)
+            .with_path_length(1)
+            .trace(acceleration_structure);
+
         if (primary_hit.is_hit) {
             float4 total_radiance = 0.0.xxxx;
             {
-                const float3 to_light_norm = SUN_DIRECTION;
-                const bool is_shadowed =
-                    rt_is_shadowed(
-                        acceleration_structure,
-                        new_ray(
-                            primary_hit.position,
-                            to_light_norm,
-                            1e-4,
-                            SKY_DIST
-                    ));
-
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
                 //gbuffer.roughness = lerp(gbuffer.roughness, 1.0, 0.2);
                 gbuffer.roughness = 1;
@@ -155,22 +154,71 @@ void main() {
                 if (normal_cutoff > 1e-3) {
                     float3 radiance_contribution = 0.0.xxx;
 
-                    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                    // Sun
+                    {
+                        const float3 to_sun_norm = SUN_DIRECTION;
+                        const bool is_sun_shadowed =
+                            rt_is_shadowed(
+                                acceleration_structure,
+                                new_ray(
+                                    primary_hit.position,
+                                    to_sun_norm,
+                                    1e-4,
+                                    SKY_DIST
+                            ));
+                        const float3 light_radiance = is_sun_shadowed ? 0.0 : SUN_COLOR;
 
-    #if 0
-                    const float3x3 shading_basis = build_orthonormal_basis(gbuffer_normal);
-                    const float3 wi = mul(to_light_norm, shading_basis);
-                    float3 wo = normalize(mul(-outgoing_ray.Direction, shading_basis));
+                        radiance_contribution +=
+                            light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_sun_norm)) / M_PI;
+                    }
 
-                    LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-                    const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-                    radiance_contribution += brdf_value * light_radiance;
-    #else
-                    radiance_contribution +=
-                        light_radiance * bounce_albedo * max(0.0, dot(gbuffer_normal, to_light_norm)) / M_PI;
-    #endif
+                    if (USE_LIGHTS) {
+                        for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
+                            const uint light_sample_count = 4;
+                            const float2 light_rand_base = float2(
+                                uint_to_u01_float(hash1_mut(rng)),
+                                uint_to_u01_float(hash1_mut(rng))
+                            );
 
-                    radiance_contribution += gbuffer.emissive;
+                            for (uint light_sample_i = 0; light_sample_i < light_sample_count; light_sample_i += 1) {
+                                const float2 urand = frac(light_rand_base + hammersley(light_sample_i % light_sample_count, light_sample_count));
+
+                                TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
+                                LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
+                                const float3 shadow_ray_origin = primary_hit.position;
+                                const float3 to_light_ws = light_sample.pos - primary_hit.position;
+                                const float dist_to_light2 = dot(to_light_ws, to_light_ws);
+                                const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+
+                                const float to_psa_metric =
+                                    max(0.0, dot(to_light_norm_ws, gbuffer_normal))
+                                    * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
+                                    / dist_to_light2;
+
+                                if (to_psa_metric > 0.0) {
+                                    const bool is_shadowed =
+                                        rt_is_shadowed(
+                                            acceleration_structure,
+                                            new_ray(
+                                                shadow_ray_origin,
+                                                to_light_norm_ws,
+                                                1e-3,
+                                                sqrt(dist_to_light2) - 2e-3
+                                        ));
+
+                                    radiance_contribution +=
+                                        !is_shadowed ?
+                                        (
+                                            triangle_light.radiance() * bounce_albedo / light_sample.pdf.value * to_psa_metric / M_PI / light_sample_count
+                                        ) : 0;
+                                }
+                            }
+                        }
+                    }
+    
+                    #if USE_EMISSIVE
+                        radiance_contribution += gbuffer.emissive;
+                    #endif
 
                     //radiance_contribution = gbuffer.albedo + 0.1;
 

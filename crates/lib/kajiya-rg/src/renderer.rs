@@ -50,21 +50,35 @@ pub struct Renderer {
 }
 
 lazy_static::lazy_static! {
-    static ref FRAME_CONSTANTS_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [(
+    static ref FRAME_CONSTANTS_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [
+    // frame_constants
+    (
         0,
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::UNIFORM_BUFFER,
             is_bindless: false,
             name: Default::default(),
         },
-    ), (
+    ),
+    // instance_dynamic_parameters_dyn
+    (
         1,
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC,
             is_bindless: false,
             name: Default::default(),
         },
-    )]
+    ),
+    // triangle_lights_dyn
+    (
+        2,
+        rspirv_reflect::DescriptorInfo {
+            ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+            is_bindless: false,
+            name: Default::default(),
+        },
+    ),
+    ]
     .iter()
     .cloned()
     .collect();
@@ -78,9 +92,7 @@ pub struct RenderGraphOutput {
 pub struct FrameConstantsLayout {
     pub globals_offset: u32,
     pub instance_dynamic_parameters_offset: u32,
-
-    // TODO: nuke?
-    pub instance_dynamic_parameters_size: u32,
+    pub triangle_lights_offset: u32,
 }
 
 impl Renderer {
@@ -247,6 +259,7 @@ impl Renderer {
         let set_binding_flags = [
             vk::DescriptorBindingFlags::PARTIALLY_BOUND,
             vk::DescriptorBindingFlags::PARTIALLY_BOUND,
+            vk::DescriptorBindingFlags::PARTIALLY_BOUND,
         ];
 
         let mut binding_flags_create_info =
@@ -259,17 +272,26 @@ impl Renderer {
                 .create_descriptor_set_layout(
                     &vk::DescriptorSetLayoutCreateInfo::builder()
                         .bindings(&[
+                            // frame_constants
                             vk::DescriptorSetLayoutBinding::builder()
                                 .descriptor_count(1)
                                 .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
                                 .stage_flags(vk::ShaderStageFlags::ALL)
                                 .binding(0)
                                 .build(),
+                            // instance_dynamic_parameters
                             vk::DescriptorSetLayoutBinding::builder()
                                 .descriptor_count(1)
                                 .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                                 .stage_flags(vk::ShaderStageFlags::ALL)
                                 .binding(1)
+                                .build(),
+                            // triangle_lights_dyn
+                            vk::DescriptorSetLayoutBinding::builder()
+                                .descriptor_count(1)
+                                .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
+                                .stage_flags(vk::ShaderStageFlags::ALL)
+                                .binding(2)
                                 .build(),
                         ])
                         .push_next(&mut binding_flags_create_info)
@@ -286,7 +308,7 @@ impl Renderer {
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-                descriptor_count: 1,
+                descriptor_count: 2,
             },
         ];
 
@@ -330,6 +352,12 @@ impl Renderer {
                     .build(),
                 vk::WriteDescriptorSet::builder()
                     .dst_binding(1)
+                    .dst_set(set)
+                    .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
+                    .buffer_info(std::slice::from_ref(&storage_buffer_info))
+                    .build(),
+                vk::WriteDescriptorSet::builder()
+                    .dst_binding(2)
                     .dst_set(set)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                     .buffer_info(std::slice::from_ref(&storage_buffer_info))

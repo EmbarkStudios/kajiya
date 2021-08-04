@@ -115,9 +115,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gbuffer.albedo = 0.5;
     }
 
-    const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-    const float3 wi = mul(to_light_norm, shading_basis);
-    float3 wo = mul(-outgoing_ray.Direction, shading_basis);
+    const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+    const float3 wi = mul(to_light_norm, tangent_to_world);
+    float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
 
     // Hack for shading normals facing away from the outgoing ray's direction:
     // We flip the outgoing ray along the shading normal, so that the reflection's curvature
@@ -193,11 +193,21 @@ void main(in uint2 px : SV_DispatchThreadID) {
         ;
 
     if (USE_RTR && debug_shading_mode != SHADING_MODE_RTX_OFF) {
+        float3 rtr_radiance;
+
         #if !RTR_RENDER_SCALED_BY_FG
-            total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+            rtr_radiance = rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
         #else
-            total_radiance += rtr_tex[px].xyz;
+            rtr_radiance = rtr_tex[px].xyz;
         #endif
+
+        if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
+            GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
+            LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
+            rtr_radiance /= true_brdf.energy_preservation.preintegrated_reflection;
+        }
+        
+        total_radiance += rtr_radiance;
     }
 
     //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
@@ -228,6 +238,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
         #else
             output = rtr_tex[px].xyz;
         #endif
+
+        GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
+        LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
+        output /= true_brdf.energy_preservation.preintegrated_reflection;
     }
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
@@ -238,6 +252,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     if (debug_shading_mode == SHADING_MODE_DIFFUSE_GI) {
         output = gi_irradiance;
     }
+
+    //output = gbuffer.emissive;
 
     // Hacky visual test of volumetric scattering
     if (frame_constants.global_fog_thickness > 0.0) {
@@ -302,6 +318,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = shadow_mask_tex[px].y * 10;
     //output = sqrt(shadow_mask_tex[px].y) * 0.1;
     //output = shadow_mask_tex[px].z * 0.1;
+    //output = rtr_tex[px].rgb;
 
     //output.xz += 1;
     //output.rgb /= max(1e-5, calculate_luma(output));

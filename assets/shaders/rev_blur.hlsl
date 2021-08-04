@@ -34,7 +34,7 @@ void main(uint2 px: SV_DispatchThreadID, uint2 px_within_group: SV_GroupThreadID
     float4 self_col = input_tex.SampleLevel(sampler_lnc, uv, 0);
 #endif
 
-    const float exponential_falloff = 0.5;
+    const float exponential_falloff = 0.6;
 
     // BUG: when `self_weight` is 1.0, the `w` here should be 1.0, not `exponential_falloff`
     output_tex[px] = lerp(self_col, pyramid_col, self_weight * exponential_falloff);

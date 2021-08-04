@@ -5,13 +5,13 @@ use crate::{
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        csgi::CsgiRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
-        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
+        csgi::CsgiRenderer, lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer,
+        rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
     viewport::ViewConstants,
 };
 use glam::{Mat3, Quat, Vec2, Vec3};
-use kajiya_asset::mesh::{AssetRef, GpuImage, PackedTriMesh, PackedVertex};
+use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
     ash::{
         version::DeviceV1_0,
@@ -48,6 +48,8 @@ struct FrameConstants {
     sky_ambient: [f32; 4],
 
     delta_time_seconds: f32,
+
+    triangle_light_count: u32,
 }
 
 #[repr(C)]
@@ -100,6 +102,42 @@ pub struct MeshInstance {
 pub enum RenderDebugMode {
     None,
     CsgiVoxelGrid,
+    CsgiRadiance,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct TriangleLight {
+    pub verts: [[f32; 3]; 3],
+    pub radiance: [f32; 3],
+}
+
+impl TriangleLight {
+    pub fn transform(
+        self,
+        translation: Vec3,
+        rotation: impl core::ops::Mul<Vec3, Output = Vec3> + Copy,
+    ) -> Self {
+        Self {
+            verts: [
+                (rotation * Vec3::from(self.verts[0]) + translation).into(),
+                (rotation * Vec3::from(self.verts[1]) + translation).into(),
+                (rotation * Vec3::from(self.verts[2]) + translation).into(),
+            ],
+            radiance: self.radiance,
+        }
+    }
+
+    pub fn scale_radiance(self, scale: Vec3) -> Self {
+        Self {
+            verts: self.verts,
+            radiance: (Vec3::from(self.radiance) * scale).into(),
+        }
+    }
+}
+
+pub struct MeshLightSet {
+    pub lights: Vec<TriangleLight>,
 }
 
 pub struct WorldRenderer {
@@ -108,6 +146,8 @@ pub struct WorldRenderer {
     pub(super) raster_simple_render_pass: Arc<RenderPass>,
     pub(super) bindless_descriptor_set: vk::DescriptorSet,
     pub(super) meshes: Vec<UploadedTriMesh>,
+
+    pub(super) mesh_lights: Vec<MeshLightSet>,
 
     // ----
     // SoA
@@ -144,6 +184,7 @@ pub struct WorldRenderer {
 
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
+    pub lighting: LightingRenderer,
     pub rtdgi: RtdgiRenderer,
     pub csgi: CsgiRenderer,
     pub taa: TaaRenderer,
@@ -200,6 +241,22 @@ fn load_gpu_image_asset(
         .collect::<Vec<_>>();
 
     Arc::new(device.create_image(desc, initial_data).unwrap())
+}
+
+#[derive(Default)]
+pub struct AddMeshOptions {
+    pub use_lights: bool,
+}
+
+impl AddMeshOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn use_lights(mut self, v: bool) -> Self {
+        self.use_lights = v;
+        self
+    }
 }
 
 impl WorldRenderer {
@@ -297,6 +354,8 @@ impl WorldRenderer {
             instance_handles: Default::default(),
             instance_handle_to_index: Default::default(),
 
+            mesh_lights: Default::default(),
+
             mesh_blas: Default::default(),
             tlas: Default::default(),
             accel_scratch,
@@ -320,6 +379,7 @@ impl WorldRenderer {
 
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
+            lighting: LightingRenderer::new(),
             csgi: CsgiRenderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
             taa: TaaRenderer::new(),
@@ -414,7 +474,11 @@ impl WorldRenderer {
         handle
     }
 
-    pub fn add_mesh(&mut self, mesh: &'static PackedTriMesh::Flat) -> MeshHandle {
+    pub fn add_mesh(
+        &mut self,
+        mesh: &'static PackedTriMesh::Flat,
+        opts: AddMeshOptions,
+    ) -> MeshHandle {
         let mesh_idx = self.meshes.len();
         let mut unique_images: Vec<AssetRef<GpuImage::Flat>> = mesh.maps.as_slice().to_vec();
         unique_images.sort();
@@ -453,6 +517,13 @@ impl WorldRenderer {
                 for m in &mut mat.maps {
                     *m = mesh_map_gpu_ids[*m as usize].0;
                 }
+            }
+        }
+
+        // If using emissives as lights, flag it in the material parameters
+        if opts.use_lights {
+            for mat in materials.iter_mut() {
+                mat.flags |= MeshMaterialFlags::MESH_MATERIAL_FLAG_EMISSIVE_USED_AS_LIGHT;
             }
         }
 
@@ -538,6 +609,40 @@ impl WorldRenderer {
 
         self.mesh_blas.push(Arc::new(blas));
 
+        let mesh_lights = if opts.use_lights {
+            let emissive_materials = mesh
+                .materials
+                .iter()
+                .map(|mat| mat.emissive[0] > 0.0 || mat.emissive[1] > 0.0 || mat.emissive[2] > 0.0)
+                .collect::<Vec<bool>>();
+
+            let mut mesh_lights: Vec<TriangleLight> = Vec::new();
+            for indices in mesh.indices.as_slice().chunks_exact(3) {
+                let mat_idx = mesh.material_ids[indices[0] as usize] as usize;
+                if !emissive_materials[mat_idx] {
+                    continue;
+                }
+
+                let v0 = mesh.verts[indices[0] as usize].pos;
+                let v1 = mesh.verts[indices[1] as usize].pos;
+                let v2 = mesh.verts[indices[2] as usize].pos;
+                let radiance = mesh.materials[mat_idx].emissive;
+
+                mesh_lights.push(TriangleLight {
+                    verts: [v0, v1, v2],
+                    radiance,
+                });
+            }
+
+            mesh_lights
+        } else {
+            Vec::new()
+        };
+
+        self.mesh_lights.push(MeshLightSet {
+            lights: mesh_lights,
+        });
+
         MeshHandle(mesh_idx)
     }
 
@@ -590,6 +695,14 @@ impl WorldRenderer {
         let index = self.instance_handle_to_index[&inst];
         self.instances[index].position = position;
         self.instances[index].rotation = Mat3::from_quat(rotation);
+    }
+
+    pub fn get_instance_dynamic_parameters(
+        &self,
+        inst: InstanceHandle,
+    ) -> &InstanceDynamicParameters {
+        let index = self.instance_handle_to_index[&inst];
+        &self.instances[index].dynamic_parameters
     }
 
     pub fn get_instance_dynamic_parameters_mut(
@@ -761,8 +874,27 @@ impl WorldRenderer {
             frame_desc.render_extent,
         );
 
-        let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
+        let triangle_lights: Vec<TriangleLight> = self
+            .instances
+            .iter()
+            .flat_map(|inst| {
+                let inst_position = inst.position;
+                let inst_rotation = inst.rotation;
 
+                let emissive_multiplier = Vec3::splat(inst.dynamic_parameters.emissive_multiplier);
+
+                self.mesh_lights[inst.mesh.0]
+                    .lights
+                    .iter()
+                    .map(move |light: &TriangleLight| {
+                        light
+                            .transform(inst_position, inst_rotation)
+                            .scale_radiance(emissive_multiplier)
+                    })
+            })
+            .collect();
+
+        let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
         let globals_offset = dynamic_constants.push(&FrameConstants {
             view_constants,
             sun_direction: [
@@ -787,18 +919,23 @@ impl WorldRenderer {
                 self.sky_ambient.z,
                 0.0,
             ],
+
             delta_time_seconds,
+            triangle_light_count: triangle_lights.len() as _,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants
             .push_from_iter(self.instances.iter().map(|inst| inst.dynamic_parameters));
+
+        let triangle_lights_offset: u32 =
+            dynamic_constants.push_from_iter(triangle_lights.into_iter());
 
         self.prev_camera_matrices = Some(frame_desc.camera_matrices);
 
         rg::renderer::FrameConstantsLayout {
             globals_offset,
             instance_dynamic_parameters_offset,
-            instance_dynamic_parameters_size: 0,
+            triangle_lights_offset,
         }
     }
 

@@ -1,5 +1,5 @@
 #include "../inc/brdf.hlsl"
-#include "../inc/hash.hlsl"
+#include "../inc/quasi_random.hlsl"
 
 [[vk::binding(0)]] RWTexture2D<float2> output_tex;
 

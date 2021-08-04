@@ -118,7 +118,12 @@ void main() {
 
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
-            const GbufferPathVertex primary_hit = rt_trace_gbuffer(acceleration_structure, outgoing_ray, 1.0);
+            const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
+                .with_cone_width(1.0)
+                .with_cull_back_faces(true)
+                .with_path_length(path_length + 1)  // +1 because this is indirect light
+                .trace(acceleration_structure);
+
             if (primary_hit.is_hit) {
                 const float3 to_light_norm = SUN_DIRECTION;
                 
@@ -137,10 +142,10 @@ void main() {
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
 
-                const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-                const float3 wi = mul(to_light_norm, shading_basis);
+                const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+                const float3 wi = mul(to_light_norm, tangent_to_world);
 
-                float3 wo = mul(-outgoing_ray.Direction, shading_basis);
+                float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
 
                 // Hack for shading normals facing away from the outgoing ray's direction:
                 // We flip the outgoing ray along the shading normal, so that the reflection's curvature
@@ -176,7 +181,7 @@ void main() {
                 if (brdf_sample.is_valid() && brdf_sample.value_over_pdf.x == brdf_sample.value_over_pdf.x) {
                     roughness_bias = lerp(roughness_bias, 1.0, 0.5 * brdf_sample.approx_roughness);
                     outgoing_ray.Origin = primary_hit.position;
-                    outgoing_ray.Direction = mul(shading_basis, brdf_sample.wi);
+                    outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
                     outgoing_ray.TMin = 1e-4;
                     throughput *= brdf_sample.value_over_pdf;
                 } else {

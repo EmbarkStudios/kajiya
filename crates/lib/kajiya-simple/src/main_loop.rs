@@ -28,6 +28,12 @@ pub struct FrameContext<'a> {
     pub imgui: Option<ImguiContext<'a>>,
 }
 
+impl<'a> FrameContext<'a> {
+    pub fn aspect_ratio(&self) -> f32 {
+        self.render_extent[0] as f32 / self.render_extent[1] as f32
+    }
+}
+
 #[cfg(feature = "dear-imgui")]
 pub struct ImguiContext<'a> {
     imgui: &'a mut imgui::Context,

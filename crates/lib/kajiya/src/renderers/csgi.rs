@@ -39,6 +39,7 @@ impl Default for CsgiRenderer {
 pub struct CsgiVolume {
     pub direct_cascade0: rg::Handle<Image>,
     pub indirect_cascade0: rg::Handle<Image>,
+    pub indirect_subray_cascade0: rg::Handle<Image>,
 }
 
 impl CsgiRenderer {
@@ -181,6 +182,7 @@ impl CsgiRenderer {
 
         CsgiVolume {
             direct_cascade0,
+            indirect_subray_cascade0: indirect_cascade0,
             indirect_cascade0: indirect_cascade_combined0,
         }
     }
@@ -277,6 +279,23 @@ impl CsgiVolume {
 
             api.end_render_pass();
         });
+    }
+
+    pub fn fullscreen_debug_radiance(
+        &self,
+        rg: &mut rg::RenderGraph,
+        output: &mut rg::Handle<Image>,
+    ) {
+        SimpleRenderPass::new_compute(
+            rg.add_pass("csgi debug radiance"),
+            "/shaders/csgi/debug_radiance.hlsl",
+        )
+        .read(&self.direct_cascade0)
+        .read(&self.indirect_cascade0)
+        .read(&self.indirect_subray_cascade0)
+        .write(output)
+        .constants(output.desc().extent_inv_extent_2d())
+        .dispatch(output.desc().extent);
     }
 }
 

@@ -1,8 +1,6 @@
 #ifndef MESH_HLSL
 #define MESH_HLSL
 
-static const float EMISSIVE_MULT = 1.0;
-
 struct VertexPacked {
 	float4 data0;
 };
@@ -37,6 +35,8 @@ Vertex unpack_vertex(VertexPacked p) {
     return res;
 }
 
+static const uint MESH_MATERIAL_FLAG_EMISSIVE_USED_AS_LIGHT = 1;
+
 struct MeshMaterial {
     float base_color_mult[4];
     uint normal_map;
@@ -46,6 +46,7 @@ struct MeshMaterial {
     float roughness_mult;
     float metalness_factor;
     float emissive[3];
+    uint flags;
     float map_transforms[6 * 4];
 };
 

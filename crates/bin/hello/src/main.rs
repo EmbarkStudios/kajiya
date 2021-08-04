@@ -1,3 +1,4 @@
+use kajiya::world_renderer::AddMeshOptions;
 use kajiya_simple::*;
 
 fn main() -> anyhow::Result<()> {
@@ -19,7 +20,7 @@ fn main() -> anyhow::Result<()> {
 
     let car_mesh = kajiya
         .world_renderer
-        .add_baked_mesh("/baked/336_lrm.mesh")?;
+        .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::new())?;
 
     let car_inst = kajiya
         .world_renderer

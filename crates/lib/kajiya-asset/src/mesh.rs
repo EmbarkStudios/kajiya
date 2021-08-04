@@ -46,6 +46,11 @@ pub enum MeshMaterialMap {
     Placeholder([u8; 4]),
 }
 
+pub struct MeshMaterialFlags;
+impl MeshMaterialFlags {
+    pub const MESH_MATERIAL_FLAG_EMISSIVE_USED_AS_LIGHT: u32 = 1;
+}
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct MeshMaterial {
@@ -54,6 +59,7 @@ pub struct MeshMaterial {
     pub roughness_mult: f32,
     pub metalness_factor: f32,
     pub emissive: [f32; 3],
+    pub flags: u32,
     pub map_transforms: [[f32; 6]; 4],
 }
 
@@ -208,6 +214,7 @@ fn load_gltf_material(
             roughness_mult,
             metalness_factor,
             emissive,
+            flags: 0,
             map_transforms,
         },
     )
@@ -360,7 +367,7 @@ impl LazyWorker for LoadGltfScene {
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct PackedVertex {
-    pos: [f32; 3],
+    pub pos: [f32; 3],
     normal: u32,
 }
 

@@ -4,10 +4,13 @@ use std::io::prelude::*;
 use image::{io::Reader as ImageReader, Rgb};
 
 fn main() {
+    const TARGET_SAMPLE_COUNT: usize = 16;
+
     let mut out_samples = File::create("out_samples.rs").unwrap();
     writeln!(
         out_samples,
-        "pub const SPATIAL_RESOLVE_SAMPLES: [(i32, i32, i32, i32); 16 * 4 * 8] = ["
+        "pub const SPATIAL_RESOLVE_SAMPLES: [(i32, i32, i32, i32); {} * 4 * 8] = [",
+        TARGET_SAMPLE_COUNT
     )
     .unwrap();
 
@@ -46,8 +49,8 @@ fn main() {
             group.sort_by_key(|(x, y)| {
                 ((*x as i32) - center).pow(2) + ((*y as i32) - center).pow(2)
             });
-            group.truncate(16);
-            assert!(group.len() == 16);
+            group.truncate(TARGET_SAMPLE_COUNT);
+            assert!(group.len() == TARGET_SAMPLE_COUNT);
 
             for (x, y) in group {
                 let xo = *x as i32 - center;

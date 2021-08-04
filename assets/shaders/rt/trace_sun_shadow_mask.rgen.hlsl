@@ -6,33 +6,15 @@
 #include "../inc/sun.hlsl"
 #include "../inc/bindless_textures.hlsl"
 
-#include "../inc/hash.hlsl"
+#include "../inc/blue_noise.hlsl"
 #include "../inc/math.hlsl"
+
+#define USE_SOFT_SHADOWS 1
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0)]] Texture2D<float> depth_tex;
 [[vk::binding(1)]] Texture2D<float3> geometric_normal_tex;
 [[vk::binding(2)]] RWTexture2D<float4> output_tex;
-
-#define USE_SOFT_SHADOWS 1
-
-float3 sample_sun_direction(uint2 px) {
-    #if USE_SOFT_SHADOWS
-        if (frame_constants.sun_angular_radius_cos < 1.0) {
-            const float3x3 basis = build_orthonormal_basis(normalize(SUN_DIRECTION));
-
-            // 256x256 blue noise
-            const uint noise_offset = frame_constants.frame_index;
-            float2 urand = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
-                (px + int2(noise_offset * 59, noise_offset * 37)) & 255
-            ].xy * 255.0 / 256.0 + 0.5 / 256.0;
-
-            return mul(basis, uniform_sample_cone(urand, frame_constants.sun_angular_radius_cos));
-        }
-    #endif
-
-    return SUN_DIRECTION;
-}
 
 [shader("raygeneration")]
 void main() {
@@ -66,7 +48,10 @@ void main() {
         acceleration_structure,
         new_ray(
             ray_origin,
-            sample_sun_direction(px),
+            sample_sun_direction(
+                blue_noise_for_pixel(px, frame_constants.frame_index).xy,
+                USE_SOFT_SHADOWS
+            ),
             0,
             FLT_MAX
         ));

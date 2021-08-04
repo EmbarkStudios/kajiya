@@ -2,7 +2,9 @@
 // and means that the darkening caused by FG is temporally responsive.
 // OTOH, it also causes bright lines to appear in corners of some objects,
 // and those are amplified in motion.
-#define RTR_RENDER_SCALED_BY_FG 0
+//
+// HACK: must be 1 if jointly filtering with specular lighting
+#define RTR_RENDER_SCALED_BY_FG 1
 
 #define RTR_RAY_HIT_STORED_AS_POSITION 1
 
@@ -24,3 +26,7 @@
 //
 // Has slightly visible line artifacts when `RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS` is zero.
 #define RTR_APPROX_MEASURE_CONVERSION 1
+
+#define RTR_ROUGHNESS_CLAMP 3e-4
+
+#define RTR_USE_TEMPORAL_FILTERS 1

@@ -110,12 +110,7 @@ void diagonal_sweep_volume(const uint2 dispatch_vx, const uint indirect_dir_idx)
             }
             #endif
 
-            static const float skew = 0.333;
-            static const float3 subray_wts[SUBRAY_COUNT] = {
-                float3(skew, 1.0, 1.0),
-                float3(1.0, skew, 1.0),
-                float3(1.0, 1.0, skew),
-            };
+            static const float3 subray_wts[SUBRAY_COUNT] = CSGI_DIAGONAL_SUBRAY_TANGENT_WEIGHTS;
             static const float subray_wt_sum = dot(subray_wts[0], 1.0.xxx);
 
             float3 subray_radiance[SUBRAY_COUNT] = {

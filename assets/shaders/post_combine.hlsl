@@ -22,7 +22,7 @@
 #define USE_SHARPEN 1
 
 static const float sharpen_amount = 0.2;
-static const float glare_amount = 0.07;
+static const float glare_amount = 0.05;
 //static const float glare_amount = 0.0;
 
 float sharpen_remap(float l) {

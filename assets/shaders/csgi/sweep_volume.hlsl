@@ -77,13 +77,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
         initial_vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
     }
 
-    static const float4 subray_weights[SUBRAY_COUNT] = {
-        float4(1.0, 1.0, 1.0, 1.0),
-        float4(1.0, 0.15, 0.5, 0.5),
-        float4(0.15, 1.0, 0.5, 0.5),
-        float4(0.5, 0.5, 1.0, 0.15),
-        float4(0.5, 0.5, 0.15, 1.0),
-    };
+    static const float4 subray_weights[SUBRAY_COUNT] = CSGI_CARDINAL_SUBRAY_TANGENT_WEIGHTS;
 
     #if 1
     static const uint plane_start_idx = (frame_constants.frame_index % 4) * CSGI_VOLUME_DIMS / 4;
@@ -120,7 +114,7 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             // TODO: is this right? It does fix the case of bounce on the side of 336_lrm
             wt *= (1 - center_opacity_t);
             wt *= (1 - center_direct_s.a);
-            //wt *= (1 - 0.75 * direct_neighbor_t.a);
+            wt *= (1 - 0.75 * direct_neighbor_t.a);
 
             tangent_neighbor_direct_and_vis[tangent_i] = neighbor_direct_and_vis;
             tangent_weights[tangent_i] = wt;
@@ -165,15 +159,20 @@ void main(uint3 dispatch_vx : SV_DispatchThreadID, uint idx_within_group: SV_Gro
             subray_radiance[subray] += scatter / max(scatter_wt, 1);
         }}
 
-        float3 combined_indirect = 0.0.xxx;
+        static const float subray_combine_weights[SUBRAY_COUNT] = {
+            1, 1, 1, 1, 1
+        };
 
+        float4 combined_indirect = 0.0;
         {[unroll] for (uint subray = 0; subray < SUBRAY_COUNT; ++subray) {
-            combined_indirect += subray_radiance[subray];
+            combined_indirect += float4(subray_radiance[subray], 1) * subray_combine_weights[subray];
             write_subray_indirect_to(subray_radiance[subray], vx, indirect_dir_idx, subray);
         }}
 
+        combined_indirect.rgb /= combined_indirect.a;
+
         #if CSGI_SUBRAY_COMBINE_DURING_SWEEP
-            indirect_tex[vx + int3(CSGI_VOLUME_DIMS * indirect_dir_idx, 0, 0)] = combined_indirect * (direct_opacity_tex[vx] / SUBRAY_COUNT);
+            indirect_tex[vx + int3(CSGI_VOLUME_DIMS * indirect_dir_idx, 0, 0)] = combined_indirect.rgb * direct_opacity_tex[vx];
         #endif
     }
 }
