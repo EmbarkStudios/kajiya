@@ -1,3 +1,6 @@
+#ifndef PACK_UNPACK_HLSL
+#define PACK_UNPACK_HLSL
+
 float unpack_unorm(uint pckd, uint bitCount) {
 	uint maxVal = (1u << bitCount) - 1;
 	return float(pckd & maxVal) / maxVal;
@@ -173,3 +176,5 @@ float3 prequant_shift_11_11_10(float3 v) {
     // Add a 0.5 just below what the format can represent
     return v + exp2(exponent - F_11_11_10_MANTISSA_BITS - 2);
 }
+
+#endif

@@ -1,6 +1,8 @@
 #ifndef GBUFFER_HLSL
 #define GBUFFER_HLSL
 
+#include "pack_unpack.hlsl"
+
 struct GbufferData;
 
 struct GbufferDataPacked {
