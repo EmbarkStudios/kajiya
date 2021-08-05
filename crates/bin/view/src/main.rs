@@ -146,9 +146,9 @@ fn main() -> anyhow::Result<()> {
         };
 
         CameraRig::builder()
-            .with(Positional::new(position))
-            .with(YawPitch::new().rotation(rotation))
-            .with(Smooth::new_move_look(1.0, 1.0))
+            .with(Position::new(position))
+            .with(YawPitch::new().rotation_quat(rotation))
+            .with(Smooth::new_position_rotation(1.0, 1.0))
             .build()
     };
 
@@ -196,8 +196,8 @@ fn main() -> anyhow::Result<()> {
     let mut state = persisted_app_state
         .clone()
         .unwrap_or_else(|| PersistedAppState {
-            camera_position: camera.transform.translation,
-            camera_rotation: camera.transform.rotation,
+            camera_position: camera.final_transform.position,
+            camera_rotation: camera.final_transform.rotation,
             emissive_multiplier: 1.0,
             vertical_fov: 52.0,
             sun: SunState {
@@ -233,7 +233,7 @@ fn main() -> anyhow::Result<()> {
             mouse.update(&ctx.events);
 
             let input = keymap.map(&keyboard, ctx.dt);
-            let move_vec = camera.transform.rotation
+            let move_vec = camera.final_transform.rotation
                 * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
                     .clamp_length_max(1.0)
                 * 10.0f32.powf(input["boost"]);
@@ -244,12 +244,12 @@ fn main() -> anyhow::Result<()> {
                     .rotate_yaw_pitch(-0.1 * mouse.delta.x, -0.1 * mouse.delta.y);
             }
             camera
-                .driver_mut::<Positional>()
+                .driver_mut::<Position>()
                 .translate(move_vec * ctx.dt * 2.5);
             camera.update(ctx.dt);
 
-            state.camera_position = camera.transform.translation;
-            state.camera_rotation = camera.transform.rotation;
+            state.camera_position = camera.final_transform.position;
+            state.camera_rotation = camera.final_transform.rotation;
 
             // Reset accumulation of the path tracer whenever the camera moves
             /*if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
@@ -291,10 +291,8 @@ fn main() -> anyhow::Result<()> {
                 if let Some(persisted_app_state) = persisted_app_state.as_ref() {
                     *state = persisted_app_state.clone();
 
-                    camera
-                        .driver_mut::<YawPitch>()
-                        .set_rotation(state.camera_rotation);
-                    camera.driver_mut::<Positional>().position = state.camera_position;
+                    camera.driver_mut::<YawPitch>().set_rotation_quat(state.camera_rotation);
+                    camera.driver_mut::<Position>().position = state.camera_position;
                 }
             }
 
@@ -368,7 +366,10 @@ fn main() -> anyhow::Result<()> {
             };
 
             let frame_desc = WorldFrameDesc {
-                camera_matrices: camera.transform.into_translation_rotation().through(&lens),
+                camera_matrices: camera
+                    .final_transform
+                    .into_position_rotation()
+                    .through(&lens),
                 render_extent: ctx.render_extent,
                 sun_direction: sun_direction_interp,
             };

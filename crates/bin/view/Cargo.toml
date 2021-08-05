@@ -11,7 +11,7 @@ kajiya = { path = "../../lib/kajiya" }
 kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
 
 anyhow = "1.0"
-dolly = { git = "https://github.com/h3r2tic/dolly.git" }
+dolly = "0.1"
 futures = "0.3"
 glam = { version = "0.17", features = ["serde"] }
 imgui = "0.7"
