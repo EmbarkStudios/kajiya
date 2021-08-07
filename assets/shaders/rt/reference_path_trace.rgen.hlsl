@@ -36,6 +36,7 @@ static const bool USE_SOFT_SHADOWS = true;
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool RESET_ACCUMULATION = !true;
+static const bool ROLLING_ACCUMULATION = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
@@ -336,8 +337,12 @@ void main() {
     }
 
     float4 cur = radiance_sample_count_packed;
-    //float4 prev = RESET_ACCUMULATION ? 0 : output_tex[px];
-    float4 prev = float4(output_tex[px].rgb, 8);
+    float4 prev;
+    if (ROLLING_ACCUMULATION) {
+        prev = float4(output_tex[px].rgb, 8);
+    } else {
+        prev = RESET_ACCUMULATION ? 0 : output_tex[px];
+    }
 
     //if (prev.w < 32)
     {
