@@ -12,6 +12,7 @@ kajiya-backend = { path = "../kajiya-backend" }
 kajiya-rg = { path = "../kajiya-rg" }
 
 anyhow = "1.0"
+array-init = "2.0.0"
 arrayvec = "0.5"
 blue-noise-sampler = "0.1"
 byte-slice-cast = "0.3"

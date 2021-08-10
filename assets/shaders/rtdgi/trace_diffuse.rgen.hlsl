@@ -11,6 +11,7 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
+#include "../csgi/common.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
 #define USE_SOFT_SHADOWS 0
@@ -38,15 +39,14 @@
 [[vk::binding(3)]] Texture2D<float> ssao_tex;
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(7)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex;
-[[vk::binding(10)]] Texture3D<float3> csgi_subray_indirect_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(9)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(10)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
 [[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi/common.hlsl"
 #include "../csgi/lookup.hlsl"
 #include "../csgi/subray_lookup.hlsl"
 
@@ -159,6 +159,13 @@ void main() {
 
     BrdfSample brdf_sample = brdf.sample(wo, urand);
 
+    //const float origin_cascade_idx = csgi_blended_cascade_idx_for_pos(refl_ray_origin);
+    const float origin_cascade_idx = csgi_cascade_idx_for_pos(refl_ray_origin);
+    /*if (origin_cascade_idx > 0) {
+        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
+        return;
+    }*/
+
     if (brdf_sample.is_valid()) {
         RayDesc outgoing_ray;
         outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
@@ -166,9 +173,21 @@ void main() {
         outgoing_ray.TMin = 0;
 
         #if USE_SHORT_RAYS_ONLY
-            outgoing_ray.TMax = CSGI_VOXEL_SIZE.x * SHORT_RAY_SIZE_VOXEL_CELLS;
+            outgoing_ray.TMax = csgi_blended_voxel_size(origin_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS;
         #else
             outgoing_ray.TMax = SKY_DIST;
+        #endif
+
+        // If the ray goes from a higher-res cascade to a lower-res one, it might end up
+        // terminating too early. Re-calculate the max trace range based on where we'd finish.
+        #if USE_SHORT_RAYS_ONLY && CSGI_CASCADE_COUNT > 1
+            uint end_cascade_idx = csgi_cascade_idx_for_pos(
+                outgoing_ray.Direction + outgoing_ray.Origin * outgoing_ray.TMax
+            );
+            outgoing_ray.TMax = max(
+                outgoing_ray.TMax,
+                csgi_voxel_size(end_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS
+            );
         #endif
 
         // The control variates used in the temporal filter are based on a regular CSGI lookup.
@@ -208,10 +227,11 @@ void main() {
             const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)));
             const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
             bool is_on_screen =
-                all(abs(primary_hit_cs.xy) < 1.0) &&
-                inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3 &&
-                dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0 &&
-                dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7;
+                all(abs(primary_hit_cs.xy) < 1.0)
+                && inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3
+                && dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
+                && dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
+                ;
 
             // If it is on-screen, we'll try to use its reprojected radiance from the previous frame
             float4 reprojected_radiance = 0;
@@ -312,7 +332,10 @@ void main() {
                             //.with_linear_fetch(false)
                             ;
 
-                    if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= CSGI_VOXEL_SIZE.x) {
+                    // doesn't seem to change much from using origin_cascade_idx
+                    //const uint hit_cascade_idx = csgi_cascade_idx_for_pos(primary_hit.position);
+
+                    if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= csgi_blended_voxel_size(origin_cascade_idx).x) {
                         float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
 
                         // Suppression in open corners causes excessive darkening,
@@ -321,9 +344,9 @@ void main() {
                         max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
 
                         lookup_params = lookup_params
-                            .with_max_normal_offset_scale(max_normal_offset / CSGI_VOXEL_SIZE.x);
+                            .with_max_normal_offset_scale(max_normal_offset / csgi_blended_voxel_size(origin_cascade_idx).x);
 
-                        control_variate_sample_directional = false;
+    					control_variate_sample_directional = false;
                     }
 
                     float3 csgi = lookup_csgi(
@@ -332,24 +355,32 @@ void main() {
                         lookup_params
                     );
 
-                    //if (primary_hit.ray_t > CSGI_VOXEL_SIZE.x)
+                    //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
                     total_radiance += csgi * gbuffer.albedo;
                 }
             }
         } else {
             #if USE_SHORT_RAYS_ONLY
-                const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - CSGI_VOXEL_SIZE.x);
+                const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_blended_voxel_size(origin_cascade_idx).x);
 
                 #if USE_CSGI_SUBRAYS
-                    total_radiance += point_sample_csgi_subray_indirect(csgi_lookup_pos, outgoing_ray.Direction);
+                    float3 subray_contrib = point_sample_csgi_subray_indirect(csgi_lookup_pos, outgoing_ray.Direction);
+                    {
+                        uint lookup_cascade_idx = csgi_cascade_idx_for_pos(csgi_lookup_pos);
+                        const float3 vol_pos = (csgi_lookup_pos - CSGI_VOLUME_ORIGIN);
+                        int3 gi_vx = int3(floor(vol_pos / csgi_voxel_size(lookup_cascade_idx)));
+                        uint3 vx = csgi_wrap_vx_within_cascade(gi_vx);
+
+                        total_radiance += subray_contrib * smoothstep(0.5, 1, csgi_opacity_tex[lookup_cascade_idx][vx]);
+                    }
                 #else
                     total_radiance += lookup_csgi(
                         csgi_lookup_pos,
-                        0.0.xxx,    // don't offset by any normal
-                        CsgiLookupParams::make_default()
-                            .with_sample_directional_radiance(outgoing_ray.Direction)
+	                    0.0.xxx,    // don't offset by any normal
+    	                CsgiLookupParams::make_default()
+        	                .with_sample_directional_radiance(outgoing_ray.Direction)
                             //.with_directional_radiance_phong_exponent(8)
-                    );
+                );
                 #endif
             #else
                 total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;

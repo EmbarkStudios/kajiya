@@ -29,6 +29,7 @@ pub struct RenderPassApi<'a, 'exec_params, 'constants> {
 
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
+    ImageArray(Vec<vk::DescriptorImageInfo>),
     Buffer(vk::DescriptorBufferInfo),
     RayTracingAcceleration(vk::AccelerationStructureKHR),
     DynamicBuffer {
@@ -208,6 +209,19 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                             .image_layout(image.image_layout)
                             .image_view(self.resources.image_view(image.handle, &image.view_desc))
                             .build(),
+                    ),
+                    RenderPassBinding::ImageArray(images) => DescriptorSetBinding::ImageArray(
+                        images
+                            .iter()
+                            .map(|image| {
+                                vk::DescriptorImageInfo::builder()
+                                    .image_layout(image.image_layout)
+                                    .image_view(
+                                        self.resources.image_view(image.handle, &image.view_desc),
+                                    )
+                                    .build()
+                            })
+                            .collect(),
                     ),
                     RenderPassBinding::Buffer(buffer) => DescriptorSetBinding::Buffer(
                         vk::DescriptorBufferInfo::builder()
@@ -472,6 +486,7 @@ pub struct RenderPassRayTracingAccelerationBinding {
 
 pub enum RenderPassBinding {
     Image(RenderPassImageBinding),
+    ImageArray(Vec<RenderPassImageBinding>),
     Buffer(RenderPassBufferBinding),
     RayTracingAcceleration(RenderPassRayTracingAccelerationBinding),
     DynamicConstants(u32),
@@ -539,6 +554,23 @@ impl Ref<Image, GpuSrv> {
             view_desc: view_desc.build().unwrap(),
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         })
+    }
+}
+
+impl BindRgRef for Vec<Ref<Image, GpuSrv>> {
+    fn bind(&self) -> RenderPassBinding {
+        let view_desc = ImageViewDesc::default();
+
+        RenderPassBinding::ImageArray(
+            self.iter()
+                .copied()
+                .map(|handle| RenderPassImageBinding {
+                    handle: handle.handle,
+                    view_desc,
+                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                })
+                .collect(),
+        )
     }
 }
 
@@ -649,6 +681,20 @@ fn bind_descriptor_set(
                             })
                             .image_info(std::slice::from_ref(image_info.add(*image)))
                             .build(),
+                        DescriptorSetBinding::ImageArray(images) => {
+                            assert!(!images.is_empty());
+
+                            write
+                                .descriptor_type(match images[0].image_layout {
+                                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                                        vk::DescriptorType::SAMPLED_IMAGE
+                                    }
+                                    vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
+                                    _ => unimplemented!("{:?}", images[0].image_layout),
+                                })
+                                .image_info(images.as_slice())
+                                .build()
+                        }
                         DescriptorSetBinding::Buffer(buffer) => write
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                             .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))

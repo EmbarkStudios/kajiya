@@ -175,7 +175,12 @@ pub fn create_descriptor_set_layouts(
                             .build(),
                     ),
                     rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
-                        if binding.is_bindless {
+                        if matches!(
+                            binding.dimensionality,
+                            rspirv_reflect::DescriptorDimensionality::RuntimeArray
+                        ) {
+                            // Bindless
+
                             binding_flags[bindings.len()] =
                                 vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
                                     | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
@@ -186,14 +191,18 @@ pub fn create_descriptor_set_layouts(
                                 vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL;
                         }
 
+                        let descriptor_count = match binding.dimensionality {
+                            rspirv_reflect::DescriptorDimensionality::Single => 1,
+                            rspirv_reflect::DescriptorDimensionality::Array(size) => size,
+                            rspirv_reflect::DescriptorDimensionality::RuntimeArray => {
+                                MAX_BINDLESS_DESCRIPTOR_COUNT as u32
+                            }
+                        };
+
                         bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
                                 .binding(*binding_index)
-                                .descriptor_count(if binding.is_bindless {
-                                    MAX_BINDLESS_DESCRIPTOR_COUNT as _
-                                } else {
-                                    1
-                                }) // TODO
+                                .descriptor_count(descriptor_count) // TODO
                                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                                 .stage_flags(stage_flags)
                                 .build(),

@@ -14,10 +14,13 @@
 #include "common.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0)]] Texture3D<float4> csgi_indirect_tex;
-[[vk::binding(1)]] RWTexture3D<float4> csgi_direct_tex;
-[[vk::binding(2)]] cbuffer _ {
+[[vk::binding(0)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(2)]] RWTexture3D<float4> csgi_direct_tex;
+[[vk::binding(3)]] cbuffer _ {
     uint SWEEP_VX_COUNT;
+    uint cascade_idx;
+    uint quantum_idx;
 }
 
 #include "lookup.hlsl"
@@ -47,9 +50,11 @@
 
 static const float SKY_DIST = 1e5;
 
-float3 vx_to_pos(float3 vx) {
-    const float3 volume_center = CSGI_VOLUME_CENTER;
-    return (vx - (CSGI_VOLUME_DIMS - 1.0) / 2.0) * CSGI_VOXEL_SIZE + volume_center;
+float3 vx_to_pos(int3 vx) {
+    vx = csgi_dispatch_vx_to_global_vx(vx, cascade_idx);
+    return (vx + 0.5) * csgi_voxel_size(cascade_idx) + CSGI_VOLUME_ORIGIN;
+    //const float3 volume_center = CSGI_VOLUME_ORIGIN;
+    //return (vx - (CSGI_VOLUME_DIMS - 1.0) / 2.0) * csgi_voxel_size(cascade_idx);
 }
 
 
@@ -69,20 +74,16 @@ void main() {
         slice_z_start += SWEEP_VX_COUNT - 1;
     }
 
-    uint rng = hash4(uint4(dispatch_vx, frame_constants.frame_index));
-
     #if USE_RAY_JITTER
         const float jitter_amount = RAY_JITTER_AMOUNT;
-        //const float offset_x = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
-        //const float offset_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
+        //const float offset_a = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
+        //const float offset_b = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * jitter_amount;
         float2 jitter_urand = hammersley(frame_constants.frame_index % 4, 8);
-        const float offset_x = jitter_urand.x * jitter_amount;
-        const float offset_y = jitter_urand.y * jitter_amount;
-        const float blend_factor = CSGI_ACCUM_HYSTERESIS;
+        const float offset_a = jitter_urand.x * jitter_amount;
+        const float offset_b = jitter_urand.y * jitter_amount;
     #else
-        const float offset_x = 0.0;
-        const float offset_y = 0.0;
-        const float blend_factor = CSGI_ACCUM_HYSTERESIS;
+        const float offset_a = 0.0;
+        const float offset_b = 0.0;
     #endif
 
     float3 vx_trace_offset;
@@ -92,22 +93,24 @@ void main() {
     const float cell_ray_start_offset = -0.5;
 
     if (grid_idx < 2) {
-        vx_trace_offset = float3(cell_ray_start_offset * slice_dir.x, offset_x, offset_y);
+        vx_trace_offset = float3(cell_ray_start_offset * slice_dir.x, offset_a, offset_b);
         vx = int3(slice_z_start, dispatch_vx.x, dispatch_vx.y);
     } else if (grid_idx < 4) {
-        vx_trace_offset = float3(offset_x, cell_ray_start_offset * slice_dir.y, offset_y);
+        vx_trace_offset = float3(offset_a, cell_ray_start_offset * slice_dir.y, offset_b);
         vx = int3(dispatch_vx.x, slice_z_start, dispatch_vx.y);
     } else {
-        vx_trace_offset = float3(offset_x, offset_y, cell_ray_start_offset * slice_dir.z);
+        vx_trace_offset = float3(offset_a, offset_b, cell_ray_start_offset * slice_dir.z);
         vx = int3(dispatch_vx.x, dispatch_vx.y, slice_z_start);
     }
+
+    uint rng = hash4(uint4(vx, frame_constants.frame_index));
 
     const int3 output_offset = int3(CSGI_VOLUME_DIMS * grid_idx, 0, 0);
     int ray_length_int = SWEEP_VX_COUNT;
 
     while (ray_length_int > 0) {
-        const float3 trace_origin = vx_to_pos(vx + vx_trace_offset);
-        const float3 neighbor_pos = vx_to_pos(vx + slice_dir + vx_trace_offset);
+        const float3 trace_origin = vx_to_pos(vx) + vx_trace_offset * csgi_voxel_size(cascade_idx);
+        const float3 neighbor_pos = vx_to_pos(vx) + (slice_dir + vx_trace_offset) * csgi_voxel_size(cascade_idx);
 
         RayDesc outgoing_ray = new_ray(
             lerp(trace_origin, neighbor_pos, 1e-3),
@@ -239,13 +242,19 @@ void main() {
             ray_length_int -= cells_skipped_by_ray + 1;
             vx += slice_dir * cells_skipped_by_ray;
 
-            csgi_direct_tex[vx + output_offset] = lerp(
-                // Cancel the decay that runs just before this pass
-                csgi_direct_tex[vx + output_offset] / (1.0 - CSGI_ACCUM_HYSTERESIS),
-                //total_radiance,
-                float4(total_radiance.xyz, 1.0),
-                blend_factor
-            );
+            if (csgi_was_dispatch_vx_just_scrolled_in(vx, cascade_idx)) {
+                // Just revealed by volume scrolling. Overwrite instead of blending.
+                csgi_direct_tex[vx + output_offset] = float4(total_radiance.xyz, 1.0);
+            } else {
+                csgi_direct_tex[vx + output_offset] = lerp(
+                    // Cancel the decay that runs just before this pass
+                    csgi_direct_tex[vx + output_offset] / (1.0 - CSGI_ACCUM_HYSTERESIS),
+                    //total_radiance,
+                    float4(total_radiance.xyz, 1.0),
+                    CSGI_ACCUM_HYSTERESIS
+                );
+            }
+
             vx += slice_dir;
         } else {
             break;

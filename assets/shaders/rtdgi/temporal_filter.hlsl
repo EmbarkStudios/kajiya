@@ -8,14 +8,16 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/gbuffer.hlsl"
 
+#include "../csgi/common.hlsl"
+
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float4> cv_history_tex;
 [[vk::binding(3)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(5)]] Texture2D<float> half_depth_tex;
-[[vk::binding(6)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(6)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(7)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(8)]] RWTexture2D<float4> history_output_tex;
 [[vk::binding(9)]] RWTexture2D<float4> cv_history_output_tex;
 [[vk::binding(10)]] RWTexture2D<float4> output_tex;
@@ -24,7 +26,6 @@
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi/common.hlsl"
 #include "../csgi/lookup.hlsl"
 
 

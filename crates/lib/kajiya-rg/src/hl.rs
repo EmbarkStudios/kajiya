@@ -243,6 +243,24 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         self
     }
 
+    pub fn read_array(mut self, handles: &[Handle<Image>]) -> Self {
+        assert!(!handles.is_empty());
+
+        let handle_refs = handles
+            .into_iter()
+            .map(|handle| {
+                self.pass.read(
+                    handle,
+                    AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        self.state.bindings.push(BindRgRef::bind(&handle_refs));
+
+        self
+    }
+
     pub fn read_view(mut self, handle: &Handle<Image>, view_desc: ImageViewDescBuilder) -> Self {
         let handle_ref = self.pass.read(
             handle,

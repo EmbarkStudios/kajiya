@@ -46,8 +46,8 @@ void main(in uint3 vx : SV_DispatchThreadID) {}
 #endif
 
 
-// BUG: stale code; does not work; needs adjustment to the new horizontal
-// packing of subrays, and use of CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET
+BUG: stale code; does not work; needs adjustment to the new horizontal
+packing of subrays, and use of CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET
 
 float3 subray_combine_indirect(int subray_count, uint3 vx) {
     float3 result = 0.0.xxx;
@@ -67,7 +67,7 @@ float3 subray_combine_indirect(int subray_count, uint3 vx) {
 void main(in uint3 vx : SV_DispatchThreadID) {
     const uint dir_idx = vx.x / CSGI_VOLUME_DIMS;
     const float3 indirect_dir = CSGI_INDIRECT_DIRS[dir_idx];
-    const uint3 direct_vx = vx % CSGI_VOLUME_DIMS;
+    const uint3 direct_vx = csgi_wrap_vx_within_cascade(vx);
 
     #if CLAMP_STRATEGY == CLAMP_STRATEGY_PRECOMPUTED
         const float light_mult = direct_opacity_tex[direct_vx];

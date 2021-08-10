@@ -13,6 +13,8 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
+#include "csgi/common.hlsl"
+
 #define USE_SSGI 0
 #define USE_CSGI 1
 #define USE_RTR 1
@@ -28,8 +30,8 @@
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] RWTexture2D<float4> temporal_output_tex;
 [[vk::binding(7)]] RWTexture2D<float4> output_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(9)]] TextureCube<float4> unconvolved_sky_cube_tex;
 [[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(11)]] cbuffer _ {
     float4 output_tex_size;
@@ -42,7 +44,6 @@
 #define SHADING_MODE_REFLECTIONS 3
 #define SHADING_MODE_RTX_OFF 4
 
-#include "csgi/common.hlsl"
 #include "csgi/lookup.hlsl"
 
 #include "inc/atmosphere.hlsl"
@@ -80,7 +81,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float current_sun_angular_radius = acos(sun_angular_radius_cos);
             float sun_radius_ratio = real_sun_angular_radius / current_sun_angular_radius;
 
-            float3 output = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+            float3 output = unconvolved_sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             if (dot(outgoing_ray.Direction, SUN_DIRECTION) > sun_angular_radius_cos) {
                 // TODO: what's the correct value?
                 output += 800 * sun_color_in_direction(outgoing_ray.Direction) * sun_radius_ratio * sun_radius_ratio;

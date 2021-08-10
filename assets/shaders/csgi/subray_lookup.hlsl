@@ -1,31 +1,20 @@
 float3 point_sample_csgi_subray_indirect_subray(float3 pos, uint dir_idx, uint subray) {
-    const float3 vol_pos = (pos - CSGI_VOLUME_CENTER);
-    const int3 vx = int3(vol_pos / CSGI_VOXEL_SIZE + CSGI_VOLUME_DIMS / 2);
+    const uint cascade_idx = csgi_cascade_idx_for_pos(pos);
+    const float3 vol_pos = (pos - CSGI_VOLUME_ORIGIN);
+    int3 gi_vx = int3(floor(vol_pos / csgi_voxel_size(cascade_idx)));
 
-    if (any(vx < 0 || vx >= CSGI_VOLUME_DIMS)) {
+    if (!gi_volume_contains_vx(frame_constants.gi_cascades[cascade_idx], gi_vx)) {
         return 0.0;
     }
 
     if (dir_idx < CSGI_CARDINAL_DIRECTION_COUNT) {
-        const uint subray_count = CSGI_CARDINAL_SUBRAY_COUNT;
-        const int3 indirect_offset = int3(subray_count * CSGI_VOLUME_DIMS * dir_idx, 0, 0);
-
-        const int3 subray_offset = int3(subray, 0, 0);
-        const int3 vx_stride = int3(subray_count, 1, 1);
-
-        return csgi_subray_indirect_tex[indirect_offset + subray_offset + vx * vx_stride];
+        return csgi_subray_indirect_tex[cascade_idx][
+            csgi_cardinal_vx_dir_subray_to_subray_vx(csgi_wrap_vx_within_cascade(gi_vx), dir_idx, subray)
+        ];
     } else {
-        const uint subray_count = CSGI_DIAGONAL_SUBRAY_COUNT;
-        const int3 indirect_offset = int3(
-            subray_count * CSGI_VOLUME_DIMS * (dir_idx - CSGI_CARDINAL_DIRECTION_COUNT)
-            + CSGI_DIAGONAL_DIRECTION_SUBRAY_OFFSET,
-            0,
-            0);
-
-        const int3 subray_offset = int3(subray, 0, 0);
-        const int3 vx_stride = int3(subray_count, 1, 1);
-
-        return csgi_subray_indirect_tex[indirect_offset + subray_offset + vx * vx_stride];
+        return csgi_subray_indirect_tex[cascade_idx][
+            csgi_diagonal_vx_dir_subray_to_subray_vx(csgi_wrap_vx_within_cascade(gi_vx), dir_idx, subray)
+        ];
     }
 }
 

@@ -67,6 +67,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28b2cd92db5cbd74e8e5028f7e27dd7aa3090e89e4f2a197cc7c8dfb69c7063b"
 
 [[package]]
+name = "array-init"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6945cc5422176fc5e602e590c2878d2c2acd9a4fe20a4baa7c28022521698ec6"
+
+[[package]]
 name = "arrayvec"
 version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1263,6 +1269,7 @@ name = "kajiya"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "array-init",
  "arrayvec",
  "async-channel",
  "async-executor",
@@ -2050,7 +2057,7 @@ dependencies = [
 [[package]]
 name = "rspirv-reflect"
 version = "0.3.0"
-source = "git+https://github.com/Traverse-Research/rspirv-reflect.git?rev=1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f#1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f"
+source = "git+https://github.com/h3r2tic/rspirv-reflect?rev=77364f98cbfb5c7ee3aa1347158670a9b8ec5bf5#77364f98cbfb5c7ee3aa1347158670a9b8ec5bf5"
 dependencies = [
  "rspirv",
  "thiserror",

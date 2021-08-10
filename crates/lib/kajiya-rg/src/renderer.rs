@@ -56,7 +56,7 @@ lazy_static::lazy_static! {
         0,
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::UNIFORM_BUFFER,
-            is_bindless: false,
+            dimensionality: rspirv_reflect::DescriptorDimensionality::Single,
             name: Default::default(),
         },
     ),
@@ -65,7 +65,7 @@ lazy_static::lazy_static! {
         1,
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-            is_bindless: false,
+            dimensionality: rspirv_reflect::DescriptorDimensionality::Single,
             name: Default::default(),
         },
     ),
@@ -74,7 +74,7 @@ lazy_static::lazy_static! {
         2,
         rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-            is_bindless: false,
+            dimensionality: rspirv_reflect::DescriptorDimensionality::Single,
             name: Default::default(),
         },
     ),

@@ -66,7 +66,7 @@ pub struct GpuProfilerScope {
 impl GpuProfilerScope {
     fn new(scope: RenderScopeDesc) -> GpuProfilerScope {
         GpuProfilerScope {
-            hits: vec![0u64; 64],
+            hits: vec![0u64; 8],
             write_head: 0,
             scope,
         }

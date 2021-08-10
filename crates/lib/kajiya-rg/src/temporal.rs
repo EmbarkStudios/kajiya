@@ -37,6 +37,12 @@ impl<'a> From<&'a str> for TemporalResourceKey {
     }
 }
 
+impl<'a> From<String> for TemporalResourceKey {
+    fn from(s: String) -> Self {
+        TemporalResourceKey(s)
+    }
+}
+
 #[derive(Clone)]
 pub(crate) enum TemporalResource {
     Image(Arc<Image>),

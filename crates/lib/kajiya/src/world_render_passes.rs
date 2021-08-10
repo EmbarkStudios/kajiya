@@ -65,7 +65,7 @@ impl WorldRenderer {
                 frame_desc.render_extent,
             ));
 
-            if self.debug_mode != RenderDebugMode::CsgiVoxelGrid {
+            if !matches!(self.debug_mode, RenderDebugMode::CsgiVoxelGrid { .. }) {
                 raster_meshes(
                     rg,
                     self.raster_simple_render_pass.clone(),
@@ -80,12 +80,13 @@ impl WorldRenderer {
                 );
             }
 
-            if self.debug_mode == RenderDebugMode::CsgiVoxelGrid {
+            if let RenderDebugMode::CsgiVoxelGrid { cascade_idx } = self.debug_mode {
                 csgi_volume.debug_raster_voxel_grid(
                     rg,
                     self.raster_simple_render_pass.clone(),
                     &mut gbuffer_depth,
                     &mut velocity_img,
+                    cascade_idx,
                 );
             }
 
@@ -134,7 +135,7 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &reprojection_map,
-            &sky_cube,
+            &convolved_sky_cube,
             self.bindless_descriptor_set,
             &tlas,
             &csgi_volume,
@@ -170,6 +171,7 @@ impl WorldRenderer {
             &mut debug_out_tex,
             &csgi_volume,
             &sky_cube,
+            &convolved_sky_cube,
             self.bindless_descriptor_set,
             self.debug_shading_mode,
         );

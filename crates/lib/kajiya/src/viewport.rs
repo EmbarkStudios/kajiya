@@ -60,6 +60,16 @@ impl ViewConstants {
         self.sample_offset_pixels = sample_offset_pixels;
         self.sample_offset_clip = sample_offset_clip;
     }
+
+    pub fn eye_position(&self) -> glam::Vec3 {
+        let eye_pos_h = self.view_to_world.w_axis;
+        eye_pos_h.truncate() / eye_pos_h.w
+    }
+
+    pub fn prev_eye_position(&self) -> glam::Vec3 {
+        let eye_pos_h = self.prev_view_to_prev_world.w_axis;
+        eye_pos_h.truncate() / eye_pos_h.w
+    }
 }
 
 pub struct VieportConstantBuilder {

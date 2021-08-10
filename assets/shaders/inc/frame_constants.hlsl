@@ -23,21 +23,34 @@ struct ViewConstants {
     float2 sample_offset_clip;
 };
 
+struct GiCascadeConstants {
+    int4 scroll_frac;
+    int4 scroll_int;
+    int4 voxels_scrolled_this_frame;
+    float volume_size;
+    float voxel_size; 
+    uint2 pad;   
+};
+
 struct FrameConstants {
     ViewConstants view_constants;
 
     float4 sun_direction;
 
-    float sun_angular_radius_cos;
     uint frame_index;
-    float world_gi_scale;
+    float delta_time_seconds;
+    float sun_angular_radius_cos;
     float global_fog_thickness;
 
     float4 sun_color_multiplier;
     float4 sky_ambient;
 
-    float delta_time_seconds;
     uint triangle_light_count;
+    float world_gi_scale;
+	uint pad0;
+	uint pad1;
+
+    GiCascadeConstants gi_cascades[4];
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;

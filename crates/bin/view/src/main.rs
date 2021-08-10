@@ -222,6 +222,7 @@ fn main() -> anyhow::Result<()> {
 
         const MAX_FPS_LIMIT: u32 = 256;
         let mut max_fps = MAX_FPS_LIMIT;
+        let mut debug_gi_cascade_idx: u32 = 0;
 
         kajiya.run(move |mut ctx| {
             // Limit framerate. Not particularly precise.
@@ -291,7 +292,9 @@ fn main() -> anyhow::Result<()> {
                 if let Some(persisted_app_state) = persisted_app_state.as_ref() {
                     *state = persisted_app_state.clone();
 
-                    camera.driver_mut::<YawPitch>().set_rotation_quat(state.camera_rotation);
+                    camera
+                        .driver_mut::<YawPitch>()
+                        .set_rotation_quat(state.camera_rotation);
                     camera.driver_mut::<Position>().position = state.camera_position;
                 }
             }
@@ -473,9 +476,27 @@ fn main() -> anyhow::Result<()> {
 
                         if ui.radio_button_bool(
                             im_str!("GI voxel grid"),
-                            ctx.world_renderer.debug_mode == RenderDebugMode::CsgiVoxelGrid,
+                            matches!(
+                                ctx.world_renderer.debug_mode,
+                                RenderDebugMode::CsgiVoxelGrid { .. }
+                            ),
                         ) {
-                            ctx.world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid;
+                            ctx.world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid {
+                                cascade_idx: debug_gi_cascade_idx as _,
+                            };
+                        }
+
+                        if matches!(
+                            ctx.world_renderer.debug_mode,
+                            RenderDebugMode::CsgiVoxelGrid { .. }
+                        ) {
+                            imgui::Drag::<u32>::new(im_str!("Cascade index"))
+                                .range(0..=3)
+                                .build(&ui, &mut debug_gi_cascade_idx);
+
+                            ctx.world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid {
+                                cascade_idx: debug_gi_cascade_idx as _,
+                            };
                         }
 
                         if ui.radio_button_bool(

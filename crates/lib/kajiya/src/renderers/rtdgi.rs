@@ -70,6 +70,7 @@ impl RtdgiRenderer {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         csgi_volume: &csgi::CsgiVolume,
+        sky_cube: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
@@ -102,8 +103,8 @@ impl RtdgiRenderer {
         .read(reprojection_map)
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
-        .read(&csgi_volume.direct_cascade0)
-        .read(&csgi_volume.indirect_cascade0)
+        .read_array(&csgi_volume.indirect)
+        .read(sky_cube)
         .write(&mut temporal_output_tex)
         .write(&mut cv_temporal_output_tex)
         .write(&mut temporal_filtered_tex)
@@ -261,16 +262,22 @@ impl RtdgiRenderer {
         .read(&scambling_tile_buf)
         .read(&sobol_buf)
         .write(&mut hit0_tex)
-        .read(&csgi_volume.direct_cascade0)
-        .read(&csgi_volume.indirect_cascade0)
-        .read(&csgi_volume.indirect_subray_cascade0)
+        .read_array(&csgi_volume.indirect)
+        .read_array(&csgi_volume.subray_indirect)
+        .read_array(&csgi_volume.opacity)
         .read(sky_cube)
         .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, hit0_tex.desc().extent);
 
-        let filtered_tex =
-            self.temporal(rg, &hit0_tex, gbuffer_depth, reprojection_map, csgi_volume);
+        let filtered_tex = self.temporal(
+            rg,
+            &hit0_tex,
+            gbuffer_depth,
+            reprojection_map,
+            csgi_volume,
+            sky_cube,
+        );
         let filtered_tex = Self::spatial(rg, &filtered_tex, gbuffer_depth, ssao_img);
 
         // Not correct with control variates:

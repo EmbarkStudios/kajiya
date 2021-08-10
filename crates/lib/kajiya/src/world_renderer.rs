@@ -2,6 +2,7 @@ use crate::{
     bindless_descriptor_set::{create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT},
     buffer_builder::BufferBuilder,
     camera::CameraMatrices,
+    frame_constants::{FrameConstants, GiCascadeConstants},
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
@@ -31,26 +32,6 @@ use vulkan::buffer::{Buffer, BufferDesc};
 
 #[cfg(feature = "dlss")]
 use crate::renderers::dlss::DlssRenderer;
-
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct FrameConstants {
-    view_constants: ViewConstants,
-
-    sun_direction: [f32; 4],
-
-    sun_angular_radius_cos: f32,
-    frame_idx: u32,
-    world_gi_scale: f32,
-    global_fog_thickness: f32,
-
-    sun_color_multiplier: [f32; 4],
-    sky_ambient: [f32; 4],
-
-    delta_time_seconds: f32,
-
-    triangle_light_count: u32,
-}
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -101,7 +82,7 @@ pub struct MeshInstance {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RenderDebugMode {
     None,
-    CsgiVoxelGrid,
+    CsgiVoxelGrid { cascade_idx: usize },
     CsgiRadiance,
 }
 
@@ -894,7 +875,27 @@ impl WorldRenderer {
             })
             .collect();
 
+        // Initialize constants for the maximum allowed cascade count, even if we're not using them,
+        // so that we don't need to change the layout of frame constants up to this limit.
+        let mut gi_cascades: [GiCascadeConstants; crate::frame_constants::MAX_CSGI_CASCADE_COUNT] =
+            Default::default();
+
+        self.csgi
+            .update_eye_position(&view_constants.eye_position(), self.world_gi_scale);
+
+        // Actually set the cascade constants we're using
+        for (i, c) in self
+            .csgi
+            .constants(self.world_gi_scale)
+            .iter()
+            .copied()
+            .enumerate()
+        {
+            gi_cascades[i] = c;
+        }
+
         let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
+
         let globals_offset = dynamic_constants.push(&FrameConstants {
             view_constants,
             sun_direction: [
@@ -903,10 +904,11 @@ impl WorldRenderer {
                 frame_desc.sun_direction.z,
                 0.0,
             ],
-            sun_angular_radius_cos: (self.sun_size_multiplier * real_sun_angular_radius).cos(),
             frame_idx: self.frame_idx,
-            world_gi_scale: self.world_gi_scale,
+            delta_time_seconds,
+            sun_angular_radius_cos: (self.sun_size_multiplier * real_sun_angular_radius).cos(),
             global_fog_thickness: self.global_fog_thickness,
+
             sun_color_multiplier: [
                 self.sun_color_multiplier.x,
                 self.sun_color_multiplier.y,
@@ -920,8 +922,11 @@ impl WorldRenderer {
                 0.0,
             ],
 
-            delta_time_seconds,
             triangle_light_count: triangle_lights.len() as _,
+            world_gi_scale: self.world_gi_scale,
+            pad: [0u32; 2],
+
+            gi_cascades,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants
