@@ -251,6 +251,8 @@ impl LazyWorker for LoadGltfScene {
 
             let mut process_node = |node: &gltf::scene::Node, xform: Mat4| {
                 if let Some(mesh) = node.mesh() {
+                    let flip_winding_order = xform.determinant() < 0.0;
+
                     for prim in mesh.primitives() {
                         let reader = prim.reader(|buffer| Some(&buffers[buffer.index()]));
 
@@ -320,6 +322,14 @@ impl LazyWorker for LoadGltfScene {
                             } else {
                                 indices =
                                     (base_index..(base_index + positions.len() as u32)).collect();
+                            }
+
+                            if flip_winding_order {
+                                for tri in indices.chunks_exact_mut(3) {
+                                    let a = tri[0];
+                                    tri[0] = tri[2];
+                                    tri[2] = a;
+                                }
                             }
 
                             // log::info!("Loading a mesh with {} indices", indices.len());
