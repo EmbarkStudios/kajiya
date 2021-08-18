@@ -14,7 +14,7 @@ base64 = "0.12"
 byteorder = "1.4"
 bytes = "1.0"
 glam = "0.17"
-gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "4298aac", features = ["KHR_texture_transform"] } # texture transform
+gltf = { git = "https://github.com/h3r2tic/gltf.git", rev = "83826e3", features = ["KHR_texture_transform"] } # u8 color import fix
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }

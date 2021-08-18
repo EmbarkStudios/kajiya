@@ -246,7 +246,7 @@ impl LazyWorker for LoadGltfScene {
         let (gltf, buffers, imgs) = crate::import_gltf::import(&self.path)
             .with_context(|| format!("Loading GLTF scene from {:?}", self.path))?;
 
-        if let Some(scene) = gltf.default_scene() {
+        if let Some(scene) = gltf.default_scene().or_else(|| gltf.scenes().next()) {
             let mut res: TriangleMesh = TriangleMesh::default();
 
             let mut process_node = |node: &gltf::scene::Node, xform: Mat4| {

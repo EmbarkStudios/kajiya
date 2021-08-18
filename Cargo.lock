@@ -1045,8 +1045,8 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gltf"
-version = "0.15.2"
-source = "git+https://github.com/gltf-rs/gltf.git?rev=4298aac#4298aac70336ae0413312a61344badbf67fbcbde"
+version = "0.16.0"
+source = "git+https://github.com/h3r2tic/gltf.git?rev=83826e3#83826e367835a0f542a3ad5935cbecba92ddea78"
 dependencies = [
  "base64 0.12.3",
  "byteorder",
@@ -1057,8 +1057,8 @@ dependencies = [
 
 [[package]]
 name = "gltf-derive"
-version = "0.15.2"
-source = "git+https://github.com/gltf-rs/gltf.git?rev=4298aac#4298aac70336ae0413312a61344badbf67fbcbde"
+version = "0.16.0"
+source = "git+https://github.com/h3r2tic/gltf.git?rev=83826e3#83826e367835a0f542a3ad5935cbecba92ddea78"
 dependencies = [
  "inflections",
  "proc-macro2",
@@ -1068,8 +1068,8 @@ dependencies = [
 
 [[package]]
 name = "gltf-json"
-version = "0.15.2"
-source = "git+https://github.com/gltf-rs/gltf.git?rev=4298aac#4298aac70336ae0413312a61344badbf67fbcbde"
+version = "0.16.0"
+source = "git+https://github.com/h3r2tic/gltf.git?rev=83826e3#83826e367835a0f542a3ad5935cbecba92ddea78"
 dependencies = [
  "gltf-derive",
  "serde",
