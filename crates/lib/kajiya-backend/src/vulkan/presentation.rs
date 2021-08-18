@@ -13,6 +13,7 @@ pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
         device,
         &(&include_bytes!("../final_blit.spv")[..]).to_owned(),
         &ComputePipelineDesc::builder()
+            .compute_entry_hlsl("main")
             .descriptor_set_opts(&[(
                 0,
                 DescriptorSetLayoutOpts::builder()

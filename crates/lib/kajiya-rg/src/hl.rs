@@ -5,7 +5,7 @@ use kajiya_backend::{
     vulkan::{
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::{PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
+        shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
     },
 };
 
@@ -109,6 +109,22 @@ pub struct SimpleRenderPass<'rg, RgPipelineHandle> {
 impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
     pub fn new_compute(mut pass: PassBuilder<'rg>, pipeline_path: &str) -> Self {
         let pipeline = pass.register_compute_pipeline(pipeline_path);
+
+        Self {
+            pass,
+            state: SimpleRenderPassState::new(pipeline),
+        }
+    }
+
+    pub fn new_compute_rust(mut pass: PassBuilder<'rg>, entry_name: &str) -> Self {
+        let pipeline = pass.register_compute_pipeline_with_desc(
+            // TODO
+            "assets/rust-shaders/target/spirv-unknown-vulkan1.1/release/deps/rust_shaders.spv.dir/module",
+            ComputePipelineDesc::builder()
+                .compute_entry_rust(entry_name)
+                .build()
+                .unwrap(),
+        );
 
         Self {
             pass,

@@ -8,7 +8,7 @@ use std::{collections::HashMap, fs::File, path::PathBuf};
 use turbosloth::*;
 
 lazy_static! {
-    static ref FILE_WATCHER: Mutex<Hotwatch> =
+    pub(crate) static ref FILE_WATCHER: Mutex<Hotwatch> =
         Mutex::new(Hotwatch::new_with_custom_delay(std::time::Duration::from_millis(100)).unwrap());
 }
 
@@ -17,6 +17,10 @@ lazy_static! {
         vec![
             ("/kajiya".to_owned(), PathBuf::from(".")),
             ("/shaders".to_owned(), PathBuf::from("assets/shaders")),
+            (
+                "/rust-shaders".to_owned(),
+                PathBuf::from("assets/rust-shaders")
+            ),
             ("/images".to_owned(), PathBuf::from("assets/images")),
             ("/baked".to_owned(), PathBuf::from("baked"))
         ]
@@ -35,6 +39,7 @@ pub fn set_standard_vfs_mount_points(kajiya_path: impl Into<PathBuf>) {
     let kajiya_path = kajiya_path.into();
     set_vfs_mount_point("/kajiya", &kajiya_path);
     set_vfs_mount_point("/shaders", kajiya_path.join("assets/shaders"));
+    set_vfs_mount_point("/rust-shaders", kajiya_path.join("assets/rust-shaders"));
     set_vfs_mount_point("/images", kajiya_path.join("assets/images"));
 }
 
@@ -51,12 +56,17 @@ pub fn canonical_path_from_vfs(path: impl Into<PathBuf>) -> anyhow::Result<PathB
                         "Mounted parent folder: {:?}. Relative path: {:?}",
                         mounted_path, rel_path
                     )
-                })?);
+                })
+                .with_context(|| format!("canonicalize {:?}", rel_path))?);
         }
     }
 
     if path.strip_prefix("/").is_ok() {
-        anyhow::bail!("No vfs mount point for '{:?}'", path);
+        anyhow::bail!(
+            "No vfs mount point for {:?}. Current mount points: {:#?}",
+            path,
+            VFS_MOUNT_POINTS.lock()
+        );
     }
 
     Ok(path)
@@ -82,7 +92,11 @@ pub fn normalized_path_from_vfs(path: impl Into<PathBuf>) -> anyhow::Result<Path
     }
 
     if path.strip_prefix("/").is_ok() {
-        anyhow::bail!("No vfs mount point for '{:?}'", path);
+        anyhow::bail!(
+            "No vfs mount point for {:?}. Current mount points: {:#?}",
+            path,
+            VFS_MOUNT_POINTS.lock()
+        );
     }
 
     Ok(path)
@@ -114,11 +128,11 @@ impl LazyWorker for LoadFile {
                     invalidation_trigger();
                 }
             })
-            .with_context(|| format!("LazyWorker: trying to watch {:?}", self.path))?;
+            .with_context(|| format!("LoadFile: trying to watch {:?}", self.path))?;
 
         let mut buffer = Vec::new();
         std::io::Read::read_to_end(&mut File::open(&self.path)?, &mut buffer)
-            .with_context(|| format!("LazyWorker: trying to read {:?}", self.path))?;
+            .with_context(|| format!("LoadFile: trying to read {:?}", self.path))?;
 
         Ok(Bytes::from(buffer))
     }

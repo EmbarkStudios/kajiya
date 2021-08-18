@@ -324,6 +324,18 @@ impl DescriptorSetLayoutOpts {
     }
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub enum ShaderSourceType {
+    Rust,
+    Hlsl,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct ShaderSource {
+    pub entry: String,
+    pub ty: ShaderSourceType,
+}
+
 #[derive(Builder, Clone)]
 #[builder(pattern = "owned", derive(Clone))]
 pub struct ComputePipelineDesc {
@@ -331,8 +343,8 @@ pub struct ComputePipelineDesc {
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
-    #[builder(setter(into), default = "\"main\".to_owned()")]
-    pub entry_name: String,
+    #[builder(setter(custom))]
+    pub compute_source: ShaderSource,
 }
 
 impl ComputePipelineDescBuilder {
@@ -344,6 +356,22 @@ impl ComputePipelineDescBuilder {
             descriptor_set_opts[i] = Some((opt_set, opt.build().unwrap()));
         }
         self.descriptor_set_opts = Some(descriptor_set_opts);
+        self
+    }
+
+    pub fn compute_entry_rust(mut self, entry: impl Into<String>) -> Self {
+        self.compute_source = Some(ShaderSource {
+            entry: entry.into(),
+            ty: ShaderSourceType::Rust,
+        });
+        self
+    }
+
+    pub fn compute_entry_hlsl(mut self, entry: impl Into<String>) -> Self {
+        self.compute_source = Some(ShaderSource {
+            entry: entry.into(),
+            ty: ShaderSourceType::Hlsl,
+        });
         self
     }
 }
@@ -394,7 +422,7 @@ pub fn create_compute_pipeline(
             )
             .unwrap();
 
-        let entry_name = CString::new(desc.entry_name.as_str()).unwrap();
+        let entry_name = CString::new(desc.compute_source.entry.as_str()).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)

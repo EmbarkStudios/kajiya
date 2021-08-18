@@ -198,8 +198,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 nmax = center + dev * box_size * n_deviations;
 
     
-    float h0diff = length(history0.xyz - center.xyz);
-    float h1diff = length(history1.xyz - center.xyz);
+    float h0diff = length(history0.xyz - ex.xyz);
+    float h1diff = length(history1.xyz - ex.xyz);
     float hdiff_scl = max(1e-10, max(h0diff, h1diff));
 
 #if USE_DUAL_REPROJECTION

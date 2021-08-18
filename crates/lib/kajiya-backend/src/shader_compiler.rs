@@ -1,15 +1,8 @@
-#![allow(unused_imports)]
-
 use crate::file::LoadFile;
 use anyhow::{anyhow, bail, Result};
-use byte_slice_cast::IntoByteVec;
 use bytes::Bytes;
-use relative_path::{RelativePath, RelativePathBuf};
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use relative_path::RelativePathBuf;
+use std::{path::PathBuf, sync::Arc};
 use turbosloth::*;
 
 pub struct CompiledShader {

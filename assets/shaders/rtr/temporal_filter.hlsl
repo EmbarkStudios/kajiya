@@ -84,7 +84,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     const float4 center = linear_to_working(input_tex[px]);
 
-    float refl_ray_length = clamp(ray_len_tex[px].x, 0, 1e3);
+    float refl_ray_length = clamp(ray_len_tex[px].y, 0, 1e3);
 
     // TODO: run a small edge-aware soft-min filter of ray length.
     // The `WaveActiveMin` below improves flat rough surfaces, but is not correct across discontinuities.
@@ -185,16 +185,16 @@ void main(uint2 px: SV_DispatchThreadID) {
         reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
     #endif*/
     
-    float h0diff = length(history0.xyz - center.xyz);
-    float h1diff = length(history1.xyz - center.xyz);
+    float h0diff = length(history0.xyz - ex.xyz);
+    float h1diff = length(history1.xyz - ex.xyz);
     float hdiff_scl = max(1e-10, max(h0diff, h1diff));
 
 #if USE_DUAL_REPROJECTION
     float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
     float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
 #else
-    float h0_score = 1;
-    float h1_score = 0;
+    float h0_score = 0;
+    float h1_score = 1;
 #endif
 
     //const float reproj_penalty = 1000;

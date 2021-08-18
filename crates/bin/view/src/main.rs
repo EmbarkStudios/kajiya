@@ -318,10 +318,10 @@ fn main() -> anyhow::Result<()> {
             }
 
             if keyboard.is_down(VirtualKeyCode::Z) {
-                state.lights.distance /= 0.95;
+                state.lights.distance /= 0.99;
             }
             if keyboard.is_down(VirtualKeyCode::X) {
-                state.lights.distance *= 0.95;
+                state.lights.distance *= 0.99;
             }
 
             //state.sun.phi += dt;

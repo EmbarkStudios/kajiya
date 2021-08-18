@@ -4,6 +4,7 @@ pub mod dynamic_constants;
 pub mod file;
 pub mod gpu_profiler;
 pub mod pipeline_cache;
+pub mod rust_shader_compiler;
 pub mod shader_compiler;
 pub mod transient_resource_cache;
 pub mod vulkan;

@@ -14,6 +14,12 @@ members = [
     "crates/lib/ash-imgui",
 ]
 
+# The shaders use nightly features, and so cannot be built for the CPU on stable.
+exclude = [
+    "assets/rust-shaders",
+    "assets/rust-shaders/builder",
+]
+
 [patch.crates-io]
 # Official ray-tracing extensions
 rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
