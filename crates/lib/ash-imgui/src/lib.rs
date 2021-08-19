@@ -2,7 +2,7 @@
 #![allow(clippy::unneeded_field_pattern, clippy::cast_ptr_alignment)]
 
 use arrayvec::ArrayVec;
-use ash::{version::DeviceV1_0, vk, Device};
+use ash::{vk, Device};
 use imgui::{internal::RawWrapper, Context, DrawCmd, DrawCmdParams, DrawData, DrawIdx, DrawVert};
 use memoffset::offset_of;
 use std::{

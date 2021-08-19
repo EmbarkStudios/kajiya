@@ -1,9 +1,6 @@
 use super::{instance::Instance, surface::Surface};
 use anyhow::Result;
-use ash::{
-    version::InstanceV1_0,
-    vk::{self, PhysicalDeviceMemoryProperties, PhysicalDeviceProperties},
-};
+use ash::vk::{self, PhysicalDeviceMemoryProperties, PhysicalDeviceProperties};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;

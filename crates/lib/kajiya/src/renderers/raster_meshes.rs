@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use kajiya_backend::{
-    ash::{version::DeviceV1_0, vk},
+    ash::vk,
     vk_sync::AccessType,
     vulkan::{buffer::*, image::*, shader::*},
 };

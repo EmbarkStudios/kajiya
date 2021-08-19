@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{chunky_list::TempList, shader_compiler::get_cs_local_size_from_spirv};
 use arrayvec::ArrayVec;
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use byte_slice_cast::AsSliceOf as _;
 use bytes::Bytes;
 use derive_builder::Builder;

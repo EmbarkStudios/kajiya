@@ -4,7 +4,7 @@ use crate::{
     TemporalResourceState,
 };
 use kajiya_backend::{
-    ash::{version::DeviceV1_0, vk},
+    ash::vk,
     dynamic_constants::*,
     gpu_allocator::MemoryLocation,
     pipeline_cache::*,

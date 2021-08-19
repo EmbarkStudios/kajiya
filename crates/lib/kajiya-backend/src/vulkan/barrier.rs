@@ -1,4 +1,4 @@
-use ash::{version::DeviceV1_0, vk};
+use ash::vk;
 use vk_sync::AccessType;
 
 use super::device::Device;

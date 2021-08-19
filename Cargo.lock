@@ -80,9 +80,9 @@ checksum = "23b62fc65de8e4e7f52534fb52b0f3ed04746ae267519eef2a83941e8085068b"
 
 [[package]]
 name = "ash"
-version = "0.32.1"
+version = "0.33.0+1.2.186"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06063a002a77d2734631db74e8f4ce7148b77fe522e6bca46f2ae7774fd48112"
+checksum = "a2142f1fa77cc4d24ffd2f24dc84f88ce5b1e588d524f10fb473a04b93aef14f"
 dependencies = [
  "libloading 0.7.0",
 ]
@@ -99,9 +99,9 @@ dependencies = [
 
 [[package]]
 name = "ash-window"
-version = "0.6.0"
+version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2d058436a3a8410c6e9b625c4e763ea6eaba97d771c303fc2c8e3595b666ffa3"
+checksum = "12f91ce4c6be1a2ba99d3d6cd57d5bae9ac6d6f903b5ae53d6b1dee2edf872af"
 dependencies = [
  "ash",
  "raw-window-handle",
@@ -287,9 +287,9 @@ checksum = "904dfeac50f3cdaba28fc6f57fdcddb75f49ed61346676a78c4ffe55877802fd"
 
 [[package]]
 name = "bindgen"
-version = "0.59.0"
+version = "0.59.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b2ce639ee22f41a6ea0a3061e9bea9f690cf0c6ffc1ada0a3a599778f99ccba"
+checksum = "453c49e5950bb0eb63bb3df640e31618846c89d5b7faa54040d76e98e0134375"
 dependencies = [
  "bitflags",
  "cexpr",
@@ -743,9 +743,9 @@ dependencies = [
 
 [[package]]
 name = "dolly"
-version = "0.1.0"
+version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1c8632855bd55bf097957377a951a7798918f2a3b9dfc90fe784a4604943379"
+checksum = "29eb66cf7767bbe1f97f49ec10f691b7b0ca7c7b19d4b27ca94a70ea49d69464"
 dependencies = [
  "glam",
 ]
@@ -1030,9 +1030,9 @@ checksum = "f6503fe142514ca4799d4c26297c4248239fe8838d827db6bd6065c6ed29a6ce"
 
 [[package]]
 name = "glam"
-version = "0.17.1"
+version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d01468a1d75c441afeb98adc0bcbd174ff59bd35a325c1da57ce7a53e04a5a3"
+checksum = "e01732b97afd8508eee3333a541b9f7610f454bb818669e66e90f5f57c93a776"
 dependencies = [
  "serde",
 ]
@@ -1079,9 +1079,8 @@ dependencies = [
 
 [[package]]
 name = "gpu-allocator"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "500f716d753a8a2d0f6c469beed21e8e9f912dbdf1e85825062df0691423a0a5"
+version = "0.8.0"
+source = "git+https://github.com/Traverse-Research/gpu-allocator.git?rev=e66d062cbd73a6c98834fc3e3acef98318097156#e66d062cbd73a6c98834fc3e3acef98318097156"
 dependencies = [
  "ash",
  "backtrace",
@@ -1428,9 +1427,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.98"
+version = "0.2.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "320cfe77175da3a483efed4bc0adc1968ca050b098ce4f2f1c13a56626128790"
+checksum = "a7f823d141fe0a24df1e23b4af4e3c7ba9e5966ec514ea068c93024aa7deb765"
 
 [[package]]
 name = "libloading"
@@ -2484,7 +2483,7 @@ dependencies = [
 [[package]]
 name = "vk-sync"
 version = "0.1.6"
-source = "git+https://github.com/zedrian/vk-sync-rs.git?rev=e28c05d#e28c05def9b606429f5b8c912c3be34ab9c360ba"
+source = "git+https://github.com/h3r2tic/vk-sync-rs?rev=cb5bbf2#cb5bbf2b6e469442ab0e790e0b919dd07277497f"
 dependencies = [
  "ash",
 ]

@@ -8,7 +8,7 @@ use super::{
 };
 
 use kajiya_backend::{
-    ash::{version::DeviceV1_0, vk},
+    ash::vk,
     chunky_list::TempList,
     dynamic_constants::{DynamicConstants, MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH},
     vulkan::{

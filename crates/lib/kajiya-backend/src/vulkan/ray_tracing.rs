@@ -10,10 +10,7 @@ use super::{
     },
 };
 use anyhow::{Context, Result};
-use ash::{
-    version::{DeviceV1_0, DeviceV1_2},
-    vk,
-};
+use ash::vk;
 use byte_slice_cast::AsSliceOf;
 use bytes::Bytes;
 use glam::{Mat3, Vec3};

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ash::{extensions::ext, version::EntryV1_0, vk};
+use ash::{extensions::ext, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
@@ -79,7 +79,7 @@ impl Instance {
             .map(|raw_name| raw_name.as_ptr())
             .collect();
 
-        let app_desc = vk::ApplicationInfo::builder().api_version(vk::make_version(1, 2, 0));
+        let app_desc = vk::ApplicationInfo::builder().api_version(vk::make_api_version(0, 1, 2, 0));
 
         let instance_desc = vk::InstanceCreateInfo::builder()
             .application_info(&app_desc)

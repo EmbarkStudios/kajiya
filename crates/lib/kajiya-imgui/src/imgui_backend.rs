@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use kajiya::{
     backend::{
-        ash::{self, version::DeviceV1_0, vk},
+        ash::{self, vk},
         Device, Image, ImageDesc, ImageViewDesc,
     },
     ui_renderer::UiRenderer,

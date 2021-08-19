@@ -1,6 +1,6 @@
 use super::{device::Device, surface::Surface};
 use anyhow::Result;
-use ash::{extensions::khr, version::DeviceV1_0, vk};
+use ash::{extensions::khr, vk};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;

@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use glam::Vec3;
 use kajiya_backend::{
-    ash::{version::DeviceV1_0, vk},
+    ash::vk,
     vk_sync::AccessType,
     vulkan::{
         image::*,
