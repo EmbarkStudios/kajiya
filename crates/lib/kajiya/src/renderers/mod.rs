@@ -6,6 +6,7 @@ use kajiya_rg::{self as rg, GetOrCreateTemporal};
 pub mod csgi;
 pub mod deferred;
 pub mod half_res;
+pub mod lighting;
 pub mod motion_blur;
 pub mod post;
 pub mod raster_meshes;
@@ -18,6 +19,9 @@ pub mod shadows;
 pub mod sky;
 pub mod ssgi;
 pub mod taa;
+
+#[cfg(feature = "dlss")]
+pub mod dlss;
 
 pub struct GbufferDepth {
     pub geometric_normal: rg::Handle<Image>,

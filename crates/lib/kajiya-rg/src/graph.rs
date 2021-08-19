@@ -39,8 +39,7 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     path::{Path, PathBuf},
-    sync::Arc,
-    sync::Weak,
+    sync::{Arc, Weak},
 };
 
 pub(crate) struct GraphResourceCreateInfo {

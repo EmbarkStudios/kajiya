@@ -1,0 +1,5 @@
+#include "vulkan.h"
+#include "NGX/Include/nvsdk_ngx.h"
+#include "NGX/Include/nvsdk_ngx_helpers.h"
+#include "NGX/Include/nvsdk_ngx_helpers_vk.h"
+#include "NGX/Include/nvsdk_ngx_vk.h"

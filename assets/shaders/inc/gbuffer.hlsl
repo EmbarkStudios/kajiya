@@ -1,6 +1,8 @@
 #ifndef GBUFFER_HLSL
 #define GBUFFER_HLSL
 
+#include "pack_unpack.hlsl"
+
 struct GbufferData;
 
 struct GbufferDataPacked {
@@ -15,6 +17,7 @@ struct GbufferDataPacked {
     GbufferData unpack();
     float3 unpack_normal();
     float3 unpack_albedo();
+    float3 unpack_emissive();
 };
 
 struct GbufferData {
@@ -37,13 +40,20 @@ struct GbufferData {
     GbufferDataPacked pack();
 };
 
+float roughness_to_perceptual_roughness(float r) {
+    return sqrt(r);
+}
+
+float perceptual_roughness_to_roughness(float r) {
+    return r * r;
+}
 
 GbufferDataPacked GbufferData::pack() {
     float4 res = 0.0.xxxx;
     res.x = asfloat(pack_color_888(albedo));
     res.y = pack_normal_11_10_11(normal);
 
-    float2 roughness_metalness = float2(roughness * roughness, metalness);
+    float2 roughness_metalness = float2(roughness_to_perceptual_roughness(roughness), metalness);
     res.z = asfloat(pack_2x16f_uint(roughness_metalness));
     res.w = asfloat(float3_to_rgb9e5(emissive));
 
@@ -58,9 +68,9 @@ GbufferData GbufferDataPacked::unpack() {
     res.normal = unpack_normal();
 
     float2 roughness_metalness = unpack_2x16f_uint(data0.z);
-    res.roughness = sqrt(roughness_metalness.x);
+    res.roughness = perceptual_roughness_to_roughness(roughness_metalness.x);
     res.metalness = roughness_metalness.y;
-    res.emissive = rgb9e5_to_float3(data0.w);
+    res.emissive = unpack_emissive();
 
     return res;
 }
@@ -71,6 +81,10 @@ float3 GbufferDataPacked::unpack_normal() {
 
 float3 GbufferDataPacked::unpack_albedo() {
     return unpack_color_888(data0.x);
+}
+
+float3 GbufferDataPacked::unpack_emissive() {
+    return rgb9e5_to_float3(data0.w);
 }
 
 #endif

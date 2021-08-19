@@ -3,9 +3,12 @@
 #include "../inc/uv.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
-
-#include "../inc/hash.hlsl"
+#include "../inc/quasi_random.hlsl"
 #include "../inc/brdf.hlsl"
+#include "../inc/pack_unpack.hlsl"
+#include "../inc/gbuffer.hlsl"
+
+#include "../csgi/common.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
@@ -13,8 +16,8 @@
 [[vk::binding(3)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(5)]] Texture2D<float> half_depth_tex;
-[[vk::binding(6)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(6)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(7)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(8)]] RWTexture2D<float4> history_output_tex;
 [[vk::binding(9)]] RWTexture2D<float4> cv_history_output_tex;
 [[vk::binding(10)]] RWTexture2D<float4> output_tex;
@@ -23,7 +26,6 @@
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi/common.hlsl"
 #include "../csgi/lookup.hlsl"
 
 
@@ -76,7 +78,14 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float3 control_variate = 0.0.xxx;
     {
-        const uint2 hi_px = px * 2;
+        uint2 hi_px_subpixels[4] = {
+            uint2(0, 0),
+            uint2(1, 1),
+            uint2(1, 0),
+            uint2(0, 1),
+        };
+
+        const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
         const float2 uv = get_uv(hi_px, gbuffer_tex_size);
         float depth = half_depth_tex[px];
         const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
@@ -84,7 +93,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         const float3 ray_hit_ws = view_ray_context.ray_hit_ws();
         const float3 ray_hit_vs = view_ray_context.ray_hit_vs();
 
-        float3 normal = mul(frame_constants.view_constants.view_to_world, float4(half_view_normal_tex[px].rgb, 0)).xyz;
+        float3 normal = direction_view_to_world(half_view_normal_tex[px].rgb);
 
         // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
         // Note: point-lookup doesn't leak, so multiple bounces should be fine
@@ -96,6 +105,7 @@ void main(uint2 px: SV_DispatchThreadID) {
             normal,
             CsgiLookupParams::make_default()
                 .with_bent_normal(pseudo_bent_normal)
+                //.with_linear_fetch(false)
         );
 
         // Brute force control variate calculation that matches the one
@@ -105,13 +115,13 @@ void main(uint2 px: SV_DispatchThreadID) {
 
             DiffuseBrdf brdf;
             brdf.albedo = 1.0.xxx;
-            const float3x3 shading_basis = build_orthonormal_basis(normal);
+            const float3x3 tangent_to_world = build_orthonormal_basis(normal);
 
             const int sample_count = 32;
             for (uint i = 0; i < sample_count; ++i) {
                 float2 urand = hammersley(i, sample_count);
                 BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
-                float3 ws_dir = mul(shading_basis, brdf_sample.wi);
+                float3 ws_dir = mul(tangent_to_world, brdf_sample.wi);
 
                 control_variate += lookup_csgi(
                     ray_hit_ws,

@@ -8,6 +8,7 @@ use crate::{chunky_list::TempList, shader_compiler::get_cs_local_size_from_spirv
 use arrayvec::ArrayVec;
 use ash::vk;
 use byte_slice_cast::AsSliceOf as _;
+use bytes::Bytes;
 use derive_builder::Builder;
 use parking_lot::Mutex;
 use std::{
@@ -174,7 +175,12 @@ pub fn create_descriptor_set_layouts(
                             .build(),
                     ),
                     rspirv_reflect::DescriptorType::SAMPLED_IMAGE => {
-                        if binding.is_bindless {
+                        if matches!(
+                            binding.dimensionality,
+                            rspirv_reflect::DescriptorDimensionality::RuntimeArray
+                        ) {
+                            // Bindless
+
                             binding_flags[bindings.len()] =
                                 vk::DescriptorBindingFlags::UPDATE_AFTER_BIND
                                     | vk::DescriptorBindingFlags::UPDATE_UNUSED_WHILE_PENDING
@@ -185,14 +191,18 @@ pub fn create_descriptor_set_layouts(
                                 vk::DescriptorSetLayoutCreateFlags::UPDATE_AFTER_BIND_POOL;
                         }
 
+                        let descriptor_count = match binding.dimensionality {
+                            rspirv_reflect::DescriptorDimensionality::Single => 1,
+                            rspirv_reflect::DescriptorDimensionality::Array(size) => size,
+                            rspirv_reflect::DescriptorDimensionality::RuntimeArray => {
+                                MAX_BINDLESS_DESCRIPTOR_COUNT as u32
+                            }
+                        };
+
                         bindings.push(
                             vk::DescriptorSetLayoutBinding::builder()
                                 .binding(*binding_index)
-                                .descriptor_count(if binding.is_bindless {
-                                    MAX_BINDLESS_DESCRIPTOR_COUNT as _
-                                } else {
-                                    1
-                                }) // TODO
+                                .descriptor_count(descriptor_count) // TODO
                                 .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                                 .stage_flags(stage_flags)
                                 .build(),
@@ -314,6 +324,18 @@ impl DescriptorSetLayoutOpts {
     }
 }
 
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
+pub enum ShaderSourceType {
+    Rust,
+    Hlsl,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub struct ShaderSource {
+    pub entry: String,
+    pub ty: ShaderSourceType,
+}
+
 #[derive(Builder, Clone)]
 #[builder(pattern = "owned", derive(Clone))]
 pub struct ComputePipelineDesc {
@@ -321,8 +343,8 @@ pub struct ComputePipelineDesc {
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
-    #[builder(setter(into), default = "\"main\".to_owned()")]
-    pub entry_name: String,
+    #[builder(setter(custom))]
+    pub compute_source: ShaderSource,
 }
 
 impl ComputePipelineDescBuilder {
@@ -334,6 +356,22 @@ impl ComputePipelineDescBuilder {
             descriptor_set_opts[i] = Some((opt_set, opt.build().unwrap()));
         }
         self.descriptor_set_opts = Some(descriptor_set_opts);
+        self
+    }
+
+    pub fn compute_entry_rust(mut self, entry: impl Into<String>) -> Self {
+        self.compute_source = Some(ShaderSource {
+            entry: entry.into(),
+            ty: ShaderSourceType::Rust,
+        });
+        self
+    }
+
+    pub fn compute_entry_hlsl(mut self, entry: impl Into<String>) -> Self {
+        self.compute_source = Some(ShaderSource {
+            entry: entry.into(),
+            ty: ShaderSourceType::Hlsl,
+        });
         self
     }
 }
@@ -384,7 +422,7 @@ pub fn create_compute_pipeline(
             )
             .unwrap();
 
-        let entry_name = CString::new(desc.entry_name.as_str()).unwrap();
+        let entry_name = CString::new(desc.compute_source.entry.as_str()).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
@@ -768,13 +806,13 @@ impl<ShaderCode> PipelineShader<ShaderCode> {
 
 pub fn create_raster_pipeline(
     device: &Device,
-    shaders: &[PipelineShader<&[u8]>],
+    shaders: &[PipelineShader<Bytes>],
     desc: &RasterPipelineDesc,
 ) -> anyhow::Result<RasterPipeline> {
     let stage_layouts = shaders
         .iter()
         .map(|desc| {
-            rspirv_reflect::Reflection::new_from_spirv(desc.code)
+            rspirv_reflect::Reflection::new_from_spirv(&desc.code)
                 .unwrap()
                 .get_descriptor_sets()
                 .unwrap()

@@ -181,6 +181,37 @@ impl Image {
             })
         }
     }
+
+    pub fn view_desc(&self, desc: &ImageViewDesc) -> vk::ImageViewCreateInfo {
+        Self::view_desc_impl(*desc, &self.desc)
+    }
+
+    fn view_desc_impl(desc: ImageViewDesc, image_desc: &ImageDesc) -> vk::ImageViewCreateInfo {
+        vk::ImageViewCreateInfo::builder()
+            .format(desc.format.unwrap_or(image_desc.format))
+            .components(vk::ComponentMapping {
+                r: vk::ComponentSwizzle::R,
+                g: vk::ComponentSwizzle::G,
+                b: vk::ComponentSwizzle::B,
+                a: vk::ComponentSwizzle::A,
+            })
+            .view_type(
+                desc.view_type
+                    .unwrap_or_else(|| convert_image_type_to_view_type(image_desc.image_type)),
+            )
+            // TODO
+            .subresource_range(vk::ImageSubresourceRange {
+                aspect_mask: desc.aspect_mask,
+                base_mip_level: desc.base_mip_level,
+                level_count: desc.level_count.unwrap_or(image_desc.mip_levels as u32),
+                base_array_layer: 0,
+                layer_count: match image_desc.image_type {
+                    ImageType::Cube | ImageType::CubeArray => 6,
+                    _ => 1,
+                },
+            })
+            .build()
+    }
 }
 
 #[derive(Clone, Copy, Builder, Eq, PartialEq, Hash)]
@@ -355,31 +386,10 @@ impl Device {
         image_desc: &ImageDesc,
         image_raw: vk::Image,
     ) -> Result<vk::ImageView> {
-        let create_info = vk::ImageViewCreateInfo::builder()
-            .format(desc.format.unwrap_or(image_desc.format))
-            .image(image_raw)
-            .components(vk::ComponentMapping {
-                r: vk::ComponentSwizzle::R,
-                g: vk::ComponentSwizzle::G,
-                b: vk::ComponentSwizzle::B,
-                a: vk::ComponentSwizzle::A,
-            })
-            .view_type(
-                desc.view_type
-                    .unwrap_or_else(|| convert_image_type_to_view_type(image_desc.image_type)),
-            )
-            // TODO
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: desc.aspect_mask,
-                base_mip_level: desc.base_mip_level,
-                level_count: desc.level_count.unwrap_or(image_desc.mip_levels as u32),
-                base_array_layer: 0,
-                layer_count: match image_desc.image_type {
-                    ImageType::Cube | ImageType::CubeArray => 6,
-                    _ => 1,
-                },
-            })
-            .build();
+        let create_info = vk::ImageViewCreateInfo {
+            image: image_raw,
+            ..Image::view_desc_impl(desc, image_desc)
+        };
 
         Ok(unsafe { self.raw.create_image_view(&create_info, None)? })
     }

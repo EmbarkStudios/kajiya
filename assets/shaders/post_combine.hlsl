@@ -5,9 +5,10 @@
 #include "inc/bindless_textures.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
+//[[vk::binding(1)]] Texture2D<float4> debug_input_tex;
 [[vk::binding(1)]] Texture2D<float4> blur_pyramid_tex;
 [[vk::binding(2)]] Texture2D<float4> rev_blur_pyramid_tex;
-//[[vk::binding(3)]] Texture2D<float2> filtered_luminance_tex;
+//[[vk::binding(4)]] Texture2D<float2> filtered_luminance_tex;
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 [[vk::binding(4)]] cbuffer _ {
     float4 output_tex_size;
@@ -20,7 +21,8 @@
 #define USE_DITHER 1
 #define USE_SHARPEN 1
 
-static const float glare_amount = 0.07;
+static const float sharpen_amount = 0.2;
+static const float glare_amount = 0.05;
 //static const float glare_amount = 0.0;
 
 float sharpen_remap(float l) {
@@ -80,8 +82,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: move to its own pass
 #if USE_SHARPEN
-    static const float sharpen_amount = 0.3;
-
 	float neighbors = 0;
 	float wt_sum = 0;
 
@@ -111,6 +111,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     col = lerp(col, glare, glare_amount);
+    col = max(0.0, col);
+    //col = col * (1.0 - debug_input_tex[px].a) + debug_input_tex[px].rgb;
+
     col *= exp2(ev_shift);
     
 #if USE_TONEMAP

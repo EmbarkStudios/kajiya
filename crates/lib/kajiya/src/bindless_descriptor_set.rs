@@ -6,17 +6,17 @@ lazy_static::lazy_static! {
     pub static ref BINDLESS_DESCRIPTOR_SET_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [
         (0, rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER,
-            is_bindless: false,
+            dimensionality: rspirv_reflect::DescriptorDimensionality::Single,
             name: Default::default(),
         }),
         (1, rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::STORAGE_BUFFER,
-            is_bindless: false,
+            dimensionality: rspirv_reflect::DescriptorDimensionality::Single,
             name: Default::default(),
         }),
         (2, rspirv_reflect::DescriptorInfo {
             ty: rspirv_reflect::DescriptorType::SAMPLED_IMAGE,
-            is_bindless: true,
+            dimensionality: rspirv_reflect::DescriptorDimensionality::RuntimeArray,
             name: Default::default(),
         }),
     ]

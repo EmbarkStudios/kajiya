@@ -26,8 +26,8 @@ pub struct QueueFamily {
 }
 
 pub struct PhysicalDevice {
-    pub(crate) instance: Arc<Instance>,
-    pub(crate) raw: vk::PhysicalDevice,
+    pub instance: Arc<Instance>,
+    pub raw: vk::PhysicalDevice,
     pub(crate) queue_families: Vec<QueueFamily>,
     pub(crate) presentation_requested: bool,
     pub properties: PhysicalDeviceProperties,

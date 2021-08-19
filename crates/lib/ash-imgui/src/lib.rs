@@ -3,13 +3,14 @@
 
 use arrayvec::ArrayVec;
 use ash::{vk, Device};
-use imgui::internal::RawWrapper;
-use imgui::{Context, DrawCmd, DrawCmdParams, DrawData, DrawIdx, DrawVert};
+use imgui::{internal::RawWrapper, Context, DrawCmd, DrawCmdParams, DrawData, DrawIdx, DrawVert};
 use memoffset::offset_of;
-use std::ffi::CStr;
-use std::mem;
-use std::os::raw::{c_uchar, c_void};
-use std::slice;
+use std::{
+    ffi::CStr,
+    mem,
+    os::raw::{c_uchar, c_void},
+    slice,
+};
 
 fn load_shader_module(device: &Device, bytes: &[u8]) -> vk::ShaderModule {
     let shader_module_create_info = vk::ShaderModuleCreateInfo {

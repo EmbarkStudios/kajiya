@@ -17,9 +17,9 @@ pub fn motion_blur(
             .format(vk::Format::R16G16_SFLOAT),
     );
 
-    SimpleRenderPass::new_compute(
+    SimpleRenderPass::new_compute_rust(
         rg.add_pass("velocity reduce x"),
-        "/shaders/motion_blur/velocity_reduce_x.hlsl",
+        "motion_blur::velocity_reduce_x",
     )
     .read(reprojection_map)
     .write(&mut velocity_reduced_x)
@@ -32,9 +32,9 @@ pub fn motion_blur(
                 .div_up_extent([1, VELOCITY_TILE_SIZE, 1]),
         );
 
-    SimpleRenderPass::new_compute(
+    SimpleRenderPass::new_compute_rust(
         rg.add_pass("velocity reduce y"),
-        "/shaders/motion_blur/velocity_reduce_y.hlsl",
+        "motion_blur::velocity_reduce_y",
     )
     .read(&velocity_reduced_x)
     .write(&mut velocity_reduced_y)
@@ -42,9 +42,9 @@ pub fn motion_blur(
 
     let mut velocity_dilated = rg.create(*velocity_reduced_y.desc());
 
-    SimpleRenderPass::new_compute(
+    SimpleRenderPass::new_compute_rust(
         rg.add_pass("velocity dilate"),
-        "/shaders/motion_blur/velocity_dilate.hlsl",
+        "motion_blur::velocity_dilate",
     )
     .read(&velocity_reduced_y)
     .write(&mut velocity_dilated)
@@ -52,20 +52,19 @@ pub fn motion_blur(
 
     let mut output = rg.create(*input.desc());
 
-    SimpleRenderPass::new_compute(
-        rg.add_pass("motion blur"),
-        "/shaders/motion_blur/motion_blur.hlsl",
-    )
-    .read(input)
-    .read(&reprojection_map)
-    .read(&velocity_dilated)
-    .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-    .write(&mut output)
-    .constants((
-        depth.desc().extent_inv_extent_2d(),
-        output.desc().extent_inv_extent_2d(),
-    ))
-    .dispatch(output.desc().extent);
+    let motion_blur_scale: f32 = 1.0;
+    SimpleRenderPass::new_compute_rust(rg.add_pass("motion blur"), "motion_blur::motion_blur")
+        .read(input)
+        .read(&reprojection_map)
+        .read(&velocity_dilated)
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .write(&mut output)
+        .constants((
+            depth.desc().extent_inv_extent_2d(),
+            output.desc().extent_inv_extent_2d(),
+            motion_blur_scale,
+        ))
+        .dispatch(output.desc().extent);
 
     output
 }

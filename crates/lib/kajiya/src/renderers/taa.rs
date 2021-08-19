@@ -18,9 +18,14 @@ impl TaaRenderer {
     pub fn new() -> Self {
         Self {
             temporal_tex: PingPongTemporalResource::new("taa"),
-            current_supersample_offset: Vec2::zero(),
+            current_supersample_offset: Vec2::ZERO,
         }
     }
+}
+
+pub struct TaaOutput {
+    pub color: rg::ReadOnlyHandle<Image>,
+    pub debug: rg::Handle<Image>,
 }
 
 impl TaaRenderer {
@@ -34,24 +39,45 @@ impl TaaRenderer {
         rg: &mut rg::TemporalRenderGraph,
         input_tex: &rg::Handle<Image>,
         reprojection_map: &rg::Handle<Image>,
+        depth_tex: &rg::Handle<Image>,
         output_extent: [u32; 2],
-    ) -> rg::ReadOnlyHandle<Image> {
+    ) -> TaaOutput {
         let (mut temporal_output_tex, history_tex) = self
             .temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(output_extent));
 
+        let mut reprojected_history_img = rg.create(Self::temporal_tex_desc(output_extent));
+        SimpleRenderPass::new_compute(
+            rg.add_pass("reproject taa"),
+            "/shaders/taa/reproject_history.hlsl",
+        )
+        .read(&history_tex)
+        .read(reprojection_map)
+        .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
+        .write(&mut reprojected_history_img)
+        .constants((
+            input_tex.desc().extent_inv_extent_2d(),
+            reprojected_history_img.desc().extent_inv_extent_2d(),
+        ))
+        .dispatch(reprojected_history_img.desc().extent);
+
+        let mut debug_output_img = rg.create(Self::temporal_tex_desc(output_extent));
         SimpleRenderPass::new_compute(rg.add_pass("taa"), "/shaders/taa/taa.hlsl")
             .read(&input_tex)
-            .read(&history_tex)
+            .read(&reprojected_history_img)
             .read(reprojection_map)
+            .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .write(&mut temporal_output_tex)
+            .write(&mut debug_output_img)
             .constants((
                 input_tex.desc().extent_inv_extent_2d(),
                 temporal_output_tex.desc().extent_inv_extent_2d(),
-                self.current_supersample_offset,
             ))
             .dispatch(temporal_output_tex.desc().extent);
 
-        temporal_output_tex.into()
+        TaaOutput {
+            color: temporal_output_tex.into(),
+            debug: debug_output_img,
+        }
     }
 }

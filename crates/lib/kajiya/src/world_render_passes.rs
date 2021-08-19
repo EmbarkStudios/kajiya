@@ -65,7 +65,7 @@ impl WorldRenderer {
                 frame_desc.render_extent,
             ));
 
-            if self.debug_mode != RenderDebugMode::CsgiVoxelGrid {
+            if !matches!(self.debug_mode, RenderDebugMode::CsgiVoxelGrid { .. }) {
                 raster_meshes(
                     rg,
                     self.raster_simple_render_pass.clone(),
@@ -80,12 +80,13 @@ impl WorldRenderer {
                 );
             }
 
-            if self.debug_mode == RenderDebugMode::CsgiVoxelGrid {
+            if let RenderDebugMode::CsgiVoxelGrid { cascade_idx } = self.debug_mode {
                 csgi_volume.debug_raster_voxel_grid(
                     rg,
                     self.raster_simple_render_pass.clone(),
                     &mut gbuffer_depth,
                     &mut velocity_img,
+                    cascade_idx,
                 );
             }
 
@@ -113,16 +114,6 @@ impl WorldRenderer {
             sun_shadow_mask.into()
         };
 
-        let rtr = self.rtr.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &csgi_volume,
-        );
-
         let rtdgi = self.rtdgi.render(
             rg,
             &gbuffer_depth,
@@ -133,6 +124,36 @@ impl WorldRenderer {
             &csgi_volume,
             &ssgi_tex,
         );
+
+        // TODO: don't iter over all the things
+        let any_triangle_lights = self
+            .instances
+            .iter()
+            .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
+
+        let mut rtr = self.rtr.trace(
+            rg,
+            &gbuffer_depth,
+            &reprojection_map,
+            &convolved_sky_cube,
+            self.bindless_descriptor_set,
+            &tlas,
+            &csgi_volume,
+            &rtdgi,
+        );
+
+        if any_triangle_lights {
+            // Render specular lighting into the RTR image so they can be jointly filtered
+            self.lighting.render_specular(
+                &mut rtr.resolved_tex,
+                rg,
+                &gbuffer_depth,
+                self.bindless_descriptor_set,
+                &tlas,
+            );
+        }
+
+        let rtr = rtr.filter_temporal(rg, &gbuffer_depth, &reprojection_map);
 
         let mut debug_out_tex = rg.create(ImageDesc::new_2d(
             vk::Format::R16G16B16A16_SFLOAT,
@@ -150,22 +171,53 @@ impl WorldRenderer {
             &mut debug_out_tex,
             &csgi_volume,
             &sky_cube,
+            &convolved_sky_cube,
             self.bindless_descriptor_set,
             self.debug_shading_mode,
         );
 
-        let anti_aliased = self.taa.render(
-            rg,
-            &debug_out_tex,
-            &reprojection_map,
-            self.temporal_upscale_extent,
-        );
-        let motion_blurred =
+        #[allow(unused_mut)]
+        let mut anti_aliased = None;
+
+        #[cfg(feature = "dlss")]
+        if self.use_dlss {
+            anti_aliased = Some(
+                self.dlss
+                    .render(
+                        rg,
+                        &debug_out_tex,
+                        &reprojection_map,
+                        &gbuffer_depth.depth,
+                        self.temporal_upscale_extent,
+                    )
+                    .into(),
+            );
+        }
+
+        let anti_aliased = anti_aliased.unwrap_or_else(|| {
+            self.taa
+                .render(
+                    rg,
+                    &debug_out_tex,
+                    &reprojection_map,
+                    &gbuffer_depth.depth,
+                    self.temporal_upscale_extent,
+                )
+                .color
+        });
+
+        let mut final_post_input =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
+
+        if self.debug_mode == RenderDebugMode::CsgiRadiance {
+            csgi_volume.fullscreen_debug_radiance(rg, &mut final_post_input);
+        }
 
         let post_processed = post_process(
             rg,
-            &motion_blurred,
+            &final_post_input,
+            //&anti_aliased,
+            //            &anti_aliased.debug,
             self.bindless_descriptor_set,
             self.ev_shift,
         );
@@ -203,8 +255,13 @@ impl WorldRenderer {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let post_processed =
-            post_process(rg, &accum_img, self.bindless_descriptor_set, self.ev_shift);
+        let post_processed = post_process(
+            rg,
+            &accum_img,
+            //&accum_img, // hack
+            self.bindless_descriptor_set,
+            self.ev_shift,
+        );
 
         rg.export(
             post_processed,

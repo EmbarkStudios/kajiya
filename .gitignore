@@ -2,6 +2,9 @@
 /.vscode
 /baked
 /assets/scenes/private-*
+*.blend1
 *.log
 imgui.ini
 view_state.ron
+nvngx*
+nvsdk*

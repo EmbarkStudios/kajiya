@@ -28,6 +28,12 @@ pub struct FrameContext<'a> {
     pub imgui: Option<ImguiContext<'a>>,
 }
 
+impl<'a> FrameContext<'a> {
+    pub fn aspect_ratio(&self) -> f32 {
+        self.render_extent[0] as f32 / self.render_extent[1] as f32
+    }
+}
+
 #[cfg(feature = "dear-imgui")]
 pub struct ImguiContext<'a> {
     imgui: &'a mut imgui::Context,
@@ -121,7 +127,7 @@ impl SimpleMainLoopBuilder {
     /// and will be upscaled to the target resolution by TAA. Greater values mean faster
     /// rendering, but temporal shimmering artifacts and blurriness.
     pub fn temporal_upsampling(mut self, temporal_upsampling: f32) -> Self {
-        self.temporal_upsampling = temporal_upsampling.clamp(1.0, 2.0);
+        self.temporal_upsampling = temporal_upsampling.clamp(1.0, 8.0);
         self
     }
 
@@ -196,8 +202,12 @@ impl SimpleMainLoop {
         )?;
 
         let lazy_cache = LazyCache::create();
-        let world_renderer =
-            WorldRenderer::new(temporal_upscale_extent, &render_backend, &lazy_cache)?;
+        let world_renderer = WorldRenderer::new(
+            render_extent,
+            temporal_upscale_extent,
+            &render_backend,
+            &lazy_cache,
+        )?;
         let ui_renderer = UiRenderer::default();
 
         let rg_renderer = kajiya::rg::renderer::Renderer::new(&render_backend)?;

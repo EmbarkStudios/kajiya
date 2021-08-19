@@ -87,7 +87,7 @@ impl BufferBuilder {
         let target = target.raw;
 
         // TODO: share a common staging buffer, don't leak
-        const STAGING_BYTES: usize = 64 * 1024 * 1024;
+        const STAGING_BYTES: usize = 16 * 1024 * 1024;
         let mut staging_buffer = device
             .create_buffer(
                 BufferDesc {

@@ -3,19 +3,21 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/color.hlsl"
 #include "../inc/bilinear.hlsl"
+#include "rtr_settings.hlsl"
 
 #define USE_DUAL_REPROJECTION 1
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float> depth_tex;
-[[vk::binding(3)]] Texture2D<float> ray_len_tex;
+[[vk::binding(3)]] Texture2D<float2> ray_len_tex;
 [[vk::binding(4)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
 [[vk::binding(6)]] cbuffer _ {
     float4 output_tex_size;
 };
 
+// Should probably be 3 or 4
 #define ENCODING_SCHEME 4
 
 #if 0 == ENCODING_SCHEME
@@ -55,6 +57,7 @@ float4 working_to_linear(float4 v) {
 }
 #endif
 
+// Strong suppression; reduces noise in very difficult cases but introduces a lot of bias
 #if 4 == ENCODING_SCHEME
 float4 linear_to_working(float4 v) {
     v.rgb = sqrt(max(0.0, v.rgb));
@@ -71,16 +74,17 @@ float4 working_to_linear(float4 v) {
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
     #if 0
-        output_tex[px] = float4(ray_len_tex[px].xxx * 0.1, 1);
+        output_tex[px] = float4(ray_len_tex[px].xxx * 0.01, 1);
+        //output_tex[px] = float4(ray_len_tex[px].yyy * 0.01, 1);
         return;
-    #elif 0
+    #elif !RTR_USE_TEMPORAL_FILTERS
         output_tex[px] = input_tex[px];
         return;
     #endif
 
     const float4 center = linear_to_working(input_tex[px]);
 
-    float refl_ray_length = clamp(ray_len_tex[px], 0, 1e3);
+    float refl_ray_length = clamp(ray_len_tex[px].y, 0, 1e3);
 
     // TODO: run a small edge-aware soft-min filter of ray length.
     // The `WaveActiveMin` below improves flat rough surfaces, but is not correct across discontinuities.
@@ -91,7 +95,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
     const float3 reflector_vs = view_ray_context.ray_hit_vs();
-    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs();
+    const float3 reflection_hit_vs = reflector_vs + view_ray_context.ray_dir_vs() * refl_ray_length;
 
     const float4 reflection_hit_cs = mul(frame_constants.view_constants.view_to_sample, float4(reflection_hit_vs, 1));
     const float4 prev_hit_cs = mul(frame_constants.view_constants.clip_to_prev_clip, reflection_hit_cs);
@@ -181,16 +185,16 @@ void main(uint2 px: SV_DispatchThreadID) {
         reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
     #endif*/
     
-    float h0diff = length(history0.xyz - center.xyz);
-    float h1diff = length(history1.xyz - center.xyz);
+    float h0diff = length(history0.xyz - ex.xyz);
+    float h1diff = length(history1.xyz - ex.xyz);
     float hdiff_scl = max(1e-10, max(h0diff, h1diff));
 
 #if USE_DUAL_REPROJECTION
     float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
     float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
 #else
-    float h0_score = 1;
-    float h1_score = 0;
+    float h0_score = 0;
+    float h1_score = 1;
 #endif
 
     //const float reproj_penalty = 1000;

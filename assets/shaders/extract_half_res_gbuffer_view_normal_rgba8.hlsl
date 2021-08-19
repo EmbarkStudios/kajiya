@@ -10,8 +10,14 @@
 
 [numthreads(8, 8, 1)]
 void main(in int2 px : SV_DispatchThreadID) {
-    // TODO: use gbuffer unpacking
-    int2 src_px = int2(((px + 0.25) / output_tex_size.xy) * input_tex_size.xy);
+    uint2 hi_px_subpixels[4] = {
+        uint2(0, 0),
+        uint2(1, 1),
+        uint2(1, 0),
+        uint2(0, 1),
+    };
+    const int2 src_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+    
     float3 normal = unpack_normal_11_10_11_no_normalize(input_tex[src_px].y);
     float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(normal, 0)).xyz);
 	output_tex[px] = float4(normal_vs, 1);

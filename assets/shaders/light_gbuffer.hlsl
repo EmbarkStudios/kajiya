@@ -8,9 +8,12 @@
 #include "inc/layered_brdf.hlsl"
 #include "inc/uv.hlsl"
 #include "inc/bindless_textures.hlsl"
+#include "rtr/rtr_settings.hlsl"
 
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
+
+#include "csgi/common.hlsl"
 
 #define USE_SSGI 0
 #define USE_CSGI 1
@@ -21,14 +24,14 @@
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture2D<float3> shadow_mask_tex;
+[[vk::binding(2)]] Texture2D<float> shadow_mask_tex;
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] RWTexture2D<float4> temporal_output_tex;
 [[vk::binding(7)]] RWTexture2D<float4> output_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_direct_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex;
+[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(9)]] TextureCube<float4> unconvolved_sky_cube_tex;
 [[vk::binding(10)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(11)]] cbuffer _ {
     float4 output_tex_size;
@@ -41,7 +44,6 @@
 #define SHADING_MODE_REFLECTIONS 3
 #define SHADING_MODE_RTX_OFF 4
 
-#include "csgi/common.hlsl"
 #include "csgi/lookup.hlsl"
 
 #include "inc/atmosphere.hlsl"
@@ -79,7 +81,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float current_sun_angular_radius = acos(sun_angular_radius_cos);
             float sun_radius_ratio = real_sun_angular_radius / current_sun_angular_radius;
 
-            float3 output = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+            float3 output = unconvolved_sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             if (dot(outgoing_ray.Direction, SUN_DIRECTION) > sun_angular_radius_cos) {
                 // TODO: what's the correct value?
                 output += 800 * sun_color_in_direction(outgoing_ray.Direction) * sun_radius_ratio * sun_radius_ratio;
@@ -99,13 +101,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     pt_ws /= pt_ws.w;
 
     const float3 to_light_norm = SUN_DIRECTION;
-    
     float shadow_mask = shadow_mask_tex[px].x;
-    /*// Makes the shadow jitter follow the scene, but is actually leaky. TODO.
-    float shadow_mask = shadow_mask_tex.SampleLevel(
-        sampler_lnc,
-        uv - frame_constants.view_constants.sample_offset_pixels * output_tex_size.zw,
-    0).x;*/
 
     if (debug_shading_mode == SHADING_MODE_RTX_OFF) {
         shadow_mask = 1;
@@ -120,9 +116,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gbuffer.albedo = 0.5;
     }
 
-    const float3x3 shading_basis = build_orthonormal_basis(gbuffer.normal);
-    const float3 wi = mul(to_light_norm, shading_basis);
-    float3 wo = mul(-outgoing_ray.Direction, shading_basis);
+    const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+    const float3 wi = mul(to_light_norm, tangent_to_world);
+    float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
 
     // Hack for shading normals facing away from the outgoing ray's direction:
     // We flip the outgoing ray along the shading normal, so that the reflection's curvature
@@ -198,7 +194,21 @@ void main(in uint2 px : SV_DispatchThreadID) {
         ;
 
     if (USE_RTR && debug_shading_mode != SHADING_MODE_RTX_OFF) {
-        total_radiance += rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+        float3 rtr_radiance;
+
+        #if !RTR_RENDER_SCALED_BY_FG
+            rtr_radiance = rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+        #else
+            rtr_radiance = rtr_tex[px].xyz;
+        #endif
+
+        if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
+            GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
+            LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
+            rtr_radiance /= true_brdf.energy_preservation.preintegrated_reflection;
+        }
+        
+        total_radiance += rtr_radiance;
     }
 
     //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
@@ -224,7 +234,15 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = rtr_tex[px].www / 16.0;
 
     if (debug_shading_mode == SHADING_MODE_REFLECTIONS) {
-        output = rtr_tex[px].xyz;
+        #if !RTR_RENDER_SCALED_BY_FG
+            output = rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
+        #else
+            output = rtr_tex[px].xyz;
+        #endif
+
+        GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
+        LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
+        output /= true_brdf.energy_preservation.preintegrated_reflection;
     }
 
     //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
@@ -235,6 +253,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     if (debug_shading_mode == SHADING_MODE_DIFFUSE_GI) {
         output = gi_irradiance;
     }
+
+    //output = gbuffer.emissive;
 
     // Hacky visual test of volumetric scattering
     if (frame_constants.global_fog_thickness > 0.0) {
@@ -299,6 +319,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = shadow_mask_tex[px].y * 10;
     //output = sqrt(shadow_mask_tex[px].y) * 0.1;
     //output = shadow_mask_tex[px].z * 0.1;
+    //output = rtr_tex[px].rgb;
+
+    //output.xz += 1;
+    //output.rgb /= max(1e-5, calculate_luma(output));
 
     #if 0
         output = lookup_csgi(

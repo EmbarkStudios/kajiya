@@ -8,11 +8,13 @@ struct GbufferRayPayload {
     GbufferDataPacked gbuffer_packed;
     float t;
     float cone_width;
+    uint path_length;
 
     static GbufferRayPayload new_miss() {
         GbufferRayPayload res;
         res.t = FLT_MAX;
         res.cone_width = 0;
+        res.path_length = 0;
         return res;
     }
 
@@ -73,54 +75,65 @@ struct GbufferPathVertex {
     float ray_t;
 };
 
-GbufferPathVertex rt_trace_gbuffer(
-    RaytracingAccelerationStructure acceleration_structure,
-    RayDesc ray,
-    float cone_width
-) {
-    GbufferRayPayload payload = GbufferRayPayload::new_miss();
-    payload.cone_width = cone_width;
+struct GbufferRaytrace {
+    RayDesc ray;
+    float cone_width;
+    uint path_length;
+    bool cull_back_faces;
 
-    TraceRay(acceleration_structure, RAY_FLAG_CULL_BACK_FACING_TRIANGLES, 0xff, 0, 0, 0, ray, payload);
-
-    if (payload.is_hit()) {
-        GbufferPathVertex res;
-        res.is_hit = true;
-        res.position = ray.Origin + ray.Direction * payload.t;
-        res.gbuffer_packed = payload.gbuffer_packed;
-        res.ray_t = payload.t;
-        return res;
-    } else {
-        GbufferPathVertex res;
-        res.is_hit = false;
-        res.ray_t = FLT_MAX;
+    static GbufferRaytrace with_ray(RayDesc ray) {
+        GbufferRaytrace res;
+        res.ray = ray;
+        res.cone_width = 1.0;
+        res.path_length = 0;
+        res.cull_back_faces = true;
         return res;
     }
-}
 
-GbufferPathVertex rt_trace_gbuffer_nocull(
-    RaytracingAccelerationStructure acceleration_structure,
-    RayDesc ray,
-    float cone_width
-) {
-    GbufferRayPayload payload = GbufferRayPayload::new_miss();
-    payload.cone_width = cone_width;
-    
-    TraceRay(acceleration_structure, 0, 0xff, 0, 0, 0, ray, payload);
-
-    if (payload.is_hit()) {
-        GbufferPathVertex res;
-        res.is_hit = true;
-        res.position = ray.Origin + ray.Direction * payload.t;
-        res.gbuffer_packed = payload.gbuffer_packed;
-        res.ray_t = payload.t;
-        return res;
-    } else {
-        GbufferPathVertex res;
-        res.is_hit = false;
-        res.ray_t = FLT_MAX;
+    GbufferRaytrace with_cone_width(float v) {
+        GbufferRaytrace res = this;
+        res.cone_width = v;
         return res;
     }
-}
+
+    GbufferRaytrace with_path_length(uint v) {
+        GbufferRaytrace res = this;
+        res.path_length = v;
+        return res;
+    }
+
+    GbufferRaytrace with_cull_back_faces(bool v) {
+        GbufferRaytrace res = this;
+        res.cull_back_faces = v;
+        return res;
+    }
+
+    GbufferPathVertex trace(RaytracingAccelerationStructure acceleration_structure) {
+        GbufferRayPayload payload = GbufferRayPayload::new_miss();
+        payload.cone_width = this.cone_width;
+        payload.path_length = this.path_length;
+
+        uint trace_flags = 0;
+        if (this.cull_back_faces) {
+            trace_flags |= RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
+        }
+
+        TraceRay(acceleration_structure, trace_flags, 0xff, 0, 0, 0, this.ray, payload);
+
+        if (payload.is_hit()) {
+            GbufferPathVertex res;
+            res.is_hit = true;
+            res.position = ray.Origin + ray.Direction * payload.t;
+            res.gbuffer_packed = payload.gbuffer_packed;
+            res.ray_t = payload.t;
+            return res;
+        } else {
+            GbufferPathVertex res;
+            res.is_hit = false;
+            res.ray_t = FLT_MAX;
+            return res;
+        }
+    }
+};
 
 #endif

@@ -17,7 +17,7 @@ pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Hand
 
     let mut output = rg.create(pyramid_desc);
 
-    SimpleRenderPass::new_compute(rg.add_pass("blur0"), "/shaders/blur.hlsl")
+    SimpleRenderPass::new_compute(rg.add_pass("_blur0"), "/shaders/blur.hlsl")
         .read(input)
         .write_view(
             &mut output,
@@ -31,7 +31,7 @@ pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Hand
         let downsample_amount = 1 << target_mip;
 
         SimpleRenderPass::new_compute(
-            rg.add_pass(&format!("blur{}", target_mip)),
+            rg.add_pass(&format!("_blur{}", target_mip)),
             "/shaders/blur.hlsl",
         )
         .read_view(
@@ -74,7 +74,7 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
         };
 
         SimpleRenderPass::new_compute(
-            rg.add_pass(&format!("rev_blur{}", target_mip)),
+            rg.add_pass(&format!("_rev_blur{}", target_mip)),
             "/shaders/rev_blur.hlsl",
         )
         .read_view(
@@ -144,6 +144,7 @@ fn edge_preserving_filter_luminance(
 pub fn post_process(
     rg: &mut RenderGraph,
     input: &rg::Handle<Image>,
+    //debug_input: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
     ev_shift: f32,
 ) -> rg::Handle<Image> {
@@ -157,6 +158,7 @@ pub fn post_process(
 
     SimpleRenderPass::new_compute(rg.add_pass("post combine"), "/shaders/post_combine.hlsl")
         .read(input)
+        //.read(debug_input)
         .read(&blur_pyramid)
         .read(&rev_blur_pyramid)
         //.read(&blurred_luminance)

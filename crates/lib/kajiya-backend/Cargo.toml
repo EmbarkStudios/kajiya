@@ -15,21 +15,24 @@ ash = {git = "https://github.com/MaikKlein/ash" }
 # ash-window = "0.6"
 ash-window = {git = "https://github.com/MaikKlein/ash" }
 byte-slice-cast = "0.3"
+bytes = "1.0"
 derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 futures = "0.3"
-glam = "0.12"
+glam = "0.17"
 # gpu-allocator = { version = "0.6.0", features = ["vulkan_device_address"] }
 gpu-allocator = { git = "https://github.com/MaikKlein/gpu-allocator", branch ="main" }
 hassle-rs = "0.4"
 hotwatch = "0.4"
 lazy_static = "1.4"
 log = "0.4"
+nanoserde = "0.1"
+normpath = "0.3"
 parking_lot = "0.11"
 raw-window-handle = "0.3"
 relative-path = "1.3"
 rspirv = "0.7"  # note: patched over for latest RT
-rspirv-reflect = { git = "https://github.com/Traverse-Research/rspirv-reflect.git", rev = "1fa877bfeb6f4e3c71c3376523ceaaf8ddaee42f" }
+rspirv-reflect = { git = "https://github.com/h3r2tic/rspirv-reflect", rev = "77364f98cbfb5c7ee3aa1347158670a9b8ec5bf5" }
 shader-prepper = "0.2"
 smol = "1.2.5"
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
@@ -40,3 +43,4 @@ vk-sync = { git = "https://github.com/MaikKlein/vk-sync-rs" }
 default = ["ray-tracing"]
 #default = []
 ray-tracing = []
+dlss = []

@@ -1,24 +1,37 @@
-use std::{path::PathBuf, sync::Arc};
+use std::path::PathBuf;
 
+use bytes::Bytes;
 use image::{imageops::FilterType, DynamicImage, GenericImageView as _};
 use kajiya_backend::{ash::vk, file::LoadFile, ImageDesc};
 use turbosloth::*;
 
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub enum ImageSource {
+    File(PathBuf),
+    Memory(Bytes),
+}
+
 pub struct RawRgba8Image {
-    pub data: Vec<u8>,
+    pub data: Bytes,
     pub dimensions: [u32; 2],
 }
 
 #[derive(Clone, Hash)]
-pub struct LoadImage {
-    bytes: Lazy<Vec<u8>>,
+pub enum LoadImage {
+    Lazy(Lazy<Bytes>),
+    Immediate(Bytes),
 }
 
 impl LoadImage {
-    pub fn new(path: impl Into<PathBuf>) -> anyhow::Result<Self> {
-        Ok(Self {
-            bytes: LoadFile::new(&path.into())?.into_lazy(),
-        })
+    pub fn from_path<P: Into<PathBuf>>(path: P) -> anyhow::Result<Self> {
+        Self::new(&ImageSource::File(path.into()))
+    }
+
+    pub fn new(source: &ImageSource) -> anyhow::Result<Self> {
+        match source {
+            ImageSource::File(path) => Ok(Self::Lazy(LoadFile::new(path)?.into_lazy())),
+            ImageSource::Memory(bytes) => Ok(Self::Immediate(bytes.clone())),
+        }
     }
 }
 
@@ -27,16 +40,20 @@ impl LazyWorker for LoadImage {
     type Output = anyhow::Result<RawRgba8Image>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-        let file: Arc<Vec<u8>> = self.bytes.eval(&ctx).await?;
+        let bytes: Bytes = match self {
+            // Note: `Bytes` does internal reference counting, so this clone is cheap
+            LoadImage::Lazy(bytes) => Bytes::clone(bytes.eval(&ctx).await?.as_ref()),
+            LoadImage::Immediate(bytes) => bytes,
+        };
 
-        let image = image::load_from_memory(file.as_slice())?;
+        let image = image::load_from_memory(&bytes)?;
         let image_dimensions = image.dimensions();
         log::info!("Loaded image: {:?} {:?}", image_dimensions, image.color());
 
         let image = image.to_rgba8();
 
         Ok(RawRgba8Image {
-            data: image.into_raw(),
+            data: image.into_raw().into(),
             dimensions: [image_dimensions.0, image_dimensions.1],
         })
     }
@@ -59,7 +76,7 @@ impl LazyWorker for CreatePlaceholderImage {
 
     async fn run(self, _ctx: RunContext) -> Self::Output {
         Ok(RawRgba8Image {
-            data: self.values.to_vec(),
+            data: Bytes::from(self.values.to_vec()),
             dimensions: [1, 1],
         })
     }
@@ -87,7 +104,7 @@ impl LazyWorker for CreateGpuImage {
             image::ImageBuffer::<image::Rgba<u8>, _>::from_raw(
                 src.dimensions[0],
                 src.dimensions[1],
-                src.data.clone(),
+                src.data.to_vec(),
             )
             .unwrap(),
         );

@@ -1,5 +1,6 @@
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
+use anyhow::Context;
 use parking_lot::Mutex;
 
 lazy_static::lazy_static! {
@@ -7,7 +8,9 @@ lazy_static::lazy_static! {
 }
 
 pub fn mmapped_asset<T, P: Into<std::path::PathBuf>>(path: P) -> anyhow::Result<&'static T> {
-    let path = kajiya_backend::canonical_path_from_vfs(path)?;
+    let path = path.into();
+    let path = kajiya_backend::canonical_path_from_vfs(&path)
+        .with_context(|| format!("Can't mmap asset: file doesn't exist: {:?}", path))?;
 
     let mut mmaps = ASSET_MMAPS.lock();
     let data: &[u8] = mmaps.entry(path.clone()).or_insert_with(|| {

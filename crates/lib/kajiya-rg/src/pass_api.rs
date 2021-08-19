@@ -10,15 +10,15 @@ use super::{
 use kajiya_backend::{
     ash::vk,
     chunky_list::TempList,
-    dynamic_constants::DynamicConstants,
-    vulkan::shader::FramebufferCacheKey,
-    vulkan::shader::ShaderPipelineCommon,
-    vulkan::shader::MAX_COLOR_ATTACHMENTS,
+    dynamic_constants::{DynamicConstants, MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH},
     vulkan::{
         device::{CommandBuffer, Device},
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
-        shader::{ComputePipeline, RasterPipeline},
+        shader::{
+            ComputePipeline, FramebufferCacheKey, RasterPipeline, ShaderPipelineCommon,
+            MAX_COLOR_ATTACHMENTS,
+        },
     },
 };
 
@@ -29,6 +29,7 @@ pub struct RenderPassApi<'a, 'exec_params, 'constants> {
 
 pub enum DescriptorSetBinding {
     Image(vk::DescriptorImageInfo),
+    ImageArray(Vec<vk::DescriptorImageInfo>),
     Buffer(vk::DescriptorBufferInfo),
     RayTracingAcceleration(vk::AccelerationStructureKHR),
     DynamicBuffer {
@@ -185,6 +186,10 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                             .execution_params
                             .frame_constants_layout
                             .instance_dynamic_parameters_offset,
+                        self.resources
+                            .execution_params
+                            .frame_constants_layout
+                            .triangle_lights_offset,
                     ],
                 );
             }
@@ -204,6 +209,19 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                             .image_layout(image.image_layout)
                             .image_view(self.resources.image_view(image.handle, &image.view_desc))
                             .build(),
+                    ),
+                    RenderPassBinding::ImageArray(images) => DescriptorSetBinding::ImageArray(
+                        images
+                            .iter()
+                            .map(|image| {
+                                vk::DescriptorImageInfo::builder()
+                                    .image_layout(image.image_layout)
+                                    .image_view(
+                                        self.resources.image_view(image.handle, &image.view_desc),
+                                    )
+                                    .build()
+                            })
+                            .collect(),
                     ),
                     RenderPassBinding::Buffer(buffer) => DescriptorSetBinding::Buffer(
                         vk::DescriptorBufferInfo::builder()
@@ -226,7 +244,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                         DescriptorSetBinding::DynamicBuffer {
                             buffer: vk::DescriptorBufferInfo::builder()
                                 .buffer(self.resources.dynamic_constants.buffer.raw)
-                                .range(16384)
+                                .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
                                 .build(),
                             offset: *offset,
                         }
@@ -468,6 +486,7 @@ pub struct RenderPassRayTracingAccelerationBinding {
 
 pub enum RenderPassBinding {
     Image(RenderPassImageBinding),
+    ImageArray(Vec<RenderPassImageBinding>),
     Buffer(RenderPassBufferBinding),
     RayTracingAcceleration(RenderPassRayTracingAccelerationBinding),
     DynamicConstants(u32),
@@ -535,6 +554,23 @@ impl Ref<Image, GpuSrv> {
             view_desc: view_desc.build().unwrap(),
             image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         })
+    }
+}
+
+impl BindRgRef for Vec<Ref<Image, GpuSrv>> {
+    fn bind(&self) -> RenderPassBinding {
+        let view_desc = ImageViewDesc::default();
+
+        RenderPassBinding::ImageArray(
+            self.iter()
+                .copied()
+                .map(|handle| RenderPassImageBinding {
+                    handle: handle.handle,
+                    view_desc,
+                    image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                })
+                .collect(),
+        )
     }
 }
 
@@ -645,6 +681,20 @@ fn bind_descriptor_set(
                             })
                             .image_info(std::slice::from_ref(image_info.add(*image)))
                             .build(),
+                        DescriptorSetBinding::ImageArray(images) => {
+                            assert!(!images.is_empty());
+
+                            write
+                                .descriptor_type(match images[0].image_layout {
+                                    vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL => {
+                                        vk::DescriptorType::SAMPLED_IMAGE
+                                    }
+                                    vk::ImageLayout::GENERAL => vk::DescriptorType::STORAGE_IMAGE,
+                                    _ => unimplemented!("{:?}", images[0].image_layout),
+                                })
+                                .image_info(images.as_slice())
+                                .build()
+                        }
                         DescriptorSetBinding::Buffer(buffer) => write
                             .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
                             .buffer_info(std::slice::from_ref(buffer_info.add(*buffer)))

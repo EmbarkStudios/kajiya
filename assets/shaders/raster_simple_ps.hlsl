@@ -42,64 +42,78 @@ PsOut main(PsIn ps) {
     float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
-    float3 albedo = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
+    float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5);
+    if (albedo_texel.a < 0.5) {
+        discard;
+    }
+
+    float3 albedo = albedo_texel.xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
 
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     const float4 metalness_roughness = spec_tex.SampleBias(sampler_llr, spec_uv, -0.5);
-
-    float roughness = clamp(material.roughness_mult * metalness_roughness.y, 1e-3, 1.0);
-    //roughness = 0.01;
-    float metalness = metalness_roughness.z * material.metalness_factor;//lerp(metalness_roughness.z, 1.0, material.metalness_factor);
-
-    //albedo *= lerp(0.75, 1.0, metalness);
+    float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
+    float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
+    float metalness = metalness_roughness.z * material.metalness_factor;
 
     Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
     const float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, -0.5).xyz * 2.0 - 1.0;
 
-    float3 normal = ps.normal;
+    float3 normal_ws; {
+        float3 normal_os = ps.normal;
 
-    if (true) {
-        if (dot(ps.bitangent, ps.bitangent) > 0.0) {
-            float3x3 tbn = float3x3(ps.tangent, ps.bitangent, ps.normal);
-            normal = mul(ts_normal, tbn);
+        if (true) {
+            if (dot(ps.bitangent, ps.bitangent) > 0.0) {
+                float3x3 tbn = float3x3(ps.tangent, ps.bitangent, ps.normal);
+                normal_os = mul(ts_normal, tbn);
+            }
         }
-        normal = normalize(normal);
+
+        // Transform to world space
+        normal_ws = normalize(mul(instance_transforms_dyn[push_constants.draw_index].current, float4(normal_os, 0.0)));
     }
 
     // Derive normal from depth
-    float3 geometric_normal; {
+    float3 geometric_normal_vs; {
         float3 d1 = ddx(ps.vs_pos);
         float3 d2 = ddy(ps.vs_pos);
-        geometric_normal = normalize(cross(d2, d1));
+        geometric_normal_vs = normalize(cross(d2, d1));
     }
+    float3 geometric_normal_ws = direction_view_to_world(geometric_normal_vs);
 
-    if (!true) {
-        normal = mul(frame_constants.view_constants.view_to_world, float4(geometric_normal, 0)).xyz;
+    // Fix invalid normals
+    if (dot(normal_ws, geometric_normal_ws) < 0) {
+        normal_ws *= -1;
+        //normal_ws = geometric_normal_ws;
     }
+    //normal_ws = geometric_normal_ws;
 
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
     float3 emissive = 1.0.xxx
         * emissive_tex.SampleBias(sampler_llr, emissive_uv, -0.5).rgb
         * float3(material.emissive)
-        * EMISSIVE_MULT
-        * instance_dynamic_constants_dyn[push_constants.draw_index].emissive_multiplier;
+        * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    //metalness = 1;
-    //roughness = 0.2;
-    //albedo = 1;
+    //metalness = 0;
+    //roughness = 0.1;
+    //albedo = 0.0;
+
+    //albedo = pow(albedo, 2);
+    //albedo /= max(albedo.r, max(albedo.g, albedo.b)) * 1.2;
 
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
-    gbuffer.normal = normalize(mul(instance_transforms_dyn[push_constants.draw_index].current, float4(normal, 0.0)));
+    gbuffer.normal = normal_ws;
     gbuffer.roughness = roughness;
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
 
+    //gbuffer.albedo = 0.7;
+
     PsOut ps_out;
-    ps_out.geometric_normal = geometric_normal * 0.5 + 0.5;
+    ps_out.geometric_normal = geometric_normal_vs * 0.5 + 0.5;
     ps_out.gbuffer = asfloat(gbuffer.pack().data0);
 
     /*float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.vs_pos, 1));

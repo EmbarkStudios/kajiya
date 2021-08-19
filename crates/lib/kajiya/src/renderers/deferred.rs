@@ -16,6 +16,7 @@ pub fn light_gbuffer(
     output: &mut rg::Handle<Image>,
     csgi_volume: &super::csgi::CsgiVolume,
     sky_cube: &rg::Handle<Image>,
+    convolved_sky_cube: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
     debug_shading_mode: usize,
 ) {
@@ -28,9 +29,9 @@ pub fn light_gbuffer(
         .read(rtdgi)
         .write(temporal_output)
         .write(output)
-        .read(&csgi_volume.direct_cascade0)
-        .read(&csgi_volume.indirect_cascade0)
+        .read_array(&csgi_volume.indirect)
         .read(sky_cube)
+        .read(convolved_sky_cube)
         .constants((
             gbuffer_depth.gbuffer.desc().extent_inv_extent_2d(),
             debug_shading_mode as u32,

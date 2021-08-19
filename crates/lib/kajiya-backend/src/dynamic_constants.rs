@@ -1,5 +1,4 @@
-use crate::bytes::as_byte_slice;
-use crate::vulkan;
+use crate::{bytes::as_byte_slice, vulkan};
 use ash::vk;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -7,6 +6,10 @@ use std::mem::{align_of, size_of};
 use vulkan::buffer::Buffer;
 
 pub const DYNAMIC_CONSTANTS_SIZE_BYTES: usize = 1024 * 1024 * 16;
+
+// Generally supported minimum uniform buffer size across vendors (maxUniformBufferRange)
+// Could be bumped to 65536 if needed.
+pub const MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH: usize = 16384;
 
 // TODO: Must be >= `minUniformBufferOffsetAlignment`. In practice <= 256.
 pub const DYNAMIC_CONSTANTS_ALIGNMENT: usize = 256;

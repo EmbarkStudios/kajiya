@@ -203,7 +203,7 @@ struct SpecularBrdf {
             NdfSample ndf_sample = sample_ndf(urand);
         #endif
 
-		const float3 wi = -wo + ndf_sample.m * dot(wo, ndf_sample.m) * 2.0;
+		const float3 wi = reflect(-wo, ndf_sample.m);
 
 		if (ndf_sample.m.z <= BRDF_SAMPLING_MIN_COS || wi.z <= BRDF_SAMPLING_MIN_COS || wo.z <= BRDF_SAMPLING_MIN_COS) {
 			return BrdfSample::invalid();
@@ -292,10 +292,9 @@ struct SpecularBrdf {
 	}
 };
 
-float roughness_to_perceptual_roughness(float r) {
-    return sqrt(r);
-}
-
-float perceptual_roughness_to_roughness(float r) {
-    return r * r;
+// https://seblagarde.files.wordpress.com/2015/07/course_notes_moving_frostbite_to_pbr_v32.pdf
+float3 specular_dominant_direction(float3 n, float3 v, float roughness) {
+    float3 r = reflect(-v, n);
+    float f = (1.0 - roughness) * (sqrt(1.0 - roughness) + roughness);
+    return normalize(lerp(n, r, f));
 }

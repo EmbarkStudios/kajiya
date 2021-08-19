@@ -16,6 +16,7 @@ pub mod world_renderer_mmap_adapter;
 
 mod bindless_descriptor_set;
 mod buffer_builder;
+mod frame_constants;
 
 pub use kajiya_asset as asset;
 pub use kajiya_backend as backend;

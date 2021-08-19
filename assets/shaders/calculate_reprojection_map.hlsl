@@ -19,7 +19,18 @@ void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
 
     if (depth_tex[px] == 0.0) {
-        output_tex[px] = float4(0, 0, 0, 0);
+        float4 pos_cs = float4(uv_to_cs(uv), 0.0, 1.0);
+        float4 pos_vs = mul(frame_constants.view_constants.clip_to_view, pos_cs);
+
+        float4 prev_vs = pos_vs;
+        
+        float4 prev_cs = mul(frame_constants.view_constants.view_to_clip, prev_vs);
+        float4 prev_pcs = mul(frame_constants.view_constants.clip_to_prev_clip, prev_cs);
+
+        float2 prev_uv = cs_to_uv(prev_pcs.xy);
+        float2 uv_diff = prev_uv - uv;
+
+        output_tex[px] = float4(uv_diff, 0, 0);
         return;
     }
 

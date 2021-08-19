@@ -33,7 +33,7 @@ impl UiRenderer {
     fn render_ui(&mut self, rg: &mut rg::RenderGraph) -> rg::Handle<Image> {
         if let Some((ui_renderer, image)) = self.ui_frame.take() {
             let mut ui_tex = rg.import(image, AccessType::Nothing);
-            let mut pass = rg.add_pass("render ui");
+            let mut pass = rg.add_pass("ui");
 
             pass.raster(&mut ui_tex, AccessType::ColorAttachmentWrite);
             pass.render(move |api| ui_renderer(api.cb.raw));

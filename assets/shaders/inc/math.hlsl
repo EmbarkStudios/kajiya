@@ -48,4 +48,8 @@ float4 prelerp(float4 b, float4 c) {
     ) : 0.0.xxxx;
 }
 
+float inverse_depth_relative_diff(float primary_depth, float secondary_depth) {
+    return abs(primary_depth / max(1e-20, secondary_depth) - 1.0);
+}
+
 #endif

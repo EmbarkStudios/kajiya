@@ -5,7 +5,7 @@ use kajiya_backend::{
     vulkan::{
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::{PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
+        shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
     },
 };
 
@@ -16,7 +16,7 @@ use super::{
     Resource, RgComputePipelineHandle, RgRtPipelineHandle,
 };
 
-trait ConstBlob {
+pub trait ConstBlob {
     fn push_self(
         self: Box<Self>,
         dynamic_constants: &mut dynamic_constants::DynamicConstants,
@@ -32,6 +32,20 @@ where
         dynamic_constants: &mut dynamic_constants::DynamicConstants,
     ) -> u32 {
         dynamic_constants.push(self.as_ref())
+    }
+}
+
+struct VecBlob<T>(Vec<T>);
+
+impl<T> ConstBlob for VecBlob<T>
+where
+    T: Copy + 'static,
+{
+    fn push_self(
+        self: Box<Self>,
+        dynamic_constants: &mut dynamic_constants::DynamicConstants,
+    ) -> u32 {
+        dynamic_constants.push_from_iter(self.0.into_iter())
     }
 }
 
@@ -62,7 +76,8 @@ where
         for (binding_idx, blob) in const_blobs {
             let dynamic_constants_offset = ConstBlob::push_self(blob, dynamic_constants);
             match &mut self.bindings[binding_idx] {
-                RenderPassBinding::DynamicConstants(offset) => {
+                RenderPassBinding::DynamicConstants(offset)
+                | RenderPassBinding::DynamicConstantsStorageBuffer(offset) => {
                     *offset = dynamic_constants_offset;
                 }
                 _ => unreachable!(),
@@ -94,6 +109,22 @@ pub struct SimpleRenderPass<'rg, RgPipelineHandle> {
 impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
     pub fn new_compute(mut pass: PassBuilder<'rg>, pipeline_path: &str) -> Self {
         let pipeline = pass.register_compute_pipeline(pipeline_path);
+
+        Self {
+            pass,
+            state: SimpleRenderPassState::new(pipeline),
+        }
+    }
+
+    pub fn new_compute_rust(mut pass: PassBuilder<'rg>, entry_name: &str) -> Self {
+        let pipeline = pass.register_compute_pipeline_with_desc(
+            // TODO
+            "assets/rust-shaders/target/spirv-unknown-vulkan1.1/release/deps/rust_shaders.spv.dir/module",
+            ComputePipelineDesc::builder()
+                .compute_entry_rust(entry_name)
+                .build()
+                .unwrap(),
+        );
 
         Self {
             pass,
@@ -228,6 +259,24 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         self
     }
 
+    pub fn read_array(mut self, handles: &[Handle<Image>]) -> Self {
+        assert!(!handles.is_empty());
+
+        let handle_refs = handles
+            .into_iter()
+            .map(|handle| {
+                self.pass.read(
+                    handle,
+                    AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+                )
+            })
+            .collect::<Vec<_>>();
+
+        self.state.bindings.push(BindRgRef::bind(&handle_refs));
+
+        self
+    }
+
     pub fn read_view(mut self, handle: &Handle<Image>, view_desc: ImageViewDescBuilder) -> Self {
         let handle_ref = self.pass.read(
             handle,
@@ -280,13 +329,37 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         self
     }
 
-    pub fn constants<T: Copy + 'static>(mut self, consts: T) -> Self {
+    pub fn constants<T: ConstBlob + 'static>(mut self, consts: T) -> Self {
         let binding_idx = self.state.bindings.len();
 
         self.state
             .bindings
             .push(RenderPassBinding::DynamicConstants(0));
         self.state.const_blobs.push((binding_idx, Box::new(consts)));
+
+        self
+    }
+
+    pub fn dynamic_storage_buffer<T: ConstBlob + 'static>(mut self, consts: T) -> Self {
+        let binding_idx = self.state.bindings.len();
+
+        self.state
+            .bindings
+            .push(RenderPassBinding::DynamicConstantsStorageBuffer(0));
+        self.state.const_blobs.push((binding_idx, Box::new(consts)));
+
+        self
+    }
+
+    pub fn dynamic_storage_buffer_vec<T: Copy + 'static>(mut self, consts: Vec<T>) -> Self {
+        let binding_idx = self.state.bindings.len();
+
+        self.state
+            .bindings
+            .push(RenderPassBinding::DynamicConstantsStorageBuffer(0));
+        self.state
+            .const_blobs
+            .push((binding_idx, Box::new(VecBlob(consts))));
 
         self
     }

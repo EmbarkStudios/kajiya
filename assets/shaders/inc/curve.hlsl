@@ -1,13 +1,13 @@
 #ifndef CURVE_HLSL
 #define CURVE_HLSL
 
-float3 cubic_hermite(float3 A, float3 B, float3 C, float3 D, float t) {
+float4 cubic_hermite(float4 A, float4 B, float4 C, float4 D, float t) {
 	float t2 = t*t;
     float t3 = t*t*t;
-    float3 a = -A/2.0 + (3.0*B)/2.0 - (3.0*C)/2.0 + D/2.0;
-    float3 b = A - (5.0*B)/2.0 + 2.0*C - D / 2.0;
-    float3 c = -A/2.0 + C/2.0;
-   	float3 d = B;
+    float4 a = -A/2.0 + (3.0*B)/2.0 - (3.0*C)/2.0 + D/2.0;
+    float4 b = A - (5.0*B)/2.0 + 2.0*C - D / 2.0;
+    float4 c = -A/2.0 + C/2.0;
+   	float4 d = B;
     
     return a*t3 + b*t2 + c*t + d;
 }

@@ -1,5 +1,5 @@
 #include "inc/math.hlsl"
-#include "inc/hash.hlsl"
+#include "inc/quasi_random.hlsl"
 #include "inc/samplers.hlsl"
 #include "inc/cube_map.hlsl"
 

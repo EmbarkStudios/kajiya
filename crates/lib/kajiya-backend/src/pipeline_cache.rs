@@ -1,7 +1,10 @@
-use crate::shader_compiler::{CompileShader, CompiledShader};
-use crate::vulkan::{
-    ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
-    shader::*,
+use crate::{
+    rust_shader_compiler::CompileRustShader,
+    shader_compiler::{CompileShader, CompiledShader},
+    vulkan::{
+        ray_tracing::{create_ray_tracing_pipeline, RayTracingPipeline, RayTracingPipelineDesc},
+        shader::*,
+    },
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -82,6 +85,12 @@ struct RtPipelineCacheEntry {
     pipeline: Option<Arc<RayTracingPipeline>>,
 }
 
+#[derive(PartialEq, Eq, Hash)]
+struct ComputePipelineKey {
+    path: PathBuf,
+    entry: String,
+}
+
 pub struct PipelineCache {
     lazy_cache: Arc<LazyCache>,
 
@@ -89,8 +98,7 @@ pub struct PipelineCache {
     raster_entries: HashMap<RasterPipelineHandle, RasterPipelineCacheEntry>,
     rt_entries: HashMap<RtPipelineHandle, RtPipelineCacheEntry>,
 
-    path_to_handle: HashMap<PathBuf, ComputePipelineHandle>,
-
+    compute_shader_to_handle: HashMap<ComputePipelineKey, ComputePipelineHandle>,
     raster_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RasterPipelineHandle>,
     rt_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RtPipelineHandle>,
 }
@@ -104,7 +112,7 @@ impl PipelineCache {
             raster_entries: Default::default(),
             rt_entries: Default::default(),
 
-            path_to_handle: Default::default(),
+            compute_shader_to_handle: Default::default(),
 
             raster_shaders_to_handle: Default::default(),
             rt_shaders_to_handle: Default::default(),
@@ -117,18 +125,30 @@ impl PipelineCache {
         path: impl AsRef<Path>,
         desc: &ComputePipelineDesc,
     ) -> ComputePipelineHandle {
-        match self.path_to_handle.entry(path.as_ref().to_owned()) {
+        match self.compute_shader_to_handle.entry(ComputePipelineKey {
+            path: path.as_ref().to_owned(),
+            entry: desc.compute_source.entry.clone(),
+        }) {
             std::collections::hash_map::Entry::Occupied(occupied) => *occupied.get(),
             std::collections::hash_map::Entry::Vacant(vacant) => {
                 let handle = ComputePipelineHandle(self.compute_entries.len());
+                let compile_task = match desc.compute_source.ty {
+                    ShaderSourceType::Rust => CompileRustShader {
+                        profile: "cs".to_owned(),
+                        entry: desc.compute_source.entry.clone(),
+                    }
+                    .into_lazy(),
+                    ShaderSourceType::Hlsl => CompileShader {
+                        path: path.as_ref().to_owned(),
+                        profile: "cs".to_owned(),
+                    }
+                    .into_lazy(),
+                };
+
                 self.compute_entries.insert(
                     handle,
                     ComputePipelineCacheEntry {
-                        lazy_handle: CompileShader {
-                            path: path.as_ref().to_owned(),
-                            profile: "cs".to_owned(),
-                        }
-                        .into_lazy(),
+                        lazy_handle: compile_task,
                         desc: desc.clone(),
                         pipeline: None,
                     },
@@ -315,7 +335,7 @@ impl PipelineCache {
                             .shaders
                             .iter()
                             .map(|shader| PipelineShader {
-                                code: shader.code.spirv.as_slice(),
+                                code: shader.code.spirv.clone(),
                                 desc: shader.desc.clone(),
                             })
                             .collect::<Vec<_>>();
@@ -333,7 +353,7 @@ impl PipelineCache {
                             .shaders
                             .iter()
                             .map(|shader| PipelineShader {
-                                code: shader.code.spirv.as_slice(),
+                                code: shader.code.spirv.clone(),
                                 desc: shader.desc.clone(),
                             })
                             .collect::<Vec<_>>();

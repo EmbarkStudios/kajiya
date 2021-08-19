@@ -1,18 +1,13 @@
-#![allow(unused_imports)]
-
 use crate::file::LoadFile;
 use anyhow::{anyhow, bail, Result};
-use byte_slice_cast::IntoByteVec;
-use relative_path::{RelativePath, RelativePathBuf};
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-};
+use bytes::Bytes;
+use relative_path::RelativePathBuf;
+use std::{path::PathBuf, sync::Arc};
 use turbosloth::*;
 
 pub struct CompiledShader {
     pub name: String,
-    pub spirv: Vec<u8>,
+    pub spirv: Bytes,
 }
 
 #[derive(Clone, Hash)]
@@ -64,7 +59,7 @@ impl LazyWorker for CompileShader {
 
 pub struct RayTracingShader {
     pub name: String,
-    pub spirv: Vec<u8>,
+    pub spirv: Bytes,
 }
 
 #[derive(Clone, Hash)]
@@ -132,7 +127,7 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
 
         // println!("shader include '{}' resolved to '{}'", path, resolved_path);
 
-        let blob = smol::block_on(
+        let blob: Arc<Bytes> = smol::block_on(
             crate::file::LoadFile::new(&resolved_path)
                 .map_err(|err| {
                     failure::err_msg(format!("Failed loading shader include {}: {:?}", path, err))
@@ -142,7 +137,7 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
         )
         .map_err(|err| failure::format_err!("{}", err))?;
 
-        String::from_utf8((*blob).clone())
+        String::from_utf8(blob.to_vec())
             .map_err(|e| failure::format_err!("{}", e))
             .map(|ok| (ok, resolved_path))
     }
@@ -174,7 +169,7 @@ fn compile_generic_shader_hlsl_impl(
     name: &str,
     source: &[shader_prepper::SourceChunk],
     target_profile: &str,
-) -> Result<Vec<u8>> {
+) -> Result<Bytes> {
     let mut source_text = String::new();
     for s in source {
         source_text += &s.source;
@@ -200,5 +195,5 @@ fn compile_generic_shader_hlsl_impl(
 
     log::trace!("dxc took {:?} for {}", t0.elapsed(), name,);
 
-    Ok(spirv)
+    Ok(spirv.into())
 }

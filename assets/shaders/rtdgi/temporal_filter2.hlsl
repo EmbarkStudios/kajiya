@@ -21,6 +21,7 @@
 void main(uint2 px: SV_DispatchThreadID) {
     #if 0
         output_tex[px] = max(0.0, input_tex[px]);
+        history_output_tex[px] = float4(max(0.0, input_tex[px].rgb), 32);
         return;
     #endif
 
