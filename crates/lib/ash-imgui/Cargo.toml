@@ -6,8 +6,7 @@ edition = "2018"
 publish = false
 
 [dependencies]
-# ash = "0.32"
-ash = {git = "https://github.com/MaikKlein/ash" }
+ash = "0.33"
 imgui = "0.7"
 arrayvec = "0.5"
 memoffset = "0.6"
