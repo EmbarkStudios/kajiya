@@ -154,6 +154,8 @@ impl Device {
             vk::KhrPushDescriptorFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
             vk::KhrDrawIndirectCountFn::name().as_ptr(),
+            // Rust-GPU
+            vk::KhrShaderFloat16Int8Fn::name().as_ptr(),
             // DLSS
             #[cfg(feature = "dlss")]
             {
@@ -247,6 +249,9 @@ impl Device {
                 .fragment_shader_pixel_interlock(true)
                 .build();
 
+        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
+        shader_float16_int8.shader_int8 = 1;
+
         #[cfg(feature = "ray-tracing")]
         let mut acceleration_structure_features =
             ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
@@ -289,6 +294,7 @@ impl Device {
                 .push_next(&mut descriptor_indexing)
                 .push_next(&mut imageless_framebuffer)
                 .push_next(&mut fragment_shader_interlock)
+                .push_next(&mut shader_float16_int8)
                 .push_next(&mut get_buffer_device_address_features);
 
             #[cfg(feature = "ray-tracing")]
