@@ -53,6 +53,6 @@ jobs:
         # Note the use of release here means longer compile time, but much
         # faster test execution time. If you don't have any heavy tests it
         # might be faster to take off release and just compile in debug
-        run: cargo build --tests --release
+        run: cargo build --tests
       - name: cargo test
-        run: cargo test --release
+        run: cargo test
