@@ -1,0 +1,53 @@
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  pull_request:
+
+name: CI
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      # make sure all code has been formatted with rustfmt
+      - name: check rustfmt
+        run: |
+          rustup component add rustfmt
+          cargo fmt -- --check --color always
+
+      # run clippy to verify we have no warnings
+      - run: cargo fetch
+      - name: cargo clippy
+        run: |
+          rustup component add clippy
+          cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macOS-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+      - run: cargo fetch
+      - name: cargo test build
+        # Note the use of release here means longer compile time, but much
+        # faster test execution time. If you don't have any heavy tests it
+        # might be faster to take off release and just compile in debug
+        run: cargo build --tests --release
+      - name: cargo test
+        run: cargo test --release

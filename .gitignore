@@ -4,6 +4,7 @@
 /assets/scenes/private-*
 *.blend1
 *.log
+**/*.rs.bk
 imgui.ini
 view_state.ron
 nvngx*
