@@ -18,12 +18,10 @@ impl LazyWorker for CompileRustShader {
     async fn run(self, ctx: RunContext) -> Self::Output {
         CompileRustShaderCrate.into_lazy().eval(&ctx).await?;
 
-        let compile_result = LoadFile::new(normalized_path_from_vfs(
-            "/rust-shaders/compiled/shaders.json",
-        )?)?
-        .into_lazy()
-        .eval(&ctx)
-        .await?;
+        let compile_result = LoadFile::new("/rust-shaders/compiled/shaders.json")?
+            .into_lazy()
+            .eval(&ctx)
+            .await?;
 
         let compile_result =
             RustShaderCompileResult::deserialize_json(std::str::from_utf8(&*compile_result)?)?;
@@ -42,13 +40,10 @@ impl LazyWorker for CompileRustShader {
                 anyhow::anyhow!("No Rust-GPU module found for entry point {}", self.entry)
             })?;
 
-        let spirv_blob = LoadFile::new(normalized_path_from_vfs(format!(
-            "/rust-shaders/compiled/{}",
-            shader_file
-        ))?)?
-        .into_lazy()
-        .eval(&ctx)
-        .await?;
+        let spirv_blob = LoadFile::new(format!("/rust-shaders/compiled/{}", shader_file))?
+            .into_lazy()
+            .eval(&ctx)
+            .await?;
 
         Ok(CompiledShader {
             name: "rust-gpu".to_owned(),

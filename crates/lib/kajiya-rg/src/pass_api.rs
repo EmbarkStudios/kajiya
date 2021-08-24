@@ -10,7 +10,10 @@ use super::{
 use kajiya_backend::{
     ash::vk,
     chunky_list::TempList,
-    dynamic_constants::{DynamicConstants, MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH},
+    dynamic_constants::{
+        DynamicConstants, MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH,
+        MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES,
+    },
     vulkan::{
         device::{CommandBuffer, Device},
         image::*,
@@ -253,7 +256,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                         DescriptorSetBinding::DynamicStorageBuffer {
                             buffer: vk::DescriptorBufferInfo::builder()
                                 .buffer(self.resources.dynamic_constants.buffer.raw)
-                                .range(vk::WHOLE_SIZE)
+                                .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64)
                                 .build(),
                             offset: *offset,
                         }

@@ -156,6 +156,7 @@ impl Device {
             vk::KhrDrawIndirectCountFn::name().as_ptr(),
             // Rust-GPU
             vk::KhrShaderFloat16Int8Fn::name().as_ptr(),
+            vk::KhrVulkanMemoryModelFn::name().as_ptr(),
             // DLSS
             #[cfg(feature = "dlss")]
             {
@@ -252,6 +253,9 @@ impl Device {
         let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
         shader_float16_int8.shader_int8 = 1;
 
+        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
+        vulkan_memory_model.vulkan_memory_model = 1;
+
         #[cfg(feature = "ray-tracing")]
         let mut acceleration_structure_features =
             ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
@@ -295,6 +299,7 @@ impl Device {
                 .push_next(&mut imageless_framebuffer)
                 .push_next(&mut fragment_shader_interlock)
                 .push_next(&mut shader_float16_int8)
+                .push_next(&mut vulkan_memory_model)
                 .push_next(&mut get_buffer_device_address_features);
 
             #[cfg(feature = "ray-tracing")]

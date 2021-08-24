@@ -229,7 +229,7 @@ impl Device {
             .create_buffer(
                 super::buffer::BufferDesc {
                     size: instance_buffer_size,
-                    usage: ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    usage: ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
                     mapped: false,
                 },
                 unsafe {
