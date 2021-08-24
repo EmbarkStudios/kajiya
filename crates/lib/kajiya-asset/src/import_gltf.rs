@@ -169,18 +169,6 @@ fn import_path(path: &Path) -> Result<Import> {
 }
 
 /// Import some glTF 2.0 from the file system.
-///
-/// ```
-/// # fn run() -> Result<(), gltf::Error> {
-/// # let path = "examples/Box.gltf";
-/// # #[allow(unused)]
-/// let (document, buffers, images) = import(path)?;
-/// # Ok(())
-/// # }
-/// # fn main() {
-/// #     run().expect("test failure");
-/// # }
-/// ```
 pub fn import<P>(path: P) -> Result<Import>
 where
     P: AsRef<Path>,
