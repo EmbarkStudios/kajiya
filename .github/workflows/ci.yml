@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: cc
+      RUSTFLAGS:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -42,6 +43,7 @@ jobs:
     env:
       CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: cc
       CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER: link.exe
+      RUSTFLAGS:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
