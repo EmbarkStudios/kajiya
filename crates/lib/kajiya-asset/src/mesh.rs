@@ -85,7 +85,7 @@ fn iter_gltf_node_tree<F: FnMut(&gltf::scene::Node, Mat4)>(
     let node_xform = Mat4::from_cols_array_2d(&node.transform().matrix());
     let xform = xform * node_xform;
 
-    f(&node, xform);
+    f(node, xform);
     for child in node.children() {
         iter_gltf_node_tree(&child, xform, f);
     }
@@ -124,65 +124,68 @@ fn load_gltf_material(
         }
     }
 
-    let (albedo_map, albedo_map_transform) = mat
-        .pbr_metallic_roughness()
-        .base_color_texture()
-        .and_then(|tex| {
-            let transform = texture_transform_to_matrix(tex.texture_transform());
+    let (albedo_map, albedo_map_transform) =
+        mat.pbr_metallic_roughness().base_color_texture().map_or(
+            (
+                MeshMaterialMap::Placeholder([255, 255, 255, 255]),
+                DEFAULT_MAP_TRANSFORM,
+            ),
+            |tex| {
+                let transform = texture_transform_to_matrix(tex.texture_transform());
 
-            Some((
-                MeshMaterialMap::Image {
-                    source: document_images[tex.texture().source().index()].clone(),
-                    params: TexParams {
-                        gamma: TexGamma::Srgb,
-                        use_mips: true,
+                (
+                    MeshMaterialMap::Image {
+                        source: document_images[tex.texture().source().index()].clone(),
+                        params: TexParams {
+                            gamma: TexGamma::Srgb,
+                            use_mips: true,
+                        },
                     },
-                },
-                transform,
-            ))
-        })
-        .unwrap_or((
-            MeshMaterialMap::Placeholder([255, 255, 255, 255]),
-            DEFAULT_MAP_TRANSFORM,
-        ));
+                    transform,
+                )
+            },
+        );
 
     map_transforms[0] = albedo_map_transform;
 
     // TODO: add texture transform to the normal map in the `gltf` crate
-    let normal_map = mat
-        .normal_texture()
-        .map(|tex| MeshMaterialMap::Image {
-            source: document_images[tex.texture().source().index()].clone(),
-            params: TexParams {
-                gamma: TexGamma::Linear,
-                use_mips: true,
-            },
-        })
-        .unwrap_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]));
-
-    let (spec_map, spec_map_transform) = mat
-        .pbr_metallic_roughness()
-        .metallic_roughness_texture()
-        .and_then(|tex| {
-            Some((
+    let normal_map =
+        mat.normal_texture()
+            .map_or(MeshMaterialMap::Placeholder([127, 127, 255, 255]), |tex| {
                 MeshMaterialMap::Image {
                     source: document_images[tex.texture().source().index()].clone(),
                     params: TexParams {
                         gamma: TexGamma::Linear,
                         use_mips: true,
                     },
-                },
-                texture_transform_to_matrix(tex.texture_transform()),
-            ))
-        })
-        .unwrap_or({
-            let roughness = 255;
-            let metalness = 255;
-            (
-                MeshMaterialMap::Placeholder([127, roughness, metalness, 255]),
-                DEFAULT_MAP_TRANSFORM,
-            )
-        });
+                }
+            });
+
+    let (spec_map, spec_map_transform) = mat
+        .pbr_metallic_roughness()
+        .metallic_roughness_texture()
+        .map_or_else(
+            || {
+                let roughness = 255;
+                let metalness = 255;
+                (
+                    MeshMaterialMap::Placeholder([127, roughness, metalness, 255]),
+                    DEFAULT_MAP_TRANSFORM,
+                )
+            },
+            |tex| {
+                (
+                    MeshMaterialMap::Image {
+                        source: document_images[tex.texture().source().index()].clone(),
+                        params: TexParams {
+                            gamma: TexGamma::Linear,
+                            use_mips: true,
+                        },
+                    },
+                    texture_transform_to_matrix(tex.texture_transform()),
+                )
+            },
+        );
 
     map_transforms[2] = spec_map_transform;
 
@@ -326,9 +329,7 @@ impl LazyWorker for LoadGltfScene {
 
                             if flip_winding_order {
                                 for tri in indices.chunks_exact_mut(3) {
-                                    let a = tri[0];
-                                    tri[0] = tri[2];
-                                    tri[2] = a;
+                                    tri.swap(0, 2);
                                 }
                             }
 

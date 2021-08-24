@@ -138,6 +138,12 @@ pub struct KeyboardMap {
     bindings: Vec<(VirtualKeyCode, KeyMapState)>,
 }
 
+impl Default for KeyboardMap {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl KeyboardMap {
     pub fn new() -> Self {
         Self {
@@ -160,6 +166,7 @@ impl KeyboardMap {
         let mut result: HashMap<InputAxis, f32> = HashMap::new();
 
         for (vk, s) in &mut self.bindings {
+            #[allow(clippy::collapsible_else_if)]
             if s.map.activation_time > 1e-10 {
                 let change = if keyboard.is_down(*vk) { dt } else { -dt };
                 s.activation = (s.activation + change / s.map.activation_time).clamp(0.0, 1.0);

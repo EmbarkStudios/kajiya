@@ -230,8 +230,8 @@ fn main() -> anyhow::Result<()> {
                 std::thread::sleep(std::time::Duration::from_micros(1_000_000 / max_fps as u64));
             }
 
-            keyboard.update(&ctx.events);
-            mouse.update(&ctx.events);
+            keyboard.update(ctx.events);
+            mouse.update(ctx.events);
 
             let input = keymap.map(&keyboard, ctx.dt);
             let move_vec = camera.final_transform.rotation
@@ -330,6 +330,7 @@ fn main() -> anyhow::Result<()> {
             let sun_direction = state.sun.direction();
             sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
+            #[allow(clippy::comparison_chain)]
             if light_instances.len() > state.lights.count as usize {
                 for extra_light in light_instances.drain(state.lights.count as usize..) {
                     ctx.world_renderer.remove_instance(extra_light);
@@ -394,32 +395,32 @@ fn main() -> anyhow::Result<()> {
                 ctx.imgui.take().unwrap().frame(|ui| {
                     if imgui::CollapsingHeader::new(im_str!("Tweaks"))
                         .default_open(true)
-                        .build(&ui)
+                        .build(ui)
                     {
                         imgui::Drag::<f32>::new(im_str!("EV shift"))
                             .range(-8.0..=8.0)
                             .speed(0.01)
-                            .build(&ui, &mut state.ev_shift);
+                            .build(ui, &mut state.ev_shift);
 
                         imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                             .range(0.0..=10.0)
                             .speed(0.1)
-                            .build(&ui, &mut state.emissive_multiplier);
+                            .build(ui, &mut state.emissive_multiplier);
 
                         imgui::Drag::<f32>::new(im_str!("Light intensity multiplier"))
                             .range(0.0..=1000.0)
                             .speed(1.0)
-                            .build(&ui, &mut state.lights.multiplier);
+                            .build(ui, &mut state.lights.multiplier);
 
                         imgui::Drag::<f32>::new(im_str!("Field of view"))
                             .range(1.0..=120.0)
                             .speed(0.25)
-                            .build(&ui, &mut state.vertical_fov);
+                            .build(ui, &mut state.vertical_fov);
 
                         imgui::Drag::<f32>::new(im_str!("Sun size"))
                             .range(0.0..=10.0)
                             .speed(0.02)
-                            .build(&ui, &mut ctx.world_renderer.sun_size_multiplier);
+                            .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
 
                         ui.checkbox(
                             im_str!("Reflection reservoir resampling"),
@@ -442,7 +443,7 @@ fn main() -> anyhow::Result<()> {
 
                         imgui::Drag::<u32>::new(im_str!("Light count"))
                             .range(0..=10)
-                            .build(&ui, &mut state.lights.count);
+                            .build(ui, &mut state.lights.count);
 
                         #[cfg(feature = "dlss")]
                         {
@@ -452,20 +453,20 @@ fn main() -> anyhow::Result<()> {
 
                     /*if imgui::CollapsingHeader::new(im_str!("csgi"))
                         .default_open(true)
-                        .build(&ui)
+                        .build(ui)
                     {
                         imgui::Drag::<i32>::new(im_str!("Trace subdivision"))
                             .range(0..=5)
-                            .build(&ui, &mut world_renderer.csgi.trace_subdiv);
+                            .build(ui, &mut world_renderer.csgi.trace_subdiv);
 
                         imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
                             .range(1..=9)
-                            .build(&ui, &mut world_renderer.csgi.neighbors_per_frame);
+                            .build(ui, &mut world_renderer.csgi.neighbors_per_frame);
                     }*/
 
                     if imgui::CollapsingHeader::new(im_str!("Debug"))
                         .default_open(false)
-                        .build(&ui)
+                        .build(ui)
                     {
                         if ui.radio_button_bool(
                             im_str!("Scene geometry"),
@@ -492,7 +493,7 @@ fn main() -> anyhow::Result<()> {
                         ) {
                             imgui::Drag::<u32>::new(im_str!("Cascade index"))
                                 .range(0..=3)
-                                .build(&ui, &mut debug_gi_cascade_idx);
+                                .build(ui, &mut debug_gi_cascade_idx);
 
                             ctx.world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid {
                                 cascade_idx: debug_gi_cascade_idx as _,
@@ -507,7 +508,7 @@ fn main() -> anyhow::Result<()> {
                         }
 
                         imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
-                            &ui,
+                            ui,
                             &mut ctx.world_renderer.debug_shading_mode,
                             &[
                                 im_str!("Default"),
@@ -520,7 +521,7 @@ fn main() -> anyhow::Result<()> {
 
                         imgui::Drag::<u32>::new(im_str!("Max FPS"))
                             .range(1..=MAX_FPS_LIMIT)
-                            .build(&ui, &mut max_fps);
+                            .build(ui, &mut max_fps);
                     }
 
                     if imgui::CollapsingHeader::new(im_str!("GPU passes"))
@@ -536,7 +537,7 @@ fn main() -> anyhow::Result<()> {
                         ui.text(format!("GPU frame time: {:.3}ms", gpu_time_ms));
 
                         for (scope, ms) in ordered_scopes {
-                            if scope.name == "debug" || scope.name.starts_with("_") {
+                            if scope.name == "debug" || scope.name.starts_with('_') {
                                 continue;
                             }
 

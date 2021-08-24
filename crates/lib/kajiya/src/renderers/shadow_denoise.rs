@@ -36,7 +36,7 @@ impl ShadowDenoiseRenderer {
             rg.add_pass("shadow bitpack"),
             "/shaders/shadow_denoise/bitpack_shadow_mask.hlsl",
         )
-        .read(&shadow_mask)
+        .read(shadow_mask)
         .write(&mut bitpacked_shadows_image)
         .constants((
             gbuffer_desc.extent_inv_extent_2d(),
@@ -73,7 +73,7 @@ impl ShadowDenoiseRenderer {
             rg.add_pass("shadow temporal"),
             "/shaders/shadow_denoise/megakernel.hlsl",
         )
-        .read(&shadow_mask)
+        .read(shadow_mask)
         .read(&bitpacked_shadows_image)
         .read(&prev_moments_image)
         .read(&prev_accum_image)

@@ -101,7 +101,7 @@ impl ImGuiBackend {
         let mut inner = self.inner.lock();
 
         if inner.imgui_renderer.has_pipeline() {
-            inner.imgui_renderer.destroy_pipeline(&device);
+            inner.imgui_renderer.destroy_pipeline(device);
         }
 
         if let Some(gfx) = inner.gfx.take() {
@@ -143,7 +143,7 @@ impl ImGuiBackend {
         ui_renderer: &mut UiRenderer,
     ) {
         let (ui_draw_data, ui_target_image) = {
-            self.imgui_platform.prepare_render(&ui, &window);
+            self.imgui_platform.prepare_render(&ui, window);
 
             let ui_draw_data: &'static imgui::DrawData =
                 unsafe { std::mem::transmute(ui.render()) };
@@ -214,7 +214,7 @@ impl ImGuiBackendInner {
                     .with_discard(true),
                 );*/
 
-                self.imgui_renderer.begin_frame(&device, cb);
+                self.imgui_renderer.begin_frame(device, cb);
 
                 {
                     let clear_values = [vk::ClearValue {
@@ -244,7 +244,7 @@ impl ImGuiBackendInner {
                     }
                 }
 
-                self.imgui_renderer.render(&draw_data, &device, cb);
+                self.imgui_renderer.render(draw_data, device, cb);
 
                 unsafe {
                     device.cmd_end_render_pass(cb);

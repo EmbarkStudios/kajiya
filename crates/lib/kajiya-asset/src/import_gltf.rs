@@ -1,6 +1,5 @@
 // Based on `import.rs` in the `gltf` crate, but modified not to load images (we do that separately).
 
-use base64;
 use bytes::Bytes;
 use gltf::{buffer, image, Document, Error, Gltf, Result};
 use std::{fs, io, path::Path};
@@ -31,8 +30,10 @@ enum Scheme<'a> {
 }
 
 impl<'a> Scheme<'a> {
-    fn parse<'s>(uri: &'s str) -> Scheme<'s> {
-        if uri.contains(":") {
+    fn parse(uri: &str) -> Scheme<'_> {
+        if uri.contains(':') {
+            #[allow(clippy::manual_strip)]
+            #[allow(clippy::iter_nth_zero)]
             if uri.starts_with("data:") {
                 let match0 = &uri["data:".len()..].split(";base64,").nth(0);
                 let match1 = &uri["data:".len()..].split(";base64,").nth(1);
@@ -161,25 +162,13 @@ fn import_impl(Gltf { document, blob }: Gltf, base: Option<&Path>) -> Result<Imp
 }
 
 fn import_path(path: &Path) -> Result<Import> {
-    let base = path.parent().unwrap_or(Path::new("./"));
+    let base = path.parent().unwrap_or_else(|| Path::new("./"));
     let file = fs::File::open(path).map_err(Error::Io)?;
     let reader = io::BufReader::new(file);
     import_impl(Gltf::from_reader(reader)?, Some(base))
 }
 
 /// Import some glTF 2.0 from the file system.
-///
-/// ```
-/// # fn run() -> Result<(), gltf::Error> {
-/// # let path = "examples/Box.gltf";
-/// # #[allow(unused)]
-/// let (document, buffers, images) = import(path)?;
-/// # Ok(())
-/// # }
-/// # fn main() {
-/// #     run().expect("test failure");
-/// # }
-/// ```
 pub fn import<P>(path: P) -> Result<Import>
 where
     P: AsRef<Path>,

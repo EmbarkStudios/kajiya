@@ -191,7 +191,7 @@ impl Device {
     }
 
     pub fn create(pdevice: &Arc<PhysicalDevice>) -> Result<Arc<Self>> {
-        let device_extension_names = Self::extension_names(&pdevice);
+        let device_extension_names = Self::extension_names(pdevice);
 
         let priorities = [1.0];
 
@@ -250,11 +250,15 @@ impl Device {
                 .fragment_shader_pixel_interlock(true)
                 .build();
 
-        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
-        shader_float16_int8.shader_int8 = 1;
+        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features {
+            shader_int8: 1,
+            ..Default::default()
+        };
 
-        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
-        vulkan_memory_model.vulkan_memory_model = 1;
+        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR {
+            vulkan_memory_model: 1,
+            ..Default::default()
+        };
 
         #[cfg(feature = "ray-tracing")]
         let mut acceleration_structure_features =

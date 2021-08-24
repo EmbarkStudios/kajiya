@@ -18,6 +18,12 @@ impl LightingRenderer {
     }
 }
 
+impl Default for LightingRenderer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LightingRenderer {
     #[allow(clippy::too_many_arguments)]
     pub fn render_specular(

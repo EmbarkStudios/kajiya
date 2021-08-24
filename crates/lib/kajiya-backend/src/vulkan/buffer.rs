@@ -112,7 +112,7 @@ impl Device {
             )?;
 
             scratch_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.len()]
-                .copy_from_slice(&initial_data);
+                .copy_from_slice(initial_data);
 
             self.with_setup_cb(|cb| unsafe {
                 self.raw.cmd_copy_buffer(

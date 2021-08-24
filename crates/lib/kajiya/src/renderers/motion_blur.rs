@@ -55,7 +55,7 @@ pub fn motion_blur(
     let motion_blur_scale: f32 = 1.0;
     SimpleRenderPass::new_compute_rust(rg.add_pass("motion blur"), "motion_blur::motion_blur")
         .read(input)
-        .read(&reprojection_map)
+        .read(reprojection_map)
         .read(&velocity_dilated)
         .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
         .write(&mut output)

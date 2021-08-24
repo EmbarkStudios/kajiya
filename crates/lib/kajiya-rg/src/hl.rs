@@ -263,7 +263,7 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         assert!(!handles.is_empty());
 
         let handle_refs = handles
-            .into_iter()
+            .iter()
             .map(|handle| {
                 self.pass.read(
                     handle,

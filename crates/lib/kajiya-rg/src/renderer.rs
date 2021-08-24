@@ -117,7 +117,7 @@ impl Renderer {
         });
 
         let frame_descriptor_set =
-            Self::create_frame_descriptor_set(&backend, &dynamic_constants.buffer);
+            Self::create_frame_descriptor_set(backend, &dynamic_constants.buffer);
 
         Ok(Renderer {
             device: backend.device.clone(),
