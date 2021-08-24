@@ -560,7 +560,7 @@ impl RenderPassAttachmentDesc {
     }
 
     fn to_vk(
-        &self,
+        self,
         initial_layout: vk::ImageLayout,
         final_layout: vk::ImageLayout,
     ) -> vk::AttachmentDescription {
@@ -770,7 +770,7 @@ pub fn create_render_pass(
         raw: render_pass,
         framebuffer_cache: FramebufferCache::new(
             render_pass,
-            &desc.color_attachments,
+            desc.color_attachments,
             desc.depth_attachment,
         ),
     }))

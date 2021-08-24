@@ -597,7 +597,7 @@ impl RenderGraph {
                     // Resources created by the render graph can be used as-is, as long as they have a color aspect
                     GraphResourceInfo::Created(GraphResourceCreateInfo {
                         desc: GraphResourceDesc::Image(img_desc),
-                    }) if is_debug_compatible(&img_desc) => Some((src_ref.handle, *img_desc)),
+                    }) if is_debug_compatible(img_desc) => Some((src_ref.handle, *img_desc)),
 
                     // Imported resources must also support vk::ImageUsageFlags::SAMPLED because their
                     // usage flags are supplied externally, and not derived by the graph

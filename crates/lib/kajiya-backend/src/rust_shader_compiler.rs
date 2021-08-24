@@ -148,16 +148,14 @@ fn compile_rust_shader_crate_thread(
 
     // Wait for the builder to finish, and allow cancellation via the supplied `cancel_rx`
     let output = loop {
-        let should_bail = match cancel_rx.try_recv() {
-            Err(std::sync::mpsc::TryRecvError::Empty) => false,
-            _ => true,
-        };
+        let should_bail = !matches!(
+            cancel_rx.try_recv(),
+            Err(std::sync::mpsc::TryRecvError::Empty)
+        );
 
         if should_bail {
             log::info!("Rust-GPU shader builder thread received a stop command.");
-            return Ok(child
-                .kill()
-                .context("killing the Rust-GPU shader builder")?);
+            return child.kill().context("killing the Rust-GPU shader builder");
         }
 
         match child.try_wait() {

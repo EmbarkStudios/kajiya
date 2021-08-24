@@ -48,10 +48,10 @@ impl<'a> ImguiContext<'a> {
     pub fn frame(mut self, callback: impl FnOnce(&imgui::Ui<'_>)) {
         let ui = self
             .imgui_backend
-            .prepare_frame(&self.window, &mut self.imgui, self.dt);
+            .prepare_frame(self.window, &mut self.imgui, self.dt);
         callback(&ui);
         self.imgui_backend
-            .finish_frame(ui, &self.window, &mut self.ui_renderer);
+            .finish_frame(ui, self.window, &mut self.ui_renderer);
     }
 }
 

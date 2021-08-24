@@ -177,7 +177,7 @@ fn compile_generic_shader_hlsl_impl(
 
     let t0 = std::time::Instant::now();
     let spirv = hassle_rs::compile_hlsl(
-        &name,
+        name,
         &source_text,
         "main",
         target_profile,

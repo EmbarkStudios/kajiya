@@ -295,7 +295,7 @@ impl Device {
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &geometry_info,
-                    &max_primitive_counts,
+                    max_primitive_counts,
                 )
         };
 
@@ -497,7 +497,7 @@ impl Device {
                 .get_acceleration_structure_build_sizes(
                     vk::AccelerationStructureBuildTypeKHR::DEVICE,
                     &geometry_info,
-                    &max_primitive_counts,
+                    max_primitive_counts,
                 )
         };
 

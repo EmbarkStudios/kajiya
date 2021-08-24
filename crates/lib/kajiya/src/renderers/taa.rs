@@ -63,7 +63,7 @@ impl TaaRenderer {
 
         let mut debug_output_img = rg.create(Self::temporal_tex_desc(output_extent));
         SimpleRenderPass::new_compute(rg.add_pass("taa"), "/shaders/taa/taa.hlsl")
-            .read(&input_tex)
+            .read(input_tex)
             .read(&reprojected_history_img)
             .read(reprojection_map)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)

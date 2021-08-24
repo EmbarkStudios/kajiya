@@ -78,7 +78,7 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
             "/shaders/rev_blur.hlsl",
         )
         .read_view(
-            &in_pyramid,
+            in_pyramid,
             ImageViewDesc::builder()
                 .base_mip_level(target_mip)
                 .level_count(Some(1)),
@@ -113,7 +113,7 @@ fn edge_preserving_filter_luminance(
         rg.add_pass("log luminance"),
         "/shaders/tonemap/extract_log_luminance.hlsl",
     )
-    .read(&input)
+    .read(input)
     .write(&mut lum_tex)
     .dispatch(lum_tex.desc().extent);
 
@@ -128,7 +128,7 @@ fn edge_preserving_filter_luminance(
             rg.add_pass("a-trous"),
             "/shaders/tonemap/luminance-a-trous.hlsl",
         )
-        .read(&input)
+        .read(input)
         .read(&lum_tex)
         .write(&mut output)
         .constants((input.desc().extent_inv_extent_2d(), px_skip))

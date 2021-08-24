@@ -97,7 +97,7 @@ impl RtdgiRenderer {
             rg.add_pass("rtdgi temporal"),
             "/shaders/rtdgi/temporal_filter.hlsl",
         )
-        .read(&input_color)
+        .read(input_color)
         .read(&history_tex)
         .read(&cv_history_tex)
         .read(reprojection_map)
@@ -145,8 +145,8 @@ impl RtdgiRenderer {
             rg.add_pass("rtdgi temporal2"),
             "/shaders/rtdgi/temporal_filter2.hlsl",
         )
-        .read(&input_color)
-        .read(&reprojected_history_tex)
+        .read(input_color)
+        .read(reprojected_history_tex)
         .read(&variance_history_tex)
         .read(reprojection_map)
         .write(&mut temporal_output_tex)
