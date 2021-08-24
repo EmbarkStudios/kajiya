@@ -11,6 +11,8 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
@@ -37,6 +39,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER:
+      CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1
