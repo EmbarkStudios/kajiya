@@ -98,7 +98,7 @@ void main(uint2 px: SV_DispatchThreadID) {
             input_uv,
             HistoryRemap::create()
         );*/
-        const float4 closest_history = HistoryRemap::create().remap(history_tex.SampleLevel(sampler_llr, input_uv, 0));
+        const float4 closest_history = HistoryRemap::create().remap(history_tex.SampleLevel(sampler_llc, input_uv, 0));
         const float4 closest_meta = meta_history_tex.SampleLevel(sampler_lnc, input_uv, 0);
         const float2 closest_vel = velocity_history_tex.SampleLevel(sampler_lnc, input_uv, 0).xy * frame_constants.delta_time_seconds;
         const float closest_var = max(0.01, closest_meta.x);

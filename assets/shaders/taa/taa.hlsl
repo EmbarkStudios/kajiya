@@ -160,7 +160,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float prev_ex2 = prev_meta.w;
 
     const float2 vel_now = closest_velocity_tex[px] / frame_constants.delta_time_seconds;
-    const float2 vel_prev = velocity_history_tex.SampleLevel(sampler_llr, uv + closest_velocity_tex[px], 0);
+    const float2 vel_prev = velocity_history_tex.SampleLevel(sampler_llc, uv + closest_velocity_tex[px], 0);
     float vel_diff = length((vel_now - vel_prev) / max(1, abs(vel_now + vel_prev))) > 0.2;
     /*vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 1));
     vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 2));
@@ -227,8 +227,10 @@ void main(uint2 px: SV_DispatchThreadID) {
         //float soutlier = saturate(boutlier);
         float soutlier = saturate(lerp(boutlier, outlier, coverage));
 
+        const bool history_valid = all(uv + reproj_xy == saturate(uv + reproj_xy));
+
 #if 1
-        {
+        if (history_valid) {
             const float bclamp_amount = length((clamped_history - bhistory) / max(1e-5, abs(ex)));
             const float edge_outliers = abs(boutlier - outlier) * 10;
             const float non_edge_outliers = (boutlier - abs(boutlier - outlier)) * 10;
@@ -248,8 +250,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
             const float keep_detail = 1 - saturate(bclamp_as_lerp) * (1 - stabilize_edges);
             diff.x *= keep_detail;
-            //diff.x *= smoothstep(0.9, 1.0, input_prob);
-
             clamped_history = clamped_history + diff * float3(1.0, max(1e-5, abs(diff.xx)));
             //history_coverage *= lerp(0.5, 1.0, keep_detail);
             history_coverage *= lerp(
@@ -270,6 +270,10 @@ void main(uint2 px: SV_DispatchThreadID) {
             //debug_out = float3(history_only_edges.xxx);
             //debug_out = float3(10 * abs(clamp_diff.xxx));
             //debug_out = float3(ycbcr_to_rgb(clamped_history));
+        } else {
+            coverage = 1;
+            center = bcenter;
+            history_coverage = 0;
         }
 #elif 0
         if (soutlier > 0.0) {
@@ -285,13 +289,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 #else
         clamped_history = history;
 #endif
-
-        //debug_output_tex[px] = float4(ycbcr_to_rgb(bhistory), 1);
-        //debug_output_tex[px] = float4(ycbcr_to_rgb(bcenter), 1);
-
-        // Bias towards history / blurred center at the start of accumulation.
-        // Blurry new pixels are better than noisy new pixels.
-        history_coverage = max(history_coverage, 1);
 
     #if RESET_ACCUMULATION
         history_coverage = 0;

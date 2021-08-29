@@ -101,7 +101,7 @@ void main(
     );
 #elif 1
     float4 history_packed = image_sample_catmull_rom_5tap(
-        history_tex, sampler_llr, history_uv, output_tex_size.xy, HistoryRemap::create()
+        history_tex, sampler_llc, history_uv, output_tex_size.xy, HistoryRemap::create()
     );
 #else
     float4 history_packed = fetch_history(history_uv);

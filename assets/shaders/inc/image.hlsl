@@ -119,27 +119,27 @@ float4 image_sample_catmull_rom_approx(in Texture2D<float4> tex, in SamplerState
     float4 result = 0.0f;
 
     if (useCornerTaps) {
-        result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos0.x, texPos0.y), 0.0f)) * w0.x * w0.y;
+        result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos0.x, texPos0.y), 0.0f)) * w0.x * w0.y;
     }
 
-    result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos12.x, texPos0.y), 0.0f)) * w12.x * w0.y;
+    result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos12.x, texPos0.y), 0.0f)) * w12.x * w0.y;
 
     if (useCornerTaps) {
-        result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos3.x, texPos0.y), 0.0f)) * w3.x * w0.y;
+        result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos3.x, texPos0.y), 0.0f)) * w3.x * w0.y;
     }
 
-    result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos0.x, texPos12.y), 0.0f)) * w0.x * w12.y;
-    result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos12.x, texPos12.y), 0.0f)) * w12.x * w12.y;
-    result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos3.x, texPos12.y), 0.0f)) * w3.x * w12.y;
+    result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos0.x, texPos12.y), 0.0f)) * w0.x * w12.y;
+    result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos12.x, texPos12.y), 0.0f)) * w12.x * w12.y;
+    result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos3.x, texPos12.y), 0.0f)) * w3.x * w12.y;
 
     if (useCornerTaps) {
-        result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos0.x, texPos3.y), 0.0f)) * w0.x * w3.y;
+        result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos0.x, texPos3.y), 0.0f)) * w0.x * w3.y;
     }
 
-    result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos12.x, texPos3.y), 0.0f)) * w12.x * w3.y;
+    result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos12.x, texPos3.y), 0.0f)) * w12.x * w3.y;
 
     if (useCornerTaps) {
-        result += remap.remap(tex.SampleLevel(sampler_llr, float2(texPos3.x, texPos3.y), 0.0f)) * w3.x * w3.y;
+        result += remap.remap(tex.SampleLevel(linearSampler, float2(texPos3.x, texPos3.y), 0.0f)) * w3.x * w3.y;
     }
 
     if (!useCornerTaps) {
