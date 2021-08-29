@@ -1,0 +1,13 @@
+A 3D model of the real Lawrence Berkeley National Laboratory building 90 3rd floor conference room originally created by Anat Grynberg and Greg Ward, circa 1991. The model was created from manual measurements with coordinates directly typed into a text editor. It is commonly used for global illumination experiments.
+
+This model was flipped inside-out at some point in history and appears backwards in some papers relative to the original, with the EXIT signs reading as if in a mirror. Kenzie Lamar at Vicarious Visions fixed the face winding directions on all surfaces to be consistent, re-modeled the trash cans and fire extinguisher to have reasonable normals and joints with no interpenetration, replaced the radiator vents with a single panel, and flipped the EXIT signs. The textures observable (especially in the wood grain) in Ward's original rendering are procedural and are not represented in this model.
+
+Additional resources:
+
+Original in RADIANCE format by Anat Grynberg and Greg Ward
+Model in MGF format, converted by Greg Ward
+Original description: This model was created over a period of three weeks by painstaking measurements and many vi editing sessions. The real conference room looks very similar to the Radiance renderings as a consequence, and we would be interested to compare results to other rendering techniques if you have them. Please do not use this model for any purpose without giving proper credit.
+
+License: Credit required
+© Anat Grynberg and Greg Ward
+Source: https://casual-effects.com/data/

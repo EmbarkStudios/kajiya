@@ -1,0 +1,3 @@
+Donald Greenberg and students at Cornell University created the original physical "Cornell Box" and matching virtual geometry.
+
+Source: http://www.graphics.cornell.edu/online/box/data.html

@@ -1,0 +1,11 @@
+Model Information:
+* title:	Warhammer scene.
+* source:	https://sketchfab.com/3d-models/warhammer-scene-8fffdf4ed0d543fdbb50fae52b002b8f
+* author:	sheffrator (https://sketchfab.com/sheffrator)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Warhammer scene." (https://sketchfab.com/3d-models/warhammer-scene-8fffdf4ed0d543fdbb50fae52b002b8f) by sheffrator (https://sketchfab.com/sheffrator) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
