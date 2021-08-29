@@ -719,235 +719,44 @@ mod ngx_params {
     #![allow(dead_code)]
     #![allow(non_upper_case_globals)]
 
-    pub const NVSDK_NGX_Parameter_OptLevel: *const i8 = "Snippet.OptLevel\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_IsDevSnippetBranch: *const i8 =
-        "Snippet.IsDevBranch\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SuperSampling_ScaleFactor: *const i8 =
-        "SuperSampling.ScaleFactor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSignalProcessing_ScaleFactor: *const i8 =
-        "ImageSignalProcessing.ScaleFactor\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_SuperSampling_Available: *const i8 =
         "SuperSampling.Available\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_InPainting_Available: *const i8 =
-        "InPainting.Available\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_Available: *const i8 =
-        "ImageSuperResolution.Available\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SlowMotion_Available: *const i8 =
-        "SlowMotion.Available\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_VideoSuperResolution_Available: *const i8 =
-        "VideoSuperResolution.Available\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSignalProcessing_Available: *const i8 =
-        "ImageSignalProcessing.Available\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DeepResolve_Available: *const i8 =
-        "DeepResolve.Available\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_SuperSampling_NeedsUpdatedDriver: *const i8 =
         "SuperSampling.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_InPainting_NeedsUpdatedDriver: *const i8 =
-        "InPainting.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_NeedsUpdatedDriver: *const i8 =
-        "ImageSuperResolution.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SlowMotion_NeedsUpdatedDriver: *const i8 =
-        "SlowMotion.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_VideoSuperResolution_NeedsUpdatedDriver: *const i8 =
-        "VideoSuperResolution.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSignalProcessing_NeedsUpdatedDriver: *const i8 =
-        "ImageSignalProcessing.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DeepResolve_NeedsUpdatedDriver: *const i8 =
-        "DeepResolve.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FrameInterpolation_NeedsUpdatedDriver: *const i8 =
-        "FrameInterpolation.NeedsUpdatedDriver\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMajor: *const i8 =
-        "SuperSampling.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_InPainting_MinDriverVersionMajor: *const i8 =
-        "InPainting.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_MinDriverVersionMajor: *const i8 =
-        "ImageSuperResolution.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SlowMotion_MinDriverVersionMajor: *const i8 =
-        "SlowMotion.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_VideoSuperResolution_MinDriverVersionMajor: *const i8 =
-        "VideoSuperResolution.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSignalProcessing_MinDriverVersionMajor: *const i8 =
-        "ImageSignalProcessing.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DeepResolve_MinDriverVersionMajor: *const i8 =
-        "DeepResolve.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FrameInterpolation_MinDriverVersionMajor: *const i8 =
-        "FrameInterpolation.MinDriverVersionMajor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SuperSampling_MinDriverVersionMinor: *const i8 =
-        "SuperSampling.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_InPainting_MinDriverVersionMinor: *const i8 =
-        "InPainting.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_MinDriverVersionMinor: *const i8 =
-        "ImageSuperResolution.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SlowMotion_MinDriverVersionMinor: *const i8 =
-        "SlowMotion.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_VideoSuperResolution_MinDriverVersionMinor: *const i8 =
-        "VideoSuperResolution.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSignalProcessing_MinDriverVersionMinor: *const i8 =
-        "ImageSignalProcessing.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DeepResolve_MinDriverVersionMinor: *const i8 =
-        "DeepResolve.MinDriverVersionMinor\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SuperSampling_FeatureInitResult: *const i8 =
-        "SuperSampling.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_InPainting_FeatureInitResult: *const i8 =
-        "InPainting.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_FeatureInitResult: *const i8 =
-        "ImageSuperResolution.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SlowMotion_FeatureInitResult: *const i8 =
-        "SlowMotion.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_VideoSuperResolution_FeatureInitResult: *const i8 =
-        "VideoSuperResolution.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSignalProcessing_FeatureInitResult: *const i8 =
-        "ImageSignalProcessing.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DeepResolve_FeatureInitResult: *const i8 =
-        "DeepResolve.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FrameInterpolation_FeatureInitResult: *const i8 =
-        "FrameInterpolation.FeatureInitResult\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_ScaleFactor_2_1: *const i8 =
-        "ImageSuperResolution.ScaleFactor.2.1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_ScaleFactor_3_1: *const i8 =
-        "ImageSuperResolution.ScaleFactor.3.1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_ScaleFactor_3_2: *const i8 =
-        "ImageSuperResolution.ScaleFactor.3.2\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ImageSuperResolution_ScaleFactor_4_3: *const i8 =
-        "ImageSuperResolution.ScaleFactor.4.3\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_NumFrames: *const i8 = "NumFrames\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Scale: *const i8 = "Scale\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Width: *const i8 = "Width\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Height: *const i8 = "Height\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_OutWidth: *const i8 = "OutWidth\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_OutHeight: *const i8 = "OutHeight\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Sharpness: *const i8 = "Sharpness\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Scratch: *const i8 = "Scratch\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Scratch_SizeInBytes: *const i8 =
-        "Scratch.SizeInBytes\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Input1: *const i8 = "Input1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Input1_Format: *const i8 =
-        "Input1.Format\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Input1_SizeInBytes: *const i8 =
-        "Input1.SizeInBytes\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Input2: *const i8 = "Input2\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Input2_Format: *const i8 =
-        "Input2.Format\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Input2_SizeInBytes: *const i8 =
-        "Input2.SizeInBytes\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Color: *const i8 = "Color\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Color_Format: *const i8 = "Color.Format\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Color_SizeInBytes: *const i8 =
-        "Color.SizeInBytes\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Color1: *const i8 = "Color1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Color2: *const i8 = "Color2\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Albedo: *const i8 = "Albedo\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Output: *const i8 = "Output\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Output_SizeInBytes: *const i8 =
-        "Output.SizeInBytes\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Output1: *const i8 = "Output1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Output2: *const i8 = "Output2\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Output3: *const i8 = "Output3\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Reset: *const i8 = "Reset\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_BlendFactor: *const i8 = "BlendFactor\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_MotionVectors: *const i8 =
         "MotionVectors\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_MotionVectors1: *const i8 =
-        "MotionVectors1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_MotionVectors2: *const i8 =
-        "MotionVectors2\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Rect_X: *const i8 = "Rect.X\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Rect_Y: *const i8 = "Rect.Y\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Rect_W: *const i8 = "Rect.W\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Rect_H: *const i8 = "Rect.H\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_MV_Scale_X: *const i8 = "MV.Scale.X\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_MV_Scale_Y: *const i8 = "MV.Scale.Y\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Model: *const i8 = "Model\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Format: *const i8 = "Format\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_SizeInBytes: *const i8 = "SizeInBytes\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ResourceAllocCallback: *const i8 =
-        "ResourceAllocCallback\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_BufferAllocCallback: *const i8 =
-        "BufferAllocCallback\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Tex2DAllocCallback: *const i8 =
-        "Tex2DAllocCallback\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_ResourceReleaseCallback: *const i8 =
-        "ResourceReleaseCallback\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_CreationNodeMask: *const i8 =
         "CreationNodeMask\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_VisibilityNodeMask: *const i8 =
         "VisibilityNodeMask\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_MV_Offset_X: *const i8 = "MV.Offset.X\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_MV_Offset_Y: *const i8 = "MV.Offset.Y\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Hint_UseFireflySwatter: *const i8 =
-        "Hint.UseFireflySwatter\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Resource_Width: *const i8 =
-        "ResourceWidth\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Resource_Height: *const i8 =
-        "ResourceHeight\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Resource_OutWidth: *const i8 =
-        "ResourceOutWidth\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Resource_OutHeight: *const i8 =
-        "ResourceOutHeight\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Depth: *const i8 = "Depth\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Depth1: *const i8 = "Depth1\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Depth2: *const i8 = "Depth2\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_DLSSOptimalSettingsCallback: *const i8 =
         "DLSSOptimalSettingsCallback\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DLSSGetStatsCallback: *const i8 =
-        "DLSSGetStatsCallback\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_PerfQualityValue: *const i8 =
         "PerfQualityValue\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_RTXValue: *const i8 = "RTXValue\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DLSSMode: *const i8 = "DLSSMode\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_Mode: *const i8 = "FIMode\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_OF_Preset: *const i8 = "FIOFPreset\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FI_OF_GridSize: *const i8 =
-        "FIOFGridSize\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Jitter_Offset_X: *const i8 =
         "Jitter.Offset.X\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_Jitter_Offset_Y: *const i8 =
         "Jitter.Offset.Y\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_Denoise: *const i8 = "Denoise\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_TransparencyMask: *const i8 =
         "TransparencyMask\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_ExposureTexture: *const i8 =
         "ExposureTexture\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_DLSS_Feature_Create_Flags: *const i8 =
         "DLSS.Feature.Create.Flags\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_DLSS_Checkerboard_Jitter_Hack: *const i8 =
-        "DLSS.Checkerboard.Jitter.Hack\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Albedo: *const i8 =
-        "GBuffer.Albedo\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Roughness: *const i8 =
-        "GBuffer.Roughness\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Metallic: *const i8 =
-        "GBuffer.Metallic\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Specular: *const i8 =
-        "GBuffer.Specular\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Subsurface: *const i8 =
-        "GBuffer.Subsurface\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Normals: *const i8 =
-        "GBuffer.Normals\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_ShadingModelId: *const i8 =
-        "GBuffer.ShadingModelId\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_MaterialId: *const i8 =
-        "GBuffer.MaterialId\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_8: *const i8 =
-        "GBuffer.Attrib.8\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_9: *const i8 =
-        "GBuffer.Attrib.9\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_10: *const i8 =
-        "GBuffer.Attrib.10\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_11: *const i8 =
-        "GBuffer.Attrib.11\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_12: *const i8 =
-        "GBuffer.Attrib.12\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_13: *const i8 =
-        "GBuffer.Attrib.13\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_14: *const i8 =
-        "GBuffer.Attrib.14\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_GBuffer_Atrrib_15: *const i8 =
-        "GBuffer.Attrib.15\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_TonemapperType: *const i8 =
         "TonemapperType\0".as_ptr() as *const i8;
-    pub const NVSDK_NGX_Parameter_FreeMemOnReleaseFeature: *const i8 =
-        "FreeMemOnReleaseFeature\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_MotionVectors3D: *const i8 =
         "MotionVectors3D\0".as_ptr() as *const i8;
     pub const NVSDK_NGX_Parameter_IsParticleMask: *const i8 =
