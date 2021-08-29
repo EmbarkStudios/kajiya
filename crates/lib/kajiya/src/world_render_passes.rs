@@ -217,7 +217,6 @@ impl WorldRenderer {
             rg,
             &final_post_input,
             //&anti_aliased,
-            //            &anti_aliased.debug,
             self.bindless_descriptor_set,
             self.ev_shift,
         );

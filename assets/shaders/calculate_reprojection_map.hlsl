@@ -68,7 +68,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // Account for quantization of the `uv_diff` in R16G16B16A16_SNORM.
     // This is so we calculate validity masks for pixels that the users will actually be using.
-    uv_diff = trunc(uv_diff * 32767.0) / 32767.0;
+    uv_diff = floor(uv_diff * 32767.0 + 0.5) / 32767.0;
     prev_uv = uv + uv_diff;
 
     float4 prev_pvs = mul(frame_constants.view_constants.prev_clip_to_prev_view, prev_pcs);
@@ -100,7 +100,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: reject based on normal too? Potentially tricky under rotations.
 
-    const float acceptance_threshold = 0.001;
+    // Resolution-dependent. Was tweaked for 1080p
+    const float acceptance_threshold = 0.001 * (1080 / output_tex_size.y);
 
     // Reduce strictness at grazing angles, where distances grow due to perspective
     const float3 pos_vs_norm = normalize(pos_vs.xyz / pos_vs.w);

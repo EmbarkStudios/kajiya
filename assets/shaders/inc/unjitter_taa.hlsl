@@ -2,6 +2,7 @@
 #define UNJITTER_TAA_HLSL
 
 #include "image.hlsl"
+#include "math_const.hlsl"
 
 struct UnjitteredSampleInfo {
     float4 color;
@@ -33,6 +34,22 @@ struct UnjitterSettings {
         return res;
     }
 };
+
+float sinc(float x) {
+    if (x < 1e-5) {
+        return 1.0;
+    } else {
+        return sin(M_PI * x) / (M_PI * x);
+    }
+}
+
+float lanczos(float x, float a) {
+    if (-a < x && x < a) {
+        return sinc(x) * sinc(x / a);
+    } else {
+        return 0;
+    }
+}
 
 /// trait Remap {
 ///     float4 remap(float4 v);
@@ -82,8 +99,11 @@ UnjitteredSampleInfo sample_image_unjitter_taa(
 
             //float wt = all(abs(sample_center_offset) < 0.83);//dist < 0.33;
             float dev_wt = exp2(-dist2 * input_resolution_scale.x);
-            //float wt = mitchell_netravali(dist * kernel_distance_mult);
-            float wt = exp2(-7 * dist2 * input_resolution_scale.x);;
+            //float wt = mitchell_netravali(2.5 * dist * input_resolution_scale.x);
+            float wt = exp2(-10 * dist2 * input_resolution_scale.x);
+            //float wt = sinc(1 * dist * input_resolution_scale.x) * smoothstep(3, 0, dist * input_resolution_scale.x);
+            //float wt = lanczos(2.2 * dist * input_resolution_scale.x, 3);
+            //wt = max(wt, 0.0);
 
             res += col * wt;
             wt_sum += wt;
@@ -94,18 +114,11 @@ UnjitteredSampleInfo sample_image_unjitter_taa(
         }
     }
 
-    const int sample_count = (k * 2 + 1) * (k * 2 + 1);
-    const float ideal_coverage = 1.0 + 4 * 0.5 + 4 * 0.25;
-
     float2 sample_center_offset = -sample_offset_pixels / input_resolution_scale * float2(1, -1) - (base_src_sample_loc - dst_sample_loc);
 
     UnjitteredSampleInfo info;
-    //info.color = res.rgb / max(1e-5, res.a);
-    info.color = res;// / ideal_coverage * 4.0;
-    //info.color = res.rgb;
-    //info.coverage = res.a / sample_count;
-    //info.coverage = dev_wt_sum;
-    info.coverage = wt_sum;// / sample_count;//exp2(-2 * dot(sample_center_offset, sample_center_offset) * kernel_distance_mult);
+    info.color = res;
+    info.coverage = wt_sum;
     info.ex = ex / dev_wt_sum;
     info.ex2 = ex2 / dev_wt_sum;
     return info;

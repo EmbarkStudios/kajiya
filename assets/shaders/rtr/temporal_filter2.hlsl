@@ -105,7 +105,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float4 reproj = reprojection_tex[px];
 
-    const float2 reflector_move_rate = min(1.0, abs(reproj.xy) / abs(reflector_prev_uv - uv));
+    const float2 reflector_move_rate = min(1.0, length(reproj.xy) / length(reflector_prev_uv - uv));
     hit_prev_uv = lerp(uv, hit_prev_uv, reflector_move_rate);
 
     const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
@@ -133,6 +133,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 
             if (dot(weights, 1.0) > 1e-5) {
                 history0 = apply_bilinear_custom_weights(s00, s10, s01, s11, weights);
+            } else {
+                // Invalid, but we have to return something.
+                history0 = (s00 + s10 + s01 + s11) / 4;
             }
         }
         history0 = linear_to_working(history0);
@@ -206,8 +209,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
     float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
 #else
-    float h0_score = 0;
-    float h1_score = 1;
+    float h0_score = 1;
+    float h1_score = 0;
 #endif
 
     const float score_sum = h0_score + h1_score;

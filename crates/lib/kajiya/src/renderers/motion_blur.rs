@@ -52,7 +52,9 @@ pub fn motion_blur(
 
     let mut output = rg.create(*input.desc());
 
+    // TODO: account for framerate like the HLSL version did
     let motion_blur_scale: f32 = 1.0;
+
     SimpleRenderPass::new_compute_rust(rg.add_pass("motion blur"), "motion_blur::motion_blur")
         .read(input)
         .read(reprojection_map)
