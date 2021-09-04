@@ -56,7 +56,16 @@ impl Device {
                 .create_buffer(&buffer_info, None)
                 .expect("create_buffer")
         };
-        let requirements = unsafe { self.raw.get_buffer_memory_requirements(buffer) };
+        let mut requirements = unsafe { self.raw.get_buffer_memory_requirements(buffer) };
+
+        // TODO: why does `get_buffer_memory_requirements` fail to get the correct alignment on AMD?
+        if desc
+            .usage
+            .contains(vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR)
+        {
+            // TODO: query device props
+            requirements.alignment = requirements.alignment.max(64);
+        }
 
         let allocation = self
             .global_allocator
