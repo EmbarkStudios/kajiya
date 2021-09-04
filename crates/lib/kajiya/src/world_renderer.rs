@@ -780,7 +780,7 @@ impl WorldRenderer {
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> rg::Handle<Image> {
         rg.predefined_descriptor_set_layouts.insert(
             1,
             rg::PredefinedDescriptorSet {
@@ -813,7 +813,8 @@ impl WorldRenderer {
                     self.dlss.current_supersample_offset = self.taa.current_supersample_offset;
                 }
 
-                self.prepare_render_graph_reference(rg, frame_desc)
+                //self.prepare_render_graph_reference(rg, frame_desc)
+                todo!()
             }
         }
     }

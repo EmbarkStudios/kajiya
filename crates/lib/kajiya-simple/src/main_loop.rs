@@ -1,7 +1,7 @@
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     frame_desc::WorldFrameDesc,
-    rg::renderer::RenderGraphOutput,
+    rg,
     ui_renderer::UiRenderer,
     world_renderer::WorldRenderer,
 };
@@ -321,8 +321,21 @@ impl SimpleMainLoop {
                     let prepared_frame = rg_renderer.prepare_frame(|rg| {
                         rg.debug_hook = world_renderer.rg_debug_hook.take();
                         let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
-                        let ui_img = Some(ui_renderer.prepare_render_graph(rg));
-                        RenderGraphOutput { main_img, ui_img }
+                        let ui_img = ui_renderer.prepare_render_graph(rg);
+
+                        let mut swap_chain = rg.get_swap_chain();
+                        rg::SimpleRenderPass::new_compute(
+                            rg.add_pass("final blit"),
+                            "/shaders/final_blit.hlsl",
+                        )
+                        .read(&main_img)
+                        .read(&ui_img)
+                        .write(&mut swap_chain)
+                        .constants((
+                            main_img.desc().extent_inv_extent_2d(),
+                            main_img.desc().extent_inv_extent_2d(), // TODO: swapchain size
+                        ))
+                        .dispatch(main_img.desc().extent); // TODO: swapchain size
                     });
 
                     match prepared_frame {

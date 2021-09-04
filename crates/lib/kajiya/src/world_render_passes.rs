@@ -14,7 +14,7 @@ impl WorldRenderer {
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> rg::Handle<Image> {
         let tlas = self.prepare_top_level_acceleration(rg);
 
         let mut accum_img = rg
@@ -221,12 +221,7 @@ impl WorldRenderer {
             self.ev_shift,
         );
 
-        let final_output = rg.debugged_resource.take().unwrap_or(post_processed);
-
-        rg.export(
-            final_output,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        )
+        rg.debugged_resource.take().unwrap_or(post_processed)
     }
 
     pub(super) fn prepare_render_graph_reference(
