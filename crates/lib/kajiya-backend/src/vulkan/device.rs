@@ -281,6 +281,8 @@ impl Device {
             debug!("{:#?}", &vulkan_memory_model);
             debug!("{:#?}", &get_buffer_device_address_features);
 
+            // The suggested `#[rustfmt::skip]` is not stable
+            #[allow(clippy::deprecated_cfg_attr)]
             #[cfg_attr(rustfmt, rustfmt_skip)]
             {
                 assert!(scalar_block.scalar_block_layout != 0);

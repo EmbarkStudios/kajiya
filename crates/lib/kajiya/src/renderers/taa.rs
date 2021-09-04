@@ -94,7 +94,7 @@ impl TaaRenderer {
                 rg.add_pass("taa input stats"),
                 "/shaders/taa/input_stats.hlsl",
             )
-            .read(&input_tex)
+            .read(input_tex)
             .read(&reprojected_history_img)
             .read(reprojection_map)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
