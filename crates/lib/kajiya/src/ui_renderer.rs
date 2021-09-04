@@ -2,11 +2,7 @@
 
 use std::sync::Arc;
 
-use kajiya_backend::{
-    ash::vk,
-    vk_sync::{self, AccessType},
-    vulkan::image::*,
-};
+use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::image::*};
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};

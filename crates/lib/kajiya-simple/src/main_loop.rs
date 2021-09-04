@@ -318,6 +318,9 @@ impl SimpleMainLoop {
 
                     events.clear();
 
+                    // Physical window extent in pixels
+                    let swapchain_extent = [window.inner_size().width, window.inner_size().height];
+
                     let prepared_frame = rg_renderer.prepare_frame(|rg| {
                         rg.debug_hook = world_renderer.rg_debug_hook.take();
                         let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
@@ -333,9 +336,18 @@ impl SimpleMainLoop {
                         .write(&mut swap_chain)
                         .constants((
                             main_img.desc().extent_inv_extent_2d(),
-                            main_img.desc().extent_inv_extent_2d(), // TODO: swapchain size
+                            [
+                                swapchain_extent[0] as f32,
+                                swapchain_extent[1] as f32,
+                                1.0 / swapchain_extent[0] as f32,
+                                1.0 / swapchain_extent[1] as f32,
+                            ],
                         ))
-                        .dispatch(main_img.desc().extent); // TODO: swapchain size
+                        .dispatch([
+                            swapchain_extent[0],
+                            swapchain_extent[1],
+                            1,
+                        ]);
                     });
 
                     match prepared_frame {

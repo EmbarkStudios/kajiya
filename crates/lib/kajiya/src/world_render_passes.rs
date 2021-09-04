@@ -6,7 +6,7 @@ use crate::{
     },
     world_renderer::{RenderDebugMode, WorldRenderer},
 };
-use kajiya_backend::{ash::vk, vk_sync, vulkan::image::*};
+use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
 impl WorldRenderer {
@@ -228,7 +228,7 @@ impl WorldRenderer {
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> rg::Handle<Image> {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "refpt.accum",
@@ -249,17 +249,12 @@ impl WorldRenderer {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let post_processed = post_process(
+        post_process(
             rg,
             &accum_img,
             //&accum_img, // hack
             self.bindless_descriptor_set,
             self.ev_shift,
-        );
-
-        rg.export(
-            post_processed,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
     }
 }

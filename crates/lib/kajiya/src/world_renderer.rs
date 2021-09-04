@@ -813,8 +813,7 @@ impl WorldRenderer {
                     self.dlss.current_supersample_offset = self.taa.current_supersample_offset;
                 }
 
-                //self.prepare_render_graph_reference(rg, frame_desc)
-                todo!()
+                self.prepare_render_graph_reference(rg, frame_desc)
             }
         }
     }

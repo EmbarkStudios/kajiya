@@ -1,5 +1,5 @@
 use crate::{
-    CompiledRenderGraph, ExportedHandle, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
+    CompiledRenderGraph, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
     RenderGraphExecutionParams, TemporalRenderGraph, TemporalRenderGraphState,
     TemporalResourceState,
 };
@@ -11,7 +11,7 @@ use kajiya_backend::{
     rspirv_reflect,
     transient_resource_cache::TransientResourceCache,
     vk_sync,
-    vulkan::{self, image::*, shader::*, swapchain::Swapchain, RenderBackend},
+    vulkan::{self, swapchain::Swapchain, RenderBackend},
     Device,
 };
 #[allow(unused_imports)]
@@ -126,8 +126,6 @@ impl Renderer {
         PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants) -> FrameConstantsLayout,
     {
         let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
-
-        let swapchain_extent = swapchain.extent();
 
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
