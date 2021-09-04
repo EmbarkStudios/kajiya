@@ -53,9 +53,9 @@ Operating systems:
 * Linux
 
 Hardware:
-* Nvidia RTX cards
-* Nvidia GTX 1060+ series (slow: driver-emulated ray-tracing)
-* Radeon 6000+ _eventually_ - there are probably synchronization issues / bugs on AMD
+* Nvidia RTX series
+* Nvidia GTX 1060 and newer (slow: driver-emulated ray-tracing)
+* AMD Radeon RX 6000 series
 
 ## Building and running
 
