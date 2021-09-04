@@ -14,11 +14,7 @@ pub fn create_present_compute_shader(device: &Device) -> ComputePipeline {
         &(&include_bytes!("../final_blit.spv")[..]).to_owned(),
         &ComputePipelineDesc::builder()
             .compute_entry_hlsl("main")
-            .descriptor_set_opts(&[(
-                0,
-                DescriptorSetLayoutOpts::builder()
-                    .flags(vk::DescriptorSetLayoutCreateFlags::PUSH_DESCRIPTOR_KHR),
-            )])
+            .descriptor_set_opts(&[(0, DescriptorSetLayoutOpts::builder())])
             .push_constants_bytes(4 * std::mem::size_of::<u32>())
             .build()
             .unwrap(),
@@ -71,7 +67,9 @@ pub fn blit_image_to_swapchain(
         );
     }
 
-    unsafe {
+    todo!("replace push descriptors");
+
+    /*unsafe {
         device.cmd_ext.push_descriptor.cmd_push_descriptor_set(
             cb.raw,
             vk::PipelineBindPoint::COMPUTE,
@@ -119,7 +117,7 @@ pub fn blit_image_to_swapchain(
             (swapchain_extent[1] + 7) / 8,
             1,
         );
-    }
+    }*/
 
     record_image_barrier(
         device,

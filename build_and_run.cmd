@@ -1,6 +1,6 @@
 @echo off
 
-cargo run --bin view --release -- --scene %*  --width 1920 --height 1080 --no-debug
+cargo run --bin view --release -- --scene %*  --width 1920 --height 1080
 rem --no-debug
 rem cargo run --bin view --release -- --scene pica --width 1920 --height 1080 --no-debug
 

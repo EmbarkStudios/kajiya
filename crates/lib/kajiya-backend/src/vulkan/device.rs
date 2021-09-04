@@ -8,7 +8,11 @@ use gpu_allocator::{AllocatorDebugSettings, VulkanAllocator, VulkanAllocatorCrea
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    os::raw::c_char,
+    sync::Arc,
+};
 
 pub struct Queue {
     pub raw: vk::Queue,
@@ -114,10 +118,6 @@ impl DeviceFrame {
     }
 }
 
-pub(crate) struct CmdExt {
-    pub push_descriptor: khr::PushDescriptor,
-}
-
 pub struct Device {
     pub raw: ash::Device,
     pub(crate) pdevice: Arc<PhysicalDevice>,
@@ -125,7 +125,6 @@ pub struct Device {
     pub universal_queue: Queue,
     pub(crate) global_allocator: Arc<Mutex<VulkanAllocator>>,
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
-    pub(crate) cmd_ext: CmdExt,
     pub(crate) setup_cb: Mutex<CommandBuffer>,
 
     pub acceleration_structure_ext: khr::AccelerationStructure,
@@ -150,8 +149,6 @@ impl Device {
             vk::ExtDescriptorIndexingFn::name().as_ptr(),
             vk::KhrImagelessFramebufferFn::name().as_ptr(),
             vk::KhrImageFormatListFn::name().as_ptr(),
-            //vk::ExtFragmentShaderInterlockFn::name().as_ptr(),
-            vk::KhrPushDescriptorFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
             vk::KhrDrawIndirectCountFn::name().as_ptr(),
             // Rust-GPU
@@ -164,8 +161,6 @@ impl Device {
             },
             #[cfg(feature = "dlss")]
             vk::NvxImageViewHandleFn::name().as_ptr(),
-            //b"VK_EXT_buffer_device_address\0".as_ptr() as *const i8,
-            //b"VK_KHR_push_descriptor\0".as_ptr() as *const i8,
         ];
 
         #[cfg(feature = "ray-tracing")]
@@ -193,6 +188,31 @@ impl Device {
     pub fn create(pdevice: &Arc<PhysicalDevice>) -> Result<Arc<Self>> {
         let device_extension_names = Self::extension_names(pdevice);
 
+        unsafe {
+            let extension_properties = pdevice
+                .instance
+                .raw
+                .enumerate_device_extension_properties(pdevice.raw)?;
+            debug!("Extension properties:\n{:#?}", &extension_properties);
+
+            let supported_extensions: HashSet<String> = extension_properties
+                .iter()
+                .map(|ext| {
+                    std::ffi::CStr::from_ptr(ext.extension_name.as_ptr() as *const c_char)
+                        .to_string_lossy()
+                        .as_ref()
+                        .to_owned()
+                })
+                .collect();
+
+            for &ext in &device_extension_names {
+                let ext = std::ffi::CStr::from_ptr(ext).to_string_lossy();
+                if !supported_extensions.contains(ext.as_ref()) {
+                    panic!("Device extension not supported: {}", ext);
+                }
+            }
+        };
+
         let priorities = [1.0];
 
         let universal_queue = pdevice
@@ -213,104 +233,94 @@ impl Device {
             .queue_priorities(&priorities)
             .build()];
 
-        let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::builder()
-            .scalar_block_layout(true)
-            .build();
-
-        let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::builder()
-            .shader_input_attachment_array_dynamic_indexing(true)
-            .shader_uniform_texel_buffer_array_dynamic_indexing(true)
-            .shader_storage_texel_buffer_array_dynamic_indexing(true)
-            .shader_uniform_buffer_array_non_uniform_indexing(true)
-            .shader_sampled_image_array_non_uniform_indexing(true)
-            .shader_storage_buffer_array_non_uniform_indexing(true)
-            .shader_storage_image_array_non_uniform_indexing(true)
-            .shader_input_attachment_array_non_uniform_indexing(true)
-            .shader_uniform_texel_buffer_array_non_uniform_indexing(true)
-            .shader_storage_texel_buffer_array_non_uniform_indexing(true)
-            //.descriptor_binding_uniform_buffer_update_after_bind(true)
-            .descriptor_binding_sampled_image_update_after_bind(true)
-            //.descriptor_binding_storage_image_update_after_bind(true)
-            //.descriptor_binding_storage_buffer_update_after_bind(true)
-            //.descriptor_binding_uniform_texel_buffer_update_after_bind(true)
-            //.descriptor_binding_storage_texel_buffer_update_after_bind(true)
-            .descriptor_binding_update_unused_while_pending(true)
-            .descriptor_binding_partially_bound(true)
-            .descriptor_binding_variable_descriptor_count(true)
-            .runtime_descriptor_array(true)
-            .build();
-
+        let mut scalar_block = vk::PhysicalDeviceScalarBlockLayoutFeaturesEXT::default();
+        let mut descriptor_indexing = vk::PhysicalDeviceDescriptorIndexingFeaturesEXT::default();
         let mut imageless_framebuffer =
-            vk::PhysicalDeviceImagelessFramebufferFeaturesKHR::builder()
-                .imageless_framebuffer(true)
-                .build();
-
-        let mut fragment_shader_interlock =
-            vk::PhysicalDeviceFragmentShaderInterlockFeaturesEXT::builder()
-                .fragment_shader_pixel_interlock(true)
-                .build();
-
-        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features {
-            shader_int8: 1,
-            ..Default::default()
-        };
-
-        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR {
-            vulkan_memory_model: 1,
-            ..Default::default()
-        };
+            vk::PhysicalDeviceImagelessFramebufferFeaturesKHR::default();
+        let mut shader_float16_int8 = vk::PhysicalDeviceShaderFloat16Int8Features::default();
+        let mut vulkan_memory_model = vk::PhysicalDeviceVulkanMemoryModelFeaturesKHR::default();
+        let mut get_buffer_device_address_features =
+            ash::vk::PhysicalDeviceBufferDeviceAddressFeatures::default();
 
         #[cfg(feature = "ray-tracing")]
         let mut acceleration_structure_features =
-            ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::builder()
-                .acceleration_structure(true)
-                //.acceleration_structure_host_commands(true)
-                .descriptor_binding_acceleration_structure_update_after_bind(true)
-                .build();
+            ash::vk::PhysicalDeviceAccelerationStructureFeaturesKHR::default();
 
         #[cfg(feature = "ray-tracing")]
         let mut ray_tracing_pipeline_features =
-            ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::builder()
-                .ray_tracing_pipeline(true)
-                .ray_tracing_pipeline_trace_rays_indirect(true)
-                .build();
-
-        /*#[cfg(feature = "ray-tracing")]
-        let mut ray_query_features = ash::vk::PhysicalDeviceRayQueryFeaturesKHR::builder()
-            .ray_query(true)
-            .build();*/
-
-        let mut get_buffer_device_address_features =
-            ash::vk::PhysicalDeviceBufferDeviceAddressFeatures {
-                buffer_device_address: 1,
-                ..Default::default()
-            };
+            ash::vk::PhysicalDeviceRayTracingPipelineFeaturesKHR::default();
 
         unsafe {
             let instance = &pdevice.instance.raw;
 
-            let mut features2 = vk::PhysicalDeviceFeatures2::default();
-            instance
-                .fp_v1_1()
-                .get_physical_device_features2(pdevice.raw, &mut features2);
-
-            let device_create_info = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(&universal_queue_info)
-                .enabled_extension_names(&device_extension_names)
-                .push_next(&mut features2)
+            let mut features2 = vk::PhysicalDeviceFeatures2::builder()
                 .push_next(&mut scalar_block)
                 .push_next(&mut descriptor_indexing)
                 .push_next(&mut imageless_framebuffer)
-                .push_next(&mut fragment_shader_interlock)
                 .push_next(&mut shader_float16_int8)
                 .push_next(&mut vulkan_memory_model)
                 .push_next(&mut get_buffer_device_address_features);
 
             #[cfg(feature = "ray-tracing")]
-            let device_create_info = device_create_info
-                .push_next(&mut acceleration_structure_features)
-                .push_next(&mut ray_tracing_pipeline_features)
-                //.push_next(&mut ray_query_features)
+            {
+                features2 = features2
+                    .push_next(&mut acceleration_structure_features)
+                    .push_next(&mut ray_tracing_pipeline_features);
+            }
+
+            let mut features2 = features2.build();
+
+            instance
+                .fp_v1_1()
+                .get_physical_device_features2(pdevice.raw, &mut features2);
+
+            debug!("{:#?}", &scalar_block);
+            debug!("{:#?}", &descriptor_indexing);
+            debug!("{:#?}", &imageless_framebuffer);
+            debug!("{:#?}", &shader_float16_int8);
+            debug!("{:#?}", &vulkan_memory_model);
+            debug!("{:#?}", &get_buffer_device_address_features);
+
+            #[cfg_attr(rustfmt, rustfmt_skip)]
+            {
+                assert!(scalar_block.scalar_block_layout != 0);
+
+                assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
+                assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.descriptor_binding_sampled_image_update_after_bind != 0);
+                assert!(descriptor_indexing.descriptor_binding_update_unused_while_pending != 0);
+                assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
+                assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
+                assert!(descriptor_indexing.runtime_descriptor_array != 0);
+
+                assert!(imageless_framebuffer.imageless_framebuffer != 0);
+
+                assert!(shader_float16_int8.shader_int8 != 0);
+
+                assert!(vulkan_memory_model.vulkan_memory_model != 0);
+
+                #[cfg(feature = "ray-tracing")]
+                {
+                    assert!(acceleration_structure_features.acceleration_structure != 0);
+                    assert!(acceleration_structure_features.descriptor_binding_acceleration_structure_update_after_bind != 0);
+
+                    assert!(ray_tracing_pipeline_features.ray_tracing_pipeline != 0);
+                    assert!(ray_tracing_pipeline_features.ray_tracing_pipeline_trace_rays_indirect != 0);
+                }
+
+                assert!(get_buffer_device_address_features.buffer_device_address != 0);
+            }
+
+            let device_create_info = vk::DeviceCreateInfo::builder()
+                .queue_create_infos(&universal_queue_info)
+                .enabled_extension_names(&device_extension_names)
+                .push_next(&mut features2)
                 .build();
 
             let device = instance
@@ -342,10 +352,6 @@ impl Device {
             //let frame2 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
 
             let immutable_samplers = Self::create_samplers(&device);
-            let cmd_ext = CmdExt {
-                push_descriptor: khr::PushDescriptor::new(&pdevice.instance.raw, &device),
-            };
-
             let setup_cb = CommandBuffer::new(&device, &universal_queue.family).unwrap();
 
             let acceleration_structure_ext =
@@ -363,7 +369,6 @@ impl Device {
                 universal_queue,
                 global_allocator: Arc::new(Mutex::new(global_allocator)),
                 immutable_samplers,
-                cmd_ext,
                 setup_cb: Mutex::new(setup_cb),
                 acceleration_structure_ext,
                 ray_tracing_pipeline_ext,
