@@ -6,7 +6,7 @@ use crate::{
     },
     world_renderer::{RenderDebugMode, WorldRenderer},
 };
-use kajiya_backend::{ash::vk, vk_sync, vulkan::image::*};
+use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
 
 impl WorldRenderer {
@@ -14,7 +14,7 @@ impl WorldRenderer {
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> rg::Handle<Image> {
         let tlas = self.prepare_top_level_acceleration(rg);
 
         let mut accum_img = rg
@@ -221,19 +221,14 @@ impl WorldRenderer {
             self.ev_shift,
         );
 
-        let final_output = rg.debugged_resource.take().unwrap_or(post_processed);
-
-        rg.export(
-            final_output,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        )
+        rg.debugged_resource.take().unwrap_or(post_processed)
     }
 
     pub(super) fn prepare_render_graph_reference(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> rg::Handle<Image> {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "refpt.accum",
@@ -254,17 +249,12 @@ impl WorldRenderer {
 
         reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
-        let post_processed = post_process(
+        post_process(
             rg,
             &accum_img,
             //&accum_img, // hack
             self.bindless_descriptor_set,
             self.ev_shift,
-        );
-
-        rg.export(
-            post_processed,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         )
     }
 }

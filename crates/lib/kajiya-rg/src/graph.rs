@@ -59,6 +59,7 @@ pub(crate) enum GraphResourceImportInfo {
         resource: Arc<RayTracingAcceleration>,
         access_type: vk_sync::AccessType,
     },
+    SwapchainImage,
 }
 
 pub(crate) enum GraphResourceInfo {
@@ -348,14 +349,23 @@ impl RenderGraph {
         ImportExportToRenderGraph::export(resource, self, access_type)
     }
 
-    /*pub fn export_image(
-        &mut self,
-        img: Handle<Image>,
-        access_type: vk_sync::AccessType,
-    ) -> ExportedHandle<Image> {
-        self.exported_images.push((img.raw, access_type));
-        ExportedHandle(img)
-    }*/
+    pub fn get_swap_chain(&mut self) -> Handle<Image> {
+        let res = GraphRawResourceHandle {
+            id: self.resources.len() as u32,
+            version: 0,
+        };
+
+        self.resources.push(GraphResourceInfo::Imported(
+            GraphResourceImportInfo::SwapchainImage,
+        ));
+
+        Handle {
+            raw: res,
+            // TODO: size
+            desc: ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]),
+            marker: PhantomData,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -459,7 +469,8 @@ impl RenderGraph {
                         desc: GraphResourceDesc::Image(_),
                         ..
                     })
-                    | GraphResourceInfo::Imported(GraphResourceImportInfo::Image { .. }) => {
+                    | GraphResourceInfo::Imported(GraphResourceImportInfo::Image { .. })
+                    | GraphResourceInfo::Imported(GraphResourceImportInfo::SwapchainImage) => {
                         let image_usage: vk::ImageUsageFlags =
                             image_access_mask_to_usage_flags(access_mask);
 
@@ -683,6 +694,7 @@ impl CompiledRenderGraph {
         transient_resource_cache: &mut TransientResourceCache,
         dynamic_constants: &mut DynamicConstants,
         cb: &CommandBuffer,
+        swapchain_image: Arc<Image>,
     ) -> RetiredRenderGraph {
         let device = params.device;
         let resources: Vec<RegistryResource> = self
@@ -743,6 +755,10 @@ impl CompiledRenderGraph {
                             resource.clone(),
                         ),
                         access_type: *access_type,
+                    },
+                    GraphResourceImportInfo::SwapchainImage => RegistryResource {
+                        resource: AnyRenderResource::ImportedImage(swapchain_image.clone()),
+                        access_type: vk_sync::AccessType::ComputeShaderWrite,
                     },
                 },
             })

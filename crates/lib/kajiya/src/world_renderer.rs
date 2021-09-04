@@ -780,7 +780,7 @@ impl WorldRenderer {
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
-    ) -> rg::ExportedHandle<Image> {
+    ) -> rg::Handle<Image> {
         rg.predefined_descriptor_set_layouts.insert(
             1,
             rg::PredefinedDescriptorSet {

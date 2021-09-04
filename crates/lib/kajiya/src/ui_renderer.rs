@@ -2,11 +2,7 @@
 
 use std::sync::Arc;
 
-use kajiya_backend::{
-    ash::vk,
-    vk_sync::{self, AccessType},
-    vulkan::image::*,
-};
+use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::image::*};
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -19,15 +15,8 @@ pub struct UiRenderer {
 pub type UiRenderCallback = Box<dyn FnOnce(vk::CommandBuffer) + 'static>;
 
 impl UiRenderer {
-    pub fn prepare_render_graph(
-        &mut self,
-        rg: &mut rg::TemporalRenderGraph,
-    ) -> rg::ExportedHandle<Image> {
-        let ui_img = self.render_ui(rg);
-        rg.export(
-            ui_img,
-            vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-        )
+    pub fn prepare_render_graph(&mut self, rg: &mut rg::TemporalRenderGraph) -> rg::Handle<Image> {
+        self.render_ui(rg)
     }
 
     fn render_ui(&mut self, rg: &mut rg::RenderGraph) -> rg::Handle<Image> {

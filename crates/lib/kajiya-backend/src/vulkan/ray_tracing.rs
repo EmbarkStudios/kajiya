@@ -601,7 +601,8 @@ impl Device {
                     super::buffer::BufferDesc {
                         size: shader_binding_table_data.len(),
                         usage: vk::BufferUsageFlags::TRANSFER_SRC
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                            | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
                         mapped: false,
                     },
                     Some(&shader_binding_table_data),

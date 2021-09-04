@@ -1,5 +1,5 @@
 use crate::{
-    CompiledRenderGraph, ExportedHandle, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
+    CompiledRenderGraph, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
     RenderGraphExecutionParams, TemporalRenderGraph, TemporalRenderGraphState,
     TemporalResourceState,
 };
@@ -11,10 +11,7 @@ use kajiya_backend::{
     rspirv_reflect,
     transient_resource_cache::TransientResourceCache,
     vk_sync,
-    vulkan::{
-        self, image::*, presentation::blit_image_to_swapchain, shader::*, swapchain::Swapchain,
-        RenderBackend,
-    },
+    vulkan::{self, swapchain::Swapchain, RenderBackend},
     Device,
 };
 #[allow(unused_imports)]
@@ -42,10 +39,7 @@ pub struct Renderer {
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
 
-    present_shader: ComputePipeline,
-
     compiled_rg: Option<CompiledRenderGraph>,
-    rg_output: Option<RenderGraphOutput>,
     temporal_rg_state: TemporalRg,
 }
 
@@ -84,11 +78,6 @@ lazy_static::lazy_static! {
     .collect();
 }
 
-pub struct RenderGraphOutput {
-    pub main_img: ExportedHandle<Image>,
-    pub ui_img: Option<ExportedHandle<Image>>,
-}
-
 pub struct FrameConstantsLayout {
     pub globals_offset: u32,
     pub instance_dynamic_parameters_offset: u32,
@@ -97,8 +86,6 @@ pub struct FrameConstantsLayout {
 
 impl Renderer {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
-        let present_shader = vulkan::presentation::create_present_compute_shader(&*backend.device);
-
         let dynamic_constants = DynamicConstants::new({
             backend
                 .device
@@ -125,11 +112,8 @@ impl Renderer {
             frame_descriptor_set,
             pipeline_cache: PipelineCache::new(&LazyCache::create()),
             transient_resource_cache: Default::default(),
-            present_shader,
 
             compiled_rg: None,
-            rg_output: None,
-
             temporal_rg_state: Default::default(),
         })
     }
@@ -142,8 +126,6 @@ impl Renderer {
         PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants) -> FrameConstantsLayout,
     {
         let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
-
-        let swapchain_extent = swapchain.extent();
 
         // Note: this can be done at the end of the frame, not at the start.
         // The image can be acquired just in time for a blit into it,
@@ -167,9 +149,22 @@ impl Renderer {
                 )
                 .unwrap();
 
+            // Transition the swapchain to CS write
+            vulkan::barrier::record_image_barrier(
+                device,
+                cb.raw,
+                vulkan::barrier::ImageBarrier::new(
+                    swapchain_image.image.raw,
+                    vk_sync::AccessType::Present,
+                    vk_sync::AccessType::ComputeShaderWrite,
+                    vk::ImageAspectFlags::COLOR,
+                )
+                .with_discard(true),
+            );
+
             current_frame.profiler_data.begin_frame(device, cb.raw);
 
-            if let Some((rg, rg_output)) = self.compiled_rg.take().zip(self.rg_output.take()) {
+            if let Some(rg) = self.compiled_rg.take() {
                 let retired_rg = rg.execute(
                     RenderGraphExecutionParams {
                         device: &self.device,
@@ -181,21 +176,7 @@ impl Renderer {
                     &mut self.transient_resource_cache,
                     &mut self.dynamic_constants,
                     cb,
-                );
-
-                let (main_img, main_img_access_type) =
-                    retired_rg.exported_resource(rg_output.main_img);
-                assert!(
-                    main_img_access_type
-                        == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
-                );
-
-                let (ui_img, ui_img_access_type) = retired_rg.exported_resource(
-                    rg_output.ui_img.expect("ui_img must be Some at this stage"),
-                );
-                assert!(
-                    ui_img_access_type
-                        == vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer
+                    swapchain_image.image.clone(),
                 );
 
                 self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
@@ -205,15 +186,16 @@ impl Renderer {
                     TemporalRg::Exported(rg) => TemporalRg::Inert(rg.retire_temporal(&retired_rg)),
                 };
 
-                blit_image_to_swapchain(
-                    main_img.desc.extent_2d(),
-                    swapchain_extent,
-                    &*self.device,
-                    cb,
-                    &swapchain_image,
-                    main_img.view(device, &ImageViewDesc::default()),
-                    ui_img.view(device, &ImageViewDesc::default()),
-                    &self.present_shader,
+                // Transition the swapchain to present
+                vulkan::barrier::record_image_barrier(
+                    device,
+                    cb.raw,
+                    vulkan::barrier::ImageBarrier::new(
+                        swapchain_image.image.raw,
+                        vk_sync::AccessType::ComputeShaderWrite,
+                        vk_sync::AccessType::Present,
+                        vk::ImageAspectFlags::COLOR,
+                    ),
                 );
 
                 retired_rg.release_resources(&mut self.transient_resource_cache);
@@ -375,7 +357,7 @@ impl Renderer {
         prepare_render_graph: PrepareRenderGraphFn,
     ) -> anyhow::Result<()>
     where
-        PrepareRenderGraphFn: FnOnce(&mut TemporalRenderGraph) -> RenderGraphOutput,
+        PrepareRenderGraphFn: FnOnce(&mut TemporalRenderGraph),
     {
         let mut rg = TemporalRenderGraph::new(
             match &self.temporal_rg_state {
@@ -394,22 +376,7 @@ impl Renderer {
             },
         );
 
-        self.rg_output = Some({
-            let mut output = prepare_render_graph(&mut rg);
-
-            if output.ui_img.is_none() {
-                let mut blank_img =
-                    rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]));
-                crate::imageops::clear_color(&mut rg, &mut blank_img, [0.0f32; 4]);
-                output.ui_img = Some(rg.export(
-                    blank_img,
-                    vk_sync::AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
-                ));
-            }
-
-            output
-        });
-
+        prepare_render_graph(&mut rg);
         let (rg, temporal_rg_state) = rg.export_temporal();
 
         self.compiled_rg = Some(rg.compile(&mut self.pipeline_cache));
