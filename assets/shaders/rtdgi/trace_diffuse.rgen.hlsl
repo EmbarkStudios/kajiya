@@ -11,6 +11,7 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
+#include "../inc/reservoir.hlsl"
 #include "../csgi/common.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
@@ -22,11 +23,11 @@
 #define USE_CSGI_SUBRAYS 0
 
 #define USE_TEMPORAL_JITTER 1
-#define USE_SHORT_RAYS_ONLY 1
+#define USE_SHORT_RAYS_ONLY 0
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 #define ROUGHNESS_BIAS 0.5
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
-#define USE_SCREEN_GI_REPROJECTION 1
+#define USE_SCREEN_GI_REPROJECTION 0
 
 #define USE_EMISSIVE 1
 #define USE_LIGHTS 1
@@ -38,12 +39,18 @@
 [[vk::binding(2)]] Texture2D<float4> reprojected_gi_tex;
 [[vk::binding(3)]] Texture2D<float> ssao_tex;
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
-[[vk::binding(7)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(9)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(10)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(7)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(8)]] Texture2D<float4> ray_history_tex;
+[[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
+[[vk::binding(10)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(11)]] RWTexture2D<float4> ray_out_tex;
+[[vk::binding(12)]] RWTexture2D<float4> hit0_out_tex;
+[[vk::binding(13)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(14)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(15)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(16)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(17)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(18)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -67,7 +74,9 @@ void main() {
     float depth = depth_tex[hi_px];
 
     if (0.0 == depth) {
-        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
+        irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
+        hit0_out_tex[px] = 0.0.xxxx;
+        reservoir_out_tex[px] = 0.0.xxxx;
         return;
     }
 
@@ -162,264 +171,400 @@ void main() {
     //const float origin_cascade_idx = csgi_blended_cascade_idx_for_pos(refl_ray_origin);
     const float origin_cascade_idx = csgi_cascade_idx_for_pos(refl_ray_origin);
     /*if (origin_cascade_idx > 0) {
-        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
+        irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
         return;
     }*/
 
-    if (brdf_sample.is_valid()) {
-        RayDesc outgoing_ray;
-        outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
-        outgoing_ray.Origin = refl_ray_origin;
-        outgoing_ray.TMin = 0;
-
-        #if USE_SHORT_RAYS_ONLY
-            outgoing_ray.TMax = csgi_blended_voxel_size(origin_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS;
-        #else
-            outgoing_ray.TMax = SKY_DIST;
-        #endif
-
-        // If the ray goes from a higher-res cascade to a lower-res one, it might end up
-        // terminating too early. Re-calculate the max trace range based on where we'd finish.
-        #if USE_SHORT_RAYS_ONLY && CSGI_CASCADE_COUNT > 1
-            uint end_cascade_idx = csgi_cascade_idx_for_pos(
-                outgoing_ray.Direction + outgoing_ray.Origin * outgoing_ray.TMax
-            );
-            outgoing_ray.TMax = max(
-                outgoing_ray.TMax,
-                csgi_voxel_size(end_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS
-            );
-        #endif
-
-        // The control variates used in the temporal filter are based on a regular CSGI lookup.
-        // For proper integration, that GI lookup should cancel out with the control variate value
-        // used in this pass.
-        // Our control variate formulation is:
-        //
-        // ∫ (precise_gi(x, w) - csgi_directional(x, w)) - csgi(x)
-        //
-        // The assumption being that ∫ csgi_directional(x, w) == csgi(x)
-        //
-        // While most of the time this works, that assumption is not correct because CSGI
-        // is not integrated exactly the same way as the hemispherical integration in this function.
-        // Errors tend to pop up in corners and in areas of tricky visibility. In that case,
-        // leaks and darkening can appear in lighting.
-        //
-        // It is then better to switch to the (ineffective) formulation:
-        // ∫ (precise_gi(x, w) - csgi(x)) - csgi(x)
-        //
-        // This does not provide any benefits for variance reduction, but it eliminates the artifacts.
-        bool control_variate_sample_directional = ssao_tex[hi_px] > 0.8;
-
-        // TODO: cone spread angle
-        const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-            .with_cone_width(0.05)
-            .with_cull_back_faces(true)
-            .with_path_length(1)
-            .trace(acceleration_structure);
-
-        if (primary_hit.is_hit) {
-            GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-
-            // Project the sample into clip space, and check if it's on-screen
-            const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
-            const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
-            const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
-            const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)));
-            const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
-            bool is_on_screen =
-                all(abs(primary_hit_cs.xy) < 1.0)
-                && inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3
-                && dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
-                && dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
-                ;
-
-            // If it is on-screen, we'll try to use its reprojected radiance from the previous frame
-            float4 reprojected_radiance = 0;
-            if (is_on_screen) {
-                reprojected_radiance =
-                    reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
-
-                // Check if the temporal reprojection is valid.
-                is_on_screen = reprojected_radiance.w > 0;
-            }
-
-            gbuffer.roughness = lerp(gbuffer.roughness, 1.0, ROUGHNESS_BIAS);
-            const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
-            const float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
-            const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-
-            // Sun
-            float3 sun_radiance = SUN_COLOR;
-            if (any(sun_radiance) > 0) {
-                const float3 to_light_norm = sample_sun_direction(
-                    blue_noise_for_pixel(px, frame_constants.frame_index).xy,
-                    USE_SOFT_SHADOWS
-                );
-
-                const bool is_shadowed =
-                    rt_is_shadowed(
-                        acceleration_structure,
-                        new_ray(
-                            primary_hit.position,
-                            to_light_norm,
-                            1e-4,
-                            SKY_DIST
-                    ));
-
-                const float3 wi = mul(to_light_norm, tangent_to_world);
-                const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-                const float3 light_radiance = is_shadowed ? 0.0 : sun_radiance;
-                total_radiance += brdf_value * light_radiance;
-            }
-
-            if (USE_EMISSIVE) {
-                total_radiance += gbuffer.emissive;
-            }
-
-            if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
-                total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
-            } else {
-                if (USE_LIGHTS) {
-                    float2 urand = float2(
-                        uint_to_u01_float(hash1_mut(rng)),
-                        uint_to_u01_float(hash1_mut(rng))
-                    );
-
-                    for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
-                        TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
-                        LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
-                        const float3 shadow_ray_origin = primary_hit.position;
-                        const float3 to_light_ws = light_sample.pos - shadow_ray_origin;
-                        const float dist_to_light2 = dot(to_light_ws, to_light_ws);
-                        const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
-
-                        const float to_psa_metric =
-                            max(0.0, dot(to_light_norm_ws, gbuffer.normal))
-                            * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
-                            / dist_to_light2;
-
-                        if (to_psa_metric > 0.0) {
-                            const bool is_shadowed =
-                                rt_is_shadowed(
-                                    acceleration_structure,
-                                    new_ray(
-                                        shadow_ray_origin,
-                                        to_light_norm_ws,
-                                        1e-3,
-                                        sqrt(dist_to_light2) - 2e-3
-                                ));
-
-                            #if 1
-                                const float3 bounce_albedo = lerp(gbuffer.albedo, 1.0.xxx, 0.04);
-                                const float3 brdf_value = bounce_albedo * to_psa_metric / M_PI;
-                            #else
-                                const float3 wi = mul(to_light_norm_ws, tangent_to_world);
-                                const float3 brdf_value = brdf.evaluate(wo, wi) * to_psa_metric;
-                            #endif
-
-                            total_radiance +=
-                                !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
-                        }
-                    }
-                }
-
-                if (USE_CSGI) {
-                    const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
-
-                    CsgiLookupParams lookup_params =
-                        CsgiLookupParams::make_default()
-                            .with_bent_normal(pseudo_bent_normal)
-                            //.with_linear_fetch(false)
-                            ;
-
-                    // doesn't seem to change much from using origin_cascade_idx
-                    //const uint hit_cascade_idx = csgi_cascade_idx_for_pos(primary_hit.position);
-
-                    if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= csgi_blended_voxel_size(origin_cascade_idx).x) {
-                        float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
-
-                        // Suppression in open corners causes excessive darkening,
-                        // and doesn't prevent that many leaks. This strikes a balance.
-                        const float normal_agreement = dot(primary_hit_normal, gbuffer.normal);
-                        max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
-
-                        lookup_params = lookup_params
-                            .with_max_normal_offset_scale(max_normal_offset / csgi_blended_voxel_size(origin_cascade_idx).x);
-
-    					control_variate_sample_directional = false;
-                    }
-
-                    float3 csgi = lookup_csgi(
-                        primary_hit.position,
-                        gbuffer.normal,
-                        lookup_params
-                    );
-
-                    //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
-                    total_radiance += csgi * gbuffer.albedo;
-                }
-            }
-        } else {
-            #if USE_SHORT_RAYS_ONLY
-                const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_blended_voxel_size(origin_cascade_idx).x);
-
-                #if USE_CSGI_SUBRAYS
-                    float3 subray_contrib = point_sample_csgi_subray_indirect(csgi_lookup_pos, outgoing_ray.Direction);
-                    {
-                        uint lookup_cascade_idx = csgi_cascade_idx_for_pos(csgi_lookup_pos);
-                        const float3 vol_pos = (csgi_lookup_pos - CSGI_VOLUME_ORIGIN);
-                        int3 gi_vx = int3(floor(vol_pos / csgi_voxel_size(lookup_cascade_idx)));
-                        uint3 vx = csgi_wrap_vx_within_cascade(gi_vx);
-
-                        total_radiance += subray_contrib * smoothstep(0.5, 1, csgi_opacity_tex[lookup_cascade_idx][vx]);
-                    }
-                #else
-                    total_radiance += lookup_csgi(
-                        csgi_lookup_pos,
-	                    0.0.xxx,    // don't offset by any normal
-    	                CsgiLookupParams::make_default()
-        	                .with_sample_directional_radiance(outgoing_ray.Direction)
-                            //.with_directional_radiance_phong_exponent(8)
-                );
-                #endif
-            #else
-                total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
-            #endif
-        }
-
-        float3 control_variate = 0.0.xxx;
-        {
-            float3 to_eye = get_eye_position() - view_ray_context.ray_hit_ws();
-            float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
-
-            CsgiLookupParams lookup_params = CsgiLookupParams::make_default()
-                .with_bent_normal(pseudo_bent_normal)
-                // Linear fetch is usually a better fit, but can leak, causing high-frequency artifacts in the CV
-                //.with_linear_fetch(false)
-                ;
-
-            if (control_variate_sample_directional) {
-                lookup_params = lookup_params
-                    .with_sample_directional_radiance(outgoing_ray.Direction);
-            }
-
-            control_variate = lookup_csgi(
-                view_ray_context.ray_hit_ws(),
-                gbuffer.normal,
-                lookup_params
-            );
-        }
-
-        #if USE_RTDGI_CONTROL_VARIATES
-            float3 out_value = total_radiance - control_variate;
-            //float3 out_value = control_variate;
-        #else
-            float3 out_value = total_radiance;
-        #endif
-        //float3 out_value = control_variate;
-
-        out0_tex[px] = float4(out_value, 1);
-    } else {
-        out0_tex[px] = float4(0.0.xxx, 1);
+    if (!brdf_sample.is_valid()) {
+        irradiance_out_tex[px] = float4(0.0.xxx, 1);
+        ray_out_tex[px] = 0.0.xxxx;
+        hit0_out_tex[px] = 0.0.xxxx;
+        reservoir_out_tex[px] = 0.0.xxxx;
+        return;
     }
+
+    float3 outgoing_dir = 0.0.xxx;
+    float p_q_sel = 0;
+
+    Reservoir1spp reservoir = Reservoir1spp::create();
+    /*{
+        float3 expected_irradiance = reprojected_gi_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
+        float p_q = max(1e-2, calculate_luma(expected_irradiance));
+        reservoir.w_sum = p_q;
+        reservoir.w_sel = p_q;
+        reservoir.M = 1;
+        reservoir.W = 1;
+        outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
+        p_q_sel = p_q;
+    }*/
+
+    const float resample_reservoirs_dart = uint_to_u01_float(hash1_mut(rng));
+    const bool use_resampling = true && resample_reservoirs_dart > 0.1;
+
+    float jacobian_correction = 1;
+
+    if (use_resampling) {
+        float M_sum = reservoir.M;
+
+        static const float GOLDEN_ANGLE = 2.39996323;
+        const uint sample_count = 8;
+
+        const float ang_offset = uint_to_u01_float(hash1_mut(rng));
+        for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+            float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
+            float radius = float(sample_i) * 2.0;
+            int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
+            int2 spx = px + sample_offset;
+
+            float4 sample_gbuffer_packed = gbuffer_tex[spx * 2];
+            GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
+
+            if (dot(sample_gbuffer.normal, gbuffer.normal) < 0.9) {
+                continue;
+            }
+
+            const float4 prev_hit_ws_and_dist = ray_history_tex[spx];
+            const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
+            const float prev_dist = prev_hit_ws_and_dist.w;
+
+            if (!(prev_dist > 1e-8)) {
+                continue;
+            }
+
+            const float3 prev_dir_unnorm = prev_hit_ws - refl_ray_origin;
+            const float prev_dist_now = length(prev_dir_unnorm);
+            const float3 prev_dir = normalize(prev_dir_unnorm);
+
+            if (dot(prev_dir, gbuffer.normal) < 1e-3) {
+                continue;
+            }
+
+            const float4 prev_irrad = irradiance_history_tex[spx];
+            Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[spx]);
+
+            // From the ReSTIR paper:
+            // With temporal reuse, the number of candidates M contributing to the
+            // pixel can in theory grow unbounded, as each frame always combines
+            // its reservoir with the previous frame’s. This causes (potentially stale)
+            // temporal samples to be weighted disproportionately high during
+            // resampling. To fix this, we simply clamp the previous frame’s M
+            // to at most 20× of the current frame’s reservoir’s M
+            r.M = min(r.M, 10);
+
+            float p_q = 1;
+            p_q *= (max(1e-2, calculate_luma(prev_irrad.rgb)));
+            p_q *= max(0, dot(prev_dir, gbuffer.normal));
+
+            //float sample_jacobian_correction = 1.0 / max(1e-4, prev_dist);
+            //float sample_jacobian_correction = 1;
+            float sample_jacobian_correction = max(0.0, prev_dist) / max(1e-4, prev_dist_now);
+            sample_jacobian_correction *= sample_jacobian_correction;
+
+            sample_jacobian_correction *= max(0.0, prev_irrad.a) / dot(prev_dir, gbuffer.normal);
+            //sample_jacobian_correction = 1;
+
+            if (!(p_q > 0)) {
+                continue;
+            }
+
+            float w = p_q * r.W * r.M;
+
+            if (reservoir.update(w, rng)) {
+                outgoing_dir = prev_dir;
+
+                // mutate the direction
+                #if 0
+                    const float3 dir_ts = mul(outgoing_dir, tangent_to_world);
+                    const float2 dir_pss = brdf.wi_to_primary_sample_space(dir_ts);
+
+                    const float mut_x = uint_to_u01_float(hash1_mut(rng)) * 0.002;
+                    const float mut_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * 0.02;
+
+                    float2 mut_dir_pss = frac(dir_pss + float2(mut_x, mut_y));
+                    mut_dir_pss.y = abs(cos(acos(dir_pss.y) + mut_y));
+
+                    outgoing_dir = mul(tangent_to_world, brdf.sample(wo, mut_dir_pss).wi);
+                #endif
+
+                p_q_sel = p_q;
+                jacobian_correction = sample_jacobian_correction;
+            }
+
+            M_sum += r.M;
+        }
+
+        reservoir.M = M_sum;
+        reservoir.W = max(1e-5, 1.0 / p_q_sel * (reservoir.w_sum / reservoir.M));
+    } else {
+        outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
+    }
+
+    RayDesc outgoing_ray;
+    outgoing_ray.Direction = outgoing_dir;
+    outgoing_ray.Origin = refl_ray_origin;
+    outgoing_ray.TMin = 0;
+
+    #if USE_SHORT_RAYS_ONLY
+        outgoing_ray.TMax = csgi_blended_voxel_size(origin_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS;
+    #else
+        outgoing_ray.TMax = SKY_DIST;
+    #endif
+
+    float hit_t = outgoing_ray.TMax;
+
+    // If the ray goes from a higher-res cascade to a lower-res one, it might end up
+    // terminating too early. Re-calculate the max trace range based on where we'd finish.
+    #if USE_SHORT_RAYS_ONLY && CSGI_CASCADE_COUNT > 1
+        uint end_cascade_idx = csgi_cascade_idx_for_pos(
+            outgoing_ray.Direction + outgoing_ray.Origin * outgoing_ray.TMax
+        );
+        outgoing_ray.TMax = max(
+            outgoing_ray.TMax,
+            csgi_voxel_size(end_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS
+        );
+    #endif
+
+    // The control variates used in the temporal filter are based on a regular CSGI lookup.
+    // For proper integration, that GI lookup should cancel out with the control variate value
+    // used in this pass.
+    // Our control variate formulation is:
+    //
+    // ∫ (precise_gi(x, w) - csgi_directional(x, w)) - csgi(x)
+    //
+    // The assumption being that ∫ csgi_directional(x, w) == csgi(x)
+    //
+    // While most of the time this works, that assumption is not correct because CSGI
+    // is not integrated exactly the same way as the hemispherical integration in this function.
+    // Errors tend to pop up in corners and in areas of tricky visibility. In that case,
+    // leaks and darkening can appear in lighting.
+    //
+    // It is then better to switch to the (ineffective) formulation:
+    // ∫ (precise_gi(x, w) - csgi(x)) - csgi(x)
+    //
+    // This does not provide any benefits for variance reduction, but it eliminates the artifacts.
+    bool control_variate_sample_directional = ssao_tex[hi_px] > 0.8;
+
+    // TODO: cone spread angle
+    const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
+        .with_cone_width(0.05)
+        .with_cull_back_faces(true)
+        .with_path_length(1)
+        .trace(acceleration_structure);
+
+    if (primary_hit.is_hit) {
+        hit_t = primary_hit.ray_t;
+        GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+
+        // Project the sample into clip space, and check if it's on-screen
+        const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
+        const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
+        const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
+        const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)));
+        const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
+        bool is_on_screen =
+            all(abs(primary_hit_cs.xy) < 1.0)
+            && inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3
+            && dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
+            && dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
+            ;
+
+        // If it is on-screen, we'll try to use its reprojected radiance from the previous frame
+        float4 reprojected_radiance = 0;
+        if (is_on_screen) {
+            reprojected_radiance =
+                reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
+
+            // Check if the temporal reprojection is valid.
+            is_on_screen = reprojected_radiance.w > 0;
+        }
+
+        gbuffer.roughness = lerp(gbuffer.roughness, 1.0, ROUGHNESS_BIAS);
+        const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+        const float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
+        const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+
+        // Sun
+        float3 sun_radiance = SUN_COLOR;
+        if (any(sun_radiance) > 0) {
+            const float3 to_light_norm = sample_sun_direction(
+                blue_noise_for_pixel(px, frame_constants.frame_index).xy,
+                USE_SOFT_SHADOWS
+            );
+
+            const bool is_shadowed =
+                rt_is_shadowed(
+                    acceleration_structure,
+                    new_ray(
+                        primary_hit.position,
+                        to_light_norm,
+                        1e-4,
+                        SKY_DIST
+                ));
+
+            const float3 wi = mul(to_light_norm, tangent_to_world);
+            const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
+            const float3 light_radiance = is_shadowed ? 0.0 : sun_radiance;
+            total_radiance += brdf_value * light_radiance;
+        }
+
+        if (USE_EMISSIVE) {
+            total_radiance += gbuffer.emissive;
+        }
+
+        if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
+            total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
+        } else {
+            if (USE_LIGHTS) {
+                float2 urand = float2(
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng))
+                );
+
+                for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
+                    TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
+                    LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
+                    const float3 shadow_ray_origin = primary_hit.position;
+                    const float3 to_light_ws = light_sample.pos - shadow_ray_origin;
+                    const float dist_to_light2 = dot(to_light_ws, to_light_ws);
+                    const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+
+                    const float to_psa_metric =
+                        max(0.0, dot(to_light_norm_ws, gbuffer.normal))
+                        * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
+                        / dist_to_light2;
+
+                    if (to_psa_metric > 0.0) {
+                        const bool is_shadowed =
+                            rt_is_shadowed(
+                                acceleration_structure,
+                                new_ray(
+                                    shadow_ray_origin,
+                                    to_light_norm_ws,
+                                    1e-3,
+                                    sqrt(dist_to_light2) - 2e-3
+                            ));
+
+                        #if 1
+                            const float3 bounce_albedo = lerp(gbuffer.albedo, 1.0.xxx, 0.04);
+                            const float3 brdf_value = bounce_albedo * to_psa_metric / M_PI;
+                        #else
+                            const float3 wi = mul(to_light_norm_ws, tangent_to_world);
+                            const float3 brdf_value = brdf.evaluate(wo, wi) * to_psa_metric;
+                        #endif
+
+                        total_radiance +=
+                            !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
+                    }
+                }
+            }
+
+            if (USE_CSGI) {
+                const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
+
+                CsgiLookupParams lookup_params =
+                    CsgiLookupParams::make_default()
+                        .with_bent_normal(pseudo_bent_normal)
+                        //.with_linear_fetch(false)
+                        ;
+
+                // doesn't seem to change much from using origin_cascade_idx
+                //const uint hit_cascade_idx = csgi_cascade_idx_for_pos(primary_hit.position);
+
+                if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= csgi_blended_voxel_size(origin_cascade_idx).x) {
+                    float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
+
+                    // Suppression in open corners causes excessive darkening,
+                    // and doesn't prevent that many leaks. This strikes a balance.
+                    const float normal_agreement = dot(primary_hit_normal, gbuffer.normal);
+                    max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
+
+                    lookup_params = lookup_params
+                        .with_max_normal_offset_scale(max_normal_offset / csgi_blended_voxel_size(origin_cascade_idx).x);
+
+					control_variate_sample_directional = false;
+                }
+
+                float3 csgi = lookup_csgi(
+                    primary_hit.position,
+                    gbuffer.normal,
+                    lookup_params
+                );
+
+                //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
+                total_radiance += csgi * gbuffer.albedo;
+            }
+        }
+    } else {
+        #if USE_SHORT_RAYS_ONLY
+            const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_blended_voxel_size(origin_cascade_idx).x);
+
+            #if USE_CSGI_SUBRAYS
+                float3 subray_contrib = point_sample_csgi_subray_indirect(csgi_lookup_pos, outgoing_ray.Direction);
+                {
+                    uint lookup_cascade_idx = csgi_cascade_idx_for_pos(csgi_lookup_pos);
+                    const float3 vol_pos = (csgi_lookup_pos - CSGI_VOLUME_ORIGIN);
+                    int3 gi_vx = int3(floor(vol_pos / csgi_voxel_size(lookup_cascade_idx)));
+                    uint3 vx = csgi_wrap_vx_within_cascade(gi_vx);
+
+                    total_radiance += subray_contrib * smoothstep(0.5, 1, csgi_opacity_tex[lookup_cascade_idx][vx]);
+                }
+            #else
+                total_radiance += lookup_csgi(
+                    csgi_lookup_pos,
+                    0.0.xxx,    // don't offset by any normal
+	                CsgiLookupParams::make_default()
+    	                .with_sample_directional_radiance(outgoing_ray.Direction)
+                        //.with_directional_radiance_phong_exponent(8)
+            );
+            #endif
+        #else
+            total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+        #endif
+    }
+
+    float3 control_variate = 0.0.xxx;
+    {
+        float3 to_eye = get_eye_position() - view_ray_context.ray_hit_ws();
+        float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
+
+        CsgiLookupParams lookup_params = CsgiLookupParams::make_default()
+            .with_bent_normal(pseudo_bent_normal)
+            // Linear fetch is usually a better fit, but can leak, causing high-frequency artifacts in the CV
+            //.with_linear_fetch(false)
+            ;
+
+        if (control_variate_sample_directional) {
+            lookup_params = lookup_params
+                .with_sample_directional_radiance(outgoing_ray.Direction);
+        }
+
+        control_variate = lookup_csgi(
+            view_ray_context.ray_hit_ws(),
+            gbuffer.normal,
+            lookup_params
+        );
+    }
+
+    #if USE_RTDGI_CONTROL_VARIATES
+        float3 out_value = total_radiance - control_variate;
+        //float3 out_value = control_variate;
+    #else
+        float3 out_value = total_radiance;
+    #endif
+    //float3 out_value = control_variate;
+
+    //out_value /= reservoir.p_sel;
+
+    if (!use_resampling) {
+        reservoir.w_sum = (calculate_luma(out_value));
+        reservoir.w_sel = reservoir.w_sum;
+        reservoir.W = 1;
+        reservoir.M = 1;
+    }
+
+    irradiance_out_tex[px] = float4(out_value, dot(gbuffer.normal, outgoing_ray.Direction));
+    hit0_out_tex[px] = float4(out_value * reservoir.W * jacobian_correction, 0);
+    //hit0_out_tex[px] = float4(out_value, 0);
+    ray_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * hit_t, hit_t);
+    reservoir_out_tex[px] = reservoir.as_raw();
 }

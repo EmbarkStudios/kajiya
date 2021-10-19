@@ -13,6 +13,10 @@ use super::{csgi, GbufferDepth, PingPongTemporalResource};
 use blue_noise_sampler::spp64::*;
 
 pub struct RtdgiRenderer {
+    temporal_irradiance_tex: PingPongTemporalResource,
+    temporal_ray_tex: PingPongTemporalResource,
+    temporal_reservoir_tex: PingPongTemporalResource,
+
     temporal_tex: PingPongTemporalResource,
     temporal2_tex: PingPongTemporalResource,
     temporal2_variance_tex: PingPongTemporalResource,
@@ -46,6 +50,9 @@ fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
 impl RtdgiRenderer {
     pub fn new(device: &Device) -> Self {
         Self {
+            temporal_irradiance_tex: PingPongTemporalResource::new("rtdgi.irradiance"),
+            temporal_ray_tex: PingPongTemporalResource::new("rtdgi.ray"),
+            temporal_reservoir_tex: PingPongTemporalResource::new("rtdgi.reservoir"),
             temporal_tex: PingPongTemporalResource::new("rtdgi.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
@@ -245,6 +252,27 @@ impl RtdgiRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
+        let (mut irradiance_output_tex, irradiance_history_tex) =
+            self.temporal_irradiance_tex.get_output_and_history(
+                rg,
+                Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+            );
+
+        let (mut ray_output_tex, ray_history_tex) = self.temporal_ray_tex.get_output_and_history(
+            rg,
+            Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+        );
+
+        let (mut reservoir_output_tex, reservoir_history_tex) =
+            self.temporal_reservoir_tex.get_output_and_history(
+                rg,
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    gbuffer_desc.half_res().extent_2d(),
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            );
+
         SimpleRenderPass::new_rt(
             rg.add_pass("rtdgi trace"),
             "/shaders/rtdgi/trace_diffuse.rgen.hlsl",
@@ -261,14 +289,20 @@ impl RtdgiRenderer {
         .read(&ranking_tile_buf)
         .read(&scambling_tile_buf)
         .read(&sobol_buf)
+        .read(&irradiance_history_tex)
+        .read(&ray_history_tex)
+        .read(&reservoir_history_tex)
+        .write(&mut irradiance_output_tex)
+        .write(&mut ray_output_tex)
         .write(&mut hit0_tex)
+        .write(&mut reservoir_output_tex)
         .read_array(&csgi_volume.indirect)
         .read_array(&csgi_volume.subray_indirect)
         .read_array(&csgi_volume.opacity)
         .read(sky_cube)
         .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, hit0_tex.desc().extent);
+        .trace_rays(tlas, irradiance_output_tex.desc().extent);
 
         let filtered_tex = self.temporal(
             rg,

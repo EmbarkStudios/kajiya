@@ -17,9 +17,11 @@
 };
 
 
+#define USE_TEMPORAL_FILTER 0
+
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
-    #if 0
+    #if !USE_TEMPORAL_FILTER
         output_tex[px] = max(0.0, input_tex[px]);
         history_output_tex[px] = float4(max(0.0, input_tex[px].rgb), 32);
         return;

@@ -1,6 +1,6 @@
 #include "../inc/frame_constants.hlsl"
 
-#define USE_RTDGI_CONTROL_VARIATES 1
+#define USE_RTDGI_CONTROL_VARIATES 0
 
 // Must match CPU code. Seach token: d4109bba-438f-425e-8667-19e591be9a56
 static const uint CSGI_VOLUME_DIMS = 64;

@@ -59,7 +59,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     };
     uint2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
 
-    #if 0
+    #if 1
         output_tex[px] = ssgi_tex[px / 2];
         return;
     #endif

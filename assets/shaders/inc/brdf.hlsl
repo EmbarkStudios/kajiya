@@ -79,6 +79,16 @@ struct DiffuseBrdf {
         res.transmission_fraction = 0.0;
 		return res;
 	}
+
+    float2 wi_to_primary_sample_space(float3 wi) {
+        const float cos_theta = wi.z;
+        // cos_theta = sqrt(max(0.0, 1.0 - urand.y));
+        // cos_theta * cos_theta = 1.0 - urand.y
+        // urand.y = 1.0 - cos_theta * cos_theta
+        const float y = saturate(1.0 - cos_theta * cos_theta);
+        const float x = frac(atan2(wi.y, wi.x) / M_TAU);
+        return float2(x, y);
+    }
 };
 
 float3 eval_fresnel_schlick(float3 f0, float3 f90, float cos_theta) {

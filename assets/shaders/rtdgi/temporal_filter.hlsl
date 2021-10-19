@@ -10,6 +10,8 @@
 
 #include "../csgi/common.hlsl"
 
+#define USE_TEMPORAL_FILTER 0
+
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float4> cv_history_tex;
@@ -209,7 +211,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: proper rejection (not "reproj_validity_dilated")
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
-    //res = center.rgb;
+
+    #if !USE_TEMPORAL_FILTER
+        res = center.rgb;
+    #endif
 
     const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
 
