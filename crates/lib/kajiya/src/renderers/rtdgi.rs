@@ -252,61 +252,100 @@ impl RtdgiRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
-        let (mut irradiance_output_tex, irradiance_history_tex) =
-            self.temporal_irradiance_tex.get_output_and_history(
-                rg,
-                Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+        let (irradiance_tex, ray_tex, temporal_reservoir_tex) = {
+            let (mut irradiance_output_tex, irradiance_history_tex) =
+                self.temporal_irradiance_tex.get_output_and_history(
+                    rg,
+                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+                );
+
+            let (mut ray_output_tex, ray_history_tex) =
+                self.temporal_ray_tex.get_output_and_history(
+                    rg,
+                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+                );
+
+            let (mut reservoir_output_tex, reservoir_history_tex) =
+                self.temporal_reservoir_tex.get_output_and_history(
+                    rg,
+                    ImageDesc::new_2d(
+                        vk::Format::R32G32B32A32_SFLOAT,
+                        gbuffer_desc.half_res().extent_2d(),
+                    )
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                );
+
+            SimpleRenderPass::new_rt(
+                rg.add_pass("rtdgi trace"),
+                "/shaders/rtdgi/trace_diffuse.rgen.hlsl",
+                &[
+                    "/shaders/rt/gbuffer.rmiss.hlsl",
+                    "/shaders/rt/shadow.rmiss.hlsl",
+                ],
+                &["/shaders/rt/gbuffer.rchit.hlsl"],
+            )
+            .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&reprojected_history_tex)
+            .read(ssao_img)
+            .read(&ranking_tile_buf)
+            .read(&scambling_tile_buf)
+            .read(&sobol_buf)
+            .read(&irradiance_history_tex)
+            .read(&ray_history_tex)
+            .read(&reservoir_history_tex)
+            .read(reprojection_map)
+            .write(&mut irradiance_output_tex)
+            .write(&mut ray_output_tex)
+            .write(&mut hit0_tex)
+            .write(&mut reservoir_output_tex)
+            .read_array(&csgi_volume.indirect)
+            .read_array(&csgi_volume.subray_indirect)
+            .read_array(&csgi_volume.opacity)
+            .read(sky_cube)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .trace_rays(tlas, irradiance_output_tex.desc().extent);
+
+            (irradiance_output_tex, ray_output_tex, reservoir_output_tex)
+        };
+
+        let irradiance_tex = {
+            let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
+            let half_depth_tex = gbuffer_depth.half_depth(rg);
+
+            let mut irradiance_output_tex = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::empty())
+                    .half_res()
+                    .format(vk::Format::R16G16B16A16_SFLOAT),
             );
 
-        let (mut ray_output_tex, ray_history_tex) = self.temporal_ray_tex.get_output_and_history(
-            rg,
-            Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
-        );
+            SimpleRenderPass::new_compute(
+                rg.add_pass("restir spatial"),
+                "/shaders/rtdgi/restir_spatial.hlsl",
+            )
+            .read(&irradiance_tex)
+            .read(&ray_tex)
+            .read(&temporal_reservoir_tex)
+            .read(&gbuffer_depth.gbuffer)
+            .read(&*half_view_normal_tex)
+            .read(&*half_depth_tex)
+            .read(ssao_img)
+            .write(&mut irradiance_output_tex)
+            .constants((
+                gbuffer_desc.extent_inv_extent_2d(),
+                irradiance_output_tex.desc().extent_inv_extent_2d(),
+                super::rtr::SPATIAL_RESOLVE_OFFSETS,
+            ))
+            .dispatch(irradiance_output_tex.desc().extent);
 
-        let (mut reservoir_output_tex, reservoir_history_tex) =
-            self.temporal_reservoir_tex.get_output_and_history(
-                rg,
-                ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
-                    gbuffer_desc.half_res().extent_2d(),
-                )
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            );
-
-        SimpleRenderPass::new_rt(
-            rg.add_pass("rtdgi trace"),
-            "/shaders/rtdgi/trace_diffuse.rgen.hlsl",
-            &[
-                "/shaders/rt/gbuffer.rmiss.hlsl",
-                "/shaders/rt/shadow.rmiss.hlsl",
-            ],
-            &["/shaders/rt/gbuffer.rchit.hlsl"],
-        )
-        .read(&gbuffer_depth.gbuffer)
-        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .read(&reprojected_history_tex)
-        .read(ssao_img)
-        .read(&ranking_tile_buf)
-        .read(&scambling_tile_buf)
-        .read(&sobol_buf)
-        .read(&irradiance_history_tex)
-        .read(&ray_history_tex)
-        .read(&reservoir_history_tex)
-        .write(&mut irradiance_output_tex)
-        .write(&mut ray_output_tex)
-        .write(&mut hit0_tex)
-        .write(&mut reservoir_output_tex)
-        .read_array(&csgi_volume.indirect)
-        .read_array(&csgi_volume.subray_indirect)
-        .read_array(&csgi_volume.opacity)
-        .read(sky_cube)
-        .constants((gbuffer_desc.extent_inv_extent_2d(),))
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, irradiance_output_tex.desc().extent);
+            irradiance_output_tex
+        };
 
         let filtered_tex = self.temporal(
             rg,
-            &hit0_tex,
+            &irradiance_tex,
             gbuffer_depth,
             reprojection_map,
             csgi_volume,

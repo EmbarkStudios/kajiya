@@ -10,7 +10,7 @@
 
 #include "../csgi/common.hlsl"
 
-#define USE_TEMPORAL_FILTER 0
+#define USE_TEMPORAL_FILTER 1
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;

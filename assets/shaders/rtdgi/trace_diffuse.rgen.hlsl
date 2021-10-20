@@ -13,6 +13,7 @@
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
 #include "../csgi/common.hlsl"
+#include "restir_settings.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
 #define USE_SOFT_SHADOWS 0
@@ -42,15 +43,16 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(7)]] Texture2D<float4> irradiance_history_tex;
 [[vk::binding(8)]] Texture2D<float4> ray_history_tex;
 [[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
-[[vk::binding(10)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(11)]] RWTexture2D<float4> ray_out_tex;
-[[vk::binding(12)]] RWTexture2D<float4> hit0_out_tex;
-[[vk::binding(13)]] RWTexture2D<float4> reservoir_out_tex;
-[[vk::binding(14)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(15)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(16)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(17)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(18)]] cbuffer _ {
+[[vk::binding(10)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(11)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(12)]] RWTexture2D<float4> ray_out_tex;
+[[vk::binding(13)]] RWTexture2D<float4> hit0_out_tex;
+[[vk::binding(14)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(15)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(16)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(17)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(18)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(19)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -64,7 +66,7 @@ struct TraceResult {
     float hit_t;
 };
 
-TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, GbufferData gbuffer, float3 outgoing_dir) {
+TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, GbufferData gbuffer) {
     const float3 primary_hit_normal = gbuffer.normal;
     //const float origin_cascade_idx = csgi_blended_cascade_idx_for_pos(refl_ray_origin);
     const float origin_cascade_idx = csgi_cascade_idx_for_pos(outgoing_ray.Origin);
@@ -283,7 +285,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
 
 [shader("raygeneration")]
 void main() {
-    uint2 hi_px_subpixels[4] = {
+    const uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
         uint2(1, 0),
@@ -351,7 +353,8 @@ void main() {
     );
 #endif
 
-    float3 total_radiance = 0.0.xxx;
+    // TODO: use
+    float3 light_radiance = 0.0.xxx;
 
     // HACK; should be in dedicated passes
     if (USE_LIGHTS) {
@@ -381,7 +384,7 @@ void main() {
                             sqrt(dist_to_light2) - 2e-3
                     ));
 
-                total_radiance +=
+                light_radiance +=
                     !is_shadowed ? (triangle_light.radiance() * brdf.albedo / light_sample.pdf.value * to_psa_metric / M_PI) : 0;
             }
         }
@@ -397,7 +400,7 @@ void main() {
         return;
     }
 
-    float3 outgoing_dir = 0.0.xxx;
+    float3 outgoing_dir = gbuffer.normal;
     float p_q_sel = 0;
 
     Reservoir1spp reservoir = Reservoir1spp::create();
@@ -411,24 +414,38 @@ void main() {
         outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
         p_q_sel = p_q;
     }*/
+    if (brdf_sample.wi.z > 1e-5) {
+        outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
 
-    const float resample_reservoirs_dart = uint_to_u01_float(hash1_mut(rng));
-    const bool use_resampling = true && resample_reservoirs_dart > 0.1;
+        RayDesc outgoing_ray;
+        outgoing_ray.Direction = outgoing_dir;
+        outgoing_ray.Origin = refl_ray_origin;
+        outgoing_ray.TMin = 0;
 
+        TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
+        const float p_q = calculate_luma(result.out_value) * brdf_sample.wi.z;
+        float w_sum = p_q_sel = p_q;
+
+        if (w_sum > 0) {
+            reservoir.w_sum = w_sum;
+            reservoir.w_sel = reservoir.w_sum;
+            reservoir.W = 1;
+            reservoir.M = 1;
+        }
+    }
+
+    const float4 reproj = reprojection_tex[px];
+
+    const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
     float jacobian_correction = 1;
 
     if (use_resampling) {
         float M_sum = reservoir.M;
 
-        static const float GOLDEN_ANGLE = 2.39996323;
-        const uint sample_count = 8;
+        int2 reproj_px = (gbuffer_tex_size.xy * reproj.xy) / 2;
 
-        const float ang_offset = uint_to_u01_float(hash1_mut(rng));
-        for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-            float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-            float radius = float(sample_i) * 2.0;
-            int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
-            int2 spx = px + sample_offset;
+        for (uint sample_i = 0; sample_i < 1; ++sample_i) {
+            int2 spx = px + reproj_px;
 
             float4 sample_gbuffer_packed = gbuffer_tex[spx * 2];
             GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
@@ -463,10 +480,11 @@ void main() {
             // temporal samples to be weighted disproportionately high during
             // resampling. To fix this, we simply clamp the previous frame’s M
             // to at most 20× of the current frame’s reservoir’s M
-            r.M = min(r.M, 10);
+            r.M = min(r.M, 20);
+            //r.M = min(r.M, 1);
 
             float p_q = 1;
-            p_q *= (max(1e-2, calculate_luma(prev_irrad.rgb)));
+            p_q *= calculate_luma(prev_irrad.rgb);
             p_q *= max(0, dot(prev_dir, gbuffer.normal));
 
             //float sample_jacobian_correction = 1.0 / max(1e-4, prev_dist);
@@ -476,6 +494,8 @@ void main() {
 
             sample_jacobian_correction *= max(0.0, prev_irrad.a) / dot(prev_dir, gbuffer.normal);
             //sample_jacobian_correction = 1;
+
+            p_q *= sample_jacobian_correction;
 
             if (!(p_q > 0)) {
                 continue;
@@ -487,6 +507,7 @@ void main() {
                 outgoing_dir = prev_dir;
 
                 // mutate the direction
+                // TODO: split off to a separate sample generation strategy
                 #if 0
                     const float3 dir_ts = mul(outgoing_dir, tangent_to_world);
                     const float2 dir_pss = brdf.wi_to_primary_sample_space(dir_ts);
@@ -518,19 +539,19 @@ void main() {
     outgoing_ray.Origin = refl_ray_origin;
     outgoing_ray.TMin = 0;
 
-    TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer, outgoing_dir);
+    TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
 
 #if 1
-    if (!use_resampling) {
+    /*if (!use_resampling) {
         reservoir.w_sum = (calculate_luma(result.out_value));
         reservoir.w_sel = reservoir.w_sum;
         reservoir.W = 1;
         reservoir.M = 1;
-    }
+    }*/
 
     irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit0_out_tex[px] = float4(result.out_value * reservoir.W * jacobian_correction, 0);
-    //hit0_out_tex[px] = float4(out_value, 0);
+    //hit0_out_tex[px] = float4(result.out_value, 0);
     ray_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, result.hit_t);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
