@@ -25,6 +25,8 @@ pub struct RtdgiRenderer {
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
     sobol_buf: Arc<Buffer>,
+
+    pub spatial_reuse_pass_count: u32,
 }
 
 fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
@@ -60,6 +62,7 @@ impl RtdgiRenderer {
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
+            spatial_reuse_pass_count: 1,
         }
     }
 }
@@ -252,7 +255,7 @@ impl RtdgiRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
-        let (irradiance_tex, ray_tex, temporal_reservoir_tex) = {
+        let (irradiance_tex, ray_tex, mut temporal_reservoir_tex) = {
             let (mut irradiance_output_tex, irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
                     rg,
@@ -321,24 +324,46 @@ impl RtdgiRenderer {
                     .format(vk::Format::R16G16B16A16_SFLOAT),
             );
 
-            SimpleRenderPass::new_compute(
-                rg.add_pass("restir spatial"),
-                "/shaders/rtdgi/restir_spatial.hlsl",
-            )
-            .read(&irradiance_tex)
-            .read(&ray_tex)
-            .read(&temporal_reservoir_tex)
-            .read(&gbuffer_depth.gbuffer)
-            .read(&*half_view_normal_tex)
-            .read(&*half_depth_tex)
-            .read(ssao_img)
-            .write(&mut irradiance_output_tex)
-            .constants((
-                gbuffer_desc.extent_inv_extent_2d(),
-                irradiance_output_tex.desc().extent_inv_extent_2d(),
-                super::rtr::SPATIAL_RESOLVE_OFFSETS,
-            ))
-            .dispatch(irradiance_output_tex.desc().extent);
+            let mut reservoir_output_tex0 = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::empty())
+                    .half_res()
+                    .format(vk::Format::R32G32B32A32_SFLOAT),
+            );
+            let mut reservoir_output_tex1 = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::empty())
+                    .half_res()
+                    .format(vk::Format::R32G32B32A32_SFLOAT),
+            );
+
+            let mut reservoir_input_tex = &mut temporal_reservoir_tex;
+
+            for spatial_reuse_pass_idx in 0..self.spatial_reuse_pass_count {
+                SimpleRenderPass::new_compute(
+                    rg.add_pass("restir spatial"),
+                    "/shaders/rtdgi/restir_spatial.hlsl",
+                )
+                .read(&irradiance_tex)
+                .read(&ray_tex)
+                .read(reservoir_input_tex)
+                .read(&gbuffer_depth.gbuffer)
+                .read(&*half_view_normal_tex)
+                .read(&*half_depth_tex)
+                .read(ssao_img)
+                .write(&mut reservoir_output_tex0)
+                .write(&mut irradiance_output_tex)
+                .constants((
+                    gbuffer_desc.extent_inv_extent_2d(),
+                    irradiance_output_tex.desc().extent_inv_extent_2d(),
+                    super::rtr::SPATIAL_RESOLVE_OFFSETS,
+                    spatial_reuse_pass_idx as u32,
+                ))
+                .dispatch(irradiance_output_tex.desc().extent);
+
+                std::mem::swap(&mut reservoir_output_tex0, &mut reservoir_output_tex1);
+                reservoir_input_tex = &mut reservoir_output_tex1;
+            }
 
             irradiance_output_tex
         };

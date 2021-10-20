@@ -210,7 +210,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //clamped_history = history;
 
     // TODO: proper rejection (not "reproj_validity_dilated")
-    float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
+    float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 16.0, reproj_validity_dilated * light_stability));
 
     #if !USE_TEMPORAL_FILTER
         res = center.rgb;

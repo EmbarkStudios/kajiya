@@ -414,6 +414,11 @@ void main() {
         outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
         p_q_sel = p_q;
     }*/
+
+    const uint reservoir_payload = px.x | (px.y << 16);
+
+    reservoir.payload = reservoir_payload;
+
     if (brdf_sample.wi.z > 1e-5) {
         outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
 
@@ -428,16 +433,15 @@ void main() {
 
         if (w_sum > 0) {
             reservoir.w_sum = w_sum;
-            reservoir.w_sel = reservoir.w_sum;
+            reservoir.payload = reservoir_payload;
             reservoir.W = 1;
             reservoir.M = 1;
         }
     }
 
-    const float4 reproj = reprojection_tex[px];
+    const float4 reproj = reprojection_tex[hi_px];
 
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
-    float jacobian_correction = 1;
 
     if (use_resampling) {
         float M_sum = reservoir.M;
@@ -487,23 +491,13 @@ void main() {
             p_q *= calculate_luma(prev_irrad.rgb);
             p_q *= max(0, dot(prev_dir, gbuffer.normal));
 
-            //float sample_jacobian_correction = 1.0 / max(1e-4, prev_dist);
-            //float sample_jacobian_correction = 1;
-            float sample_jacobian_correction = max(0.0, prev_dist) / max(1e-4, prev_dist_now);
-            sample_jacobian_correction *= sample_jacobian_correction;
-
-            sample_jacobian_correction *= max(0.0, prev_irrad.a) / dot(prev_dir, gbuffer.normal);
-            //sample_jacobian_correction = 1;
-
-            p_q *= sample_jacobian_correction;
-
             if (!(p_q > 0)) {
                 continue;
             }
 
             float w = p_q * r.W * r.M;
 
-            if (reservoir.update(w, rng)) {
+            if (reservoir.update(w, reservoir_payload, rng)) {
                 outgoing_dir = prev_dir;
 
                 // mutate the direction
@@ -522,14 +516,13 @@ void main() {
                 #endif
 
                 p_q_sel = p_q;
-                jacobian_correction = sample_jacobian_correction;
             }
 
             M_sum += r.M;
         }
 
         reservoir.M = M_sum;
-        reservoir.W = max(1e-5, 1.0 / p_q_sel * (reservoir.w_sum / reservoir.M));
+        reservoir.W = max(1e-5, reservoir.w_sum / (p_q_sel * reservoir.M));
     } else {
         outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
     }
@@ -550,7 +543,7 @@ void main() {
     }*/
 
     irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
-    hit0_out_tex[px] = float4(result.out_value * reservoir.W * jacobian_correction, 0);
+    hit0_out_tex[px] = float4(result.out_value * reservoir.W, 0);
     //hit0_out_tex[px] = float4(result.out_value, 0);
     ray_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, result.hit_t);
     reservoir_out_tex[px] = reservoir.as_raw();
