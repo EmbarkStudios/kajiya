@@ -267,6 +267,7 @@ impl SimpleMainLoop {
         let mut last_error_text = None;
 
         event_loop.run_return(move |event, _, control_flow| {
+            let _ = &render_backend;
             #[cfg(feature = "dear-imgui")]
             optional
                 .imgui_backend

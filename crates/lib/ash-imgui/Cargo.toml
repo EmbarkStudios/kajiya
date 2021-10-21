@@ -2,7 +2,7 @@
 name = "ash-imgui"
 version = "0.1.0"
 authors = ["Simon Brown <si@sjbrown.co.uk>", "Tomasz Stachowiak <h3@h3.gd>"]
-edition = "2018"
+edition = "2021"
 publish = false
 
 [dependencies]
