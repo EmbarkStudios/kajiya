@@ -122,6 +122,23 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
+        const float2 sample_uv = get_uv(
+            spx + hi_px_subpixels[frame_constants.frame_index & 3],
+            output_tex_size);
+
+        const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+        const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
+
+        {
+    		const float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
+            const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
+            const float wi_z = dot(prev_dir, center_normal_ws);
+
+            if (wi_z * 0.2 < fraction_of_normal_direction_as_offset) {
+    			continue;
+    		}
+        }
+
         // TODO: combine all those into a single similarity metric
 
         const float4 prev_irrad = irradiance_tex[spx];
