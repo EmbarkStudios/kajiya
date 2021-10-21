@@ -21,9 +21,9 @@ checksum = "28ae2b3dec75a406790005a200b1bd89785afc02517a00ca99ecfe093ee9e6cf"
 
 [[package]]
 name = "ar"
-version = "0.8.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "450575f58f7bee32816abbff470cbc47797397c2a81e0eaced4b98436daf52e1"
+checksum = "d67af77d68a931ecd5cbd8a3b5987d63a1d1d1278f7f6a60ae33db485cdebb69"
 
 [[package]]
 name = "autocfg"
@@ -251,25 +251,26 @@ checksum = "f497285884f3fcff424ffc933e56d7cbca511def0c9831a7f9b5f6153e3cc89b"
 
 [[package]]
 name = "rspirv"
-version = "0.8.0"
-source = "git+https://github.com/gfx-rs/rspirv.git?rev=c2a11ba7961fa7c675800f50c1903f0e96c633f8#c2a11ba7961fa7c675800f50c1903f0e96c633f8"
+version = "0.10.0+1.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce0e0a01cf9883c6f2846168515b5be6c4995bb90d4eeb7595bb0088a1001759"
 dependencies = [
  "derive_more",
  "fxhash",
  "num-traits",
- "spirv_headers",
+ "spirv",
 ]
 
 [[package]]
 name = "rustc-demangle"
-version = "0.1.20"
+version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dead70b0b5e03e9c814bcb6b01e03e68f7c57a80aa48c72ec92152ab3e818d49"
+checksum = "7ef03e0a2b150c7a90d01faf6254c9c48a41e95fb2a8c2ac1c6f0d2b9aefc342"
 
 [[package]]
 name = "rustc_codegen_spirv"
 version = "0.4.0-alpha.12"
-source = "git+https://github.com/EmbarkStudios/rust-gpu?rev=4dcb50169f7af2d97d0b59a6bb2d1bfc2cb4cfc7#4dcb50169f7af2d97d0b59a6bb2d1bfc2cb4cfc7"
+source = "git+https://github.com/EmbarkStudios/rust-gpu?rev=28313a2029aec5de7283e167ea2d67d2aa350f62#28313a2029aec5de7283e167ea2d67d2aa350f62"
 dependencies = [
  "ar",
  "bimap",
@@ -369,9 +370,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fe0f37c9e8f3c5a4a66ad655a93c74daac4ad00c441533bf5c6e7990bb42604e"
 
 [[package]]
+name = "spirv"
+version = "0.2.0+1.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "246bfa38fe3db3f1dfc8ca5a2cdeb7348c78be2112740cc0ec8ef18b6d94f830"
+dependencies = [
+ "bitflags",
+ "num-traits",
+]
+
+[[package]]
 name = "spirv-builder"
 version = "0.4.0-alpha.12"
-source = "git+https://github.com/EmbarkStudios/rust-gpu?rev=4dcb50169f7af2d97d0b59a6bb2d1bfc2cb4cfc7#4dcb50169f7af2d97d0b59a6bb2d1bfc2cb4cfc7"
+source = "git+https://github.com/EmbarkStudios/rust-gpu?rev=28313a2029aec5de7283e167ea2d67d2aa350f62#28313a2029aec5de7283e167ea2d67d2aa350f62"
 dependencies = [
  "memchr",
  "raw-string",
@@ -382,29 +393,20 @@ dependencies = [
 
 [[package]]
 name = "spirv-tools"
-version = "0.6.1"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "663d6a7c1627d47e402e3a41076f6147bbe4bf11fd98687e1016599b3979f6d3"
+checksum = "47ffcd721c949125c13b1213a292477a2d82621512b094564bd918c3a1c7f7ff"
 dependencies = [
  "spirv-tools-sys",
 ]
 
 [[package]]
 name = "spirv-tools-sys"
-version = "0.4.1"
+version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbb083780a3721ff6dd496dbdc3b90c033b443bec676918b89c179b330081983"
+checksum = "b967db819666ccf7a0373876321bfe852922edcc7f3e30e3a7668b02e1961119"
 dependencies = [
  "cc",
-]
-
-[[package]]
-name = "spirv_headers"
-version = "1.5.1"
-source = "git+https://github.com/gfx-rs/rspirv.git?rev=c2a11ba7961fa7c675800f50c1903f0e96c633f8#c2a11ba7961fa7c675800f50c1903f0e96c633f8"
-dependencies = [
- "bitflags",
- "num-traits",
 ]
 
 [[package]]
