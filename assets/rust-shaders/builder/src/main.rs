@@ -1,6 +1,6 @@
 use anyhow::Context;
 use nanoserde::SerJson;
-use spirv_builder::{Capability, MetadataPrintout, ModuleResult, SpirvBuilder};
+use spirv_builder::{Capability, MetadataPrintout, ModuleResult, SpirvBuilder, SpirvMetadata};
 
 #[derive(SerJson)]
 struct RustShaderCompileResult {
@@ -18,7 +18,7 @@ fn main() -> anyhow::Result<()> {
         .extension("SPV_EXT_descriptor_indexing")
         .print_metadata(MetadataPrintout::None)
         .multimodule(true)
-        .name_variables(true)
+        .spirv_metadata(SpirvMetadata::NameVariables)
         .build()?;
 
     let target_spv_dir = builder_root.join("../compiled");
