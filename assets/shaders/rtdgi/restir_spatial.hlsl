@@ -56,6 +56,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     const float3 center_normal_vs = half_view_normal_tex[px].rgb;
     const float center_depth = half_depth_tex[px];
+    const float center_ssao = ssao_tex[px * 2].r;
 
     //Reservoir1spp reservoir = Reservoir1spp::from_raw(reservoir_input_tex[px]);
     Reservoir1spp reservoir = Reservoir1spp::create();
@@ -118,7 +119,14 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Reject neighbors with vastly different depths
         if (abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
             continue;
-        }        
+        }
+
+        const float sample_ssao = ssao_tex[spx * 2].r;
+        if (abs(sample_ssao - center_ssao) > 0.2) {
+            continue;
+        }
+
+        // TODO: combine all those into a single similarity metric
 
         const float4 prev_irrad = irradiance_tex[spx];
 

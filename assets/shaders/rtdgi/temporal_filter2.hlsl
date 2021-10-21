@@ -17,7 +17,7 @@
 };
 
 
-#define USE_TEMPORAL_FILTER 0
+#define USE_TEMPORAL_FILTER 1
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
