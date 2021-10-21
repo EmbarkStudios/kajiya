@@ -52,9 +52,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
 
-    float4 gbuffer_packed = gbuffer_tex[hi_px];
-    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     const float3 center_normal_vs = half_view_normal_tex[px].rgb;
+    const float3 center_normal_ws = direction_view_to_world(center_normal_vs);
     const float center_depth = half_depth_tex[px];
     const float center_ssao = ssao_tex[px * 2].r;
 
@@ -62,7 +61,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     Reservoir1spp reservoir = Reservoir1spp::create();
 
     float p_q_sel = 0;//reservoir.W;//calculate_luma(irradiance);
-    // p_q_sel *= max(0, dot(prev_dir, gbuffer.normal));
+    // p_q_sel *= max(0, dot(prev_dir, center_normal_ws));
 
     float jacobian_correction = 1;
 
@@ -88,10 +87,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
-        float4 sample_gbuffer_packed = gbuffer_tex[spx * 2];
-        GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
-
-        if (dot(sample_gbuffer.normal, gbuffer.normal) < 0.9) {
+        const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
+        if (dot(sample_normal_vs, center_normal_vs) < 0.9) {
             continue;
         }
 
@@ -109,11 +106,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 prev_dir = normalize(prev_dir_unnorm);
 
         // Reject hits below the normal plane
-        if (dot(prev_dir, gbuffer.normal) < 1e-3) {
+        if (dot(prev_dir, center_normal_ws) < 1e-3) {
             continue;
         }
 
-        const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
         const float sample_depth = half_depth_tex[spx];
 
         // Reject neighbors with vastly different depths
@@ -132,14 +128,14 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         float p_q = 1;
         p_q *= calculate_luma(prev_irrad.rgb);
-        p_q *= max(0, dot(prev_dir, gbuffer.normal));
+        p_q *= max(0, dot(prev_dir, center_normal_ws));
 
         //float sample_jacobian_correction = 1.0 / max(1e-4, prev_dist);
         //float sample_jacobian_correction = 1;
         float sample_jacobian_correction = max(0.0, prev_dist) / max(1e-4, prev_dist_now);
         sample_jacobian_correction *= sample_jacobian_correction;
 
-        sample_jacobian_correction *= max(0.0, prev_irrad.a) / dot(prev_dir, gbuffer.normal);
+        sample_jacobian_correction *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
         //sample_jacobian_correction = 1;
 
         //p_q *= sample_jacobian_correction;
