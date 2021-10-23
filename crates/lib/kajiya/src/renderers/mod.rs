@@ -18,6 +18,7 @@ pub mod shadow_denoise;
 pub mod shadows;
 pub mod sky;
 pub mod ssgi;
+pub mod surfel_gi;
 pub mod taa;
 
 #[cfg(feature = "dlss")]
