@@ -10,7 +10,7 @@
 
 #define VISUALIZE_SURFELS 0
 #define VISUALIZE_CELL_SURFEL_COUNT 0
-#define USE_DIRECTIONAL_IRRADIANCE 1
+#define USE_DIRECTIONAL_IRRADIANCE 0
 #define USE_BENT_NORMALS 0
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -24,8 +24,8 @@
 [[vk::binding(8)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
 [[vk::binding(9)]] StructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(10)]] StructuredBuffer<float4> surfel_sh_buf;
-[[vk::binding(11)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(12)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(11)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(12)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
 
 [[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
@@ -124,23 +124,24 @@ void main(
 
     debug_out_tex[px] = 0.0.xxxx;
 
-    const float4 gbuffer_packed = gbuffer_tex[px];
-    if (all(gbuffer_packed == 0.0.xxxx)) {
+    const float z_over_w = depth_tex[px];
+
+    if (z_over_w == 0.0) {
         return;
     }
 
+    // TODO: nuke
+    const float4 gbuffer_packed = gbuffer_tex[px];
+    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+
     const float3 bent_normal_ws = mul(frame_constants.view_constants.view_to_world, float4(bent_normals_tex[px].xyz, 0)).xyz;
 
-    const float z_over_w = depth_tex[px];
     const float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
     const float4 pt_vs = mul(frame_constants.view_constants.sample_to_view, pt_cs);
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, pt_vs);
     pt_ws /= pt_ws.w;
 
     const float pt_depth = -pt_vs.z / pt_vs.w;
-
-    // TODO: nuke
-    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
 
     SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(surfel_pos_to_grid_coord(pt_ws.xyz));
 

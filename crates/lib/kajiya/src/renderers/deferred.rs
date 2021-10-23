@@ -12,6 +12,7 @@ pub fn light_gbuffer(
     ssgi: &rg::Handle<Image>,
     rtr: &rg::Handle<Image>,
     rtdgi: &rg::Handle<Image>,
+    surfel_gi: &rg::Handle<Image>,
     temporal_output: &mut rg::Handle<Image>,
     output: &mut rg::Handle<Image>,
     csgi_volume: &super::csgi::CsgiVolume,
@@ -27,6 +28,7 @@ pub fn light_gbuffer(
         .read(ssgi)
         .read(rtr)
         .read(rtdgi)
+        .read(surfel_gi)
         .write(temporal_output)
         .write(output)
         .read_array(&csgi_volume.indirect)

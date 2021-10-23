@@ -39,6 +39,11 @@ void main(
     float4 pt_ws = mul(frame_constants.view_constants.view_to_world, mul(frame_constants.view_constants.sample_to_view, pt_cs));
     pt_ws /= pt_ws.w;
 
+    if (!all(pt_ws == pt_ws)) {
+        // Batman, Batman, Batman...
+        return;
+    }
+
     float4 gbuffer_packed = gbuffer_tex[px];
     
     VertexPacked surfel;

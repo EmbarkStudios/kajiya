@@ -120,8 +120,8 @@ pub fn allocate_surfels(
     .read(&state.surfel_spatial_buf)
     .read(&state.surfel_irradiance_buf)
     .read(&state.surfel_sh_buf)
-    .write(&mut tile_surfel_alloc_tex)
     .write(&mut state.debug_out)
+    .write(&mut tile_surfel_alloc_tex)
     .constants(gbuffer_desc.extent_inv_extent_2d())
     .dispatch(gbuffer_desc.extent);
 
@@ -203,6 +203,7 @@ impl SurfelGiRenderState {
     pub fn trace_irradiance(
         &mut self,
         rg: &mut rg::RenderGraph,
+        sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
     ) {
@@ -233,6 +234,7 @@ impl SurfelGiRenderState {
             &["/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&self.surfel_spatial_buf)
+        .read(sky_cube)
         .write(&mut self.surfel_irradiance_buf)
         .write(&mut self.surfel_sh_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)

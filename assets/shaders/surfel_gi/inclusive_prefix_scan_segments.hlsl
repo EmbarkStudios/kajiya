@@ -26,7 +26,7 @@ void main(uint idx: SV_GroupThreadID, uint segment: SV_GroupID) {
 
     [unroll]
     for (uint step = 0; step < STEP_COUNT; step++) {
-        uint mask = (1 << step) - 1;
+        uint mask = (1u << step) - 1;
         uint rd_idx = ((idx >> step) << (step + 1)) + mask;
         uint wr_idx = rd_idx + 1 + (idx & mask);
 

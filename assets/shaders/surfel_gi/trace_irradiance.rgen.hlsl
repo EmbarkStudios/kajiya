@@ -20,10 +20,11 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(1)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(2)]] RWStructuredBuffer<float4> surfel_sh_buf;
+[[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(2)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(3)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
-static const uint MAX_PATH_LENGTH = 5;
+static const uint MAX_PATH_LENGTH = 2;
 #include "../inc/sun.hlsl"
 
 
@@ -33,12 +34,13 @@ static const uint MAX_PATH_LENGTH = 5;
 static const bool FIREFLY_SUPPRESSION = true;
 
 float3 sample_environment_light(float3 dir) {
-    return 0.0.xxx;
-    return atmosphere_default(dir, SUN_DIRECTION);
+    //return 0.0.xxx;
+    return sky_cube_tex.SampleLevel(sampler_llr, dir, 0).rgb;
+    /*return atmosphere_default(dir, SUN_DIRECTION);
 
     float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
     col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
-    return col;
+    return col;*/
 }
 
 
@@ -72,9 +74,9 @@ void main() {
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
-    float4 prev_total_radiance_packed = surfel_irradiance_buf[surfel_idx];
+    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 128);
 
-    const uint sample_count = clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
+    const uint sample_count = 8;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
     float valid_sample_count = 0;
     float3 basis_radiance_sums[4] = { 0.0.xxx, 0.0.xxx, 0.0.xxx, 0.0.xxx };
 

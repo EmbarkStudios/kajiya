@@ -516,6 +516,7 @@ fn main() -> anyhow::Result<()> {
                                 im_str!("Diffuse GI"),
                                 im_str!("Reflections"),
                                 im_str!("RTX OFF"),
+                                im_str!("Surfel GI"),
                             ],
                         );
 
