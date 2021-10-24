@@ -75,23 +75,36 @@ void main(uint2 px : SV_DispatchThreadID) {
     const uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
+    float poor_normals = 0;
+
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * 2.5;
-        int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
+        int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
 
-        const int2 reservoir_px = px + sample_offset;
+        const int2 reservoir_px = px + reservoir_px_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[reservoir_px]);
 
         // After the ReSTIR GI paper
         r.M = min(r.M, 500);
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
+        const int2 sample_offset = int2(px) - int2(spx);
+        const float sample_dist2 = dot(sample_offset, sample_offset);
 
         const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
-        if (sample_i > 0 && dot(sample_normal_vs, center_normal_vs) < 0.9) {
+
+        // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
+        // areas of high geometric complexity. The resulting bias tends to brighten edges,
+        // and we clamp that effect later. The artifacts is less prounounced normal map detail.
+        // TODO: detect this first, and sharpen the threshold. The poor normal counting below
+        // is a shitty take at that.
+        if (sample_i > 0 && dot(sample_normal_vs, center_normal_vs) < 0.9 * exp2(-max(0, poor_normals) * 0.3)) {
+            poor_normals += 1;
             continue;
+        } else {
+            poor_normals -= 1;
         }
 
         const float4 prev_hit_ws_and_dist = ray_tex[spx];
@@ -120,7 +133,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         const float sample_ssao = ssao_tex[spx * 2].r;
-        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.3) {
+        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.2) {
             continue;
         }
 
@@ -155,16 +168,17 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         float sample_jacobian_correction = 1;
 
-        // Distance falloff
+        // Distance falloff. Needed to avoid leaks.
         sample_jacobian_correction *= max(0.0, prev_dist) / max(1e-4, prev_dist_now);
         sample_jacobian_correction *= sample_jacobian_correction;
 
-        // N dot L
-        // The min(2, _) should not be here, but it prevents fireflies
-        sample_jacobian_correction *= min(2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
-
-        // N of hit dot -L
+        // N of hit dot -L. Needed to avoid leaks.
         sample_jacobian_correction *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
+
+        // N dot L. Useful for normal maps, micro detail.
+        // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
+        // when we don't use a harsh normal cutoff to exchange reservoirs with.
+        sample_jacobian_correction *= min(1.0, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
 
         //p_q *= sample_jacobian_correction;
 
