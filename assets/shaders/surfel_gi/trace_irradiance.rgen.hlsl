@@ -12,7 +12,6 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/mesh.hlsl"
 #include "../inc/sh.hlsl"
-#include "directional_basis.hlsl"
 
 #define HEMISPHERE_ONLY 1
 
@@ -24,7 +23,7 @@
 [[vk::binding(2)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(3)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
-static const uint MAX_PATH_LENGTH = 2;
+static const uint MAX_PATH_LENGTH = 3;
 #include "../inc/sun.hlsl"
 
 
@@ -76,10 +75,14 @@ void main() {
 
     float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 64);
 
-    const uint sample_count = 8;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
-    float valid_sample_count = 0;
-    float3 basis_radiance_sums[4] = { 0.0.xxx, 0.0.xxx, 0.0.xxx, 0.0.xxx };
+    DiffuseBrdf brdf;
+    const float3x3 tangent_to_world = build_orthonormal_basis(surfel.normal);
 
+    brdf.albedo = 1.0.xxx;
+
+    const uint sample_count = 8;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
+    float3 irradiance_sum = 0;
+    float valid_sample_count = 0;
     float2 hit_dist_wt = 0;
 
     for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx) {
@@ -92,7 +95,7 @@ void main() {
                 uint_to_u01_float(hash1_mut(seed))
             );
 
-            float3 dir = uniform_sample_sphere(urand);
+            /*float3 dir = uniform_sample_sphere(urand);
 
             #if HEMISPHERE_ONLY
                 if (dot(dir, surfel.normal) < 0) {
@@ -100,18 +103,17 @@ void main() {
                 }
             #endif
             //float3 dir = normalize(surfel.normal + uniform_sample_sphere(urand));
+            */
+
+            BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
 
             outgoing_ray = new_ray(
                 surfel.position,
-                normalize(dir),
+                mul(tangent_to_world, brdf_sample.wi),
                 1e-3,
                 FLT_MAX
             );
         }
-
-        //
-
-        const float3 surfel_tet_basis[4] = calc_surfel_tet_basis(surfel.normal);
 
         // ----
 
@@ -163,14 +165,9 @@ void main() {
                     brdf.specular_brdf.roughness = lerp(brdf.specular_brdf.roughness, 1.0, roughness_bias);
                 }
 
-                const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
+                const float3 brdf_value = brdf.evaluate_directional_light(wo, wi);
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-                const float3 contrib = throughput * brdf_value * light_radiance;
-
-                [unroll]
-                for (int b = 0; b < 4; ++b) {
-                    basis_radiance_sums[b] += max(0.0, dot(surfel_tet_basis[b], outgoing_ray.Direction)) * contrib;
-                }
+                irradiance_sum += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
                 const float3 urand = float3(
                     uint_to_u01_float(hash1_mut(seed)),
@@ -194,22 +191,14 @@ void main() {
                     hit_dist_wt += float2(pack_dist(1), 1);
                 }
 
-                const float3 contrib = throughput * sample_environment_light(outgoing_ray.Direction);
-
-                [unroll]
-                for (int b = 0; b < 4; ++b) {
-                    basis_radiance_sums[b] += max(0.0, dot(surfel_tet_basis[b], outgoing_ray.Direction)) * contrib;
-                }
+                irradiance_sum = throughput * sample_environment_light(outgoing_ray.Direction);
 
                 break;
             }
         }
     }
 
-    [unroll]
-    for (int b = 0; b < 4; ++b) {
-        basis_radiance_sums[b] /= max(1.0, valid_sample_count);
-    }
+    irradiance_sum /= max(1.0, valid_sample_count);
 
     float avg_dist = unpack_dist(hit_dist_wt.x / max(1, hit_dist_wt.y));
     //total_radiance.xyz = lerp(float3(1, 0, 0), float3(0.02, 1.0, 0.2), avg_dist) * total_radiance.w;
@@ -232,13 +221,12 @@ void main() {
 
     const float value_mult = HEMISPHERE_ONLY ? 1 : 2;
 
-    const float4 r_values = value_mult * float4(basis_radiance_sums[0].r, basis_radiance_sums[1].r, basis_radiance_sums[2].r, basis_radiance_sums[3].r);
-    const float4 g_values = value_mult * float4(basis_radiance_sums[0].g, basis_radiance_sums[1].g, basis_radiance_sums[2].g, basis_radiance_sums[3].g);
-    const float4 b_values = value_mult * float4(basis_radiance_sums[0].b, basis_radiance_sums[1].b, basis_radiance_sums[2].b, basis_radiance_sums[3].b);
-
     //surfel_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
-    surfel_irradiance_buf[surfel_idx] = float4(lerp(prev_total_radiance_packed.rgb, float3(r_values[0], g_values[0], b_values[0]) * 2, blend_factor_new), total_sample_count);
-    surfel_sh_buf[surfel_idx * 3 + 0] = lerp(surfel_sh_buf[surfel_idx * 3 + 0], r_values, blend_factor_new);
-    surfel_sh_buf[surfel_idx * 3 + 1] = lerp(surfel_sh_buf[surfel_idx * 3 + 1], g_values, blend_factor_new);
-    surfel_sh_buf[surfel_idx * 3 + 2] = lerp(surfel_sh_buf[surfel_idx * 3 + 2], b_values, blend_factor_new);
+    surfel_irradiance_buf[surfel_idx] = float4(
+        lerp(prev_total_radiance_packed.rgb, irradiance_sum, blend_factor_new),
+        total_sample_count
+    );
+    //surfel_sh_buf[surfel_idx * 3 + 0] = lerp(surfel_sh_buf[surfel_idx * 3 + 0], r_values, blend_factor_new);
+    //surfel_sh_buf[surfel_idx * 3 + 1] = lerp(surfel_sh_buf[surfel_idx * 3 + 1], g_values, blend_factor_new);
+    //surfel_sh_buf[surfel_idx * 3 + 2] = lerp(surfel_sh_buf[surfel_idx * 3 + 2], b_values, blend_factor_new);
 }

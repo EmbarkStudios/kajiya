@@ -8,7 +8,8 @@
 #include "../inc/sh.hlsl"
 #include "directional_basis.hlsl"
 
-#define VISUALIZE_SURFELS 0
+#define VISUALIZE_SURFELS 1
+#define VISUALIZE_SURFELS_AS_NORMALS 1
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define USE_DIRECTIONAL_IRRADIANCE 0
 #define USE_BENT_NORMALS 0
@@ -219,6 +220,10 @@ void main(
                 surfel_sh_buf[surfel_idx * 3 + 2].r
             )) * 2;*/
         #endif
+
+            #if VISUALIZE_SURFELS && VISUALIZE_SURFELS_AS_NORMALS
+                surfel_color = surfel.normal * 0.5 + 0.5;
+            #endif
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
             const float directional_weight = max(0.0, dot(surfel.normal, gbuffer.normal));

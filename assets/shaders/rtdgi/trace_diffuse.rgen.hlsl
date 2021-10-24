@@ -63,7 +63,7 @@ DEFINE_SURFEL_GI_BINDINGS(11, 12, 13, 14, 15, 16)
 #include "../csgi/subray_lookup.hlsl"
 #include "../surfel_gi/lookup.hlsl"
 
-static const float SKY_DIST = 1e5;
+static const float SKY_DIST = 1e4;
 
 struct TraceResult {
     float3 out_value;
