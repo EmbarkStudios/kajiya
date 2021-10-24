@@ -213,11 +213,11 @@ void main(
 
             surfel_color = c_sum * 2;
         #else
-            surfel_color = max(0.0, float3(
+            /*surfel_color = max(0.0, float3(
                 surfel_sh_buf[surfel_idx * 3 + 0].r,
                 surfel_sh_buf[surfel_idx * 3 + 1].r,
                 surfel_sh_buf[surfel_idx * 3 + 2].r
-            )) * 2;
+            )) * 2;*/
         #endif
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
