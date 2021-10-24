@@ -191,12 +191,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     #if 1
         irradiance_output_tex[px] = float4(
-            irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb * reservoir.W
-            // HAAAAAACK; the min prevents fireflies :shrug:
-            * jacobian_correction
-            //* saturate(dot(dir_sel, center_normal_ws))
-            , 1
-        );
+            irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb
+            * reservoir.W * jacobian_correction, 1);
         return;
     #endif
 }
