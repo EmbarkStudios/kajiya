@@ -23,7 +23,7 @@
 [[vk::binding(2)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(3)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
-static const uint MAX_PATH_LENGTH = 3;
+static const uint MAX_PATH_LENGTH = 2;
 #include "../inc/sun.hlsl"
 
 

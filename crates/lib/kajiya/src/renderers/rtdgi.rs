@@ -69,7 +69,7 @@ impl RtdgiRenderer {
 
 impl RtdgiRenderer {
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
-        ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, extent)
+        ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
@@ -236,7 +236,7 @@ impl RtdgiRenderer {
         .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
         .dispatch(reprojected_history_tex.desc().extent);
 
-        let mut hit0_tex = rg.create(
+        let mut hit_normal_tex = rg.create(
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
@@ -302,7 +302,7 @@ impl RtdgiRenderer {
             .bind(surfel_gi)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_output_tex)
-            .write(&mut hit0_tex)
+            .write(&mut hit_normal_tex)
             .write(&mut reservoir_output_tex)
             .read_array(&csgi_volume.indirect)
             .read_array(&csgi_volume.subray_indirect)
@@ -347,6 +347,7 @@ impl RtdgiRenderer {
                     "/shaders/rtdgi/restir_spatial.hlsl",
                 )
                 .read(&irradiance_tex)
+                .read(&hit_normal_tex)
                 .read(&ray_tex)
                 .read(reservoir_input_tex)
                 .read(&gbuffer_depth.gbuffer)

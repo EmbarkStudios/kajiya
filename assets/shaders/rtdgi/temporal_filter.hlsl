@@ -165,9 +165,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     //const float invalid = smoothstep(0.0, 10.0, history_dist / max(1e-5, min(history.a, control_variate_luma)));
     
-    const float light_stability = 1.0 - 0.8 * smoothstep(0.1, 0.5, history_dist);
+    //const float light_stability = 1.0 - 0.8 * smoothstep(0.1, 0.5, history_dist);
     //const float light_stability = 1.0 - step(0.01, history_dist);
-    //const float light_stability = 1;
+    const float light_stability = 1;
 
     const float3 cv_diff = (control_variate - cv_history);
 

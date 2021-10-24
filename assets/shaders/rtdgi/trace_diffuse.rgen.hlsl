@@ -49,7 +49,7 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 DEFINE_SURFEL_GI_BINDINGS(11, 12, 13, 14, 15, 16)
 [[vk::binding(17)]] RWTexture2D<float4> irradiance_out_tex;
 [[vk::binding(18)]] RWTexture2D<float4> ray_out_tex;
-[[vk::binding(19)]] RWTexture2D<float4> hit0_out_tex;
+[[vk::binding(19)]] RWTexture2D<float4> hit_normal_tex;
 [[vk::binding(20)]] RWTexture2D<float4> reservoir_out_tex;
 [[vk::binding(21)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
 [[vk::binding(22)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
@@ -67,6 +67,7 @@ static const float SKY_DIST = 1e4;
 
 struct TraceResult {
     float3 out_value;
+    float3 hit_normal_ws;
     float hit_t;
 };
 
@@ -80,6 +81,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
     }*/
 
     float3 total_radiance = 0.0.xxx;
+    float3 hit_normal_ws = -outgoing_ray.Direction;
 
     #if USE_SHORT_RAYS_ONLY
         outgoing_ray.TMax = csgi_blended_voxel_size(origin_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS;
@@ -111,6 +113,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
     if (primary_hit.is_hit) {
         hit_t = primary_hit.ray_t;
         GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+        hit_normal_ws = gbuffer.normal;
 
         // Project the sample into clip space, and check if it's on-screen
         const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
@@ -291,6 +294,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
     TraceResult result;
     result.out_value = out_value;
     result.hit_t = hit_t;
+    result.hit_normal_ws = hit_normal_ws;
     return result;
 }
 
@@ -310,7 +314,7 @@ void main() {
 
     if (0.0 == depth) {
         irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
-        hit0_out_tex[px] = 0.0.xxxx;
+        hit_normal_tex[px] = 0.0.xxxx;
         reservoir_out_tex[px] = 0.0.xxxx;
         return;
     }
@@ -406,7 +410,7 @@ void main() {
     if (!brdf_sample.is_valid()) {
         irradiance_out_tex[px] = float4(0.0.xxx, 1);
         ray_out_tex[px] = 0.0.xxxx;
-        hit0_out_tex[px] = 0.0.xxxx;
+        hit_normal_tex[px] = 0.0.xxxx;
         reservoir_out_tex[px] = 0.0.xxxx;
         return;
     }
@@ -459,7 +463,11 @@ void main() {
     if (use_resampling) {
         float M_sum = reservoir.M;
 
-        int2 reproj_px = (gbuffer_tex_size.xy * reproj.xy) / 2;
+        // Can't use linear interpolation, but we can interpolate stochastically instead
+        // ... or just don't. Artifacts seem only visible when looking at the direct output of this shader.
+        const float2 reproj_rand_offset = 0*float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng)));
+
+        int2 reproj_px = (gbuffer_tex_size.xy * reproj.xy + reproj_rand_offset) / 2;
 
         for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             int2 spx = px + reproj_px;
@@ -556,8 +564,7 @@ void main() {
     }*/
 
     irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
-    hit0_out_tex[px] = float4(result.out_value * reservoir.W, 0);
-    //hit0_out_tex[px] = float4(result.out_value, 0);
+    hit_normal_tex[px] = float4(result.hit_normal_ws, -dot(result.hit_normal_ws, outgoing_ray.Direction));
     ray_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, result.hit_t);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif

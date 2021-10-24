@@ -11,15 +11,16 @@
 #include "restir_settings.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
-[[vk::binding(1)]] Texture2D<float4> ray_tex;
-[[vk::binding(2)]] Texture2D<float4> reservoir_input_tex;
-[[vk::binding(3)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(5)]] Texture2D<float> half_depth_tex;
-[[vk::binding(6)]] Texture2D<float4> ssao_tex;
-[[vk::binding(7)]] RWTexture2D<float4> reservoir_output_tex;
-[[vk::binding(8)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(9)]] cbuffer _ {
+[[vk::binding(1)]] Texture2D<float4> hit_normal_tex;
+[[vk::binding(2)]] Texture2D<float4> ray_tex;
+[[vk::binding(3)]] Texture2D<float4> reservoir_input_tex;
+[[vk::binding(4)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(6)]] Texture2D<float> half_depth_tex;
+[[vk::binding(7)]] Texture2D<float4> ssao_tex;
+[[vk::binding(8)]] RWTexture2D<float4> reservoir_output_tex;
+[[vk::binding(9)]] RWTexture2D<float4> irradiance_output_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
@@ -61,6 +62,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     Reservoir1spp reservoir = Reservoir1spp::create();
 
     float p_q_sel = 0;//reservoir.W;//calculate_luma(irradiance);
+    float3 dir_sel = 1;
     // p_q_sel *= max(0, dot(prev_dir, center_normal_ws));
 
     float jacobian_correction = 1;
@@ -118,7 +120,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         const float sample_ssao = ssao_tex[spx * 2].r;
-        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.2) {
+        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.3) {
             continue;
         }
 
@@ -129,6 +131,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
         const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
+        // Approx shadowing
         {
     		const float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
             const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
@@ -142,18 +145,26 @@ void main(uint2 px : SV_DispatchThreadID) {
         // TODO: combine all those into a single similarity metric
 
         const float4 prev_irrad = irradiance_tex[spx];
+        const float4 prev_hit_normal_ws_dot = hit_normal_tex[spx];
 
         float p_q = 1;
         p_q *= max(1e-2, calculate_luma(prev_irrad.rgb));
-        p_q *= max(0, dot(prev_dir, center_normal_ws));
 
-        //float sample_jacobian_correction = 1.0 / max(1e-4, prev_dist);
-        //float sample_jacobian_correction = 1;
-        float sample_jacobian_correction = max(0.0, prev_dist) / max(1e-4, prev_dist_now);
+        // Actually looks more noisy with this the N dot L
+        //p_q *= max(0, dot(prev_dir, center_normal_ws));
+
+        float sample_jacobian_correction = 1;
+
+        // Distance falloff
+        sample_jacobian_correction *= max(0.0, prev_dist) / max(1e-4, prev_dist_now);
         sample_jacobian_correction *= sample_jacobian_correction;
 
-        sample_jacobian_correction *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
-        //sample_jacobian_correction = 1;
+        // N dot L
+        // The min(2, _) should not be here, but it prevents fireflies
+        sample_jacobian_correction *= min(2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
+
+        // N of hit dot -L
+        sample_jacobian_correction *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
 
         //p_q *= sample_jacobian_correction;
 
@@ -164,6 +175,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         float w = p_q * r.W * r.M;
         if (reservoir.update(w, r.payload, rng)) {
             p_q_sel = p_q;
+            dir_sel = prev_dir;
 
             // TODO; seems wrong.
             jacobian_correction = sample_jacobian_correction;
@@ -181,9 +193,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         irradiance_output_tex[px] = float4(
             irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb * reservoir.W
             // HAAAAAACK; the min prevents fireflies :shrug:
-            * min(1, jacobian_correction),
-            //reservoir.W.xxx * 0.1,
-            1
+            * jacobian_correction
+            //* saturate(dot(dir_sel, center_normal_ws))
+            , 1
         );
         return;
     #endif

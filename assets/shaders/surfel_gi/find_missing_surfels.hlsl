@@ -12,11 +12,11 @@
 #define VISUALIZE_SURFELS_AS_NORMALS 1
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define USE_DIRECTIONAL_IRRADIANCE 0
-#define USE_BENT_NORMALS 0
+#define USE_GEOMETRIC_NORMALS 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture2D<float4> bent_normals_tex;
+[[vk::binding(2)]] Texture2D<float4> geometric_normals_tex;
 [[vk::binding(3)]] RWByteAddressBuffer surfel_meta_buf;
 [[vk::binding(4)]] RWByteAddressBuffer surfel_hash_key_buf;
 [[vk::binding(5)]] RWByteAddressBuffer surfel_hash_value_buf;
@@ -135,7 +135,10 @@ void main(
     const float4 gbuffer_packed = gbuffer_tex[px];
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
 
-    const float3 bent_normal_ws = mul(frame_constants.view_constants.view_to_world, float4(bent_normals_tex[px].xyz, 0)).xyz;
+    const float3 geometric_normal_ws = mul(
+        frame_constants.view_constants.view_to_world,
+        float4(geometric_normals_tex[px].xyz * 2 - 1, 0)
+    ).xyz;
 
     const float4 pt_cs = float4(uv_to_cs(uv), z_over_w, 1.0);
     const float4 pt_vs = mul(frame_constants.view_constants.sample_to_view, pt_cs);
@@ -180,8 +183,8 @@ void main(
             float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
             surfel_color = surfel_irradiance_packed.xyz;
 
-        #if USE_BENT_NORMALS
-            float3 shading_normal = bent_normal_ws;
+        #if USE_GEOMETRIC_NORMALS
+            float3 shading_normal = geometric_normal_ws;
         #else
             float3 shading_normal = gbuffer.normal;
         #endif
@@ -198,7 +201,7 @@ void main(
             }}
 
             // HACK
-            float spoke_mult = lerp(1.3, 1.8, saturate(dot(shading_normal, gbuffer.normal)));
+            float spoke_mult = lerp(1.3, 1.8, saturate(dot(shading_normal, shading_normal)));
             float3 c_sum = 0.0;
 
             [unroll]
@@ -225,8 +228,10 @@ void main(
                 surfel_color = surfel.normal * 0.5 + 0.5;
             #endif
 
+            surfel_color = geometric_normal_ws * 0.5 + 0.5;
+
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-            const float directional_weight = max(0.0, dot(surfel.normal, gbuffer.normal));
+            const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
             //const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
             //const float directional_weight = 1;
             //const float directional_weight = pow(max(0.0, 0.5 + 0.5 * dot(surfel.normal, gbuffer.normal)), 2);
