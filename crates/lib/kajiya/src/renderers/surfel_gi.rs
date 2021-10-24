@@ -10,6 +10,7 @@ use kajiya_backend::{
     },
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
+use rg::BindToSimpleRenderPass;
 use vk::BufferUsageFlags;
 
 use super::GbufferDepth;
@@ -31,6 +32,20 @@ pub struct SurfelGiRenderState {
     surfel_sh_buf: rg::Handle<Buffer>,
 
     pub debug_out: rg::Handle<Image>,
+}
+
+impl<'rg, RgPipelineHandle> BindToSimpleRenderPass<'rg, RgPipelineHandle> for SurfelGiRenderState {
+    fn bind(
+        &self,
+        pass: SimpleRenderPass<'rg, RgPipelineHandle>,
+    ) -> SimpleRenderPass<'rg, RgPipelineHandle> {
+        pass.read(&self.surfel_hash_key_buf)
+            .read(&self.surfel_hash_value_buf)
+            .read(&self.cell_index_offset_buf)
+            .read(&self.surfel_index_buf)
+            .read(&self.surfel_spatial_buf)
+            .read(&self.surfel_irradiance_buf)
+    }
 }
 
 fn temporal_storage_buffer(

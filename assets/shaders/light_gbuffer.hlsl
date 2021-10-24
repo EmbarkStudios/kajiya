@@ -14,6 +14,7 @@
 #include "inc/color.hlsl"
 
 #include "csgi/common.hlsl"
+#include "surfel_gi/bindings.hlsl"
 
 #define USE_SSGI 0
 #define USE_CSGI 1
@@ -28,16 +29,18 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-[[vk::binding(6)]] Texture2D<float4> surfel_gi_tex;
-[[vk::binding(7)]] RWTexture2D<float4> temporal_output_tex;
-[[vk::binding(8)]] RWTexture2D<float4> output_tex;
-[[vk::binding(9)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(10)]] TextureCube<float4> unconvolved_sky_cube_tex;
-[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(12)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
+[[vk::binding(12)]] RWTexture2D<float4> temporal_output_tex;
+[[vk::binding(13)]] RWTexture2D<float4> output_tex;
+[[vk::binding(14)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(15)]] TextureCube<float4> unconvolved_sky_cube_tex;
+[[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(17)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
 };
+
+#include "surfel_gi/lookup.hlsl"
 
 #define SHADING_MODE_DEFAULT 0
 #define SHADING_MODE_NO_TEXTURES 1
@@ -257,7 +260,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     if (debug_shading_mode == SHADING_MODE_SURFEL_GI) {
-        output = surfel_gi_tex[px].rgb;
+        output = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal);
     }
 
     //output = gbuffer.emissive;

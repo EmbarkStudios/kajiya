@@ -174,7 +174,7 @@ impl WorldRenderer {
             &ssgi_tex,
             &rtr,
             &rtdgi,
-            &surfel_state.debug_out,
+            &surfel_state,
             &mut accum_img,
             &mut debug_out_tex,
             &csgi_volume,
