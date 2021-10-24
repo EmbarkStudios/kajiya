@@ -36,7 +36,7 @@ static const bool USE_SOFT_SHADOWS = true;
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool RESET_ACCUMULATION = !true;
-static const bool ROLLING_ACCUMULATION = !true;
+static const bool ROLLING_ACCUMULATION = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
@@ -134,7 +134,7 @@ void main() {
             if (primary_hit.is_hit) {
                 const float3 to_light_norm = sample_sun_direction(
                     float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))),
-                    false
+                    true
                 );
                 
                 const bool is_shadowed =

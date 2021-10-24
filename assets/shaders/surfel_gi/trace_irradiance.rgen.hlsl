@@ -23,7 +23,7 @@
 [[vk::binding(2)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(3)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
-static const uint MAX_PATH_LENGTH = 2;
+static const uint MAX_PATH_LENGTH = 4;
 #include "../inc/sun.hlsl"
 
 
@@ -31,6 +31,8 @@ static const uint MAX_PATH_LENGTH = 2;
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
 static const bool FIREFLY_SUPPRESSION = true;
+
+static const bool USE_EMISSIVE = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -169,6 +171,10 @@ void main() {
                 const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
                 irradiance_sum += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
+                if (USE_EMISSIVE) {
+                    irradiance_sum += gbuffer.emissive * throughput;
+                }
+
                 const float3 urand = float3(
                     uint_to_u01_float(hash1_mut(seed)),
                     uint_to_u01_float(hash1_mut(seed)),
@@ -191,7 +197,7 @@ void main() {
                     hit_dist_wt += float2(pack_dist(1), 1);
                 }
 
-                irradiance_sum = throughput * sample_environment_light(outgoing_ray.Direction);
+                irradiance_sum += throughput * sample_environment_light(outgoing_ray.Direction);
 
                 break;
             }
