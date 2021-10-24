@@ -62,7 +62,7 @@ impl RtdgiRenderer {
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
-            spatial_reuse_pass_count: 1,
+            spatial_reuse_pass_count: 2,
         }
     }
 }

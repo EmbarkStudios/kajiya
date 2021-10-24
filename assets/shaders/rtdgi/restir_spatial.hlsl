@@ -162,6 +162,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         float p_q = 1;
         p_q *= max(1e-2, calculate_luma(prev_irrad.rgb));
+        //p_q *= exp2(-sqrt(sample_dist2) * 0.5);
 
         // Actually looks more noisy with this the N dot L
         //p_q *= max(0, dot(prev_dir, center_normal_ws));

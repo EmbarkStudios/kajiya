@@ -1,7 +1,7 @@
 #include "gbuffer.hlsl"
 #include "color.hlsl"
 
-#define LAYERED_BRDF_FORCE_DIFFUSE_ONLY 0
+#define LAYERED_BRDF_FORCE_DIFFUSE_ONLY 1
 #define LAYERED_BRDF_FORCE_SPECULAR_ONLY 0
 
 // Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo

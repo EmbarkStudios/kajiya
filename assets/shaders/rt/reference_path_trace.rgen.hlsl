@@ -30,13 +30,13 @@ static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;
 static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
-static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
+static const bool GREY_ALBEDO_FIRST_BOUNCE = true;
 static const bool USE_SOFT_SHADOWS = true;
 
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool RESET_ACCUMULATION = !true;
-static const bool ROLLING_ACCUMULATION = true;
+static const bool ROLLING_ACCUMULATION = !true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;

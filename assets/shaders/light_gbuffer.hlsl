@@ -18,7 +18,7 @@
 
 #define USE_SSGI 0
 #define USE_CSGI 1
-#define USE_RTR 1
+#define USE_RTR 0
 #define USE_RTDGI 1
 
 #define SSGI_INTENSITY_BIAS 0.0
