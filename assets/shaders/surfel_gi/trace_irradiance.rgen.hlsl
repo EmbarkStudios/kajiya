@@ -24,7 +24,7 @@
 [[vk::binding(2)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(3)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
-static const uint MAX_PATH_LENGTH = 2;
+static const uint MAX_PATH_LENGTH = 3;
 #include "../inc/sun.hlsl"
 
 
@@ -74,7 +74,7 @@ void main() {
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
-    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 128);
+    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 64);
 
     const uint sample_count = 8;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
     float valid_sample_count = 0;

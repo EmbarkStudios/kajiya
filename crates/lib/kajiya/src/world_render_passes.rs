@@ -127,6 +127,7 @@ impl WorldRenderer {
             &reprojection_map,
             &sky_cube,
             self.bindless_descriptor_set,
+            &surfel_state,
             &tlas,
             &csgi_volume,
             &ssgi_tex,

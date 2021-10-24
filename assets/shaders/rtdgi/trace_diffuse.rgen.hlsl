@@ -12,17 +12,19 @@
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../csgi/common.hlsl"
+#include "../surfel_gi/bindings.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
 #define USE_SOFT_SHADOWS 0
 
-#define USE_CSGI 1
+#define USE_CSGI 0
+#define USE_SURFEL_GI 1
 
 // Experimental. Better precision, but also higher variance because of unfiltered lookups.
 #define USE_CSGI_SUBRAYS 0
 
 #define USE_TEMPORAL_JITTER 1
-#define USE_SHORT_RAYS_ONLY 1
+#define USE_SHORT_RAYS_ONLY 0
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 #define ROUGHNESS_BIAS 0.5
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
@@ -38,17 +40,19 @@
 [[vk::binding(2)]] Texture2D<float4> reprojected_gi_tex;
 [[vk::binding(3)]] Texture2D<float> ssao_tex;
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
-[[vk::binding(7)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(8)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(9)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(10)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(12)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(7, 8, 9, 10, 11, 12)
+[[vk::binding(13)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(14)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(15)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(16)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(17)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(18)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
 #include "../csgi/lookup.hlsl"
 #include "../csgi/subray_lookup.hlsl"
+#include "../surfel_gi/lookup.hlsl"
 
 static const float SKY_DIST = 1e5;
 
@@ -349,14 +353,20 @@ void main() {
     					control_variate_sample_directional = false;
                     }
 
-                    float3 csgi = lookup_csgi(
+                    float3 gi = lookup_csgi(
                         primary_hit.position,
                         gbuffer.normal,
                         lookup_params
                     );
 
-                    //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
-                    total_radiance += csgi * gbuffer.albedo;
+                    total_radiance += gi * gbuffer.albedo;
+                } else if (USE_SURFEL_GI) {
+                    float3 gi = lookup_surfel_gi(
+                        primary_hit.position,
+                        gbuffer.normal
+                    );
+
+                    total_radiance += gi * gbuffer.albedo;
                 }
             }
         } else {
