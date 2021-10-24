@@ -439,7 +439,9 @@ void main() {
         outgoing_ray.TMin = 0;
 
         TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
-        const float p_q = calculate_luma(result.out_value) * brdf_sample.wi.z;
+        const float p_q =
+            max(1e-2, calculate_luma(result.out_value))
+            * brdf_sample.wi.z;
         float w_sum = p_q_sel = p_q;
 
         if (w_sum > 0) {
@@ -499,7 +501,7 @@ void main() {
             //r.M = min(r.M, 1);
 
             float p_q = 1;
-            p_q *= calculate_luma(prev_irrad.rgb);
+            p_q *= max(1e-2, calculate_luma(prev_irrad.rgb));
             p_q *= max(0, dot(prev_dir, gbuffer.normal));
 
             if (!(p_q > 0)) {

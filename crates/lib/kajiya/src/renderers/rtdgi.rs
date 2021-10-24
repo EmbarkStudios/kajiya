@@ -328,13 +328,13 @@ impl RtdgiRenderer {
 
             let mut reservoir_output_tex0 = rg.create(
                 gbuffer_desc
-                    .usage(vk::ImageUsageFlags::empty())
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
                     .half_res()
                     .format(vk::Format::R32G32B32A32_SFLOAT),
             );
             let mut reservoir_output_tex1 = rg.create(
                 gbuffer_desc
-                    .usage(vk::ImageUsageFlags::empty())
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
                     .half_res()
                     .format(vk::Format::R32G32B32A32_SFLOAT),
             );

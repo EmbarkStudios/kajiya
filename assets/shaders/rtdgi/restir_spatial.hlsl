@@ -88,7 +88,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
         const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
-        if (dot(sample_normal_vs, center_normal_vs) < 0.9) {
+        if (sample_i > 0 && dot(sample_normal_vs, center_normal_vs) < 0.9) {
             continue;
         }
 
@@ -97,7 +97,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float prev_dist = prev_hit_ws_and_dist.w;
 
         // Reject hits too close to the surface
-        if (!(prev_dist > 1e-8)) {
+        if (sample_i > 0 && !(prev_dist > 1e-8)) {
             continue;
         }
 
@@ -106,19 +106,19 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 prev_dir = normalize(prev_dir_unnorm);
 
         // Reject hits below the normal plane
-        if (dot(prev_dir, center_normal_ws) < 1e-3) {
+        if (sample_i > 0 && dot(prev_dir, center_normal_ws) < 1e-3) {
             continue;
         }
 
         const float sample_depth = half_depth_tex[spx];
 
         // Reject neighbors with vastly different depths
-        if (abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
+        if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
             continue;
         }
 
         const float sample_ssao = ssao_tex[spx * 2].r;
-        if (abs(sample_ssao - center_ssao) > 0.2) {
+        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.2) {
             continue;
         }
 
@@ -134,7 +134,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
             const float wi_z = dot(prev_dir, center_normal_ws);
 
-            if (wi_z * 0.2 < fraction_of_normal_direction_as_offset) {
+            if (sample_i > 0 && wi_z * 0.2 < fraction_of_normal_direction_as_offset) {
     			continue;
     		}
         }
@@ -144,7 +144,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float4 prev_irrad = irradiance_tex[spx];
 
         float p_q = 1;
-        p_q *= calculate_luma(prev_irrad.rgb);
+        p_q *= max(1e-2, calculate_luma(prev_irrad.rgb));
         p_q *= max(0, dot(prev_dir, center_normal_ws));
 
         //float sample_jacobian_correction = 1.0 / max(1e-4, prev_dist);
