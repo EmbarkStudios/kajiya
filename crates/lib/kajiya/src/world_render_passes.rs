@@ -93,6 +93,13 @@ impl WorldRenderer {
             (gbuffer_depth, velocity_img)
         };
 
+        let mut surfel_state = crate::renderers::surfel_gi::allocate_surfels(
+            rg,
+            &gbuffer_depth.geometric_normal,
+            &gbuffer_depth,
+        );
+        surfel_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, &tlas);
+
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
             rg,
             &gbuffer_depth,
@@ -120,6 +127,7 @@ impl WorldRenderer {
             &reprojection_map,
             &sky_cube,
             self.bindless_descriptor_set,
+            &surfel_state,
             &tlas,
             &csgi_volume,
             &ssgi_tex,
@@ -167,6 +175,7 @@ impl WorldRenderer {
             &ssgi_tex,
             &rtr,
             &rtdgi,
+            &surfel_state,
             &mut accum_img,
             &mut debug_out_tex,
             &csgi_volume,

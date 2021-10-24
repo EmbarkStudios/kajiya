@@ -368,4 +368,18 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         self.state.raw_descriptor_sets.push((set_idx, set));
         self
     }
+
+    pub fn bind<Binding>(self, binding: &Binding) -> Self
+    where
+        Binding: BindToSimpleRenderPass<'rg, RgPipelineHandle>,
+    {
+        binding.bind(self)
+    }
+}
+
+pub trait BindToSimpleRenderPass<'rg, RgPipelineHandle> {
+    fn bind(
+        &self,
+        pass: SimpleRenderPass<'rg, RgPipelineHandle>,
+    ) -> SimpleRenderPass<'rg, RgPipelineHandle>;
 }

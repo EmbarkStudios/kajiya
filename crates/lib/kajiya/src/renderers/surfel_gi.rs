@@ -10,6 +10,7 @@ use kajiya_backend::{
     },
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
+use rg::BindToSimpleRenderPass;
 use vk::BufferUsageFlags;
 
 use super::GbufferDepth;
@@ -31,6 +32,20 @@ pub struct SurfelGiRenderState {
     surfel_sh_buf: rg::Handle<Buffer>,
 
     pub debug_out: rg::Handle<Image>,
+}
+
+impl<'rg, RgPipelineHandle> BindToSimpleRenderPass<'rg, RgPipelineHandle> for SurfelGiRenderState {
+    fn bind(
+        &self,
+        pass: SimpleRenderPass<'rg, RgPipelineHandle>,
+    ) -> SimpleRenderPass<'rg, RgPipelineHandle> {
+        pass.read(&self.surfel_hash_key_buf)
+            .read(&self.surfel_hash_value_buf)
+            .read(&self.cell_index_offset_buf)
+            .read(&self.surfel_index_buf)
+            .read(&self.surfel_spatial_buf)
+            .read(&self.surfel_irradiance_buf)
+    }
 }
 
 fn temporal_storage_buffer(
@@ -120,8 +135,8 @@ pub fn allocate_surfels(
     .read(&state.surfel_spatial_buf)
     .read(&state.surfel_irradiance_buf)
     .read(&state.surfel_sh_buf)
-    .write(&mut tile_surfel_alloc_tex)
     .write(&mut state.debug_out)
+    .write(&mut tile_surfel_alloc_tex)
     .constants(gbuffer_desc.extent_inv_extent_2d())
     .dispatch(gbuffer_desc.extent);
 
@@ -203,6 +218,7 @@ impl SurfelGiRenderState {
     pub fn trace_irradiance(
         &mut self,
         rg: &mut rg::RenderGraph,
+        sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
     ) {
@@ -233,6 +249,7 @@ impl SurfelGiRenderState {
             &["/shaders/rt/gbuffer.rchit.hlsl"],
         )
         .read(&self.surfel_spatial_buf)
+        .read(sky_cube)
         .write(&mut self.surfel_irradiance_buf)
         .write(&mut self.surfel_sh_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)

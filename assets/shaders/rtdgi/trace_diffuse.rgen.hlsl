@@ -13,18 +13,20 @@
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
 #include "../csgi/common.hlsl"
+#include "../surfel_gi/bindings.hlsl"
 #include "restir_settings.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
 #define USE_SOFT_SHADOWS 0
 
-#define USE_CSGI 1
+#define USE_CSGI 0
+#define USE_SURFEL_GI 1
 
 // Experimental. Better precision, but also higher variance because of unfiltered lookups.
 #define USE_CSGI_SUBRAYS 0
 
 #define USE_TEMPORAL_JITTER 1
-#define USE_SHORT_RAYS_ONLY 1
+#define USE_SHORT_RAYS_ONLY 0
 #define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 #define ROUGHNESS_BIAS 0.5
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
@@ -44,20 +46,22 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(8)]] Texture2D<float4> ray_history_tex;
 [[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
 [[vk::binding(10)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(11)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(12)]] RWTexture2D<float4> ray_out_tex;
-[[vk::binding(13)]] RWTexture2D<float4> hit0_out_tex;
-[[vk::binding(14)]] RWTexture2D<float4> reservoir_out_tex;
-[[vk::binding(15)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(16)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(17)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(18)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(19)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(11, 12, 13, 14, 15, 16)
+[[vk::binding(17)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(18)]] RWTexture2D<float4> ray_out_tex;
+[[vk::binding(19)]] RWTexture2D<float4> hit0_out_tex;
+[[vk::binding(20)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(21)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(22)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(23)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(24)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(25)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
 #include "../csgi/lookup.hlsl"
 #include "../csgi/subray_lookup.hlsl"
+#include "../surfel_gi/lookup.hlsl"
 
 static const float SKY_DIST = 1e5;
 
@@ -243,6 +247,13 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
 
                 //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
                 total_radiance += csgi * gbuffer.albedo;
+            } else if (USE_SURFEL_GI) {
+                float3 gi = lookup_surfel_gi(
+                    primary_hit.position,
+                    gbuffer.normal
+                );
+
+                total_radiance += gi * gbuffer.albedo;
             }
         }
     } else {

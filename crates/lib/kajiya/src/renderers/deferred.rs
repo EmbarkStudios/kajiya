@@ -2,7 +2,7 @@ use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 
-use super::GbufferDepth;
+use super::{surfel_gi::SurfelGiRenderState, GbufferDepth};
 
 #[allow(clippy::too_many_arguments)]
 pub fn light_gbuffer(
@@ -12,6 +12,7 @@ pub fn light_gbuffer(
     ssgi: &rg::Handle<Image>,
     rtr: &rg::Handle<Image>,
     rtdgi: &rg::Handle<Image>,
+    surfel_gi: &SurfelGiRenderState,
     temporal_output: &mut rg::Handle<Image>,
     output: &mut rg::Handle<Image>,
     csgi_volume: &super::csgi::CsgiVolume,
@@ -27,6 +28,7 @@ pub fn light_gbuffer(
         .read(ssgi)
         .read(rtr)
         .read(rtdgi)
+        .bind(surfel_gi)
         .write(temporal_output)
         .write(output)
         .read_array(&csgi_volume.indirect)

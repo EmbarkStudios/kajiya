@@ -8,7 +8,7 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
-use super::{csgi, GbufferDepth, PingPongTemporalResource};
+use super::{csgi, surfel_gi::SurfelGiRenderState, GbufferDepth, PingPongTemporalResource};
 
 use blue_noise_sampler::spp64::*;
 
@@ -210,6 +210,7 @@ impl RtdgiRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
+        surfel_gi: &SurfelGiRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi::CsgiVolume,
 
@@ -298,6 +299,7 @@ impl RtdgiRenderer {
             .read(&ray_history_tex)
             .read(&reservoir_history_tex)
             .read(reprojection_map)
+            .bind(surfel_gi)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_output_tex)
             .write(&mut hit0_tex)
