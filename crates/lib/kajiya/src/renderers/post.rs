@@ -73,9 +73,9 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
             0.5f32
         };
 
-        SimpleRenderPass::new_compute(
+        SimpleRenderPass::new_compute_rust(
             rg.add_pass(&format!("_rev_blur{}", target_mip)),
-            "/shaders/rev_blur.hlsl",
+            "rev_blur::rev_blur_cs",
         )
         .read_view(
             in_pyramid,
