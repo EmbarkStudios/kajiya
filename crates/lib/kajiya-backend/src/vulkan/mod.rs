@@ -54,17 +54,25 @@ impl RenderBackend {
         let surface = surface::Surface::create(&instance, window)?;
 
         use physical_device::*;
-        let physical_devices =
+        let mut physical_devices =
             enumerate_physical_devices(&instance)?.with_presentation_support(&surface);
 
         info!("Available physical devices: {:#?}", physical_devices);
 
-        let physical_device = Arc::new(
-            physical_devices
-                .into_iter()
-                .next()
-                .expect("valid physical device"),
-        );
+        // The reverse is because if there are multiple devices with the same score, max_by_key would choose the last,
+        // but previously the first GPU was chosen. So this preserves the old order.
+        physical_devices.reverse();
+
+        let physical_device = Arc::new(physical_devices.into_iter().max_by_key(|device| {
+            let mut score = 0;
+            score += match device.properties.device_type {
+                vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
+                vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
+                vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
+                _ => 0
+            };
+            score
+        }).unwrap());
 
         let device = device::Device::create(&physical_device)?;
         let surface_formats = swapchain::Swapchain::enumerate_surface_formats(&device, &surface)?;
