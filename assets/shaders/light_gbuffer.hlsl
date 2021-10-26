@@ -195,7 +195,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     total_radiance += gi_irradiance
         * brdf.diffuse_brdf.albedo
-        * brdf.energy_preservation.preintegrated_transmission_fraction
+        #if !LAYERED_BRDF_FORCE_DIFFUSE_ONLY
+            * brdf.energy_preservation.preintegrated_transmission_fraction
+        #endif
         ;
 
     if (USE_RTR && debug_shading_mode != SHADING_MODE_RTX_OFF) {

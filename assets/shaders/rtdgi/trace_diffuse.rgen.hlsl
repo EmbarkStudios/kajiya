@@ -458,9 +458,24 @@ void main() {
 
     const float4 reproj = reprojection_tex[hi_px];
 
+    float reproj_validity_dilated = reproj.z;
+    // copy pasta from temporal_filter
+    #if 1
+        // Greatly reduces temporal bleeding of slowly-moving edges
+        // TODO: do this at sampling stage instead of patching up the bilinear result
+        {
+         	const int k = 1;
+            for (int y = -k; y <= k; ++y) {
+                for (int x = -k; x <= k; ++x) {
+                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[hi_px + int2(x, y)].z);
+                }
+            }
+        }
+    #endif
+
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
 
-    if (use_resampling) {
+    if (use_resampling && reproj_validity_dilated > 0.5) {
         float M_sum = reservoir.M;
 
         // Can't use linear interpolation, but we can interpolate stochastically instead
