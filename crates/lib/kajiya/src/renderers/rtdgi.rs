@@ -243,7 +243,7 @@ impl RtdgiRenderer {
                 rg,
                 Self::temporal_tex_desc(
                     gbuffer_desc
-                        .format(vk::Format::R16G16B16A16_SFLOAT)
+                        .format(vk::Format::R32G32B32A32_SFLOAT)
                         .half_res()
                         .extent_2d(),
                 ),
@@ -330,7 +330,7 @@ impl RtdgiRenderer {
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::empty())
                     .half_res()
-                    .format(vk::Format::R16G16B16A16_SFLOAT),
+                    .format(vk::Format::R32G32B32A32_SFLOAT),
             );
 
             let mut reservoir_output_tex0 = rg.create(

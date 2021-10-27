@@ -423,11 +423,15 @@ void main() {
     float3 outgoing_dir = gbuffer.normal;
     float p_q_sel = 0;
     uint2 src_px_sel = px;
+    float3 irradiance_sel = 0;
+    float3 ray_hit_sel = 1;
+    float3 hit_normal_sel = 1;
+    uint sel_valid_sample_idx = 0;
 
     Reservoir1spp reservoir = Reservoir1spp::create();
     /*{
         float3 expected_irradiance = reprojected_gi_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
-        float p_q = max(1e-2, calculate_luma(expected_irradiance));
+        float p_q = max(1e-3, calculate_luma(expected_irradiance));
         reservoir.w_sum = p_q;
         reservoir.w_sel = p_q;
         reservoir.M = 1;
@@ -447,20 +451,24 @@ void main() {
         outgoing_ray.Direction = outgoing_dir;
         outgoing_ray.Origin = refl_ray_origin;
         outgoing_ray.TMin = 0;
+        outgoing_ray.TMax = SKY_DIST;
 
         TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
         const float p_q = p_q_sel =
-            max(1e-2, calculate_luma(result.out_value))
+            1.0
+            * max(1e-3, calculate_luma(result.out_value))
             //* brdf_sample.wi.z
             ;
+
+        irradiance_sel = result.out_value;
+        ray_hit_sel = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
+        hit_normal_sel = result.hit_normal_ws;
 
         reservoir.payload = reservoir_payload;
         reservoir.w_sum = p_q;
         reservoir.M = 1;
         reservoir.W = 1;
     }
-
-    float jacobian_correction = 1;
 
     const float4 reproj = reprojection_tex[hi_px];
 
@@ -492,29 +500,35 @@ void main() {
 
         int2 reproj_px = (gbuffer_tex_size.xy * reproj.xy + reproj_rand_offset) / 2;
 
+        float3 valid_sample_origins[4];
+        valid_sample_origins[0] = refl_ray_origin;
+
+        float valid_sample_M[4] = { reservoir.M, 0, 0, 0 };
+        uint valid_sample_count = 0;
+
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-        for (uint sample_i = 0; sample_i < 8; ++sample_i) {
+        for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-            float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * 5.0;
+            float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * 1.0;
+            //float radius = float(sample_i + 1 + sample_radius_offset) * 1.0;
             int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
 
             //int2 rpx = px + reproj_px + sample_offsets[sample_i];
-            int2 rpx = px + reproj_px + reservoir_px_offset;
+            const int2 rpx = px + reproj_px + reservoir_px_offset;
+            const uint2 rpx_hi = rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
 
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
 
-            float4 sample_gbuffer_packed = gbuffer_tex[rpx * 2];
+            float4 sample_gbuffer_packed = gbuffer_tex[rpx_hi];
             GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
-            if (dot(sample_gbuffer.normal, gbuffer.normal) < 0.9) {
+            if (sample_i > 0 && dot(sample_gbuffer.normal, gbuffer.normal) < 0.9) {
                 continue;
             }
 
-            const float2 sample_uv = get_uv(
-                rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
-                gbuffer_tex_size);
-            const float sample_depth = depth_tex[rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
-            if (0 == sample_depth) {
+            const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
+            const float sample_depth = depth_tex[rpx_hi];
+            if (sample_i > 0 && 0 == sample_depth) {
                 continue;
             }
 
@@ -523,22 +537,24 @@ void main() {
 
             const float4 prev_hit_ws_and_dist = ray_history_tex[rpx];
             const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
-            //const float prev_dist = prev_hit_ws_and_dist.w;
-            const float prev_dist = length(prev_hit_ws - sample_origin_ws);
+            const float prev_dist = prev_hit_ws_and_dist.w;
+            //const float prev_dist = length(prev_hit_ws - sample_origin_ws);
 
-            if (!(prev_dist > 1e-4)) {
+            /*if (sample_i > 0 && !(prev_dist > 1e-4)) {
                 continue;
-            }
+            }*/
 
-            const float3 prev_dir_unnorm = prev_hit_ws - refl_ray_origin;
-            const float prev_dist_now = length(prev_dir_unnorm);
-            const float3 prev_dir = normalize(prev_dir_unnorm);
+            const float3 sample_dir_unnorm = prev_hit_ws - refl_ray_origin;
+            const float sample_dist = length(sample_dir_unnorm);
+            const float3 sample_dir = normalize(sample_dir_unnorm);
 
-            if (dot(prev_dir, gbuffer.normal) < 1e-3) {
+            if (sample_i > 0 && dot(sample_dir, gbuffer.normal) < 1e-3) {
                 continue;
             }
             
             const float4 prev_irrad = irradiance_history_tex[rpx];
+
+            //if (prev_irrad.r > prev_irrad.b) {continue;}
 
             // TODO: need the previous normal (last frame)
             //const float4 prev_hit_normal_ws_dot = hit_normal_tex[rpx];
@@ -552,60 +568,81 @@ void main() {
             // to at most 20× of the current frame’s reservoir’s M
 
             if (sample_i == 0) {
-                r.M = min(r.M, 20);
+                r.M = min(r.M, 10);
             } else {
                 r.M = min(r.M, 5);
             }
 
             float p_q = 1;
-            p_q *= max(1e-2, calculate_luma(prev_irrad.rgb));
-            //p_q *= max(0, dot(prev_dir, gbuffer.normal));
+            p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
+            //p_q *= max(0, dot(sample_dir, gbuffer.normal));
 
-            if (!(p_q >= 0)) {
-                continue;
+            float visibility = 1;
+
+            if (sample_i > 0) {
+                RayDesc vis_ray;
+                vis_ray.Direction = sample_dir;
+                vis_ray.Origin = refl_ray_origin;
+                vis_ray.TMin = 0;
+                vis_ray.TMax = sample_dist * 0.95;
+
+                if (rt_is_shadowed(acceleration_structure, vis_ray)) {
+                    //continue;
+                    visibility = 0;
+                }
             }
 
-            float sample_jacobian_correction = 1;
+            float jacobian = 1;
 
             // Distance falloff. Needed to avoid leaks.
-            sample_jacobian_correction *= max(0.0, prev_dist) / max(1e-4, prev_dist_now);
-            sample_jacobian_correction *= sample_jacobian_correction;
+            jacobian *= clamp(prev_dist, 1e-3, 1e3) / clamp(sample_dist, 1e-3, 1e3);
+            jacobian *= jacobian;
 
             // N of hit dot -L. Needed to avoid leaks.
-            // Note: done at the bottom of this file
-            //sample_jacobian_correction *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
+            const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[rpx];
+            jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, sample_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
 
             // N dot L. Useful for normal maps, micro detail.
             // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
             // when we don't use a harsh normal cutoff to exchange reservoirs with.
-            sample_jacobian_correction *= min(1.0, max(0.0, prev_irrad.a) / dot(prev_dir, gbuffer.normal));
+            jacobian *= min(1.0, max(0.0, prev_irrad.a) / dot(sample_dir, gbuffer.normal));
 
             M_sum += r.M;
-            if (reservoir.update(p_q * r.W * r.M, reservoir_payload, rng)) {
-                outgoing_dir = prev_dir;
+            if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {
+                outgoing_dir = sample_dir;
                 p_q_sel = p_q;
-                jacobian_correction = sample_jacobian_correction;
+                jacobian = jacobian;
                 src_px_sel = rpx;
-
-                // mutate the direction
-                // TODO: split off to a separate sample generation strategy
-                #if 0
-                    const float3 dir_ts = mul(outgoing_dir, tangent_to_world);
-                    const float2 dir_pss = brdf.wi_to_primary_sample_space(dir_ts);
-
-                    const float mut_x = uint_to_u01_float(hash1_mut(rng)) * 0.002;
-                    const float mut_y = (uint_to_u01_float(hash1_mut(rng)) - 0.5) * 0.02;
-
-                    float2 mut_dir_pss = frac(dir_pss + float2(mut_x, mut_y));
-                    mut_dir_pss.y = abs(cos(acos(dir_pss.y) + mut_y));
-
-                    outgoing_dir = mul(tangent_to_world, brdf.sample(wo, mut_dir_pss).wi);
-                #endif
+                irradiance_sel = prev_irrad.rgb;
+                ray_hit_sel = prev_hit_ws;
+                hit_normal_sel = prev_hit_normal_ws_dot.xyz;
+                sel_valid_sample_idx = valid_sample_count;
             }
+
+            valid_sample_M[valid_sample_count] += r.M;
+            valid_sample_origins[valid_sample_count] = sample_origin_ws;
+            valid_sample_count += 1;
         }
 
+        valid_sample_count = max(valid_sample_count, 1);
+
+        /*float Z = 0;
+        for (uint v = 0; v < valid_sample_count; ++v) {
+            RayDesc vis_ray;
+            vis_ray.Origin = valid_sample_origins[v];
+            float3 to_hit = ray_hit_sel - vis_ray.Origin;
+            vis_ray.Direction = normalize(to_hit);
+            vis_ray.TMin = 0;
+            vis_ray.TMax = length(to_hit) * 0.95;
+
+            if (v == sel_valid_sample_idx || !rt_is_shadowed(acceleration_structure, vis_ray)) {
+                Z += valid_sample_M[v];
+            }
+        }*/
+
         reservoir.M = M_sum;
-        reservoir.W = (1.0 / p_q_sel) * (reservoir.w_sum / reservoir.M);
+        //reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / Z);
+        reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
     } else {
         outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
     }
@@ -615,15 +652,15 @@ void main() {
     outgoing_ray.Origin = refl_ray_origin;
     outgoing_ray.TMin = 0;
 
-    TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
+    //TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
 
-    const float4 hit_normal_ws_dot = float4(result.hit_normal_ws, -dot(result.hit_normal_ws, outgoing_ray.Direction));
+    const float4 hit_normal_ws_dot = float4(hit_normal_sel, -dot(hit_normal_sel, outgoing_ray.Direction));
 
-    if (any(src_px_sel != px)) {
+    /*if (any(src_px_sel != px)) {
         const uint2 spx = src_px_sel;
         const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[spx];
-        jacobian_correction *= max(0.0, hit_normal_ws_dot.w) / max(1e-4, prev_hit_normal_ws_dot.w);
-    }
+        jacobian *= max(0.0, hit_normal_ws_dot.w) / max(1e-4, prev_hit_normal_ws_dot.w);
+    }*/
 
 #if 1
     /*if (!use_resampling) {
@@ -638,9 +675,10 @@ void main() {
     }*/
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
-    irradiance_out_tex[px] = float4(result.out_value * jacobian_correction, dot(gbuffer.normal, outgoing_ray.Direction));
+    irradiance_out_tex[px] = float4(irradiance_sel, dot(gbuffer.normal, outgoing_ray.Direction));
+    //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_tex[px] = hit_normal_ws_dot;
-    ray_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, result.hit_t);
+    ray_out_tex[px] = float4(ray_hit_sel, length(ray_hit_sel - refl_ray_origin));
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

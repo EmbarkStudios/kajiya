@@ -72,7 +72,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     static const float GOLDEN_ANGLE = 2.39996323;
 
     // TODO: split off into a separate temporal stage, following ReSTIR GI
-    const uint sample_count = DIFFUSE_GI_USE_RESTIR ? 1 : 1;
+    const uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
     float poor_normals = 0;
@@ -163,7 +163,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float4 prev_hit_normal_ws_dot = hit_normal_tex[spx];
 
         float p_q = 1;
-        p_q *= max(1e-2, calculate_luma(prev_irrad.rgb));
+        p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
         //p_q *= exp2(-sqrt(sample_dist2) * 0.5);
 
         // Actually looks more noisy with this the N dot L
@@ -190,10 +190,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         float w = p_q * r.W * r.M;
-        if (reservoir.update(w, r.payload, rng)) {
+        if (reservoir.update(w * sample_jacobian_correction, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = prev_dir;
-            jacobian_correction = sample_jacobian_correction;
+            //jacobian_correction = sample_jacobian_correction;
         }
 
         M_sum += r.M;
