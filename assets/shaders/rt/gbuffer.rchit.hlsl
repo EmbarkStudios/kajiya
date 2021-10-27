@@ -164,7 +164,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     gbuffer.emissive = emissive;
 
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    //gbuffer.metalness = 0;
+    gbuffer.metalness = 0;
     //gbuffer.roughness = 0.1;
     //gbuffer.albedo = 0;
 

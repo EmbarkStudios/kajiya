@@ -33,6 +33,7 @@ struct Reservoir1spp {
 
     bool update(float w, uint sample_payload, inout uint rng) {
         this.w_sum += w;
+        this.M += 1;
         const float dart = uint_to_u01_float(hash1_mut(rng));
         const float prob = w / this.w_sum;
 

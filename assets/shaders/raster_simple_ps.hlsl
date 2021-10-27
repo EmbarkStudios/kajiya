@@ -86,7 +86,7 @@ PsOut main(PsIn ps) {
         normal_ws *= -1;
         //normal_ws = geometric_normal_ws;
     }
-    //normal_ws = geometric_normal_ws;
+    normal_ws = geometric_normal_ws;
 
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
@@ -96,7 +96,7 @@ PsOut main(PsIn ps) {
         * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    //metalness = 0;
+    metalness = 0;
     //roughness = 0.1;
     //albedo = 0.0;
 

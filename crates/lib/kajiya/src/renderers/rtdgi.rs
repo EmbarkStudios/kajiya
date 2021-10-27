@@ -20,6 +20,7 @@ pub struct RtdgiRenderer {
     temporal_tex: PingPongTemporalResource,
     temporal2_tex: PingPongTemporalResource,
     temporal2_variance_tex: PingPongTemporalResource,
+    temporal_hit_normal_tex: PingPongTemporalResource,
     cv_temporal_tex: PingPongTemporalResource,
 
     ranking_tile_buf: Arc<Buffer>,
@@ -58,6 +59,7 @@ impl RtdgiRenderer {
             temporal_tex: PingPongTemporalResource::new("rtdgi.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
+            temporal_hit_normal_tex: PingPongTemporalResource::new("rtdgi.hit_normal"),
             cv_temporal_tex: PingPongTemporalResource::new("rtdgi.cv"),
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
@@ -236,12 +238,16 @@ impl RtdgiRenderer {
         .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
         .dispatch(reprojected_history_tex.desc().extent);
 
-        let mut hit_normal_tex = rg.create(
-            gbuffer_desc
-                .usage(vk::ImageUsageFlags::empty())
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        let (mut hit_normal_output_tex, hit_normal_history_tex) =
+            self.temporal_hit_normal_tex.get_output_and_history(
+                rg,
+                Self::temporal_tex_desc(
+                    gbuffer_desc
+                        .format(vk::Format::R16G16B16A16_SFLOAT)
+                        .half_res()
+                        .extent_2d(),
+                ),
+            );
 
         let ranking_tile_buf = rg.import(
             self.ranking_tile_buf.clone(),
@@ -299,10 +305,11 @@ impl RtdgiRenderer {
             .read(&ray_history_tex)
             .read(&reservoir_history_tex)
             .read(reprojection_map)
+            .read(&hit_normal_history_tex)
             .bind(surfel_gi)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_output_tex)
-            .write(&mut hit_normal_tex)
+            .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
             .read_array(&csgi_volume.indirect)
             .read_array(&csgi_volume.subray_indirect)
@@ -347,7 +354,7 @@ impl RtdgiRenderer {
                     "/shaders/rtdgi/restir_spatial.hlsl",
                 )
                 .read(&irradiance_tex)
-                .read(&hit_normal_tex)
+                .read(&hit_normal_output_tex)
                 .read(&ray_tex)
                 .read(reservoir_input_tex)
                 .read(&gbuffer_depth.gbuffer)

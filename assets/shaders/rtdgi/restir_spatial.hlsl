@@ -72,10 +72,12 @@ void main(uint2 px : SV_DispatchThreadID) {
     static const float GOLDEN_ANGLE = 2.39996323;
 
     // TODO: split off into a separate temporal stage, following ReSTIR GI
-    const uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
+    const uint sample_count = DIFFUSE_GI_USE_RESTIR ? 1 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
     float poor_normals = 0;
+
+    Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
@@ -133,13 +135,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         const float sample_ssao = ssao_tex[spx * 2].r;
-        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.2) {
+        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.1) {
             continue;
         }
 
         const float2 sample_uv = get_uv(
-            spx + hi_px_subpixels[frame_constants.frame_index & 3],
-            output_tex_size);
+            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            gbuffer_tex_size);
 
         const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
         const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
@@ -191,8 +193,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         if (reservoir.update(w, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = prev_dir;
-
-            // TODO; seems wrong.
             jacobian_correction = sample_jacobian_correction;
         }
 
@@ -204,10 +204,19 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     reservoir_output_tex[px] = reservoir.as_raw();
 
+    float3 irradiance = irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb;
+    float likelihood = calculate_luma(irradiance) * center_r.W * jacobian_correction;
+
     #if 1
         irradiance_output_tex[px] = float4(
-            irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb
-            * reservoir.W * jacobian_correction, 1);
+            irradiance * reservoir.W * jacobian_correction
+            //TODO
+             //* saturate(dot(dir_sel, center_normal_ws))
+             , 1);
+
+            //irradiance_output_tex[px] = reservoir.w_sum / max(1e-5, calculate_luma(irradiance)) * 0.001;
+            //irradiance_output_tex[px] = float4(irradiance, 1);
+            //irradiance_output_tex[px] = reservoir.W * 0.01;
         return;
     #endif
 }
