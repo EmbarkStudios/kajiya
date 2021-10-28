@@ -362,18 +362,36 @@ impl RtdgiRenderer {
                 .read(&*half_depth_tex)
                 .read(ssao_img)
                 .write(&mut reservoir_output_tex0)
-                .write(&mut irradiance_output_tex)
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),
-                    irradiance_output_tex.desc().extent_inv_extent_2d(),
+                    reservoir_output_tex0.desc().extent_inv_extent_2d(),
                     super::rtr::SPATIAL_RESOLVE_OFFSETS,
                     spatial_reuse_pass_idx as u32,
                 ))
-                .dispatch(irradiance_output_tex.desc().extent);
+                .dispatch(reservoir_output_tex0.desc().extent);
 
                 std::mem::swap(&mut reservoir_output_tex0, &mut reservoir_output_tex1);
                 reservoir_input_tex = &mut reservoir_output_tex1;
             }
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass("restir resolve"),
+                "/shaders/rtdgi/restir_resolve.hlsl",
+            )
+            .read(&irradiance_tex)
+            .read(&hit_normal_output_tex)
+            .read(&ray_tex)
+            .read(reservoir_input_tex)
+            .read(&gbuffer_depth.gbuffer)
+            .read(&*half_view_normal_tex)
+            .read(&*half_depth_tex)
+            .read(ssao_img)
+            .write(&mut irradiance_output_tex)
+            .constants((
+                gbuffer_desc.extent_inv_extent_2d(),
+                irradiance_output_tex.desc().extent_inv_extent_2d(),
+            ))
+            .dispatch(irradiance_output_tex.desc().extent);
 
             irradiance_output_tex
         };

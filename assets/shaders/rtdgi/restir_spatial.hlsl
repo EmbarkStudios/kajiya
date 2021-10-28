@@ -19,8 +19,7 @@
 [[vk::binding(6)]] Texture2D<float> half_depth_tex;
 [[vk::binding(7)]] Texture2D<float4> ssao_tex;
 [[vk::binding(8)]] RWTexture2D<float4> reservoir_output_tex;
-[[vk::binding(9)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(10)]] cbuffer _ {
+[[vk::binding(9)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
@@ -45,11 +44,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     const uint seed = frame_constants.frame_index + spatial_reuse_pass_idx * 123;
     uint rng = hash3(uint3(px, seed));
 
-    if (0.0 == depth) {
-        irradiance_output_tex[px] = 0.0.xxxx;
-        return;
-    }
-
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
 
@@ -65,8 +59,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 dir_sel = 1;
     // p_q_sel *= max(0, dot(prev_dir, center_normal_ws));
 
-    float jacobian_correction = 1;
-
     float M_sum = reservoir.M;
 
     static const float GOLDEN_ANGLE = 2.39996323;
@@ -79,10 +71,18 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
+    float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
+
+    // TODO: detect low variance, shrink filter
+    //float radius_mult = 3.5;
+    if (center_r.M < 10) {
+        radius_mult = 4.5;
+    }
+
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-    for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+    for (uint sample_i = 0; sample_i < 8; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * 2.5;
+        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * radius_mult;
         int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
 
         const int2 reservoir_px = px + reservoir_px_offset;
@@ -97,12 +97,17 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
 
+        float normal_cutoff = 0.99;
+        if (center_r.M < 10) {
+            normal_cutoff = 0.9 * exp2(-max(0, poor_normals) * 0.3);
+        }
+
         // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
         // areas of high geometric complexity. The resulting bias tends to brighten edges,
         // and we clamp that effect later. The artifacts is less prounounced normal map detail.
         // TODO: detect this first, and sharpen the threshold. The poor normal counting below
         // is a shitty take at that.
-        if (sample_i > 0 && dot(sample_normal_vs, center_normal_vs) < 0.9 * exp2(-max(0, poor_normals) * 0.3)) {
+        if (sample_i > 0 && dot(sample_normal_vs, center_normal_vs) < normal_cutoff) {
             poor_normals += 1;
             continue;
         } else {
@@ -169,31 +174,30 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Actually looks more noisy with this the N dot L
         //p_q *= max(0, dot(prev_dir, center_normal_ws));
 
-        float sample_jacobian_correction = 1;
+        float jacobian = 1;
 
         // Distance falloff. Needed to avoid leaks.
-        sample_jacobian_correction *= max(0.0, prev_dist) / max(1e-4, prev_dist_now);
-        sample_jacobian_correction *= sample_jacobian_correction;
+        jacobian *= max(0.0, prev_dist) / max(1e-4, prev_dist_now);
+        jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks.
-        sample_jacobian_correction *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
+        jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
 
         // N dot L. Useful for normal maps, micro detail.
         // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
         // when we don't use a harsh normal cutoff to exchange reservoirs with.
-        sample_jacobian_correction *= min(1.0, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
+        jacobian *= min(1.0, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
 
-        //p_q *= sample_jacobian_correction;
+        //p_q *= jacobian;
 
         if (!(p_q > 0)) {
             continue;
         }
 
         float w = p_q * r.W * r.M;
-        if (reservoir.update(w * sample_jacobian_correction, r.payload, rng)) {
+        if (reservoir.update(w * jacobian, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = prev_dir;
-            //jacobian_correction = sample_jacobian_correction;
         }
 
         M_sum += r.M;
@@ -204,12 +208,12 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     reservoir_output_tex[px] = reservoir.as_raw();
 
-    float3 irradiance = irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb;
-    float likelihood = calculate_luma(irradiance) * center_r.W * jacobian_correction;
+    /*float3 irradiance = irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb;
+    float likelihood = calculate_luma(irradiance) * center_r.W;
 
     #if 1
         irradiance_output_tex[px] = float4(
-            irradiance * reservoir.W * jacobian_correction
+            irradiance * reservoir.W
             //TODO
              //* saturate(dot(dir_sel, center_normal_ws))
              , 1);
@@ -218,5 +222,5 @@ void main(uint2 px : SV_DispatchThreadID) {
             //irradiance_output_tex[px] = float4(irradiance, 1);
             //irradiance_output_tex[px] = reservoir.W * 0.01;
         return;
-    #endif
+    #endif*/
 }

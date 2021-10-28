@@ -160,6 +160,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     max_sample_count = lerp(max_sample_count, 4, variance_adjusted_temporal_change);
     //max_sample_count = lerp(max_sample_count, 1, smoothstep(0.01, 0.6, 10 * temporal_change * (center_dev / max(1e-5, center_luma))));
     max_sample_count *= light_stability;
+    //max_sample_count = 16;
 
     float current_sample_count = history.a;
     
