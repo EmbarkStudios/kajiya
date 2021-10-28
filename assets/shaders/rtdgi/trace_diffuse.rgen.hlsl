@@ -32,8 +32,8 @@
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
 #define USE_SCREEN_GI_REPROJECTION 0
 
-#define USE_EMISSIVE 1
-#define USE_LIGHTS 1
+#define USE_EMISSIVE 0
+#define USE_LIGHTS 0
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -592,20 +592,29 @@ void main() {
                 }
             }
 
+            const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[rpx];
+
             float jacobian = 1;
 
-            // Distance falloff. Needed to avoid leaks.
-            jacobian *= clamp(prev_dist, 1e-3, 1e3) / clamp(sample_dist, 1e-3, 1e3);
-            jacobian *= jacobian;
+            // Note: needed for sample 0 due to temporal jitter.
+            //if (sample_i > 0)
+            {
+                // Distance falloff. Needed to avoid leaks.
+                jacobian *= clamp(prev_dist, 1e-3, 1e3) / clamp(sample_dist, 1e-3, 1e3);
+                jacobian *= jacobian;
 
-            // N of hit dot -L. Needed to avoid leaks.
-            const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[rpx];
-            jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, sample_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
+                // N of hit dot -L. Needed to avoid leaks.
+                jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, sample_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
 
-            // N dot L. Useful for normal maps, micro detail.
-            // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
-            // when we don't use a harsh normal cutoff to exchange reservoirs with.
-            jacobian *= min(1.0, max(0.0, prev_irrad.a) / dot(sample_dir, gbuffer.normal));
+                // Note: causes flicker due to normal differences between frames (TAA, half-res downsample jitter).
+                // Might be better to apply at the end, in spatial resolve. When used with the bias,
+                // causes severe darkening instead (on bumpy normal mapped surfaces).
+                //
+                // N dot L. Useful for normal maps, micro detail.
+                // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
+                // when we don't use a harsh normal cutoff to exchange reservoirs with.
+                //jacobian *= min(1, max(0.0, prev_irrad.a) / dot(sample_dir, gbuffer.normal));
+            }
 
             M_sum += r.M;
             if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {

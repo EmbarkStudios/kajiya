@@ -71,16 +71,18 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
-    float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
+    //float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
 
     // TODO: detect low variance, shrink filter
-    //float radius_mult = 3.5;
+    float radius_mult = 3.5;
     if (center_r.M < 10) {
         radius_mult = 4.5;
     }
 
+    uint valid_sample_count = 0;
+
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-    for (uint sample_i = 0; sample_i < 8; ++sample_i) {
+    for (uint sample_i = 0; sample_i < sample_count && valid_sample_count < 4; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * radius_mult;
         int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
@@ -201,6 +203,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         M_sum += r.M;
+        valid_sample_count += 1;
     }
 
     reservoir.M = M_sum;

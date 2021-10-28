@@ -47,7 +47,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y) * 2]);
+            float4 neigh = (input_tex[px + int2(x, y)]);
 			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
@@ -203,7 +203,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 #else
     float4 clamped_history = float4(
         //soft_color_clamp(center.rgb, history.rgb, ex.rgb, dev.rgb),
-        ycbcr_to_rgb(soft_color_clamp(rgb_to_ycbcr(center.rgb), rgb_to_ycbcr(history.rgb), rgb_to_ycbcr(ex.rgb), abs(rgb_to_ycbcr(dev.rgb)))),
+        ycbcr_to_rgb(soft_color_clamp(rgb_to_ycbcr(center.rgb), rgb_to_ycbcr(history.rgb), rgb_to_ycbcr(ex.rgb), abs(rgb_to_ycbcr(0.5 * dev.rgb)))),
         history.a
     );
 #endif

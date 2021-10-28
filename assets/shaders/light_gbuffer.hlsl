@@ -193,6 +193,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gi_irradiance += biased_ssgi.rgb;
     #endif
 
+    //gi_irradiance *= ssgi.r;
+
     total_radiance += gi_irradiance
         * brdf.diffuse_brdf.albedo
         #if !LAYERED_BRDF_FORCE_DIFFUSE_ONLY
