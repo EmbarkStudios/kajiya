@@ -94,12 +94,12 @@ void main(uint2 px : SV_DispatchThreadID) {
         r.M = min(r.M, 500);
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
+
         const int2 sample_offset = int2(px) - int2(spx);
         const float sample_dist2 = dot(sample_offset, sample_offset);
-
         const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
 
-        float normal_cutoff = 0.99;
+        float normal_cutoff = 0.95;
         if (center_r.M < 10) {
             normal_cutoff = 0.9 * exp2(-max(0, poor_normals) * 0.3);
         }
@@ -109,11 +109,17 @@ void main(uint2 px : SV_DispatchThreadID) {
         // and we clamp that effect later. The artifacts is less prounounced normal map detail.
         // TODO: detect this first, and sharpen the threshold. The poor normal counting below
         // is a shitty take at that.
-        if (sample_i > 0 && dot(sample_normal_vs, center_normal_vs) < normal_cutoff) {
+        const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
+        if (sample_i > 0 && normal_similarity_dot < normal_cutoff) {
             poor_normals += 1;
             continue;
         } else {
             poor_normals -= 1;
+        }
+
+        const float sample_ssao = ssao_tex[spx * 2].r;
+        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.1) {
+            continue;
         }
 
         const float4 prev_hit_ws_and_dist = ray_tex[spx];
@@ -130,7 +136,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 prev_dir = normalize(prev_dir_unnorm);
 
         // Reject hits below the normal plane
-        if (sample_i > 0 && dot(prev_dir, center_normal_ws) < 1e-3) {
+        if (sample_i > 0 && dot(prev_dir, center_normal_ws) < 1e-5) {
             continue;
         }
 
@@ -138,11 +144,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // Reject neighbors with vastly different depths
         if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
-            continue;
-        }
-
-        const float sample_ssao = ssao_tex[spx * 2].r;
-        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.1) {
             continue;
         }
 
@@ -189,8 +190,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
         // when we don't use a harsh normal cutoff to exchange reservoirs with.
         jacobian *= min(1.0, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
-
-        //p_q *= jacobian;
 
         if (!(p_q > 0)) {
             continue;

@@ -52,6 +52,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     float3 irradiance_sum = 0;
     float w_sum = 0;
+    float W_sum = 0;
 
     const int2 reservoir_offsets[5] = {
         int2(0, 0),
@@ -62,7 +63,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     };
 
     for (uint sample_i = 0; sample_i < 1; ++sample_i) {
-        const int2 reservoir_px_offset = reservoir_offsets[sample_i] * 2;
+        const int2 reservoir_px_offset = reservoir_offsets[sample_i];
         const int2 rpx = px + reservoir_px_offset;
 
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
@@ -72,12 +73,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_dir = normalize(hit_ws - view_ray_context.ray_hit_ws());
 
         float3 radiance = irradiance_tex[spx].rgb;
-        float w = max(0.0, dot(center_normal_ws, sample_dir));
+        float w = 1;//max(0.0, dot(center_normal_ws, sample_dir));
         //w *= w * w * w;
-        //w = pow(w, 5);
+        //w = pow(w, 20);
 
-        irradiance_sum += radiance * r.W * w;
+        irradiance_sum += radiance * w * r.W;
         w_sum += w;
+        //W_sum += r.W * w;
     }
 
     irradiance_sum /= max(1e-20, w_sum);

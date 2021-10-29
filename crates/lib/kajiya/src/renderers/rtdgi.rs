@@ -285,6 +285,8 @@ impl RtdgiRenderer {
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
                 );
 
+            let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
+
             SimpleRenderPass::new_rt(
                 rg.add_pass("rtdgi trace"),
                 "/shaders/rtdgi/trace_diffuse.rgen.hlsl",
@@ -294,7 +296,7 @@ impl RtdgiRenderer {
                 ],
                 &["/shaders/rt/gbuffer.rchit.hlsl"],
             )
-            .read(&gbuffer_depth.gbuffer)
+            .read(&*half_view_normal_tex)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&reprojected_history_tex)
             .read(ssao_img)

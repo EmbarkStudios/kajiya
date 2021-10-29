@@ -37,7 +37,7 @@
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
-[[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> reprojected_gi_tex;
 [[vk::binding(3)]] Texture2D<float> ssao_tex;
@@ -76,8 +76,24 @@ struct TraceResult {
     float hit_t;
 };
 
-TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, GbufferData gbuffer) {
-    const float3 primary_hit_normal = gbuffer.normal;
+float3 uniform_sample_hemisphere(float2 urand) {
+     float phi = urand.y * M_TAU;
+     float cos_theta = 1.0 - urand.x;
+     float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
+     return float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
+}
+
+float3 uniform_sample_sphere(float2 urand) {
+    float z = 1.0 - 2.0 * urand.x;
+    float xy = sqrt(max(0.0, 1.0 - z * z));
+    float sn = sin(M_TAU * urand.y);
+	float cs = cos(M_TAU * urand.y);
+	return float3(cs * xy, sn * xy, z);
+}
+
+
+TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
+    //const float3 primary_hit_normal = gbuffer.normal;
     //const float origin_cascade_idx = csgi_blended_cascade_idx_for_pos(refl_ray_origin);
     const float origin_cascade_idx = csgi_cascade_idx_for_pos(outgoing_ray.Origin);
     /*if (origin_cascade_idx > 0) {
@@ -121,7 +137,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
         hit_normal_ws = gbuffer.normal;
 
         // Project the sample into clip space, and check if it's on-screen
-        const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
+        /*const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
         const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
         const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
         const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)));
@@ -131,17 +147,17 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
             && inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3
             && dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
             && dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
-            ;
+            ;*/
 
         // If it is on-screen, we'll try to use its reprojected radiance from the previous frame
-        float4 reprojected_radiance = 0;
+        /*float4 reprojected_radiance = 0;
         if (is_on_screen) {
             reprojected_radiance =
                 reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
 
             // Check if the temporal reprojection is valid.
             is_on_screen = reprojected_radiance.w > 0;
-        }
+        }*/
 
         gbuffer.roughness = lerp(gbuffer.roughness, 1.0, ROUGHNESS_BIAS);
         const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
@@ -176,9 +192,9 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
             total_radiance += gbuffer.emissive;
         }
 
-        if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
+        /*if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
             total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
-        } else {
+        } else */{
             if (USE_LIGHTS) {
                 float2 urand = float2(
                     uint_to_u01_float(hash1_mut(rng)),
@@ -305,6 +321,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, Gbuffer
 
 [shader("raygeneration")]
 void main() {
+    const uint2 px = DispatchRaysIndex().xy;
     const uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
@@ -312,8 +329,36 @@ void main() {
         uint2(0, 1),
     };
 
-    const uint2 px = DispatchRaysIndex().xy;
-    const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+    // Find the most under-represented normal
+    /*int2 hi_px_offset; {
+        float3 avg_normal = 0;
+        {for (int y = -1; y <= 2; ++y) {
+            for (int x = -1; x <= 2; ++x) {
+                float4 gbuffer_packed = gbuffer_tex[int2(px * 2) + int2(x, y)];
+                GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+                avg_normal += gbuffer.normal;
+            }
+        }}
+        avg_normal = normalize(avg_normal);
+
+        float lowest_dot = 1;
+        {for (int y = -1; y <= 2; ++y) {
+            for (int x = -1; x <= 2; ++x) {
+                float4 gbuffer_packed = gbuffer_tex[px * 2 + int2(x, y)];
+                GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+                float d = dot(gbuffer.normal, avg_normal);
+                if (d < lowest_dot) {
+                    lowest_dot = d;
+                    hi_px_offset = int2(x, y);
+                }
+            }
+        }}
+
+        //hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    }*/
+    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+
+    const uint2 hi_px = px * 2 + hi_px_offset;
     
     float depth = depth_tex[hi_px];
 
@@ -327,10 +372,12 @@ void main() {
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
 
-    float4 gbuffer_packed = gbuffer_tex[hi_px];
-    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+    //float4 gbuffer_packed = gbuffer_tex[hi_px];
+    //GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+    const float3 normal_vs = half_view_normal_tex[px];
+    const float3 normal_ws = direction_view_to_world(normal_vs);
 
-    const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+    const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
     const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
 
     float3 wo = mul(-view_ray_context.ray_dir_ws(), tangent_to_world);
@@ -389,7 +436,7 @@ void main() {
             const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
 
             const float to_psa_metric =
-                max(0.0, dot(to_light_norm_ws, gbuffer.normal))
+                max(0.0, dot(to_light_norm_ws, normal_ws))
                 * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
                 / dist_to_light2;
 
@@ -410,17 +457,16 @@ void main() {
         }
     }
 
+#if 1
     BrdfSample brdf_sample = brdf.sample(wo, urand);
+    float3 wi = brdf_sample.wi;
+#else
+    float3 wi = uniform_sample_hemisphere(urand);
+    //float3 wi = uniform_sample_sphere(urand);
+    //wi.z = abs(wi.z);
+#endif
 
-    if (!brdf_sample.is_valid()) {
-        irradiance_out_tex[px] = float4(0.0.xxx, 1);
-        ray_out_tex[px] = 0.0.xxxx;
-        hit_normal_tex[px] = 0.0.xxxx;
-        reservoir_out_tex[px] = 0.0.xxxx;
-        return;
-    }
-
-    float3 outgoing_dir = gbuffer.normal;
+    float3 outgoing_dir = normal_ws;
     float p_q_sel = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
@@ -444,8 +490,8 @@ void main() {
 
     reservoir.payload = reservoir_payload;
 
-    if (brdf_sample.wi.z > 1e-5) {
-        outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
+    if (wi.z > 1e-5) {
+        outgoing_dir = mul(tangent_to_world, wi);
 
         RayDesc outgoing_ray;
         outgoing_ray.Direction = outgoing_dir;
@@ -453,7 +499,7 @@ void main() {
         outgoing_ray.TMin = 0;
         outgoing_ray.TMax = SKY_DIST;
 
-        TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
+        TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
         const float p_q = p_q_sel =
             1.0
             * max(1e-3, calculate_luma(result.out_value))
@@ -515,14 +561,15 @@ void main() {
 
             //int2 rpx = px + reproj_px + sample_offsets[sample_i];
             const int2 rpx = px + reproj_px + reservoir_px_offset;
-            const uint2 rpx_hi = rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+            const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
 
-            float4 sample_gbuffer_packed = gbuffer_tex[rpx_hi];
-            GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
+            //float4 sample_gbuffer_packed = gbuffer_tex[rpx_hi];
+            //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
+            const float3 sample_normal_vs = half_view_normal_tex[rpx];
 
-            if (sample_i > 0 && dot(sample_gbuffer.normal, gbuffer.normal) < 0.9) {
+            if (sample_i > 0 && dot(sample_normal_vs, normal_vs) < 0.9) {
                 continue;
             }
 
@@ -548,7 +595,7 @@ void main() {
             const float sample_dist = length(sample_dir_unnorm);
             const float3 sample_dir = normalize(sample_dir_unnorm);
 
-            if (sample_i > 0 && dot(sample_dir, gbuffer.normal) < 1e-3) {
+            if (sample_i > 0 && dot(sample_dir, normal_ws) < 1e-3) {
                 continue;
             }
             
@@ -569,6 +616,7 @@ void main() {
 
             if (sample_i == 0) {
                 r.M = min(r.M, 10);
+                //r.M = min(r.M, 1);
             } else {
                 r.M = min(r.M, 5);
             }
@@ -653,7 +701,7 @@ void main() {
         //reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / Z);
         reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
     } else {
-        outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
+        outgoing_dir = mul(tangent_to_world, wi);
     }
 
     RayDesc outgoing_ray;
@@ -684,7 +732,7 @@ void main() {
     }*/
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
-    irradiance_out_tex[px] = float4(irradiance_sel, dot(gbuffer.normal, outgoing_ray.Direction));
+    irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_tex[px] = hit_normal_ws_dot;
     ray_out_tex[px] = float4(ray_hit_sel, length(ray_hit_sel - refl_ray_origin));

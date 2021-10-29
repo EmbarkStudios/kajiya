@@ -52,8 +52,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y) * 2]);
-            float4 hist_neigh = (history_tex[px + int2(x, y) * 2]);
+            float4 neigh = (input_tex[px + int2(x, y)]);
+            float4 hist_neigh = (history_tex[px + int2(x, y)]);
 
             float neigh_luma = calculate_luma(neigh.rgb);
             float hist_luma = calculate_luma(hist_neigh.rgb);

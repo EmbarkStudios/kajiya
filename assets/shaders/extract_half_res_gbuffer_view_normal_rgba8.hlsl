@@ -8,6 +8,10 @@
     float4 output_tex_size;
 };
 
+float3 normal_ws_at_px(int2 px) {
+    return unpack_normal_11_10_11_no_normalize(input_tex[px].y);
+}
+
 [numthreads(8, 8, 1)]
 void main(in int2 px : SV_DispatchThreadID) {
     uint2 hi_px_subpixels[4] = {
@@ -17,8 +21,35 @@ void main(in int2 px : SV_DispatchThreadID) {
         uint2(0, 1),
     };
     const int2 src_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+
+    float3 normal_ws = 1;
+
+    // wired
+    {
+        float3 avg_normal = 0;
+        {for (int y = -1; y <= 2; ++y) {
+            for (int x = -1; x <= 2; ++x) {
+                avg_normal += normal_ws_at_px(px * 2 + int2(x, y));
+            }
+        }}
+        avg_normal = normalize(avg_normal);
+
+        float lowest_dot = 10;
+        {for (int y = 0; y <= 1; ++y) {
+            for (int x = 0; x <= 1; ++x) {
+                float3 normal = normal_ws_at_px(px * 2 + int2(x, y));
+                float d = dot(normal, avg_normal);
+                if (d < lowest_dot) {
+                    lowest_dot = d;
+                    normal_ws = normal;
+                }
+            }
+        }}
+    }
     
-    float3 normal = unpack_normal_11_10_11_no_normalize(input_tex[src_px].y);
-    float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(normal, 0)).xyz);
+    // tired
+    //normal_ws = normal_ws_at_px(src_px);
+
+    float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(normal_ws, 0)).xyz);
 	output_tex[px] = float4(normal_vs, 1);
 }

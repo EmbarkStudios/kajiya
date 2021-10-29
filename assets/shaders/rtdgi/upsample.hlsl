@@ -51,14 +51,6 @@ static float ggx_ndf_unnorm(float a2, float cos_theta) {
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
-    uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-    uint2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
-
     #if 0
         output_tex[px] = ssgi_tex[px / 2];
         return;
@@ -109,7 +101,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             #else
                 float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
                 //float radius = 1.5 + float(sample_i) * lerp(0.333, 0.8, center_ssao);
-                float radius = 1.5 + float(sample_i) * 0.333;
+                float radius = 1.25 + float(sample_i) * 0.333;
                 int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
             #endif
     
