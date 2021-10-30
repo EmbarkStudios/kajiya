@@ -20,29 +20,6 @@
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
-float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
-    if (depth != 0.0)
-    {
-        float depth_diff = 1.0 - (center_depth / depth);
-        float depth_factor = exp2(-200.0 * abs(depth_diff));
-
-        float normal_factor = max(0.0, dot(normal, center_normal));
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
-
-        float w = 1;
-        w *= depth_factor;  // TODO: differentials
-        w *= normal_factor;
-        //w *= exp(-dot(soffset, soffset));
-
-        w_sum += w;
-        return ssgi * w;
-    } else {
-        return 0.0.xxxx;
-    }
-}
-
 static float ggx_ndf_unnorm(float a2, float cos_theta) {
 	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
 	return a2 / (denom_sqrt * denom_sqrt);
@@ -101,7 +78,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             #else
                 float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
                 //float radius = 1.5 + float(sample_i) * lerp(0.333, 0.8, center_ssao);
-                float radius = 1.25 + float(sample_i) * 0.333;
+                float radius = 1.5 + float(sample_i) * 0.333;
                 int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
             #endif
     

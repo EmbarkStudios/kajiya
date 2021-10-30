@@ -64,7 +64,7 @@ impl RtdgiRenderer {
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
-            spatial_reuse_pass_count: 2,
+            spatial_reuse_pass_count: 1,
         }
     }
 }
@@ -367,7 +367,6 @@ impl RtdgiRenderer {
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),
                     reservoir_output_tex0.desc().extent_inv_extent_2d(),
-                    super::rtr::SPATIAL_RESOLVE_OFFSETS,
                     spatial_reuse_pass_idx as u32,
                 ))
                 .dispatch(reservoir_output_tex0.desc().extent);

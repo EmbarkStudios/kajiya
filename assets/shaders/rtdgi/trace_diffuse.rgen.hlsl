@@ -32,8 +32,8 @@
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
 #define USE_SCREEN_GI_REPROJECTION 0
 
-#define USE_EMISSIVE 0
-#define USE_LIGHTS 0
+#define USE_EMISSIVE 1
+#define USE_LIGHTS 1
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -535,7 +535,7 @@ void main() {
 
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
 
-    if (use_resampling && reproj_validity_dilated > 0.5) {
+    if (use_resampling/* && reproj_validity_dilated > 0.5*/) {
         float M_sum = reservoir.M;
 
         // Can't use linear interpolation, but we can interpolate stochastically instead
@@ -623,7 +623,7 @@ void main() {
 
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
-            //p_q *= max(0, dot(sample_dir, gbuffer.normal));
+            //p_q *= max(0, dot(sample_dir, normal_ws));
 
             float visibility = 1;
 
@@ -661,7 +661,9 @@ void main() {
                 // N dot L. Useful for normal maps, micro detail.
                 // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
                 // when we don't use a harsh normal cutoff to exchange reservoirs with.
-                //jacobian *= min(1, max(0.0, prev_irrad.a) / dot(sample_dir, gbuffer.normal));
+                //jacobian *= min(1, max(0.0, prev_irrad.a) / dot(sample_dir, normal_ws));
+                //jacobian *= max(0.0, prev_irrad.a) / dot(sample_dir, normal_ws);
+                // TODO: find best pixel to reproject to
             }
 
             M_sum += r.M;

@@ -22,7 +22,6 @@
 [[vk::binding(9)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
-    int4 spatial_resolve_offsets[16 * 4 * 8];
     uint spatial_reuse_pass_idx;
 };
 
@@ -64,7 +63,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     static const float GOLDEN_ANGLE = 2.39996323;
 
     // TODO: split off into a separate temporal stage, following ReSTIR GI
-    const uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
+    uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
     float poor_normals = 0;
@@ -73,18 +72,26 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     //float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
 
-    // TODO: detect low variance, shrink filter
-    float radius_mult = 3.5;
+    // Note: pow(ssao, n) is a balance between details and splotches in corner
+    float kernel_radius = lerp(2.0, 24.0, pow(ssao_tex[hi_px].r, 2));
     if (center_r.M < 10) {
-        radius_mult = 4.5;
+        kernel_radius = 16.0;
     }
 
     uint valid_sample_count = 0;
+    uint valid_sample_count_limit = 5;
+
+    if (spatial_reuse_pass_idx == 1) {
+        valid_sample_count_limit = 2;
+        kernel_radius = lerp(2.0, 24.0, pow(ssao_tex[hi_px].r, 4));
+    }
 
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-    for (uint sample_i = 0; sample_i < sample_count && valid_sample_count < 4; ++sample_i) {
+    // early out saves a lot of comp, but leaves noise in tricky cases (old building interior)
+    //for (uint sample_i = 0; sample_i < 16 && valid_sample_count < 8; ++sample_i) {
+    for (uint sample_i = 0; sample_i < sample_count && valid_sample_count < valid_sample_count_limit; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * radius_mult;
+        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / valid_sample_count_limit);
         int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
 
         const int2 reservoir_px = px + reservoir_px_offset;
@@ -99,9 +106,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float sample_dist2 = dot(sample_offset, sample_offset);
         const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
 
-        float normal_cutoff = 0.95;
+        float normal_cutoff = 0.9;
+        if (spatial_reuse_pass_idx == 1) {
+            normal_cutoff = 0.5;
+        }
+
         if (center_r.M < 10) {
-            normal_cutoff = 0.9 * exp2(-max(0, poor_normals) * 0.3);
+            normal_cutoff = 0.5 * exp2(-max(0, poor_normals) * 0.3);
         }
 
         // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
@@ -117,9 +128,19 @@ void main(uint2 px : SV_DispatchThreadID) {
             poor_normals -= 1;
         }
 
-        const float sample_ssao = ssao_tex[spx * 2].r;
-        if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.1) {
-            continue;
+        const float ssao_dart = uint_to_u01_float(hash1_mut(rng));
+        const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
+        const float ssao_infl = smoothstep(0.0, 0.2, max(1, poor_normals) * abs(sample_ssao - center_ssao));
+        // TODO: make threshold adaptive
+        //if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.1 * max(1, poor_normals)) {
+
+        if (spatial_reuse_pass_idx == 0) {
+            if (sample_i > 0 && ssao_infl > ssao_dart) {
+                // Note: improves contacts, but results in boiling/noise in corners
+                // This is really just an approximation of a visbility check,
+                // which we can do in a better way.
+                //continue;
+            }
         }
 
         const float4 prev_hit_ws_and_dist = ray_tex[spx];
@@ -143,8 +164,14 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float sample_depth = half_depth_tex[spx];
 
         // Reject neighbors with vastly different depths
-        if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
-            continue;
+        if (spatial_reuse_pass_idx == 0) {
+            if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
+                continue;
+            }
+        } else {
+            if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.2) {
+                continue;
+            }
         }
 
         const float2 sample_uv = get_uv(
@@ -155,7 +182,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
         // Approx shadowing
-        {
+        if (spatial_reuse_pass_idx == 0) {
     		const float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
             const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
             const float wi_z = dot(prev_dir, center_normal_ws);
@@ -189,7 +216,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         // N dot L. Useful for normal maps, micro detail.
         // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
         // when we don't use a harsh normal cutoff to exchange reservoirs with.
-        jacobian *= min(1.0, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
+        jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
+        //jacobian *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
 
         if (!(p_q > 0)) {
             continue;
