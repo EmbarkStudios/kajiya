@@ -295,7 +295,7 @@ impl RtdgiRenderer {
             let mut candidate_hit_tex = rg.create(
                 gbuffer_desc
                     .half_res()
-                    .format(vk::Format::R32G32B32A32_SFLOAT),
+                    .format(vk::Format::R16G16B16A16_SFLOAT),
             );
 
             SimpleRenderPass::new_rt(

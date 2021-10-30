@@ -49,6 +49,8 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
     float4 gbuffer_tex_size;
 };
 
+#include "candidate_ray_dir.hlsl"
+
 static const float SKY_DIST = 1e4;
 
 uint2 reservoir_payload_to_px(uint payload) {
@@ -60,22 +62,6 @@ struct TraceResult {
     float3 hit_normal_ws;
     float hit_t;
 };
-
-float3 uniform_sample_hemisphere(float2 urand) {
-     float phi = urand.y * M_TAU;
-     float cos_theta = 1.0 - urand.x;
-     float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-     return float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
-}
-
-float3 uniform_sample_sphere(float2 urand) {
-    float z = 1.0 - 2.0 * urand.x;
-    float xy = sqrt(max(0.0, 1.0 - z * z));
-    float sn = sin(M_TAU * urand.y);
-	float cs = cos(M_TAU * urand.y);
-	return float3(cs * xy, sn * xy, z);
-}
-
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
     TraceResult result;
@@ -134,30 +120,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
     uint rng = hash3(uint3(px, seed));
 
-#if 0
-    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
-
-    float2 urand = float2(
-        blue_noise_sampler(px.x, px.y, noise_offset, 0),
-        blue_noise_sampler(px.x, px.y, noise_offset, 1)
-    );
-#elif 1
-    // 256x256 blue noise
-
-    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
-    float2 urand = blue_noise_for_pixel(px, noise_offset).xy;
-#elif 1
-    float2 urand = float2(
-        uint_to_u01_float(hash1_mut(rng)),
-        uint_to_u01_float(hash1_mut(rng))
-    );
-#else
-    float2 urand = frac(
-        hammersley((frame_constants.frame_index * 5) % 16, 16) +
-        bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][px & 255].xy * 255.0 / 256.0 + 0.5 / 256.0
-    );
-#endif
-
     // TODO: use
     float3 light_radiance = 0.0.xxx;
 
@@ -195,27 +157,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
     }*/
 
-    float3 outgoing_dir;
-
-    if (true) {
-        urand = frac(float2(px + urand) / 8.0 + r2_sequence(frame_constants.frame_index));
-    }
-
-#if DIFFUSE_GI_BRDF_SAMPLING
-    {
-        BrdfSample brdf_sample = brdf.sample(wo, urand);
-        float3 wi = brdf_sample.wi;
-        outgoing_dir = mul(tangent_to_world, wi);
-    }
-#else
-    {
-        //float3 wi = uniform_sample_hemisphere(urand);
-        float3 od; {
-            od = uniform_sample_sphere(urand);
-        }
-        outgoing_dir = od;
-    }
-#endif
+    float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     float p_q_sel = 0;
     uint2 src_px_sel = px;

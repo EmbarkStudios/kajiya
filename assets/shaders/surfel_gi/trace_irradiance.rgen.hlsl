@@ -49,22 +49,6 @@ float3 sample_environment_light(float3 dir) {
     return col;*/
 }
 
-
-float3 uniform_sample_sphere(float2 urand) {
-    float z = 1.0 - 2.0 * urand.x;
-    float xy = sqrt(max(0.0, 1.0 - z * z));
-    float sn = sin(M_TAU * urand.y);
-	float cs = cos(M_TAU * urand.y);
-	return float3(cs * xy, sn * xy, z);
-}
-
-float3 uniform_sample_hemisphere(float2 urand) {
-     float phi = urand.y * M_TAU;
-     float cos_theta = 1.0 - urand.x;
-     float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-     return float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
-}
-
 float pack_dist(float x) {
     return min(1, x);
 }

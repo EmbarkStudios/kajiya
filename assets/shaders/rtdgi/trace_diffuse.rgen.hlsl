@@ -26,6 +26,7 @@
 #define ROUGHNESS_BIAS 0.5
 #define SUPPRESS_GI_FOR_NEAR_HITS 1
 #define USE_SCREEN_GI_REPROJECTION 0
+#define USE_SWIZZLE_TILE_PIXELS 0
 
 #define USE_EMISSIVE 1
 #define USE_LIGHTS 1
@@ -47,6 +48,7 @@ DEFINE_SURFEL_GI_BINDINGS(8, 9, 10, 11, 12, 13)
 };
 
 #include "../surfel_gi/lookup.hlsl"
+#include "candidate_ray_dir.hlsl"
 
 static const float SKY_DIST = 1e4;
 
@@ -59,22 +61,6 @@ struct TraceResult {
     float3 hit_normal_ws;
     float hit_t;
 };
-
-float3 uniform_sample_hemisphere(float2 urand) {
-     float phi = urand.y * M_TAU;
-     float cos_theta = 1.0 - urand.x;
-     float sin_theta = sqrt(1.0 - cos_theta * cos_theta);
-     return float3(cos(phi) * sin_theta, sin(phi) * sin_theta, cos_theta);
-}
-
-float3 uniform_sample_sphere(float2 urand) {
-    float z = 1.0 - 2.0 * urand.x;
-    float xy = sqrt(max(0.0, 1.0 - z * z));
-    float sn = sin(M_TAU * urand.y);
-	float cs = cos(M_TAU * urand.y);
-	return float3(cs * xy, sn * xy, z);
-}
-
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
     float3 total_radiance = 0.0.xxx;
@@ -241,7 +227,16 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
 
 [shader("raygeneration")]
 void main() {
-    const uint2 px = DispatchRaysIndex().xy;
+    uint2 px;
+    if (USE_SWIZZLE_TILE_PIXELS) {
+        const uint2 orig_px = DispatchRaysIndex().xy;
+
+        // TODO: handle screen edge
+        px = (orig_px & 7) * 8 + ((orig_px / 8) & 7) + (orig_px & ~63u);
+    } else {
+        px = DispatchRaysIndex().xy;
+    }
+
     const uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
@@ -261,79 +256,19 @@ void main() {
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
 
-    //float4 gbuffer_packed = gbuffer_tex[hi_px];
-    //GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
 
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
-    const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
-
-    float3 wo = mul(-view_ray_context.ray_dir_ws(), tangent_to_world);
-
-    // Hack for shading normals facing away from the outgoing ray's direction:
-    // We flip the outgoing ray along the shading normal, so that the reflection's curvature
-    // continues, albeit at a lower rate.
-    if (wo.z < 0.0) {
-        wo.z *= -0.25;
-        wo = normalize(wo);
-    }
-
-    DiffuseBrdf brdf;
-    brdf.albedo = 1.0.xxx;
 
     const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
     uint rng = hash3(uint3(px, seed));
 
-#if 0
-    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
-
-    float2 urand = float2(
-        blue_noise_sampler(px.x, px.y, noise_offset, 0),
-        blue_noise_sampler(px.x, px.y, noise_offset, 1)
-    );
-#elif 1
-    // 256x256 blue noise
-
-    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
-    float2 urand = blue_noise_for_pixel(px, noise_offset).xy;
-#elif 1
-    float2 urand = float2(
-        uint_to_u01_float(hash1_mut(rng)),
-        uint_to_u01_float(hash1_mut(rng))
-    );
-#else
-    float2 urand = frac(
-        hammersley((frame_constants.frame_index * 5) % 16, 16) +
-        bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][px & 255].xy * 255.0 / 256.0 + 0.5 / 256.0
-    );
-#endif
-
-    float3 outgoing_dir;
-
-    if (true) {
-        urand = frac(float2(px + urand) / 8.0 + r2_sequence(frame_constants.frame_index));
-    }
-
-#if DIFFUSE_GI_BRDF_SAMPLING
-    {
-        BrdfSample brdf_sample = brdf.sample(wo, urand);
-        float3 wi = brdf_sample.wi;
-        outgoing_dir = mul(tangent_to_world, wi);
-    }
-#else
-    {
-        //float3 wi = uniform_sample_hemisphere(urand);
-        float3 od; {
-            od = uniform_sample_sphere(urand);
-        }
-        outgoing_dir = od;
-    }
-#endif
+    const float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     RayDesc outgoing_ray;
     outgoing_ray.Direction = outgoing_dir;
-    outgoing_ray.Origin = refl_ray_origin;
+    outgoing_ray.Origin = view_ray_context.biased_secondary_ray_origin_ws();
     outgoing_ray.TMin = 0;
     outgoing_ray.TMax = SKY_DIST;
 
