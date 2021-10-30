@@ -222,7 +222,6 @@ fn main() -> anyhow::Result<()> {
 
         const MAX_FPS_LIMIT: u32 = 256;
         let mut max_fps = MAX_FPS_LIMIT;
-        let mut debug_gi_cascade_idx: u32 = 0;
 
         let mut locked_rg_debug_hook: Option<GraphDebugHook> = None;
 
@@ -459,19 +458,6 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
 
-                    /*if imgui::CollapsingHeader::new(im_str!("csgi"))
-                        .default_open(true)
-                        .build(ui)
-                    {
-                        imgui::Drag::<i32>::new(im_str!("Trace subdivision"))
-                            .range(0..=5)
-                            .build(ui, &mut world_renderer.csgi.trace_subdiv);
-
-                        imgui::Drag::<i32>::new(im_str!("Neighbors per frame"))
-                            .range(1..=9)
-                            .build(ui, &mut world_renderer.csgi.neighbors_per_frame);
-                    }*/
-
                     if imgui::CollapsingHeader::new(im_str!("Debug"))
                         .default_open(false)
                         .build(ui)
@@ -481,38 +467,6 @@ fn main() -> anyhow::Result<()> {
                             ctx.world_renderer.debug_mode == RenderDebugMode::None,
                         ) {
                             ctx.world_renderer.debug_mode = RenderDebugMode::None;
-                        }
-
-                        if ui.radio_button_bool(
-                            im_str!("GI voxel grid"),
-                            matches!(
-                                ctx.world_renderer.debug_mode,
-                                RenderDebugMode::CsgiVoxelGrid { .. }
-                            ),
-                        ) {
-                            ctx.world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid {
-                                cascade_idx: debug_gi_cascade_idx as _,
-                            };
-                        }
-
-                        if matches!(
-                            ctx.world_renderer.debug_mode,
-                            RenderDebugMode::CsgiVoxelGrid { .. }
-                        ) {
-                            imgui::Drag::<u32>::new(im_str!("Cascade index"))
-                                .range(0..=3)
-                                .build(ui, &mut debug_gi_cascade_idx);
-
-                            ctx.world_renderer.debug_mode = RenderDebugMode::CsgiVoxelGrid {
-                                cascade_idx: debug_gi_cascade_idx as _,
-                            };
-                        }
-
-                        if ui.radio_button_bool(
-                            im_str!("GI voxel radiance"),
-                            ctx.world_renderer.debug_mode == RenderDebugMode::CsgiRadiance,
-                        ) {
-                            ctx.world_renderer.debug_mode = RenderDebugMode::CsgiRadiance;
                         }
 
                         imgui::ComboBox::new(im_str!("Shading")).build_simple_string(

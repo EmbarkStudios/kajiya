@@ -11,16 +11,13 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
-#include "../csgi/common.hlsl"
 #include "rtr_settings.hlsl"
 
 #define USE_SOFT_SHADOWS 1
 #define USE_TEMPORAL_JITTER 1
 #define USE_HEAVY_BIAS 0
-#define USE_SHORT_RAYS_FOR_ROUGH 1
-#define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
-
-#define USE_CSGI 1
+#define USE_SHORT_RAYS_FOR_ROUGH 0
+//#define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
 
 // Note: should be off when using dedicated specular lighting passes in addition to RTR
 #define USE_EMISSIVE 1
@@ -56,15 +53,12 @@
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(2, 3, 4)
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(7)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(8)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(9)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(10)]] RWTexture2D<float4> out2_tex;
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(7)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(8)]] RWTexture2D<float4> out1_tex;
+[[vk::binding(9)]] RWTexture2D<float4> out2_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
-
-#include "../csgi/lookup.hlsl"
 
 // Large enough to mean "far away" and small enough so that
 // the hit points/vectors fit within fp16.
@@ -151,19 +145,17 @@ void main() {
     }
 #endif
 
-    const uint cascade_idx = csgi_cascade_idx_for_pos(refl_ray_origin);
-
     if (brdf_sample.is_valid()) {
-        const bool use_short_ray = gbuffer.roughness > 0.55 && USE_SHORT_RAYS_FOR_ROUGH;
+        //const bool use_short_ray = gbuffer.roughness > 0.55 && USE_SHORT_RAYS_FOR_ROUGH;
 
         RayDesc outgoing_ray;
         outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
         outgoing_ray.Origin = refl_ray_origin;
         outgoing_ray.TMin = 0;
 
-        if (use_short_ray) {
-            outgoing_ray.TMax = csgi_voxel_size(cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS * lerp(4.0, 1.0, gbuffer.roughness);
-        } else {
+        /*if (use_short_ray) {
+            outgoing_ray.TMax = gi_voxel_size(cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS * lerp(4.0, 1.0, gbuffer.roughness);
+        } else*/ {
             outgoing_ray.TMax = SKY_DIST;
         }
 
@@ -276,51 +268,7 @@ void main() {
                         }
                     }
 
-                    if (USE_CSGI) {
-                        const float gi_sample_roughness = lerp(gbuffer.roughness, 1.0, 0.5);
-
-                        // https://graphicrants.blogspot.com/2013/08/specular-brdf-reference.html
-                        float phong_exponent =
-                            lerp(0.0, min(2.0 / (gi_sample_roughness * gi_sample_roughness) - 2, 50.0), gbuffer.metalness);
-
-                        // Tend towards sampling all directions near close hits, with the idea that in proximity
-                        // to surfaces, the GI grid will have ugly pixelated values.
-                        phong_exponent = lerp(0.0, phong_exponent, saturate(primary_hit.ray_t / csgi_voxel_size(cascade_idx).x - 2.0));
-
-                        const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
-
-                        CsgiLookupParams lookup_params =
-                            CsgiLookupParams::make_default()
-                                .with_sample_specular(reflect(outgoing_ray.Direction, gbuffer.normal))
-                                .with_directional_radiance_phong_exponent(phong_exponent)
-                                .with_bent_normal(pseudo_bent_normal)
-                                // TODO: roughness threshold?
-                                //.with_linear_fetch(false)
-                                ;
-
-                        // TODO: screen-space fetch if available?
-                        if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= csgi_voxel_size(cascade_idx).x) {
-                            float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
-
-                            // Suppression in open corners causes excessive darkening,
-                            // and doesn't prevent that many leaks. This strikes a balance.
-                            const float normal_agreement = dot(primary_hit_normal, gbuffer.normal);
-                            max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
-
-                            lookup_params = lookup_params
-                                .with_max_normal_offset_scale(max_normal_offset / csgi_voxel_size(cascade_idx).x)
-                                ;
-                        }
-
-                        float3 csgi = lookup_csgi(
-                            primary_hit.position,
-                            gbuffer.normal,
-                                lookup_params
-                        );
-
-                        //if (primary_hit.ray_t > csgi_voxel_size(cascade_idx).x)
-                        total_radiance += csgi * gbuffer.albedo;
-                    }
+                    // TODO: total_radiance += gi * gbuffer.albedo;
                }
             }
 
@@ -354,14 +302,14 @@ void main() {
             //out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
 
             float3 far_gi;
-            if (use_short_ray) {
-                far_gi = lookup_csgi(
-                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_voxel_size(cascade_idx).x),
+            /*if (use_short_ray) {
+                far_gi = lookup_gi(
+                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - gi_voxel_size(cascade_idx).x),
                     0.0.xxx,    // don't offset by any normal
-                    CsgiLookupParams::make_default()
+                    GiLookupParams::make_default()
                         .with_sample_directional_radiance(outgoing_ray.Direction)
                 );
-            } else {
+            } else*/ {
                 far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             }
 

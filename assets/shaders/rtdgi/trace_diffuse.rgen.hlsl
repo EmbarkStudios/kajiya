@@ -200,12 +200,12 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
         }
     } else {
         #if USE_SHORT_RAYS_ONLY
-            /*const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_blended_voxel_size(origin_cascade_idx).x);
+            /*const float3 gi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - gi_blended_voxel_size(origin_cascade_idx).x);
 
-            total_radiance += lookup_csgi(
-                csgi_lookup_pos,
+            total_radiance += lookup_gi(
+                gi_lookup_pos,
                 0.0.xxx,    // don't offset by any normal
-                CsgiLookupParams::make_default()
+                GiLookupParams::make_default()
 	                .with_sample_directional_radiance(outgoing_ray.Direction)
                     //.with_directional_radiance_phong_exponent(8)
             );*/

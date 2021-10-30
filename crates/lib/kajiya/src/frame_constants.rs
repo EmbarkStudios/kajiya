@@ -1,18 +1,5 @@
 use crate::viewport::ViewConstants;
 
-pub const MAX_CSGI_CASCADE_COUNT: usize = 4;
-
-#[repr(C)]
-#[derive(Copy, Clone, Default)]
-pub struct GiCascadeConstants {
-    pub scroll_frac: [i32; 4],
-    pub scroll_int: [i32; 4],
-    pub voxels_scrolled_this_frame: [i32; 4],
-    pub volume_size: f32,
-    pub voxel_size: f32,
-    pub pad: [u32; 2],
-}
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct FrameConstants {
@@ -31,6 +18,4 @@ pub struct FrameConstants {
     pub triangle_light_count: u32,
     pub world_gi_scale: f32,
     pub pad: [u32; 2],
-
-    pub gi_cascades: [GiCascadeConstants; MAX_CSGI_CASCADE_COUNT],
 }

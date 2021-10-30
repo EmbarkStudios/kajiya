@@ -15,7 +15,6 @@ pub fn light_gbuffer(
     surfel_gi: &SurfelGiRenderState,
     temporal_output: &mut rg::Handle<Image>,
     output: &mut rg::Handle<Image>,
-    csgi_volume: &super::csgi::CsgiVolume,
     sky_cube: &rg::Handle<Image>,
     convolved_sky_cube: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
@@ -31,7 +30,6 @@ pub fn light_gbuffer(
         .bind(surfel_gi)
         .write(temporal_output)
         .write(output)
-        .read_array(&csgi_volume.indirect)
         .read(sky_cube)
         .read(convolved_sky_cube)
         .constants((

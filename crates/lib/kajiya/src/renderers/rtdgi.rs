@@ -435,16 +435,6 @@ impl RtdgiRenderer {
         );
         let filtered_tex = Self::spatial(rg, &filtered_tex, gbuffer_depth, ssao_img);
 
-        // Not correct with control variates:
-        /*let filtered_tex = Self::spatial(rg, &hit0_tex, gbuffer_depth, ssao_img);
-        let filtered_tex = self.temporal(
-            rg,
-            &filtered_tex,
-            gbuffer_depth,
-            reprojection_map,
-            csgi_volume,
-        );*/
-
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 

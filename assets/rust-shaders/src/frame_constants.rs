@@ -1,7 +1,5 @@
 use spirv_std::glam::{Mat4, UVec4, Vec2, Vec4};
 
-pub const MAX_CSGI_CASCADE_COUNT: usize = 4;
-
 #[repr(C, align(16))]
 #[derive(Copy, Clone)]
 pub struct ViewConstants {
@@ -54,6 +52,4 @@ pub struct FrameConstants {
     pub world_gi_scale: f32,
     pub pad0: u32,
     pub pad1: u32,
-
-    pub gi_cascades: [GiCascadeConstants; MAX_CSGI_CASCADE_COUNT],
 }

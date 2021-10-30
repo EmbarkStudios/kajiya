@@ -2,12 +2,12 @@ use crate::{
     bindless_descriptor_set::{create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT},
     buffer_builder::BufferBuilder,
     camera::CameraMatrices,
-    frame_constants::{FrameConstants, GiCascadeConstants},
+    frame_constants::FrameConstants,
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        csgi::CsgiRenderer, lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer,
-        rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
+        lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
+        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
     viewport::ViewConstants,
 };
@@ -79,8 +79,6 @@ pub struct MeshInstance {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RenderDebugMode {
     None,
-    CsgiVoxelGrid { cascade_idx: usize },
-    CsgiRadiance,
 }
 
 #[derive(Clone, Copy)]
@@ -164,7 +162,6 @@ pub struct WorldRenderer {
     pub rtr: RtrRenderer,
     pub lighting: LightingRenderer,
     pub rtdgi: RtdgiRenderer,
-    pub csgi: CsgiRenderer,
     pub taa: TaaRenderer,
     pub shadow_denoise: ShadowDenoiseRenderer,
 
@@ -359,7 +356,6 @@ impl WorldRenderer {
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             lighting: LightingRenderer::new(),
-            csgi: CsgiRenderer::default(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
@@ -873,25 +869,6 @@ impl WorldRenderer {
             })
             .collect();
 
-        // Initialize constants for the maximum allowed cascade count, even if we're not using them,
-        // so that we don't need to change the layout of frame constants up to this limit.
-        let mut gi_cascades: [GiCascadeConstants; crate::frame_constants::MAX_CSGI_CASCADE_COUNT] =
-            Default::default();
-
-        self.csgi
-            .update_eye_position(&view_constants.eye_position(), self.world_gi_scale);
-
-        // Actually set the cascade constants we're using
-        for (i, c) in self
-            .csgi
-            .constants(self.world_gi_scale)
-            .iter()
-            .copied()
-            .enumerate()
-        {
-            gi_cascades[i] = c;
-        }
-
         let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
 
         let globals_offset = dynamic_constants.push(&FrameConstants {
@@ -923,8 +900,6 @@ impl WorldRenderer {
             triangle_light_count: triangle_lights.len() as _,
             world_gi_scale: self.world_gi_scale,
             pad: [0u32; 2],
-
-            gi_cascades,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

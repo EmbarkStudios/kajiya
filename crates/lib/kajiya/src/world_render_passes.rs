@@ -4,7 +4,7 @@ use crate::{
         deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
     },
-    world_renderer::{RenderDebugMode, WorldRenderer},
+    world_renderer::WorldRenderer,
 };
 use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
@@ -30,14 +30,6 @@ impl WorldRenderer {
 
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
-
-        let csgi_volume = self.csgi.render(
-            frame_desc.camera_matrices.eye_position(),
-            rg,
-            &convolved_sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
 
         let (gbuffer_depth, velocity_img) = {
             let mut gbuffer_depth = {
@@ -65,30 +57,18 @@ impl WorldRenderer {
                 frame_desc.render_extent,
             ));
 
-            if !matches!(self.debug_mode, RenderDebugMode::CsgiVoxelGrid { .. }) {
-                raster_meshes(
-                    rg,
-                    self.raster_simple_render_pass.clone(),
-                    &mut gbuffer_depth,
-                    &mut velocity_img,
-                    RasterMeshesData {
-                        meshes: self.meshes.as_slice(),
-                        instances: self.instances.as_slice(),
-                        vertex_buffer: self.vertex_buffer.lock().clone(),
-                        bindless_descriptor_set: self.bindless_descriptor_set,
-                    },
-                );
-            }
-
-            if let RenderDebugMode::CsgiVoxelGrid { cascade_idx } = self.debug_mode {
-                csgi_volume.debug_raster_voxel_grid(
-                    rg,
-                    self.raster_simple_render_pass.clone(),
-                    &mut gbuffer_depth,
-                    &mut velocity_img,
-                    cascade_idx,
-                );
-            }
+            raster_meshes(
+                rg,
+                self.raster_simple_render_pass.clone(),
+                &mut gbuffer_depth,
+                &mut velocity_img,
+                RasterMeshesData {
+                    meshes: self.meshes.as_slice(),
+                    instances: self.instances.as_slice(),
+                    vertex_buffer: self.vertex_buffer.lock().clone(),
+                    bindless_descriptor_set: self.bindless_descriptor_set,
+                },
+            );
 
             (gbuffer_depth, velocity_img)
         };
@@ -145,7 +125,6 @@ impl WorldRenderer {
             &convolved_sky_cube,
             self.bindless_descriptor_set,
             &tlas,
-            &csgi_volume,
             &rtdgi,
         );
 
@@ -177,7 +156,6 @@ impl WorldRenderer {
             &surfel_state,
             &mut accum_img,
             &mut debug_out_tex,
-            &csgi_volume,
             &sky_cube,
             &convolved_sky_cube,
             self.bindless_descriptor_set,
@@ -214,12 +192,8 @@ impl WorldRenderer {
                 .color
         });
 
-        let mut final_post_input =
+        let final_post_input =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
-
-        if self.debug_mode == RenderDebugMode::CsgiRadiance {
-            csgi_volume.fullscreen_debug_radiance(rg, &mut final_post_input);
-        }
 
         let post_processed = post_process(
             rg,

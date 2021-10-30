@@ -13,11 +13,9 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
-#include "csgi/common.hlsl"
 #include "surfel_gi/bindings.hlsl"
 
 #define USE_SSGI 0
-#define USE_CSGI 1
 #define USE_RTR 0
 #define USE_RTDGI 1
 
@@ -32,10 +30,9 @@
 DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
 [[vk::binding(12)]] RWTexture2D<float4> temporal_output_tex;
 [[vk::binding(13)]] RWTexture2D<float4> output_tex;
-[[vk::binding(14)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(15)]] TextureCube<float4> unconvolved_sky_cube_tex;
-[[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(17)]] cbuffer _ {
+[[vk::binding(14)]] TextureCube<float4> unconvolved_sky_cube_tex;
+[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(16)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
 };
@@ -48,8 +45,6 @@ DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
 #define SHADING_MODE_REFLECTIONS 3
 #define SHADING_MODE_RTX_OFF 4
 #define SHADING_MODE_SURFEL_GI 5
-
-#include "csgi/lookup.hlsl"
 
 #include "inc/atmosphere.hlsl"
 #include "inc/sun.hlsl"
@@ -157,29 +152,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float3 gi_irradiance = 0.0.xxx;
 
-    float3 csgi_irradiance = 0;
-
-    if (USE_CSGI && debug_shading_mode != SHADING_MODE_RTX_OFF) {
-        if (USE_RTDGI) {
-            gi_irradiance = rtdgi_tex[px].rgb;
-        } else {
-            // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
-            // Note: point-lookup doesn't leak, so multiple bounces should be fine
-            float3 to_eye = get_eye_position() - pt_ws.xyz;
-            float3 pseudo_bent_normal = normalize(normalize(to_eye) + gbuffer.normal);
-            
-            csgi_irradiance = lookup_csgi(
-                pt_ws.xyz,
-                gbuffer.normal,
-                CsgiLookupParams::make_default()
-                    //.with_sample_directional_radiance(gbuffer.normal)
-                    //.with_direct_light_only(true)
-                    .with_bent_normal(pseudo_bent_normal)
-                    //.with_debug_single_direction(0)
-                    //.with_linear_fetch(false)
-            );
-            gi_irradiance = csgi_irradiance;
-        }
+    if (debug_shading_mode != SHADING_MODE_RTX_OFF) {
+        gi_irradiance = rtdgi_tex[px].rgb;
     }
 
     const float4 ssgi = ssgi_tex[px];
@@ -270,7 +244,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = gbuffer.emissive;
 
     // Hacky visual test of volumetric scattering
-    if (frame_constants.global_fog_thickness > 0.0) {
+    /*if (frame_constants.global_fog_thickness > 0.0) {
         float3 scattering = 0.0.xxx;
         float prev_t = 0.0;
         float sigma_s = 0.07 * frame_constants.global_fog_thickness;
@@ -297,10 +271,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const float step_size = (t - prev_t);
 
             const float3 air_ws = get_eye_position() + eye_to_pt * lerp(prev_t, t, 0.5);
-            const float3 gi_color = lookup_csgi(
+            const float3 gi_color = lookup_gi(
                 air_ws,
                 0.0.xxx,
-                CsgiLookupParams::make_default()
+                GiLookupParams::make_default()
                     .with_sample_phase(0.6, outgoing_ray.Direction)
             );
 
@@ -319,7 +293,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         output *= transmittance;
         output += scattering;
         //output = scattering;
-    }
+    }*/
 
     //output = gbuffer.metalness;
     //output = gbuffer.roughness;
@@ -336,17 +310,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //output.xz += 1;
     //output.rgb /= max(1e-5, calculate_luma(output));
-
-    #if 0
-        output = lookup_csgi(
-            pt_ws.xyz,
-            gbuffer.normal,
-            CsgiLookupParams::make_default()
-                .with_direct_light_only(true)
-                //.with_sample_directional_radiance(gbuffer.normal)
-                //.with_bent_normal(pseudo_bent_normal)
-        );
-    #endif
 
     output_tex[px] = float4(output, 1.0);
 }
