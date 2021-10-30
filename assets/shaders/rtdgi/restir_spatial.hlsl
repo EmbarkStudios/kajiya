@@ -85,7 +85,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     if (spatial_reuse_pass_idx == 1) {
         //sample_count = 5;
         sample_count = 5;
-        valid_sample_count_limit = 2;
+        valid_sample_count_limit = 3;
         kernel_radius = lerp(8.0, 24.0, pow(ssao_tex[hi_px].r, 4));
     }
 

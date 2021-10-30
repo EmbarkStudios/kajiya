@@ -461,12 +461,7 @@ void main() {
 
     float3 outgoing_dir;
 
-    if (!true) {
-        uint2 tile = px / 8;
-        uint px_idx = (px.x & 7) + (px.y & 7) * 8;
-        //px_idx *= 23;
-        uint2 px = uint2(px_idx % 8, (px_idx / 8) % 8);
-        float4 tile_offset = 0*blue_noise_for_pixel(tile, 0);
+    if (true) {
         urand = frac(float2(px + urand) / 8.0 + r2_sequence(frame_constants.frame_index));
     }
 
