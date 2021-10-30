@@ -286,6 +286,18 @@ impl RtdgiRenderer {
 
             let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
 
+            let mut candidate_irradiance_tex = rg.create(
+                gbuffer_desc
+                    .half_res()
+                    .format(vk::Format::R16G16B16A16_SFLOAT),
+            );
+
+            let mut candidate_hit_tex = rg.create(
+                gbuffer_desc
+                    .half_res()
+                    .format(vk::Format::R32G32B32A32_SFLOAT),
+            );
+
             SimpleRenderPass::new_rt(
                 rg.add_pass("rtdgi trace"),
                 "/shaders/rtdgi/trace_diffuse.rgen.hlsl",
@@ -302,22 +314,40 @@ impl RtdgiRenderer {
             .read(&ranking_tile_buf)
             .read(&scambling_tile_buf)
             .read(&sobol_buf)
+            .read(reprojection_map)
+            .bind(surfel_gi)
+            .read(sky_cube)
+            .write(&mut candidate_irradiance_tex)
+            .write(&mut candidate_hit_tex)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .trace_rays(tlas, candidate_irradiance_tex.desc().extent);
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass("restir temporal"),
+                "/shaders/rtdgi/restir_temporal.hlsl",
+            )
+            .read(&*half_view_normal_tex)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&candidate_irradiance_tex)
+            .read(&candidate_hit_tex)
+            .read(&ranking_tile_buf)
+            .read(&scambling_tile_buf)
+            .read(&sobol_buf)
             .read(&irradiance_history_tex)
             .read(&ray_history_tex)
             .read(&reservoir_history_tex)
             .read(reprojection_map)
             .read(&hit_normal_history_tex)
             .read(&candidate_history_tex)
-            .bind(surfel_gi)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_output_tex)
             .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
             .write(&mut candidate_output_tex)
-            .read(sky_cube)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
-            .trace_rays(tlas, irradiance_output_tex.desc().extent);
+            .dispatch(irradiance_output_tex.desc().extent);
 
             (irradiance_output_tex, ray_output_tex, reservoir_output_tex)
         };
