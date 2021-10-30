@@ -20,19 +20,24 @@
 
 [[vk::binding(0)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(3)]] RWStructuredBuffer<float4> surfel_sh_buf;
+[[vk::binding(2)]] ByteAddressBuffer surfel_hash_key_buf;
+[[vk::binding(3)]] ByteAddressBuffer surfel_hash_value_buf;
+[[vk::binding(4)]] ByteAddressBuffer cell_index_offset_buf;
+[[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
+[[vk::binding(6)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(7)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
-static const uint MAX_PATH_LENGTH = 4;
 #include "../inc/sun.hlsl"
 
+#include "lookup.hlsl"
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
 static const bool FIREFLY_SUPPRESSION = true;
-
 static const bool USE_EMISSIVE = true;
+static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
+static const uint MAX_PATH_LENGTH = 2;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -75,14 +80,14 @@ void main() {
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
-    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 64);
+    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 32);
 
     DiffuseBrdf brdf;
     const float3x3 tangent_to_world = build_orthonormal_basis(surfel.normal);
 
     brdf.albedo = 1.0.xxx;
 
-    const uint sample_count = 8;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
+    const uint sample_count = 4;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
     float3 irradiance_sum = 0;
     float valid_sample_count = 0;
     float2 hit_dist_wt = 0;
@@ -125,7 +130,7 @@ void main() {
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
             const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-                .with_cone_width(1.0)
+                .with_cone_width(1e2)
                 .with_cull_back_faces(true)
                 .with_path_length(path_length + 1)  // +1 because this is indirect light
                 .trace(acceleration_structure);
@@ -173,6 +178,10 @@ void main() {
 
                 if (USE_EMISSIVE) {
                     irradiance_sum += gbuffer.emissive * throughput;
+                }
+
+                if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
+                    irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * throughput;
                 }
 
                 const float3 urand = float3(

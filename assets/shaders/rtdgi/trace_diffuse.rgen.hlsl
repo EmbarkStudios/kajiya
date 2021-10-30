@@ -47,16 +47,18 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
 [[vk::binding(10)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(11)]] Texture2D<float4> hit_normal_history_tex;
-DEFINE_SURFEL_GI_BINDINGS(12, 13, 14, 15, 16, 17)
-[[vk::binding(18)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(19)]] RWTexture2D<float4> ray_out_tex;
-[[vk::binding(20)]] RWTexture2D<float4> hit_normal_tex;
-[[vk::binding(21)]] RWTexture2D<float4> reservoir_out_tex;
-[[vk::binding(22)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(23)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(24)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(25)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(26)]] cbuffer _ {
+[[vk::binding(12)]] Texture2D<float4> candidate_history_tex;
+DEFINE_SURFEL_GI_BINDINGS(13, 14, 15, 16, 17, 18)
+[[vk::binding(19)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(20)]] RWTexture2D<float4> ray_out_tex;
+[[vk::binding(21)]] RWTexture2D<float4> hit_normal_tex;
+[[vk::binding(22)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(23)]] RWTexture2D<float4> candidate_out_tex;
+[[vk::binding(24)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(25)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(26)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
+[[vk::binding(27)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(28)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -457,16 +459,33 @@ void main() {
         }
     }
 
-#if 1
-    BrdfSample brdf_sample = brdf.sample(wo, urand);
-    float3 wi = brdf_sample.wi;
+    float3 outgoing_dir;
+
+    if (!true) {
+        uint2 tile = px / 8;
+        uint px_idx = (px.x & 7) + (px.y & 7) * 8;
+        //px_idx *= 23;
+        uint2 px = uint2(px_idx % 8, (px_idx / 8) % 8);
+        float4 tile_offset = 0*blue_noise_for_pixel(tile, 0);
+        urand = frac(float2(px + urand) / 8.0 + r2_sequence(frame_constants.frame_index));
+    }
+
+#if DIFFUSE_GI_BRDF_SAMPLING
+    {
+        BrdfSample brdf_sample = brdf.sample(wo, urand);
+        float3 wi = brdf_sample.wi;
+        outgoing_dir = mul(tangent_to_world, wi);
+    }
 #else
-    float3 wi = uniform_sample_hemisphere(urand);
-    //float3 wi = uniform_sample_sphere(urand);
-    //wi.z = abs(wi.z);
+    {
+        //float3 wi = uniform_sample_hemisphere(urand);
+        float3 od; {
+            od = uniform_sample_sphere(urand);
+        }
+        outgoing_dir = od;
+    }
 #endif
 
-    float3 outgoing_dir = normal_ws;
     float p_q_sel = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
@@ -475,24 +494,11 @@ void main() {
     uint sel_valid_sample_idx = 0;
 
     Reservoir1spp reservoir = Reservoir1spp::create();
-    /*{
-        float3 expected_irradiance = reprojected_gi_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
-        float p_q = max(1e-3, calculate_luma(expected_irradiance));
-        reservoir.w_sum = p_q;
-        reservoir.w_sel = p_q;
-        reservoir.M = 1;
-        reservoir.W = 1;
-        outgoing_dir = mul(tangent_to_world, brdf_sample.wi);
-        p_q_sel = p_q;
-    }*/
-
     const uint reservoir_payload = px.x | (px.y << 16);
 
     reservoir.payload = reservoir_payload;
 
-    if (wi.z > 1e-5) {
-        outgoing_dir = mul(tangent_to_world, wi);
-
+    {
         RayDesc outgoing_ray;
         outgoing_ray.Direction = outgoing_dir;
         outgoing_ray.Origin = refl_ray_origin;
@@ -500,11 +506,8 @@ void main() {
         outgoing_ray.TMax = SKY_DIST;
 
         TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
-        const float p_q = p_q_sel =
-            1.0
-            * max(1e-3, calculate_luma(result.out_value))
-            //* brdf_sample.wi.z
-            ;
+
+        const float p_q = p_q_sel = max(1e-3, calculate_luma(result.out_value));
 
         irradiance_sel = result.out_value;
         ray_hit_sel = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
@@ -514,6 +517,9 @@ void main() {
         reservoir.w_sum = p_q;
         reservoir.M = 1;
         reservoir.W = 1;
+
+        float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
+        candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
 
     const float4 reproj = reprojection_tex[hi_px];
@@ -533,6 +539,7 @@ void main() {
         }
     #endif
 
+    //const bool use_resampling = false;
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
 
     if (use_resampling/* && reproj_validity_dilated > 0.5*/) {
@@ -702,8 +709,6 @@ void main() {
         reservoir.M = M_sum;
         //reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / Z);
         reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
-    } else {
-        outgoing_dir = mul(tangent_to_world, wi);
     }
 
     RayDesc outgoing_ray;

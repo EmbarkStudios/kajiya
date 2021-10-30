@@ -16,6 +16,7 @@ pub struct RtdgiRenderer {
     temporal_irradiance_tex: PingPongTemporalResource,
     temporal_ray_tex: PingPongTemporalResource,
     temporal_reservoir_tex: PingPongTemporalResource,
+    temporal_candidate_tex: PingPongTemporalResource,
 
     temporal_tex: PingPongTemporalResource,
     temporal2_tex: PingPongTemporalResource,
@@ -56,6 +57,7 @@ impl RtdgiRenderer {
             temporal_irradiance_tex: PingPongTemporalResource::new("rtdgi.irradiance"),
             temporal_ray_tex: PingPongTemporalResource::new("rtdgi.ray"),
             temporal_reservoir_tex: PingPongTemporalResource::new("rtdgi.reservoir"),
+            temporal_candidate_tex: PingPongTemporalResource::new("rtdgi.candidate"),
             temporal_tex: PingPongTemporalResource::new("rtdgi.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
@@ -262,6 +264,16 @@ impl RtdgiRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
+        let (mut candidate_output_tex, candidate_history_tex) =
+            self.temporal_candidate_tex.get_output_and_history(
+                rg,
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    gbuffer_desc.half_res().extent_2d(),
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            );
+
         let (irradiance_tex, ray_tex, mut temporal_reservoir_tex) = {
             let (mut irradiance_output_tex, irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
@@ -308,11 +320,13 @@ impl RtdgiRenderer {
             .read(&reservoir_history_tex)
             .read(reprojection_map)
             .read(&hit_normal_history_tex)
+            .read(&candidate_history_tex)
             .bind(surfel_gi)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_output_tex)
             .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
+            .write(&mut candidate_output_tex)
             .read_array(&csgi_volume.indirect)
             .read_array(&csgi_volume.subray_indirect)
             .read_array(&csgi_volume.opacity)
@@ -363,6 +377,7 @@ impl RtdgiRenderer {
                 .read(&*half_view_normal_tex)
                 .read(&*half_depth_tex)
                 .read(ssao_img)
+                .read(&candidate_output_tex)
                 .write(&mut reservoir_output_tex0)
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),

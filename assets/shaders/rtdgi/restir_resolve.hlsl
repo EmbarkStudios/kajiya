@@ -73,7 +73,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_dir = normalize(hit_ws - view_ray_context.ray_hit_ws());
 
         float3 radiance = irradiance_tex[spx].rgb;
-        float w = 1;//max(0.0, dot(center_normal_ws, sample_dir));
+        float w = max(0.0, dot(center_normal_ws, sample_dir)) * M_PI;
         //w *= w * w * w;
         //w = pow(w, 20);
 
@@ -82,7 +82,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         //W_sum += r.W * w;
     }
 
-    irradiance_sum /= max(1e-20, w_sum);
+    #if DIFFUSE_GI_BRDF_SAMPLING
+        irradiance_sum /= max(1e-20, w_sum);
+    #endif
 
     irradiance_output_tex[px] = float4(irradiance_sum, 1);
 }
