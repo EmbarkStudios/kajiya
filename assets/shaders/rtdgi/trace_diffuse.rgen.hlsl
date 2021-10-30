@@ -261,9 +261,6 @@ void main() {
 
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
 
-    const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
-    uint rng = hash3(uint3(px, seed));
-
     const float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     RayDesc outgoing_ray;
@@ -272,6 +269,7 @@ void main() {
     outgoing_ray.TMin = 0;
     outgoing_ray.TMax = SKY_DIST;
 
+    uint rng = hash3(uint3(px, frame_constants.frame_index));
     TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
 
     candidate_irradiance_out_tex[px] = result.out_value;
