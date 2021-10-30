@@ -8,27 +8,20 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/gbuffer.hlsl"
 
-#include "../csgi/common.hlsl"
-
 #define USE_TEMPORAL_FILTER 1
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
-[[vk::binding(2)]] Texture2D<float4> cv_history_tex;
-[[vk::binding(3)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(5)]] Texture2D<float> half_depth_tex;
-[[vk::binding(6)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(7)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(8)]] RWTexture2D<float4> history_output_tex;
-[[vk::binding(9)]] RWTexture2D<float4> cv_history_output_tex;
-[[vk::binding(10)]] RWTexture2D<float4> output_tex;
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(2)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(3)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(4)]] Texture2D<float> half_depth_tex;
+[[vk::binding(5)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(6)]] RWTexture2D<float4> history_output_tex;
+[[vk::binding(7)]] RWTexture2D<float4> output_tex;
+[[vk::binding(8)]] cbuffer _ {
     float4 output_tex_size;
     float4 gbuffer_tex_size;
 };
-
-#include "../csgi/lookup.hlsl"
 
 
 [numthreads(8, 8, 1)]
@@ -78,98 +71,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     }
 #endif
 
-    float3 control_variate = 0.0.xxx;
-    {
-        uint2 hi_px_subpixels[4] = {
-            uint2(0, 0),
-            uint2(1, 1),
-            uint2(1, 0),
-            uint2(0, 1),
-        };
-
-        const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
-        const float2 uv = get_uv(hi_px, gbuffer_tex_size);
-        float depth = half_depth_tex[px];
-        const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
-
-        const float3 ray_hit_ws = view_ray_context.ray_hit_ws();
-        const float3 ray_hit_vs = view_ray_context.ray_hit_vs();
-
-        float3 normal = direction_view_to_world(half_view_normal_tex[px].rgb);
-
-        // TODO: this could use bent normals to avoid leaks, or could be integrated into the SSAO loop,
-        // Note: point-lookup doesn't leak, so multiple bounces should be fine
-        float3 to_eye = get_eye_position() - ray_hit_ws;
-        float3 pseudo_bent_normal = normalize(normalize(to_eye) + normal);
-
-        control_variate = lookup_csgi(
-            ray_hit_ws,
-            normal,
-            CsgiLookupParams::make_default()
-                .with_bent_normal(pseudo_bent_normal)
-                //.with_linear_fetch(false)
-        );
-
-        // Brute force control variate calculation that matches the one
-        // used in trace_diffuse. The other one is an approximation
-        #if 0
-            control_variate = 0;
-
-            DiffuseBrdf brdf;
-            brdf.albedo = 1.0.xxx;
-            const float3x3 tangent_to_world = build_orthonormal_basis(normal);
-
-            const int sample_count = 32;
-            for (uint i = 0; i < sample_count; ++i) {
-                float2 urand = hammersley(i, sample_count);
-                BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
-                float3 ws_dir = mul(tangent_to_world, brdf_sample.wi);
-
-                control_variate += lookup_csgi(
-                    ray_hit_ws,
-                    normal,
-                    CsgiLookupParams::make_default()
-                        .with_sample_directional_radiance(ws_dir)
-                        .with_bent_normal(pseudo_bent_normal)
-                );
-            }
-
-            control_variate /= sample_count;
-        #endif
-    }
-    const float control_variate_luma = calculate_luma(control_variate);
-
-    float history_dist = 1e5; {
-        int2 history_px = int2((uv + reproj.xy) * output_tex_size.xy);
-        const int k = 1;
-        for (int y = -k; y <= k; ++y) {
-            for (int x = -k; x <= k; ++x) {
-                float4 history = history_tex[history_px + int2(x, y)];
-                //history_dist = min(history_dist, abs(control_variate_luma - history.a));
-                //float dist = abs(control_variate_luma - history.a);
-                float dist = abs(control_variate_luma - history.a) / max(1e-5, control_variate_luma + history.a);
-                history_dist = min(history_dist, dist);
-            }
-        }
-    }
-    //history_dist = WaveActiveMin(history_dist);
-
-    const float4 cv_history_dev_packed = cv_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
-    const float3 cv_history = cv_history_dev_packed.rgb;
-    const float dev_history = cv_history_dev_packed.a;
-
-    history_dist = min(history_dist, WaveReadLaneAt(history_dist, WaveGetLaneIndex() ^ 1));
-    history_dist = min(history_dist, WaveReadLaneAt(history_dist, WaveGetLaneIndex() ^ 8));
-
-    //history_dist = abs(control_variate_luma - calculate_luma(cv_history));
-
-    //const float invalid = smoothstep(0.0, 10.0, history_dist / max(1e-5, min(history.a, control_variate_luma)));
-    
-    //const float light_stability = 1.0 - 0.8 * smoothstep(0.1, 0.5, history_dist);
-    //const float light_stability = 1.0 - step(0.01, history_dist);
     const float light_stability = 1;
-
-    const float3 cv_diff = (control_variate - cv_history);
 
     float reproj_validity_dilated = reproj.z;
     #if 1
@@ -184,19 +86,6 @@ void main(uint2 px: SV_DispatchThreadID) {
             }
         }
     #endif
-
-    if (USE_RTDGI_CONTROL_VARIATES) {
-        // Temporally stabilize the control variates. Due to the low res nature of CSGI,
-        // the control variate can flicker, and very blocky. The abrupt change would eventually
-        // be recognized by this temporal filter, but variance in the bounding box clamp makes it lag.
-        //
-        // Some latency is preferrable to flicker. This will pretend the history had the same control variate
-        // as the one we're seeing right now, thus instantly adapting the temporal filter to jumps in CV.
-        //
-        // Note that this would prevent any changes in lighting, except exponential blending here
-        // will slowly blend it over time, with speed similar to if control variates weren't used.
-        history.rgb -= cv_diff * reproj_validity_dilated * 0.9;
-    }
 
 #if 0
 	float4 clamped_history = clamp(history, nmin, nmax);
@@ -217,35 +106,14 @@ void main(uint2 px: SV_DispatchThreadID) {
         res = center.rgb;
     #endif
 
-    const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
-
-    history_output_tex[px] = float4(res, control_variate_luma);
-    cv_history_output_tex[px] = float4(control_variate, smoothed_dev);
-
-    float3 spatial_input;
-    if (USE_RTDGI_CONTROL_VARIATES) {
-        // Note: must not be clamped to properly temporally integrate.
-        // This value could well end up being negative due to control variate noise,
-        // but that is fine, as it will be clamped later.
-        spatial_input = res + control_variate;
-    } else {
-        spatial_input = max(0.0.xxx, res);
-    }
+    history_output_tex[px] = float4(res, 0);
+    float3 spatial_input = max(0.0.xxx, res);
 
     //spatial_input *= reproj.z;    // debug validity
     //spatial_input *= light_stability;
-    //spatial_input = smoothstep(0.0, 0.05, history_dist);
     //spatial_input = length(dev.rgb);
     //spatial_input = 1-light_stability;
-    //spatial_input = control_variate_luma;
-    //spatial_input = abs(cv_diff);
     //spatial_input = abs(dev.rgb);
-    //spatial_input = smoothed_dev;
-
-    // TODO: adaptively sample according to abs(res)
-    //spatial_input = max(0.0, abs(res) / max(1e-5, control_variate));
-
-    //output_tex[px] = float4(spatial_input, smoothed_dev * (light_stability > 0.5 ? 1.0 : -1.0));
     output_tex[px] = float4(spatial_input, light_stability);
     //history_output_tex[px] = reproj.w;
 }

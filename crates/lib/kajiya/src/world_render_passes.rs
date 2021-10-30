@@ -129,7 +129,6 @@ impl WorldRenderer {
             self.bindless_descriptor_set,
             &surfel_state,
             &tlas,
-            &csgi_volume,
             &ssgi_tex,
         );
 

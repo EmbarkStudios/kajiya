@@ -12,18 +12,13 @@
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
-#include "../csgi/common.hlsl"
 #include "../surfel_gi/bindings.hlsl"
 #include "restir_settings.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
 #define USE_SOFT_SHADOWS 0
 
-#define USE_CSGI 0
 #define USE_SURFEL_GI 1
-
-// Experimental. Better precision, but also higher variance because of unfiltered lookups.
-#define USE_CSGI_SUBRAYS 0
 
 #define USE_TEMPORAL_JITTER 1
 #define USE_SHORT_RAYS_ONLY 0
@@ -54,16 +49,11 @@ DEFINE_SURFEL_GI_BINDINGS(13, 14, 15, 16, 17, 18)
 [[vk::binding(21)]] RWTexture2D<float4> hit_normal_tex;
 [[vk::binding(22)]] RWTexture2D<float4> reservoir_out_tex;
 [[vk::binding(23)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(24)]] Texture3D<float4> csgi_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(25)]] Texture3D<float3> csgi_subray_indirect_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(26)]] Texture3D<float> csgi_opacity_tex[CSGI_CASCADE_COUNT];
-[[vk::binding(27)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(28)]] cbuffer _ {
+[[vk::binding(24)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(25)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
-#include "../csgi/lookup.hlsl"
-#include "../csgi/subray_lookup.hlsl"
 #include "../surfel_gi/lookup.hlsl"
 
 static const float SKY_DIST = 1e4;
@@ -95,36 +85,16 @@ float3 uniform_sample_sphere(float2 urand) {
 
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
-    //const float3 primary_hit_normal = gbuffer.normal;
-    //const float origin_cascade_idx = csgi_blended_cascade_idx_for_pos(refl_ray_origin);
-    const float origin_cascade_idx = csgi_cascade_idx_for_pos(outgoing_ray.Origin);
-    /*if (origin_cascade_idx > 0) {
-        irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
-        return;
-    }*/
-
     float3 total_radiance = 0.0.xxx;
     float3 hit_normal_ws = -outgoing_ray.Direction;
 
     #if USE_SHORT_RAYS_ONLY
-        outgoing_ray.TMax = csgi_blended_voxel_size(origin_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS;
+        outgoing_ray.TMax = TODO;
     #else
         outgoing_ray.TMax = SKY_DIST;
     #endif
 
     float hit_t = outgoing_ray.TMax;
-
-    // If the ray goes from a higher-res cascade to a lower-res one, it might end up
-    // terminating too early. Re-calculate the max trace range based on where we'd finish.
-    #if USE_SHORT_RAYS_ONLY && CSGI_CASCADE_COUNT > 1
-        uint end_cascade_idx = csgi_cascade_idx_for_pos(
-            outgoing_ray.Direction + outgoing_ray.Origin * outgoing_ray.TMax
-        );
-        outgoing_ray.TMax = max(
-            outgoing_ray.TMax,
-            csgi_voxel_size(end_cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS
-        );
-    #endif
 
     // TODO: cone spread angle
     const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
@@ -241,39 +211,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
                 }
             }
 
-            if (USE_CSGI) {
-                const float3 pseudo_bent_normal = normalize(normalize(get_eye_position() - primary_hit.position) + gbuffer.normal);
-
-                CsgiLookupParams lookup_params =
-                    CsgiLookupParams::make_default()
-                        .with_bent_normal(pseudo_bent_normal)
-                        //.with_linear_fetch(false)
-                        ;
-
-                // doesn't seem to change much from using origin_cascade_idx
-                //const uint hit_cascade_idx = csgi_cascade_idx_for_pos(primary_hit.position);
-
-                if (SUPPRESS_GI_FOR_NEAR_HITS && primary_hit.ray_t <= csgi_blended_voxel_size(origin_cascade_idx).x) {
-                    float max_normal_offset = primary_hit.ray_t * abs(dot(outgoing_ray.Direction, gbuffer.normal));
-
-                    // Suppression in open corners causes excessive darkening,
-                    // and doesn't prevent that many leaks. This strikes a balance.
-                    const float normal_agreement = dot(primary_hit_normal, gbuffer.normal);
-                    max_normal_offset = lerp(max_normal_offset, 1.51, normal_agreement * 0.5 + 0.5);
-
-                    lookup_params = lookup_params
-                        .with_max_normal_offset_scale(max_normal_offset / csgi_blended_voxel_size(origin_cascade_idx).x);
-                }
-
-                float3 csgi = lookup_csgi(
-                    primary_hit.position,
-                    gbuffer.normal,
-                    lookup_params
-                );
-
-                //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
-                total_radiance += csgi * gbuffer.albedo;
-            } else if (USE_SURFEL_GI) {
+            if (USE_SURFEL_GI) {
                 float3 gi = lookup_surfel_gi(
                     primary_hit.position,
                     gbuffer.normal
@@ -284,27 +222,15 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
         }
     } else {
         #if USE_SHORT_RAYS_ONLY
-            const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_blended_voxel_size(origin_cascade_idx).x);
+            /*const float3 csgi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - csgi_blended_voxel_size(origin_cascade_idx).x);
 
-            #if USE_CSGI_SUBRAYS
-                float3 subray_contrib = point_sample_csgi_subray_indirect(csgi_lookup_pos, outgoing_ray.Direction);
-                {
-                    uint lookup_cascade_idx = csgi_cascade_idx_for_pos(csgi_lookup_pos);
-                    const float3 vol_pos = (csgi_lookup_pos - CSGI_VOLUME_ORIGIN);
-                    int3 gi_vx = int3(floor(vol_pos / csgi_voxel_size(lookup_cascade_idx)));
-                    uint3 vx = csgi_wrap_vx_within_cascade(gi_vx);
-
-                    total_radiance += subray_contrib * smoothstep(0.5, 1, csgi_opacity_tex[lookup_cascade_idx][vx]);
-                }
-            #else
-                total_radiance += lookup_csgi(
-                    csgi_lookup_pos,
-                    0.0.xxx,    // don't offset by any normal
-	                CsgiLookupParams::make_default()
-    	                .with_sample_directional_radiance(outgoing_ray.Direction)
-                        //.with_directional_radiance_phong_exponent(8)
-            );
-            #endif
+            total_radiance += lookup_csgi(
+                csgi_lookup_pos,
+                0.0.xxx,    // don't offset by any normal
+                CsgiLookupParams::make_default()
+	                .with_sample_directional_radiance(outgoing_ray.Direction)
+                    //.with_directional_radiance_phong_exponent(8)
+            );*/
         #else
             total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
         #endif

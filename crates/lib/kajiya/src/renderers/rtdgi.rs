@@ -8,7 +8,7 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
-use super::{csgi, surfel_gi::SurfelGiRenderState, GbufferDepth, PingPongTemporalResource};
+use super::{surfel_gi::SurfelGiRenderState, GbufferDepth, PingPongTemporalResource};
 
 use blue_noise_sampler::spp64::*;
 
@@ -22,7 +22,6 @@ pub struct RtdgiRenderer {
     temporal2_tex: PingPongTemporalResource,
     temporal2_variance_tex: PingPongTemporalResource,
     temporal_hit_normal_tex: PingPongTemporalResource,
-    cv_temporal_tex: PingPongTemporalResource,
 
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
@@ -62,7 +61,6 @@ impl RtdgiRenderer {
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
             temporal_hit_normal_tex: PingPongTemporalResource::new("rtdgi.hit_normal"),
-            cv_temporal_tex: PingPongTemporalResource::new("rtdgi.cv"),
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
@@ -83,7 +81,6 @@ impl RtdgiRenderer {
         input_color: &rg::Handle<Image>,
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
-        csgi_volume: &csgi::CsgiVolume,
         sky_cube: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
@@ -92,10 +89,6 @@ impl RtdgiRenderer {
 
         let (mut temporal_output_tex, history_tex) = self
             .temporal_tex
-            .get_output_and_history(rg, Self::temporal_tex_desc(half_res_extent));
-
-        let (mut cv_temporal_output_tex, cv_history_tex) = self
-            .cv_temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(half_res_extent));
 
         let mut temporal_filtered_tex = rg.create(
@@ -113,14 +106,11 @@ impl RtdgiRenderer {
         )
         .read(input_color)
         .read(&history_tex)
-        .read(&cv_history_tex)
         .read(reprojection_map)
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
-        .read_array(&csgi_volume.indirect)
         .read(sky_cube)
         .write(&mut temporal_output_tex)
-        .write(&mut cv_temporal_output_tex)
         .write(&mut temporal_filtered_tex)
         .constants((
             temporal_output_tex.desc().extent_inv_extent_2d(),
@@ -216,9 +206,6 @@ impl RtdgiRenderer {
         bindless_descriptor_set: vk::DescriptorSet,
         surfel_gi: &SurfelGiRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        csgi_volume: &csgi::CsgiVolume,
-
-        // TODO: calculate specialized SSAO
         ssao_img: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
@@ -327,9 +314,6 @@ impl RtdgiRenderer {
             .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
             .write(&mut candidate_output_tex)
-            .read_array(&csgi_volume.indirect)
-            .read_array(&csgi_volume.subray_indirect)
-            .read_array(&csgi_volume.opacity)
             .read(sky_cube)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
@@ -417,7 +401,6 @@ impl RtdgiRenderer {
             &irradiance_tex,
             gbuffer_depth,
             reprojection_map,
-            csgi_volume,
             sky_cube,
         );
         let filtered_tex = Self::spatial(rg, &filtered_tex, gbuffer_depth, ssao_img);
