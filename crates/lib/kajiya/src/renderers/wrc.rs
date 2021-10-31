@@ -8,7 +8,7 @@ use rg::BindToSimpleRenderPass;
 use super::surfel_gi::SurfelGiRenderState;
 
 // Must match `wrc_settings.hlsl`
-const WRC_GRID_DIMS: [usize; 3] = [3, 1, 3];
+const WRC_GRID_DIMS: [usize; 3] = [4, 2, 5];
 const WRC_PROBE_DIMS: usize = 32;
 const WRC_ATLAS_PROBE_COUNT: [usize; 2] = [16, 16];
 

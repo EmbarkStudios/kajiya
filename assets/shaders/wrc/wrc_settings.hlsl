@@ -1,5 +1,5 @@
 // Must match `wrc.rs`
-static const int3 WRC_GRID_DIMS = int3(3, 1, 3);
+static const int3 WRC_GRID_DIMS = int3(4, 2, 5);
 static const int WRC_PROBE_DIMS = 32;
 static const int2 WRC_ATLAS_PROBE_COUNT = int2(16, 16);
 static const float3 WRC_GRID_CENTER = float3(WRC_GRID_DIMS - 1) * 0.5;
