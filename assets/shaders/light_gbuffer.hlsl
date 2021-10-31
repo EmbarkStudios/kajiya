@@ -54,8 +54,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
 
     RayDesc outgoing_ray;
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
     {
-        const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
         const float3 ray_dir_ws = view_ray_context.ray_dir_ws();
 
         outgoing_ray = new_ray(
@@ -67,6 +67,29 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     const float depth = depth_tex[px];
+
+    {
+        float closest_hit = depth_to_view_z(depth) / view_ray_context.ray_dir_vs().z;
+        float4 hit_color = 0;
+
+        for (int z = -1; z <= 1; ++z) {
+            for (int x = -1; x <= 1; ++x) {
+                Sphere s = Sphere::from_center_radius(float3(x, 0.0, z), 0.1);
+                RaySphereIntersection s_hit = s.intersect_ray(outgoing_ray.Origin, outgoing_ray.Direction);
+
+                if (s_hit.is_hit() && s_hit.t < closest_hit) {
+                    closest_hit = s_hit.t;
+                    hit_color = float4(s_hit.normal * 0.5 + 0.5, 1);
+                }
+            }
+        }
+
+        if (hit_color.a != 0) {
+            output_tex[px] = hit_color;
+            return;
+        }
+    }
+
     if (depth == 0.0) {
         #if 1
             // Render the sun disk

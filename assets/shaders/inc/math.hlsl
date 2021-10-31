@@ -67,4 +67,48 @@ float3 uniform_sample_sphere(float2 urand) {
 	return float3(cs * xy, sn * xy, z);
 }
 
+struct RaySphereIntersection {
+    float t;
+    float3 normal;
+
+    bool is_hit() {
+        return t >= 0.0;
+    }
+};
+
+struct Sphere {
+    float3 center;
+    float radius;
+
+    static Sphere from_center_radius(float3 center, float radius) {
+        Sphere res;
+        res.center = center;
+        res.radius = radius;
+        return res;
+    }
+
+    RaySphereIntersection intersect_ray(float3 ray_origin, float3 ray_dir) {
+        const float3 sphere_to_ray = ray_origin - center;
+
+        if (dot(sphere_to_ray, sphere_to_ray) < radius * radius) { 
+            // The ray starts inside the sphere
+            RaySphereIntersection res;
+            res.t = -1;
+            res.normal = 0;
+            return res;
+        }
+        
+        float a = dot(ray_dir, ray_dir);
+        float b = dot(sphere_to_ray, ray_dir);
+        float c = dot(sphere_to_ray, sphere_to_ray) - radius * radius;
+        float sign = lerp(-1.0, 1.0, step(0.0, a));
+        float t = (-b + sign * sqrt(b*b - a*c)) / a; 
+        
+        RaySphereIntersection res;
+        res.t = t;
+        res.normal = normalize(ray_origin + t * ray_dir - center);
+        return res;
+    }
+};
+
 #endif
