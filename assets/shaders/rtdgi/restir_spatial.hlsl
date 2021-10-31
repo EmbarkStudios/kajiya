@@ -89,13 +89,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         kernel_radius = lerp(8.0, 24.0, pow(ssao_tex[hi_px].r, 4));
     }
 
-    const int2 pass1_offsets[5] = {
+    /*const int2 pass1_offsets[5] = {
         int2(0, 0),
         int2(16, 0),
         int2(-16, 0),
         int2(0, 16),
         int2(0, -16),
-    };
+    };*/
 
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
     // early out saves a lot of comp, but leaves noise in tricky cases (old building interior)

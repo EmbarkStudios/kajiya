@@ -19,7 +19,7 @@ float twice_uv_area(float2 t0, float2 t1, float2 t2) {
     return abs((t1.x - t0.x) * (t2.y - t0.y) - (t2.x - t0.x) * (t1.y - t0.y));
 }
 
-// buggy.
+// https://media.contentapi.ea.com/content/dam/ea/seed/presentations/2019-ray-tracing-gems-chapter-20-akenine-moller-et-al.pdf
 float compute_texture_lod(Texture2D tex, float triangle_constant, float3 ray_direction, float3 surf_normal, float cone_width) {
     uint w, h;
     tex.GetDimensions(w, h);
@@ -73,8 +73,8 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float2 uv2 = asfloat(vertices.Load2(ind.z * sizeof(float2) + mesh.vertex_uv_offset));
     float2 uv = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
-    const float cone_width = payload.cone_width * hit_dist;
-    const float lod_triangle_constant = 0.5 * log2(twice_triangle_area(v0.position, v1.position, v2.position) / twice_uv_area(uv0, uv1, uv2));
+    const float cone_width = payload.ray_cone.width_at_t(hit_dist);
+    const float lod_triangle_constant = 0.5 * log2(twice_uv_area(uv0, uv1, uv2) / twice_triangle_area(v0.position, v1.position, v2.position));
 
     uint material_id = vertices.Load(ind.x * sizeof(uint) + mesh.vertex_mat_offset);
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + material_id * sizeof(MeshMaterial));
@@ -126,7 +126,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
     float2 normal_uv = transform_material_uv(material, uv, 0);
     Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
-    float normal_lod = 1;//compute_texture_lod(normal_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float normal_lod = compute_texture_lod(normal_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float3 ts_normal = normal_tex.SampleLevel(sampler_llr, normal_uv, normal_lod).xyz * 2.0 - 1.0;
 
     if (dot(bitangent, bitangent) > 0.0) {
@@ -138,7 +138,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
     float2 emissive_uv = transform_material_uv(material, uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
-    float emissive_lod = 0;//compute_texture_lod(emissive_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float emissive_lod = compute_texture_lod(emissive_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
 
     float3 emissive = 0;
 

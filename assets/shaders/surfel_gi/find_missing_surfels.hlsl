@@ -13,6 +13,7 @@
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define USE_DIRECTIONAL_IRRADIANCE 0
 #define USE_GEOMETRIC_NORMALS 1
+#define USE_DEBUG_OUT 0
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -123,7 +124,9 @@ void main(
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
     const float2 uv = get_uv(px, gbuffer_tex_size);
 
-    debug_out_tex[px] = 0.0.xxxx;
+    #if USE_DEBUG_OUT
+        debug_out_tex[px] = 0.0.xxxx;
+    #endif
 
     const float z_over_w = depth_tex[px];
 
@@ -275,7 +278,9 @@ void main(
         //total_color = uint_id_to_color(cell_idx) * 0.3;
         //total_color = saturate(1.0 - length(pt_ws.xyz));
 
-        debug_out_tex[px] = float4(total_color, 1);
+        #if USE_DEBUG_OUT
+            debug_out_tex[px] = float4(total_color, 1);
+        #endif
 
         if (cell_surfel_count >= 32 || useful_surfel_count > 2 || scoring_total_weight > 0.2) {
             return;
@@ -290,13 +295,17 @@ void main(
                     surfel_hash_value_buf.Store(entry.idx * 4, cell_idx);
                 } else {
                     // Allocating the cell
-                    //debug_out_tex[px] = float4(10, 0, 0, 1);
+                    #if USE_DEBUG_OUT
+                        //debug_out_tex[px] = float4(10, 0, 0, 1);
+                    #endif
                     return;
                 }
             //}
         } else {
             // Too many conflicts; cannot insert a new entry.
-            debug_out_tex[px] = float4(10, 0, 10, 1);
+            #if USE_DEBUG_OUT
+                debug_out_tex[px] = float4(10, 0, 10, 1);
+            #endif
             return;
         }
     }
@@ -315,7 +324,9 @@ void main(
     //out_color = uint_id_to_color(group_id_hash) * 0.1;
 
     if (gs_px_score_loc_packed == px_score_loc_packed && px_score_loc_packed != 0) {
-        debug_out_tex[px] = float4(10, 0, 0, 1);
+        #if USE_DEBUG_OUT
+            debug_out_tex[px] = float4(10, 0, 0, 1);
+        #endif
         tile_surfel_alloc_tex[group_id] = uint2(px_score_loc_packed, cell_idx);
     } else {
         //debug_out_tex[px] = float4(0, 0, 10, 1);

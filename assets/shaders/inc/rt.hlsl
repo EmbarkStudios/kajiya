@@ -3,17 +3,18 @@
 
 #include "math_const.hlsl"
 #include "gbuffer.hlsl"
+#include "ray_cone.hlsl"
 
 struct GbufferRayPayload {
     GbufferDataPacked gbuffer_packed;
     float t;
-    float cone_width;
+    RayCone ray_cone;
     uint path_length;
 
     static GbufferRayPayload new_miss() {
         GbufferRayPayload res;
         res.t = FLT_MAX;
-        res.cone_width = 0;
+        res.ray_cone = RayCone::from_spread_angle(0.0);
         res.path_length = 0;
         return res;
     }
@@ -77,22 +78,22 @@ struct GbufferPathVertex {
 
 struct GbufferRaytrace {
     RayDesc ray;
-    float cone_width;
+    RayCone ray_cone;
     uint path_length;
     bool cull_back_faces;
 
     static GbufferRaytrace with_ray(RayDesc ray) {
         GbufferRaytrace res;
         res.ray = ray;
-        res.cone_width = 1.0;
+        res.ray_cone = RayCone::from_spread_angle(1.0);
         res.path_length = 0;
         res.cull_back_faces = true;
         return res;
     }
 
-    GbufferRaytrace with_cone_width(float v) {
+    GbufferRaytrace with_cone(RayCone ray_cone) {
         GbufferRaytrace res = this;
-        res.cone_width = v;
+        res.ray_cone = ray_cone;
         return res;
     }
 
@@ -110,7 +111,7 @@ struct GbufferRaytrace {
 
     GbufferPathVertex trace(RaytracingAccelerationStructure acceleration_structure) {
         GbufferRayPayload payload = GbufferRayPayload::new_miss();
-        payload.cone_width = this.cone_width;
+        payload.ray_cone = this.ray_cone;
         payload.path_length = this.path_length;
 
         uint trace_flags = 0;
