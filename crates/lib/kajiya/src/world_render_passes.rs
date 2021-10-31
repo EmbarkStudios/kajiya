@@ -4,7 +4,7 @@ use crate::{
         deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
     },
-    world_renderer::WorldRenderer,
+    world_renderer::{RenderDebugMode, WorldRenderer},
 };
 use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, GetOrCreateTemporal};
@@ -116,6 +116,7 @@ impl WorldRenderer {
             &sky_cube,
             self.bindless_descriptor_set,
             &surfel_state,
+            &wrc,
             &tlas,
             &ssgi_tex,
         );
@@ -201,8 +202,19 @@ impl WorldRenderer {
                 .color
         });
 
-        let final_post_input =
+        let mut final_post_input =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
+
+        if matches!(self.debug_mode, RenderDebugMode::WorldRadianceCache) {
+            wrc.see_through(
+                rg,
+                &sky_cube,
+                &surfel_state,
+                self.bindless_descriptor_set,
+                &tlas,
+                &mut final_post_input,
+            );
+        }
 
         let post_processed = post_process(
             rg,

@@ -60,3 +60,31 @@ pub fn wrc_trace(
 
     WrcRenderState { radiance_atlas }
 }
+
+impl WrcRenderState {
+    pub fn see_through(
+        &self,
+        rg: &mut rg::TemporalRenderGraph,
+        sky_cube: &rg::Handle<Image>,
+        surfel_gi: &SurfelGiRenderState,
+        bindless_descriptor_set: vk::DescriptorSet,
+        tlas: &rg::Handle<RayTracingAcceleration>,
+        output_img: &mut rg::Handle<Image>,
+    ) {
+        SimpleRenderPass::new_rt(
+            rg.add_pass("wrc see through"),
+            "/shaders/wrc/wrc_see_through.rgen.hlsl",
+            &[
+                "/shaders/rt/gbuffer.rmiss.hlsl",
+                "/shaders/rt/shadow.rmiss.hlsl",
+            ],
+            &["/shaders/rt/gbuffer.rchit.hlsl"],
+        )
+        .bind(self)
+        .read(sky_cube)
+        .bind(surfel_gi)
+        .write(output_img)
+        .raw_descriptor_set(1, bindless_descriptor_set)
+        .trace_rays(tlas, output_img.desc().extent);
+    }
+}

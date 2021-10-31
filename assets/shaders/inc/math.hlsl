@@ -100,6 +100,64 @@ struct Sphere {
         res.normal = normalize(ray_origin + res.t * ray_dir - center);
         return res;
     }
+
+    RaySphereIntersection intersect_ray_inside(float3 ray_origin, float3 ray_dir) {
+    	float3 oc = ray_origin - center;
+        float a = dot(ray_dir, ray_dir);
+    	float b = 2.0 * dot(oc, ray_dir);
+    	float c = dot(oc, oc) - radius * radius;
+
+    	float h = b * b - 4.0 * a * c;
+
+        RaySphereIntersection res;
+        // Note: flipped sign compared to the regular version
+        res.t = (-b + sqrt(h)) / (2.0 * a);
+        res.normal = normalize(ray_origin + res.t * ray_dir - center);
+        return res;
+    }
+};
+
+struct RayBoxIntersection {
+    float t_min;
+    float t_max;
+
+    bool is_hit() {
+        return t_min <= t_max && t_max >= 0.0;
+    }
+};
+
+struct Aabb {
+    float3 pmin;
+    float3 pmax;
+
+    static Aabb from_min_max(float3 pmin, float3 pmax) {
+        Aabb res;
+        res.pmin = pmin;
+        res.pmax = pmax;
+        return res;
+    }
+
+    static Aabb from_center_half_extent(float3 center, float3 half_extent) {
+        Aabb res;
+        res.pmin = center - half_extent;
+        res.pmax = center + half_extent;
+        return res;
+    }
+
+    // From https://github.com/tigrazone/glslppm
+    RayBoxIntersection intersect_ray(float3 ray_origin, float3 ray_dir) {
+    	float3 min_interval = (pmax.xyz - ray_origin.xyz) / ray_dir;
+    	float3 max_interval = (pmin.xyz - ray_origin.xyz) / ray_dir;
+
+    	float3 a = min(min_interval, max_interval);
+    	float3 b = max(min_interval, max_interval);
+
+        RayBoxIntersection res;
+        res.t_min = max(max(a.x, a.y), a.z);
+        res.t_max = min(min(b.x, b.y), b.z);
+        // return t_min <= t_max && t_min < t && t_max >= 0.0;
+        return res;
+    }
 };
 
 #endif

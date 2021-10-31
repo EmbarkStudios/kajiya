@@ -13,6 +13,7 @@
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
 #include "../surfel_gi/bindings.hlsl"
+#include "../wrc/bindings.hlsl"
 #include "restir_settings.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
@@ -21,10 +22,8 @@
 #define USE_SURFEL_GI 1
 
 #define USE_TEMPORAL_JITTER 1
-#define USE_SHORT_RAYS_ONLY 0
-#define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
+#define USE_WORLD_RADIANCE_CACHE 1
 #define ROUGHNESS_BIAS 0.5
-#define SUPPRESS_GI_FOR_NEAR_HITS 1
 #define USE_SCREEN_GI_REPROJECTION 0
 #define USE_SWIZZLE_TILE_PIXELS 0
 
@@ -40,14 +39,16 @@
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(7)]] Texture2D<float4> reprojection_tex;
 DEFINE_SURFEL_GI_BINDINGS(8, 9, 10, 11, 12, 13)
-[[vk::binding(14)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(15)]] RWTexture2D<float3> candidate_irradiance_out_tex;
-[[vk::binding(16)]] RWTexture2D<float4> candidate_hit_out_tex;
-[[vk::binding(17)]] cbuffer _ {
+DEFINE_WRC_BINDINGS(14)
+[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(16)]] RWTexture2D<float3> candidate_irradiance_out_tex;
+[[vk::binding(17)]] RWTexture2D<float4> candidate_hit_out_tex;
+[[vk::binding(18)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
 #include "../surfel_gi/lookup.hlsl"
+#include "../wrc/lookup.hlsl"
 #include "candidate_ray_dir.hlsl"
 
 static const float SKY_DIST = 1e4;
@@ -66,15 +67,19 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
     float3 total_radiance = 0.0.xxx;
     float3 hit_normal_ws = -outgoing_ray.Direction;
 
-    #if USE_SHORT_RAYS_ONLY
-        outgoing_ray.TMax = TODO;
+    #if USE_WORLD_RADIANCE_CACHE
+        WrcFarField far_field = WrcFarField::from_ray(outgoing_ray.Origin, outgoing_ray.Direction);
     #else
-        outgoing_ray.TMax = SKY_DIST;
+        WrcFarField far_field = WrcFarField::create_miss();
     #endif
+
+    if (far_field.is_hit()) {
+        outgoing_ray.TMax = far_field.probe_t;
+    }
 
     float hit_t = outgoing_ray.TMax;
 
-    const float reflected_cone_spread_angle = 0.1;     // TODO
+    const float reflected_cone_spread_angle = 0.2;
     const RayCone ray_cone =
         pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
         .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
@@ -204,19 +209,12 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
             }
         }
     } else {
-        #if USE_SHORT_RAYS_ONLY
-            /*const float3 gi_lookup_pos = outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - gi_blended_voxel_size(origin_cascade_idx).x);
-
-            total_radiance += lookup_gi(
-                gi_lookup_pos,
-                0.0.xxx,    // don't offset by any normal
-                GiLookupParams::make_default()
-	                .with_sample_directional_radiance(outgoing_ray.Direction)
-                    //.with_directional_radiance_phong_exponent(8)
-            );*/
-        #else
+        if (far_field.is_hit()) {
+            total_radiance += far_field.radiance;
+            hit_t = far_field.approx_surface_t;
+        } else {
             total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
-        #endif
+        }
     }
 
     float3 out_value = total_radiance;

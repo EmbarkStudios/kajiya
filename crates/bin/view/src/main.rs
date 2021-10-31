@@ -469,6 +469,13 @@ fn main() -> anyhow::Result<()> {
                             ctx.world_renderer.debug_mode = RenderDebugMode::None;
                         }
 
+                        if ui.radio_button_bool(
+                            im_str!("World radiance cache"),
+                            ctx.world_renderer.debug_mode == RenderDebugMode::WorldRadianceCache,
+                        ) {
+                            ctx.world_renderer.debug_mode = RenderDebugMode::WorldRadianceCache;
+                        }
+
                         imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
                             ui,
                             &mut ctx.world_renderer.debug_shading_mode,

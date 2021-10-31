@@ -85,7 +85,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                         //hit_color = float4(s_hit.normal * 0.5 + 0.5, 1);
 
                         const float3 refl = reflect(outgoing_ray.Direction, s_hit.normal);
-                        hit_color = float4(lookup_wrc(probe_coord, refl), 1);
+                        hit_color = lookup_wrc(probe_coord, refl);
                     }
                 }
             }

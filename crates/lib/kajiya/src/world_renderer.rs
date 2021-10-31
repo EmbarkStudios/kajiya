@@ -79,6 +79,7 @@ pub struct MeshInstance {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum RenderDebugMode {
     None,
+    WorldRadianceCache,
 }
 
 #[derive(Clone, Copy)]

@@ -12,6 +12,7 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/mesh.hlsl"
 #include "../inc/sh.hlsl"
+#include "../inc/quasi_random.hlsl"
 #include "../surfel_gi/bindings.hlsl"
 #include "wrc_settings.hlsl"
 
@@ -43,7 +44,7 @@ float3 sample_environment_light(float3 dir) {
 }
 
 float pack_dist(float x) {
-    return min(1, x);
+    return x;
 }
 
 float unpack_dist(float x) {
@@ -59,8 +60,6 @@ void main() {
     const uint2 atlas_px = tile * WRC_PROBE_DIMS + probe_px;
     const uint3 probe_coord = wrc_probe_idx_to_coord(probe_idx);
 
-    uint rng = hash3(uint3(atlas_px, frame_constants.frame_index));
-
     float3 irradiance_sum = 0;
     float valid_sample_count = 0;
     float2 hit_dist_wt = 0;
@@ -71,12 +70,13 @@ void main() {
 
         RayDesc outgoing_ray;
         {
-            const float min_dist = 1.0;
-
             outgoing_ray = new_ray(
                 wrc_probe_center(probe_coord),
                 octa_decode((probe_px + 0.5) / WRC_PROBE_DIMS),
-                min_dist,
+                //octa_decode((probe_px + hammersley(sample_idx, 4)) / WRC_PROBE_DIMS),
+                //octa_decode((probe_px + r2_sequence(frame_constants.frame_index)) / WRC_PROBE_DIMS),
+                //1e-3,
+                WRC_MIN_TRACE_DIST,
                 FLT_MAX
             );
         }
@@ -139,7 +139,7 @@ void main() {
                     irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * gbuffer.albedo;
                 }
             } else {
-                hit_dist_wt += float2(pack_dist(1), 1);
+                hit_dist_wt += float2(pack_dist(1e5), 1);
                 irradiance_sum += sample_environment_light(outgoing_ray.Direction);
             }
         }
