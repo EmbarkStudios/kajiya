@@ -37,7 +37,7 @@
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
-static const uint MAX_PATH_LENGTH = 2;
+static const uint MAX_PATH_LENGTH = 1;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
