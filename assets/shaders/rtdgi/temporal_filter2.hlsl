@@ -146,7 +146,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
 #else
     float4 clamped_history = float4(
-        soft_color_clamp(center.rgb, history.rgb, ex.rgb, dev.rgb),
+        soft_color_clamp(center.rgb, history.rgb, ex.rgb, 0.5 * dev.rgb),
         history.a
     );
 #endif

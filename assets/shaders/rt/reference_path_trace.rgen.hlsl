@@ -30,8 +30,9 @@ static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;
 static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
-static const bool GREY_ALBEDO_FIRST_BOUNCE = true;
+static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
 static const bool USE_SOFT_SHADOWS = true;
+static const bool SHOW_ALBEDO = true;
 
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
@@ -150,6 +151,12 @@ void main() {
                     ));
 
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+
+
+                if (SHOW_ALBEDO) {
+                    output_tex[px] = float4(gbuffer.albedo, 1);
+                    return;
+                }
 
                 if (dot(gbuffer.normal, outgoing_ray.Direction) >= 0.0) {
                     if (0 == path_length) {
