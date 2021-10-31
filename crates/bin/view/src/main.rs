@@ -487,13 +487,6 @@ fn main() -> anyhow::Result<()> {
                             .build(ui, &mut max_fps);
                     }
 
-                    if let Some(hook) = locked_rg_debug_hook.as_ref() {
-                        ui.text(im_str!("Viewing {:?}", hook.render_scope.name));
-                        if ui.small_button(im_str!("Switch to default output")) {
-                            locked_rg_debug_hook = None;
-                        }
-                    }
-
                     if imgui::CollapsingHeader::new(im_str!("GPU passes"))
                         .default_open(true)
                         .build(ui)
@@ -511,7 +504,22 @@ fn main() -> anyhow::Result<()> {
                                 continue;
                             }
 
+                            let style = locked_rg_debug_hook.as_ref().and_then(|hook| {
+                                if hook.render_scope == scope {
+                                    Some(ui.push_style_color(
+                                        imgui::StyleColor::Text,
+                                        [1.0, 1.0, 0.1, 1.0],
+                                    ))
+                                } else {
+                                    None
+                                }
+                            });
+
                             ui.text(format!("{}: {:.3}ms", scope.name, ms));
+
+                            if let Some(style) = style {
+                                style.pop(ui);
+                            }
 
                             if ui.is_item_hovered() {
                                 ctx.world_renderer.rg_debug_hook =
@@ -520,7 +528,12 @@ fn main() -> anyhow::Result<()> {
                                     });
 
                                 if ui.is_item_clicked(imgui::MouseButton::Left) {
-                                    locked_rg_debug_hook = ctx.world_renderer.rg_debug_hook.clone();
+                                    if locked_rg_debug_hook == ctx.world_renderer.rg_debug_hook {
+                                        locked_rg_debug_hook = None;
+                                    } else {
+                                        locked_rg_debug_hook =
+                                            ctx.world_renderer.rg_debug_hook.clone();
+                                    }
                                 }
                             }
                         }
