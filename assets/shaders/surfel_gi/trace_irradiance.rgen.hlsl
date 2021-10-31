@@ -122,7 +122,7 @@ void main() {
             if (primary_hit.is_hit) {
                 const float3 to_light_norm = SUN_DIRECTION;
                 
-                const bool is_shadowed = path_length+1 >= MAX_PATH_LENGTH || rt_is_shadowed(
+                const bool is_shadowed = rt_is_shadowed(
                     acceleration_structure,
                     new_ray(
                         primary_hit.position,

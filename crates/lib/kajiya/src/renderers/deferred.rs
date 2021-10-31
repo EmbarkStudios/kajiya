@@ -2,7 +2,7 @@ use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 
-use super::{surfel_gi::SurfelGiRenderState, GbufferDepth};
+use super::{surfel_gi::SurfelGiRenderState, wrc::WrcRenderState, GbufferDepth};
 
 #[allow(clippy::too_many_arguments)]
 pub fn light_gbuffer(
@@ -13,6 +13,7 @@ pub fn light_gbuffer(
     rtr: &rg::Handle<Image>,
     rtdgi: &rg::Handle<Image>,
     surfel_gi: &SurfelGiRenderState,
+    wrc: &WrcRenderState,
     temporal_output: &mut rg::Handle<Image>,
     output: &mut rg::Handle<Image>,
     sky_cube: &rg::Handle<Image>,
@@ -28,6 +29,7 @@ pub fn light_gbuffer(
         .read(rtr)
         .read(rtdgi)
         .bind(surfel_gi)
+        .bind(wrc)
         .write(temporal_output)
         .write(output)
         .read(sky_cube)

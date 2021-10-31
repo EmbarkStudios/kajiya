@@ -9,11 +9,12 @@
 #include "inc/uv.hlsl"
 #include "inc/bindless_textures.hlsl"
 #include "rtr/rtr_settings.hlsl"
+#include "wrc/wrc_settings.hlsl"
+#include "surfel_gi/bindings.hlsl"
+#include "wrc/bindings.hlsl"
 
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
-
-#include "surfel_gi/bindings.hlsl"
 
 #define USE_SSGI 0
 #define USE_RTR 0
@@ -28,16 +29,18 @@
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
-[[vk::binding(12)]] RWTexture2D<float4> temporal_output_tex;
-[[vk::binding(13)]] RWTexture2D<float4> output_tex;
-[[vk::binding(14)]] TextureCube<float4> unconvolved_sky_cube_tex;
-[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(16)]] cbuffer _ {
+DEFINE_WRC_BINDINGS(12)
+[[vk::binding(13)]] RWTexture2D<float4> temporal_output_tex;
+[[vk::binding(14)]] RWTexture2D<float4> output_tex;
+[[vk::binding(15)]] TextureCube<float4> unconvolved_sky_cube_tex;
+[[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(17)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
 };
 
 #include "surfel_gi/lookup.hlsl"
+#include "wrc/lookup.hlsl"
 
 #define SHADING_MODE_DEFAULT 0
 #define SHADING_MODE_NO_TEXTURES 1
@@ -56,11 +59,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
     RayDesc outgoing_ray;
     const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
     {
-        const float3 ray_dir_ws = view_ray_context.ray_dir_ws();
-
         outgoing_ray = new_ray(
             view_ray_context.ray_origin_ws(), 
-            normalize(ray_dir_ws.xyz),
+            view_ray_context.ray_dir_ws(),
             0.0,
             FLT_MAX
         );
@@ -69,17 +70,23 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float depth = depth_tex[px];
 
     {
-        float closest_hit = depth_to_view_z(depth) / view_ray_context.ray_dir_vs().z;
+        float closest_hit = -depth_to_view_z(depth);
         float4 hit_color = 0;
 
-        for (int z = -1; z <= 1; ++z) {
-            for (int x = -1; x <= 1; ++x) {
-                Sphere s = Sphere::from_center_radius(float3(x, 0.0, z), 0.1);
-                RaySphereIntersection s_hit = s.intersect_ray(outgoing_ray.Origin, outgoing_ray.Direction);
+        for (uint z = 0; z < WRC_GRID_DIMS.z; ++z) {
+            for (uint y = 0; y < WRC_GRID_DIMS.y; ++y) {
+                for (uint x = 0; x < WRC_GRID_DIMS.x; ++x) {
+                    const uint3 probe_coord = uint3(x, y, z);
+                    Sphere s = Sphere::from_center_radius(wrc_probe_center(probe_coord), 0.1);
+                    RaySphereIntersection s_hit = s.intersect_ray(outgoing_ray.Origin, view_ray_context.ray_dir_ws_h.xyz);
 
-                if (s_hit.is_hit() && s_hit.t < closest_hit) {
-                    closest_hit = s_hit.t;
-                    hit_color = float4(s_hit.normal * 0.5 + 0.5, 1);
+                    if (s_hit.is_hit() && s_hit.t < closest_hit) {
+                        closest_hit = s_hit.t;
+                        //hit_color = float4(s_hit.normal * 0.5 + 0.5, 1);
+
+                        const float3 refl = reflect(outgoing_ray.Direction, s_hit.normal);
+                        hit_color = float4(lookup_wrc(probe_coord, refl), 1);
+                    }
                 }
             }
         }

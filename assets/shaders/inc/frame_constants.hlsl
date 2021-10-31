@@ -77,11 +77,11 @@ struct ViewRayContext {
     float4 ray_hit_ws_h;
 
     float3 ray_dir_vs() {
-        return ray_dir_vs_h.xyz;
+        return normalize(ray_dir_vs_h.xyz);
     }
 
     float3 ray_dir_ws() {
-        return ray_dir_ws_h.xyz;
+        return normalize(ray_dir_ws_h.xyz);
     }
 
     float3 ray_origin_vs() {
@@ -110,8 +110,8 @@ struct ViewRayContext {
 
         ViewRayContext res;
         res.ray_dir_cs = float4(uv_to_cs(uv), 0.0, 1.0);
-        res.ray_dir_vs_h = normalize(mul(view_constants.sample_to_view, res.ray_dir_cs));
-        res.ray_dir_ws_h = normalize(mul(view_constants.view_to_world, res.ray_dir_vs_h));
+        res.ray_dir_vs_h = mul(view_constants.sample_to_view, res.ray_dir_cs);
+        res.ray_dir_ws_h = mul(view_constants.view_to_world, res.ray_dir_vs_h);
 
         res.ray_origin_cs = float4(uv_to_cs(uv), 1.0, 1.0);
         res.ray_origin_vs_h = mul(view_constants.sample_to_view, res.ray_origin_cs);

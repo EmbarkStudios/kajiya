@@ -68,6 +68,7 @@ float3 uniform_sample_sphere(float2 urand) {
 }
 
 struct RaySphereIntersection {
+    // `t` will be NaN if no intersection is found
     float t;
     float3 normal;
 
@@ -88,25 +89,15 @@ struct Sphere {
     }
 
     RaySphereIntersection intersect_ray(float3 ray_origin, float3 ray_dir) {
-        const float3 sphere_to_ray = ray_origin - center;
-
-        if (dot(sphere_to_ray, sphere_to_ray) < radius * radius) { 
-            // The ray starts inside the sphere
-            RaySphereIntersection res;
-            res.t = -1;
-            res.normal = 0;
-            return res;
-        }
-        
+    	float3 oc = ray_origin - center;
         float a = dot(ray_dir, ray_dir);
-        float b = dot(sphere_to_ray, ray_dir);
-        float c = dot(sphere_to_ray, sphere_to_ray) - radius * radius;
-        float sign = lerp(-1.0, 1.0, step(0.0, a));
-        float t = (-b + sign * sqrt(b*b - a*c)) / a; 
-        
+    	float b = 2.0 * dot(oc, ray_dir);
+    	float c = dot(oc, oc) - radius * radius;
+    	float h = b * b - 4.0 * a * c;
+
         RaySphereIntersection res;
-        res.t = t;
-        res.normal = normalize(ray_origin + t * ray_dir - center);
+        res.t = (-b - sqrt(h)) / (2.0 * a);
+        res.normal = normalize(ray_origin + res.t * ray_dir - center);
         return res;
     }
 };

@@ -80,6 +80,14 @@ impl WorldRenderer {
         );
         surfel_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, &tlas);
 
+        let wrc = crate::renderers::wrc::wrc_trace(
+            rg,
+            &surfel_state,
+            &sky_cube,
+            self.bindless_descriptor_set,
+            &tlas,
+        );
+
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
             rg,
             &gbuffer_depth,
@@ -154,6 +162,7 @@ impl WorldRenderer {
             &rtr,
             &rtdgi,
             &surfel_state,
+            &wrc,
             &mut accum_img,
             &mut debug_out_tex,
             &sky_cube,
