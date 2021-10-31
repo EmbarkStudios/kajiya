@@ -487,8 +487,11 @@ fn main() -> anyhow::Result<()> {
                             .build(ui, &mut max_fps);
                     }
 
-                    if ui.small_button(im_str!("Disable debug hook")) {
-                        locked_rg_debug_hook = None;
+                    if let Some(hook) = locked_rg_debug_hook.as_ref() {
+                        ui.text(im_str!("Viewing {:?}", hook.render_scope.name));
+                        if ui.small_button(im_str!("Switch to default output")) {
+                            locked_rg_debug_hook = None;
+                        }
                     }
 
                     if imgui::CollapsingHeader::new(im_str!("GPU passes"))
