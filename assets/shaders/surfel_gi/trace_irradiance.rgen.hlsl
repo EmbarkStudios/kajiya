@@ -165,7 +165,7 @@ void main() {
                 }
 
                 if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
-                    irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * throughput;
+                    irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * throughput * gbuffer.albedo;
                 }
 
                 const float3 urand = float3(
