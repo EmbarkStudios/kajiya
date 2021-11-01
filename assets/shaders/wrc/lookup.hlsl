@@ -47,6 +47,7 @@ struct WrcFarField {
     float3 radiance;
     float probe_t;
     float approx_surface_t;
+    float inv_pdf;
 
     static WrcFarField create_miss() {
         WrcFarField res;
@@ -62,8 +63,9 @@ struct WrcFarField {
 WrcFarField WrcFarFieldQuery::query() {
     WrcFarField res;
     res.probe_t = -1;
+    res.inv_pdf = 1;
 
-    Aabb wrc_grid_box = Aabb::from_center_half_extent(0.0.xxx, WRC_GRID_WORLD_SIZE * 0.5);
+    Aabb wrc_grid_box = Aabb::from_center_half_extent(wrc_grid_center(), WRC_GRID_WORLD_SIZE * 0.5);
     RayBoxIntersection wrc_grid_intersection = wrc_grid_box.intersect_ray(ray_origin, ray_direction);
 
     if (wrc_grid_intersection.is_hit()) {
@@ -98,22 +100,29 @@ WrcFarField WrcFarFieldQuery::query() {
 
             float jacobian = 1;
             if (all(query_normal) != 0) {
-                jacobian =
+                jacobian *=
                     parallax_dist2 / (WRC_MIN_TRACE_DIST * WRC_MIN_TRACE_DIST)
                     / dot(ray_direction, normalize(offset_from_probe_center));
 
                 // Also account for the change in the PDF being used in lighting.
-                // TODO: do all of those terms make sense?
+                // TODO: might want to move out to a place which knows the BRDF.
                 jacobian *=
                     dot(query_normal, normalize(offset_from_probe_center))
                     / dot(query_normal, ray_direction);
             }
 
-            res.radiance = out_value.rgb * jacobian;
+            #if 1
+                res.radiance = out_value.rgb;
+                res.inv_pdf = max(0.0, jacobian);
+            #else
+                // Olde. Not quite right by pushing the jacobian into radiance,
+                // but seems to work. Thought reservoir calculations would be affected...
+                res.radiance = out_value.rgb * max(0.0, jacobian);
+                res.inv_pdf = 1;
+            #endif
 
             const float texel_footprint_fudge = 0.5;
             res.probe_t = parallax.t + texel_footprint_fudge;
-
             res.approx_surface_t = parallax.t + out_value.a - WRC_MIN_TRACE_DIST;
         }
     }

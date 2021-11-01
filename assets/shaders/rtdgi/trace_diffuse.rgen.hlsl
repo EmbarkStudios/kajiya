@@ -40,7 +40,7 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 DEFINE_SURFEL_GI_BINDINGS(8, 9, 10, 11, 12, 13)
 DEFINE_WRC_BINDINGS(14)
 [[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(16)]] RWTexture2D<float3> candidate_irradiance_out_tex;
+[[vk::binding(16)]] RWTexture2D<float4> candidate_irradiance_out_tex;
 [[vk::binding(17)]] RWTexture2D<float4> candidate_hit_out_tex;
 [[vk::binding(18)]] cbuffer _ {
     float4 gbuffer_tex_size;
@@ -60,6 +60,7 @@ struct TraceResult {
     float3 out_value;
     float3 hit_normal_ws;
     float hit_t;
+    float inv_pdf;
 };
 
 TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
@@ -85,6 +86,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     }
 
     float hit_t = outgoing_ray.TMax;
+    float inv_pdf = 1.0;
 
     const float reflected_cone_spread_angle = 0.2;
     const RayCone ray_cone =
@@ -219,6 +221,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
         if (far_field.is_hit()) {
             total_radiance += far_field.radiance;
             hit_t = far_field.approx_surface_t;
+            inv_pdf = far_field.inv_pdf;
         } else {
             total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
         }
@@ -232,6 +235,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     result.out_value = out_value;
     result.hit_t = hit_t;
     result.hit_normal_ws = hit_normal_ws;
+    result.inv_pdf = inv_pdf;
     return result;
 }
 
@@ -282,6 +286,6 @@ void main() {
     uint rng = hash3(uint3(px, frame_constants.frame_index));
     TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
 
-    candidate_irradiance_out_tex[px] = result.out_value;
+    candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
     candidate_hit_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
 }

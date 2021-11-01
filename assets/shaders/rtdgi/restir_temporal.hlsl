@@ -31,7 +31,7 @@
 
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture2D<float3> candidate_irradiance_tex;
+[[vk::binding(2)]] Texture2D<float4> candidate_irradiance_tex;
 [[vk::binding(3)]] Texture2D<float4> candidate_hit_tex;
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(7)]] Texture2D<float4> irradiance_history_tex;
@@ -61,11 +61,14 @@ struct TraceResult {
     float3 out_value;
     float3 hit_normal_ws;
     float hit_t;
+    float inv_pdf;
 };
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
+    const float4 candidate_irradiance_inv_pdf = candidate_irradiance_tex[px];
     TraceResult result;
-    result.out_value = candidate_irradiance_tex[px];
+    result.out_value = candidate_irradiance_inv_pdf.rgb;
+    result.inv_pdf = candidate_irradiance_inv_pdf.a;
     float4 hit = candidate_hit_tex[px];
     result.hit_t = hit.w;
     result.hit_normal_ws = hit.xyz;
@@ -181,15 +184,16 @@ void main(uint2 px : SV_DispatchThreadID) {
         TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
 
         const float p_q = p_q_sel = max(1e-3, calculate_luma(result.out_value));
+        const float inv_pdf_q = result.inv_pdf;
 
         irradiance_sel = result.out_value;
         ray_hit_sel = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
         hit_normal_sel = result.hit_normal_ws;
 
         reservoir.payload = reservoir_payload;
-        reservoir.w_sum = p_q;
+        reservoir.w_sum = p_q * inv_pdf_q;
         reservoir.M = 1;
-        reservoir.W = 1;
+        reservoir.W = inv_pdf_q;
 
         float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
@@ -296,7 +300,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             if (sample_i == 0) {
                 r.M = min(r.M, 10);
-                //r.M = min(r.M, 1);
+                //r.M = min(r.M, 2);
             } else {
                 r.M = min(r.M, 5);
             }

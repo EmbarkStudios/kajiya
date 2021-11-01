@@ -21,7 +21,7 @@
 #define USE_RTDGI 1
 
 #define SSGI_INTENSITY_BIAS 0.0
-#define SHOW_WRC_PROBES !true
+#define SHOW_WRC_PROBES 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
