@@ -146,6 +146,7 @@ unsafe extern "system" fn vulkan_debug_callback(
     } else if message.starts_with("Validation Warning: [ VUID_Undefined ]") {
         log::warn!("{}\n", message);
     } else {
+        log::error!("{}\n", message);
         panic!("{}\n", message);
     }
 

@@ -289,6 +289,17 @@ impl Device {
         if !initial_data.is_empty() {
             let total_initial_data_bytes = initial_data.iter().map(|d| d.data.len()).sum();
 
+            let block_bytes: usize = match desc.format {
+                vk::Format::R8G8B8A8_UNORM => 1,
+                vk::Format::R8G8B8A8_SRGB => 1,
+                vk::Format::BC1_RGB_SRGB_BLOCK => 8,
+                vk::Format::BC3_UNORM_BLOCK => 16,
+                vk::Format::BC3_SRGB_BLOCK => 16,
+                vk::Format::BC5_UNORM_BLOCK => 16,
+                vk::Format::BC5_SNORM_BLOCK => 16,
+                _ => todo!("{:?}", desc.format),
+            };
+
             let mut image_buffer = self
                 .create_buffer_impl(
                     super::buffer::BufferDesc {
@@ -309,6 +320,7 @@ impl Device {
                 .enumerate()
                 .map(|(level, sub)| {
                     mapped_slice_mut[offset..offset + sub.data.len()].copy_from_slice(sub.data);
+                    assert_eq!(offset % block_bytes, 0);
 
                     let region = vk::BufferImageCopy::builder()
                         .buffer_offset(offset as _)

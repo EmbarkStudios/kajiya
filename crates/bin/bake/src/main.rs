@@ -25,9 +25,10 @@ struct Opt {
 }
 
 fn main() -> Result<()> {
-    let opt = Opt::from_args();
+    env_logger::init();
     let lazy_cache = LazyCache::create();
 
+    let opt = Opt::from_args();
     std::fs::create_dir_all("baked")?;
 
     {
