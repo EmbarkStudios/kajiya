@@ -21,6 +21,7 @@
 #define USE_RTDGI 1
 
 #define SSGI_INTENSITY_BIAS 0.0
+#define SHOW_WRC_PROBES !true
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -69,7 +70,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float depth = depth_tex[px];
 
-    {
+    if (SHOW_WRC_PROBES) {
         float closest_hit = -depth_to_view_z(depth);
         float4 hit_color = 0;
 

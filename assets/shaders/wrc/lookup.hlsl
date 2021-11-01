@@ -17,18 +17,26 @@ struct WrcFarFieldQuery {
     float3 ray_origin;
     float3 ray_direction;
     float3 interpolation_urand;
+    float3 query_normal;
 
     static WrcFarFieldQuery from_ray(float3 ray_origin, float3 ray_direction) {
         WrcFarFieldQuery res;
         res.ray_origin = ray_origin;
         res.ray_direction = ray_direction;
         res.interpolation_urand = 0.5.xxx;
+        res.query_normal = 0.0.xxx;
         return res;
     }
 
     WrcFarFieldQuery with_interpolation_urand(float3 interpolation_urand) {
         WrcFarFieldQuery res = this;
         res.interpolation_urand = interpolation_urand;
+        return res;
+    }
+
+    WrcFarFieldQuery with_query_normal(float3 query_normal) {
+        WrcFarFieldQuery res = this;
+        res.query_normal = query_normal;
         return res;
     }
 
@@ -63,20 +71,49 @@ WrcFarField WrcFarFieldQuery::query() {
         uint rng = hash4(uint4(ray_origin, frame_constants.frame_index));
 
         // Stochastic interpolation
-        const float3 probe_offset = (interpolation_urand - 0.5) * 0.5;
+        const float interpolation_extent = 1.0;
+        const float3 probe_offset = (interpolation_urand - 0.5) * interpolation_extent;
 
         const uint3 probe_coord = clamp(
             wrc_world_pos_to_coord(origin_in_box + probe_offset),
             int3(0, 0, 0),
             WRC_GRID_DIMS - 1
         );
+        const float3 probe_center = wrc_probe_center(probe_coord);
         
-        const Sphere probe_sphere = Sphere::from_center_radius(wrc_probe_center(probe_coord), WRC_MIN_TRACE_DIST);
+        const Sphere probe_sphere = Sphere::from_center_radius(probe_center, WRC_MIN_TRACE_DIST);
         RaySphereIntersection parallax = probe_sphere.intersect_ray_inside(ray_origin, ray_direction);
         if (parallax.is_hit()) {
             float4 out_value = lookup_wrc(probe_coord, parallax.normal);
-            res.radiance = out_value.rgb;
-            res.probe_t = parallax.t;
+
+            // With parallax correction, the query ray origin essentially moves
+            // within a sphere centered around the probe. As the query center
+            // does that, some texels of the probe will shrink, and others expand.
+            // Here we adjust for this expansion, making sure energy does not get
+            // biased towards the texels we're moving towards.
+            const float3 parallax_pos = ray_origin + ray_direction * parallax.t;
+            const float3 offset_from_query_pt = parallax_pos - origin_in_box;
+            const float3 offset_from_probe_center = parallax_pos - probe_center;
+            const float parallax_dist2 = dot(offset_from_query_pt, offset_from_query_pt);
+
+            float jacobian = 1;
+            if (all(query_normal) != 0) {
+                jacobian =
+                    parallax_dist2 / (WRC_MIN_TRACE_DIST * WRC_MIN_TRACE_DIST)
+                    / dot(ray_direction, normalize(offset_from_probe_center));
+
+                // Also account for the change in the PDF being used in lighting.
+                // TODO: do all of those terms make sense?
+                jacobian *=
+                    dot(query_normal, normalize(offset_from_probe_center))
+                    / dot(query_normal, ray_direction);
+            }
+
+            res.radiance = out_value.rgb * jacobian;
+
+            const float texel_footprint_fudge = 0.5;
+            res.probe_t = parallax.t + texel_footprint_fudge;
+
             res.approx_surface_t = parallax.t + out_value.a - WRC_MIN_TRACE_DIST;
         }
     }

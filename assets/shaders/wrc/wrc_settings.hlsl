@@ -2,7 +2,7 @@
 #define WRC_SETTINGS_HLSL
 
 // Must match `wrc.rs`
-static const int3 WRC_GRID_DIMS = int3(4, 2, 5);
+static const int3 WRC_GRID_DIMS = int3(8, 3, 8);
 static const int WRC_PROBE_DIMS = 32;
 static const int2 WRC_ATLAS_PROBE_COUNT = int2(16, 16);
 static const float3 WRC_GRID_WORLD_SIZE = float3(WRC_GRID_DIMS);

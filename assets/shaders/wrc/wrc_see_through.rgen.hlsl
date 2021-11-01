@@ -69,6 +69,7 @@ void main() {
 
     WrcFarField far_field =
         WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
+            .with_query_normal(direction_view_to_world(float3(0, 0, -1)))
             .query();
 
     if (far_field.is_hit()) {

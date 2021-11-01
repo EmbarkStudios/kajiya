@@ -63,6 +63,7 @@ void main() {
 
     float3 irradiance_sum = 0;
     float valid_sample_count = 0;
+    float hit_count = 0;
     float2 hit_dist_wt = 0;
     const uint sample_count = 1;
 
@@ -143,6 +144,8 @@ void main() {
                 if (USE_SURFEL_GI) {
                     irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * gbuffer.albedo;
                 }
+                
+                hit_count += 1.0;
             } else {
                 hit_dist_wt += float2(pack_dist(1e5), 1);
                 irradiance_sum += sample_environment_light(outgoing_ray.Direction);
@@ -157,11 +160,11 @@ void main() {
     //radiance_atlas_out_tex[atlas_px] = float4(float2(probe_px + 0.5) / WRC_PROBE_DIMS, 0.0.xx);
 
     if (USE_BLEND_OUTPUT) {
-        radiance_atlas_out_tex[atlas_px] = float4(irradiance_sum, avg_dist);
-    } else {
         radiance_atlas_out_tex[atlas_px] = lerp(
             radiance_atlas_out_tex[atlas_px],
             float4(irradiance_sum, avg_dist),
             1.0 / 8.0);
+    } else {
+        radiance_atlas_out_tex[atlas_px] = float4(irradiance_sum, avg_dist);
     }
 }

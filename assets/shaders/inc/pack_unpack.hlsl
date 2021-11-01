@@ -76,8 +76,7 @@ float2 octa_encode(float3 n) {
     return n.xy;
 }
 
-float3 octa_decode(float2 f)
-{
+float3 octa_decode(float2 f) {
     f = f * 2.0 - 1.0;
  
     // https://twitter.com/Stubbesaurus/status/937994790553227264
@@ -85,7 +84,7 @@ float3 octa_decode(float2 f)
     float t = clamp(-n.z, 0.0, 1.0);
     //n.xy += n.xy >= 0.0 ? -t : t;
     n.xy -= (step(0.0, n.xy) * 2 - 1) * t;
-    return normalize( n );
+    return normalize(n);
 }
 
 uint pack_2x16f_uint(float2 f) {

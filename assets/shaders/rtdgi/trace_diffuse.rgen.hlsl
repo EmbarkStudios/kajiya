@@ -62,7 +62,7 @@ struct TraceResult {
     float hit_t;
 };
 
-TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
+TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
     float3 total_radiance = 0.0.xxx;
     float3 hit_normal_ws = -outgoing_ray.Direction;
 
@@ -74,6 +74,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
                     uint_to_u01_float(hash1_mut(rng)),
                     uint_to_u01_float(hash1_mut(rng))
                 ))
+                .with_query_normal(normal_ws)
                 .query();
     #else
         WrcFarField far_field = WrcFarField::create_miss();
@@ -279,7 +280,7 @@ void main() {
     outgoing_ray.TMax = SKY_DIST;
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
-    TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
+    TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
 
     candidate_irradiance_out_tex[px] = result.out_value;
     candidate_hit_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
