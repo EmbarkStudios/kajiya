@@ -221,7 +221,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         // Approx shadowing
-        if (spatial_reuse_pass_idx == 0) {
+        //if (spatial_reuse_pass_idx == 0)
+        {
     		const float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
             const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
             const float wi_z = dot(prev_dir, center_normal_ws);

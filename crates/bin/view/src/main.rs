@@ -430,6 +430,11 @@ fn main() -> anyhow::Result<()> {
                             &mut ctx.world_renderer.rtr.reservoir_resampling,
                         );
 
+                        ui.checkbox(
+                            im_str!("Show world radiance cache"),
+                            &mut ctx.world_renderer.debug_show_wrc,
+                        );
+
                         if ui.radio_button_bool(
                             im_str!("Move sun"),
                             left_click_edit_mode == LeftClickEditMode::MoveSun,

@@ -173,6 +173,7 @@ pub struct WorldRenderer {
 
     pub debug_mode: RenderDebugMode,
     pub debug_shading_mode: usize,
+    pub debug_show_wrc: bool,
     pub ev_shift: f32,
 
     pub world_gi_scale: f32,
@@ -370,7 +371,9 @@ impl WorldRenderer {
 
             debug_mode: RenderDebugMode::None,
             debug_shading_mode: 0,
+            debug_show_wrc: false,
             ev_shift: 0.0,
+
             world_gi_scale: 1.0,
             global_fog_thickness: 0.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth

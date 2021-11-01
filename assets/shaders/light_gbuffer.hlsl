@@ -21,7 +21,6 @@
 #define USE_RTDGI 1
 
 #define SSGI_INTENSITY_BIAS 0.0
-#define SHOW_WRC_PROBES 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -38,10 +37,12 @@ DEFINE_WRC_BINDINGS(12)
 [[vk::binding(17)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
+    uint debug_show_wrc;
 };
 
 #include "surfel_gi/lookup.hlsl"
 #include "wrc/lookup.hlsl"
+#include "wrc/wrc_intersect_probe_grid.hlsl"
 
 #define SHADING_MODE_DEFAULT 0
 #define SHADING_MODE_NO_TEXTURES 1
@@ -70,27 +71,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     const float depth = depth_tex[px];
 
-    if (SHOW_WRC_PROBES) {
-        float closest_hit = -depth_to_view_z(depth);
-        float4 hit_color = 0;
-
-        for (uint z = 0; z < WRC_GRID_DIMS.z; ++z) {
-            for (uint y = 0; y < WRC_GRID_DIMS.y; ++y) {
-                for (uint x = 0; x < WRC_GRID_DIMS.x; ++x) {
-                    const uint3 probe_coord = uint3(x, y, z);
-                    Sphere s = Sphere::from_center_radius(wrc_probe_center(probe_coord), 0.1);
-                    RaySphereIntersection s_hit = s.intersect_ray(outgoing_ray.Origin, view_ray_context.ray_dir_ws_h.xyz);
-
-                    if (s_hit.is_hit() && s_hit.t < closest_hit) {
-                        closest_hit = s_hit.t;
-                        //hit_color = float4(s_hit.normal * 0.5 + 0.5, 1);
-
-                        const float3 refl = reflect(outgoing_ray.Direction, s_hit.normal);
-                        hit_color = lookup_wrc(probe_coord, refl);
-                    }
-                }
-            }
-        }
+    if (debug_show_wrc) {
+        float4 hit_color = wrc_intersect_probe_grid(
+            outgoing_ray.Origin,
+            outgoing_ray.Direction,
+            -depth_to_view_z(depth) * length(view_ray_context.ray_dir_vs_h.xyz)
+        );
 
         if (hit_color.a != 0) {
             output_tex[px] = hit_color;

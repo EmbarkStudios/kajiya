@@ -170,6 +170,7 @@ impl WorldRenderer {
             &convolved_sky_cube,
             self.bindless_descriptor_set,
             self.debug_shading_mode,
+            self.debug_show_wrc,
         );
 
         #[allow(unused_mut)]
