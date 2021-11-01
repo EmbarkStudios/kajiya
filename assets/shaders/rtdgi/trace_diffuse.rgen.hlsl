@@ -20,9 +20,8 @@
 #define USE_SOFT_SHADOWS 0
 
 #define USE_SURFEL_GI 1
-
-#define USE_TEMPORAL_JITTER 1
 #define USE_WORLD_RADIANCE_CACHE 1
+
 #define ROUGHNESS_BIAS 0.5
 #define USE_SCREEN_GI_REPROJECTION 0
 #define USE_SWIZZLE_TILE_PIXELS 0
@@ -68,7 +67,14 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
     float3 hit_normal_ws = -outgoing_ray.Direction;
 
     #if USE_WORLD_RADIANCE_CACHE
-        WrcFarField far_field = WrcFarField::from_ray(outgoing_ray.Origin, outgoing_ray.Direction);
+        WrcFarField far_field =
+            WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
+                .with_interpolation_urand(float3(
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng))
+                ))
+                .query();
     #else
         WrcFarField far_field = WrcFarField::create_miss();
     #endif

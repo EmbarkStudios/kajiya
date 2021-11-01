@@ -32,6 +32,7 @@ DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6)
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool USE_EMISSIVE = true;
 static const bool USE_SURFEL_GI = true;
+static const bool USE_BLEND_OUTPUT = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -70,12 +71,16 @@ void main() {
 
         RayDesc outgoing_ray;
         {
+            float3 dir;
+            if (USE_BLEND_OUTPUT) {
+                dir = octa_decode((probe_px + r2_sequence(frame_constants.frame_index)) / WRC_PROBE_DIMS);
+            } else {
+                dir = octa_decode((probe_px + 0.5) / WRC_PROBE_DIMS);
+            }
+
             outgoing_ray = new_ray(
                 wrc_probe_center(probe_coord),
-                octa_decode((probe_px + 0.5) / WRC_PROBE_DIMS),
-                //octa_decode((probe_px + hammersley(sample_idx, 4)) / WRC_PROBE_DIMS),
-                //octa_decode((probe_px + r2_sequence(frame_constants.frame_index)) / WRC_PROBE_DIMS),
-                //1e-3,
+                dir,
                 WRC_MIN_TRACE_DIST,
                 FLT_MAX
             );
@@ -150,5 +155,13 @@ void main() {
     float avg_dist = unpack_dist(hit_dist_wt.x / max(1, hit_dist_wt.y));
 
     //radiance_atlas_out_tex[atlas_px] = float4(float2(probe_px + 0.5) / WRC_PROBE_DIMS, 0.0.xx);
-    radiance_atlas_out_tex[atlas_px] = float4(irradiance_sum, avg_dist);
+
+    if (USE_BLEND_OUTPUT) {
+        radiance_atlas_out_tex[atlas_px] = float4(irradiance_sum, avg_dist);
+    } else {
+        radiance_atlas_out_tex[atlas_px] = lerp(
+            radiance_atlas_out_tex[atlas_px],
+            float4(irradiance_sum, avg_dist),
+            1.0 / 8.0);
+    }
 }

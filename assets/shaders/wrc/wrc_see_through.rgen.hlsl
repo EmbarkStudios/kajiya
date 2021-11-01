@@ -67,7 +67,10 @@ void main() {
         );
     }
 
-    WrcFarField far_field = WrcFarField::from_ray(outgoing_ray.Origin, outgoing_ray.Direction);
+    WrcFarField far_field =
+        WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
+            .query();
+
     if (far_field.is_hit()) {
         outgoing_ray.TMax = far_field.probe_t;
     }
