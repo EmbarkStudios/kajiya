@@ -87,12 +87,16 @@ void main(uint2 px: SV_DispatchThreadID) {
         }
     #endif
 
+    // haaaaaaax
+    // TODO: do a better disocclussion check
+    // reproj_validity_dilated = 1;
+
 #if 0
 	float4 clamped_history = clamp(history, nmin, nmax);
 #else
     float4 clamped_history = float4(
         //soft_color_clamp(center.rgb, history.rgb, ex.rgb, dev.rgb),
-        ycbcr_to_rgb(soft_color_clamp(rgb_to_ycbcr(center.rgb), rgb_to_ycbcr(history.rgb), rgb_to_ycbcr(ex.rgb), abs(rgb_to_ycbcr(0.5 * dev.rgb)))),
+        ycbcr_to_rgb(soft_color_clamp(rgb_to_ycbcr(center.rgb), rgb_to_ycbcr(history.rgb), rgb_to_ycbcr(ex.rgb), abs(rgb_to_ycbcr(0.75 * dev.rgb)))),
         history.a
     );
 #endif
