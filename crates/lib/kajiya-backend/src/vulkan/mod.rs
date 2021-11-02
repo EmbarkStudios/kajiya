@@ -57,14 +57,38 @@ impl RenderBackend {
         let physical_devices =
             enumerate_physical_devices(&instance)?.with_presentation_support(&surface);
 
-        info!("Available physical devices: {:#?}", physical_devices);
+        info!(
+            "Available physical devices: {:#?}",
+            physical_devices
+                .iter()
+                .map(|dev| unsafe {
+                    ::std::ffi::CStr::from_ptr(
+                        dev.properties.device_name.as_ptr() as *const std::os::raw::c_char
+                    )
+                })
+                .collect::<Vec<_>>()
+        );
 
         let physical_device = Arc::new(
             physical_devices
                 .into_iter()
-                .next()
-                .expect("valid physical device"),
+                // If there are multiple devices with the same score, `max_by_key` would choose the last,
+                // and we want to preserve the order of devices from `enumerate_physical_devices`.
+                .rev()
+                .max_by_key(|device| {
+                    let mut score = 0;
+                    score += match device.properties.device_type {
+                        vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
+                        vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
+                        vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
+                        _ => 0,
+                    };
+                    score
+                })
+                .unwrap(),
         );
+
+        info!("Selected physical device: {:#?}", *physical_device);
 
         let device = device::Device::create(&physical_device)?;
         let surface_formats = swapchain::Swapchain::enumerate_surface_formats(&device, &surface)?;
