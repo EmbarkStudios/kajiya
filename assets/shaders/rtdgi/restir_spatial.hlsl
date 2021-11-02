@@ -89,14 +89,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         kernel_radius = lerp(8.0, 24.0, pow(ssao_tex[hi_px].r, 4));
     }
 
-    /*const int2 pass1_offsets[5] = {
-        int2(0, 0),
-        int2(16, 0),
-        int2(-16, 0),
-        int2(0, 16),
-        int2(0, -16),
-    };*/
-
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
     // early out saves a lot of comp, but leaves noise in tricky cases (old building interior)
     //for (uint sample_i = 0; sample_i < 16 && valid_sample_count < 8; ++sample_i) {
@@ -108,22 +100,17 @@ void main(uint2 px : SV_DispatchThreadID) {
         //const bool is_center_sample = sample_i == 0;
         const bool is_center_sample = all(rpx_offset == 0);
 
-        /*if (spatial_reuse_pass_idx == 1) {
-            rpx_offset = pass1_offsets[sample_i];
-        }*/
-
         const int2 rpx = px + rpx_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
 
         if (is_center_sample) {
             #if 1
-                // I don't quite understand how, but strongly suppressing
-                // the central reservoir's sample count here reduces noise,
-                // especially reducing fireflies, and yet has little effect
-                // on the blurriness of the output.
-                // A decent value seems to be around 10% of the limit
+                // I don't quite understand how, but suppressing the central reservoir's
+                // sample count here reduces noise, especially reducing fireflies,
+                // and yet has a pretty small impact on the sharpness of the output.
+                // A decent value seems to be around 20% of the limit
                 // in the preceding exchange pass.
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * 0.1);
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * 0.2);
             #else
                 r.M = min(r.M, 500);
             #endif
