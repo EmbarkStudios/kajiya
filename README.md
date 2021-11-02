@@ -151,6 +151,10 @@ This will run DLSS _Quality_ mode. `--temporal-upsampling 2.0` corresponds to _P
 
 Please note that while DLSS works well for AAA-style content, it currently struggles with flat colors and smooth gradients. The built-in `kajiya` TAA and its temporal upsampling tends to look better there.
 
+# Working on Rust shaders
+
+Add your shaders to the `assets/rust-shaders` crate. Run the shader builder from `assets/rust-shaders/builder` to make sure they can be loaded at runtime. Finally, use `SimpleRenderPass::new_compute_rust` to create a render graph pass (see existing examples).
+
 ## Acknowledgments
 
 This project is made possible by the awesome open source Rust community, and benefits from too many crates to mention here. Special thanks go to:

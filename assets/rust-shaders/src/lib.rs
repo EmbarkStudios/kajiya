@@ -11,4 +11,5 @@ pub extern crate spirv_std_macros;
 
 pub mod frame_constants;
 pub mod motion_blur;
+pub mod rev_blur;
 pub mod util;

@@ -13,7 +13,7 @@ kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
 anyhow = "1.0"
 dolly = "0.1"
 futures = "0.3"
-glam = { version = "0.17", features = ["serde"] }
+glam = { version = "0.18", features = ["serde"] }
 imgui = "0.7"
 lazy_static = "1.4"
 log = "0.4"
