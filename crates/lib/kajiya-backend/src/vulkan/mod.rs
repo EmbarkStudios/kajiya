@@ -75,15 +75,11 @@ impl RenderBackend {
                 // If there are multiple devices with the same score, `max_by_key` would choose the last,
                 // and we want to preserve the order of devices from `enumerate_physical_devices`.
                 .rev()
-                .max_by_key(|device| {
-                    let mut score = 0;
-                    score += match device.properties.device_type {
-                        vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
-                        vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
-                        vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
-                        _ => 0,
-                    };
-                    score
+                .max_by_key(|device| match device.properties.device_type {
+                    vk::PhysicalDeviceType::INTEGRATED_GPU => 200,
+                    vk::PhysicalDeviceType::DISCRETE_GPU => 1000,
+                    vk::PhysicalDeviceType::VIRTUAL_GPU => 1,
+                    _ => 0,
                 })
                 .unwrap(),
         );

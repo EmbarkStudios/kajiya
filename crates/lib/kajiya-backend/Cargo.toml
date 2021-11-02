@@ -17,7 +17,7 @@ bytes = "1.0"
 derive_builder = { version = "0.9", default-features = false }
 failure = "0.1.8"   # for shader-prepper: TODO: NUKE
 futures = "0.3"
-glam = "0.17"
+glam = "0.18"
 gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", rev = "e66d062cbd73a6c98834fc3e3acef98318097156" }
 hassle-rs = "0.4"
 hotwatch = "0.4"
