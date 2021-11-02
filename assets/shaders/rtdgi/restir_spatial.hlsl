@@ -74,7 +74,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     //float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
 
     // Note: pow(ssao, n) is a balance between details and splotches in corner
-    float kernel_radius = lerp(2.0, 12.0, pow(ssao_tex[hi_px].r, 2));
+    float kernel_radius = lerp(2.0, 6.0, pow(ssao_tex[hi_px].r, 2));
     if (spatial_reuse_pass_idx == 0 && center_r.M < 10) {
         kernel_radius = 16.0;
     }
@@ -86,7 +86,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         //sample_count = 5;
         sample_count = 5;
         valid_sample_count_limit = 3;
-        kernel_radius = lerp(8.0, 24.0, pow(ssao_tex[hi_px].r, 4));
+        kernel_radius = lerp(4.0, 20.0, pow(ssao_tex[hi_px].r, 4));
     }
 
     const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
@@ -103,7 +103,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const int2 rpx = px + rpx_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
 
-        if (is_center_sample) {
+        if (is_center_sample && spatial_reuse_pass_idx == 0) {
             #if 1
                 // I don't quite understand how, but suppressing the central reservoir's
                 // sample count here reduces noise, especially reducing fireflies,
