@@ -1,4 +1,7 @@
-use spirv_std::{glam::{UVec3, Vec2, Vec4}, Image, Sampler};
+use spirv_std::{
+    glam::{UVec3, Vec2, Vec4},
+    Image, Sampler,
+};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;
@@ -61,7 +64,8 @@ pub fn rev_blur_cs(
         output_tex.write(
             px.truncate(),
             lerp(
-                self_col, pyramid_col,
+                self_col,
+                pyramid_col,
                 constants.self_weight * exponential_falloff,
             ),
         );
