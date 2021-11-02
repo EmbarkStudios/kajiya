@@ -153,7 +153,7 @@ Please note that while DLSS works well for AAA-style content, it currently strug
 
 # Working on Rust shaders
 
-Add your shaders to the assets/rust-shaders crate. Change SimpleRenderPass::new_compute to SimpleRenderPass::new_compute_rust as required, see existing examples. Then to compile your rust shaders and add them to the list so they can get loaded by name, run the shader builder from assets/rust-shaders/builder.
+Add your shaders to the `assets/rust-shaders` crate. Run the shader builder from `assets/rust-shaders/builder` to make sure they can be loaded at runtime. Finally, use `SimpleRenderPass::new_compute_rust` to create a render graph pass (see existing examples).
 
 ## Acknowledgments
 
