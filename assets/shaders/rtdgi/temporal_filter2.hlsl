@@ -8,9 +8,9 @@
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float2> variance_history_tex;
 [[vk::binding(3)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(4)]] RWTexture2D<float4> history_output_tex;
-[[vk::binding(5)]] RWTexture2D<float2> variance_history_output_tex;
-[[vk::binding(6)]] RWTexture2D<float4> output_tex;
+[[vk::binding(4)]] RWTexture2D<float4> output_tex;
+[[vk::binding(5)]] RWTexture2D<float4> history_output_tex;
+[[vk::binding(6)]] RWTexture2D<float2> variance_history_output_tex;
 [[vk::binding(7)]] cbuffer _ {
     float4 output_tex_size;
     float4 gbuffer_tex_size;
@@ -150,6 +150,13 @@ void main(uint2 px: SV_DispatchThreadID) {
         history.a
     );
 #endif
+    /*const float3 history_dist = abs(history.rgb - ex.rgb) / max(0.1, dev.rgb * 0.5);
+    const float3 closest_pt = clamp(history.rgb, center.rgb - dev.rgb * 0.5, center.rgb + dev.rgb * 0.5);
+    clamped_history = float4(
+        lerp(history.rgb, closest_pt, lerp(0.1, 1.0, smoothstep(1.0, 3.0, history_dist))),
+        history.a
+    );*/
+
     //clamped_history = history;
     //clamped_history = center;
 
@@ -169,6 +176,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     history_output_tex[px] = float4(res, min(current_sample_count, max_sample_count) + 1);
     float3 output = max(0.0.xxx, res);
+
+    //output = smoothstep(1.0, 3.0, history_dist);
+    //output = abs(history.rgb - ex.rgb);
+    //output = dev.rgb;
 
     //output *= reproj.z;    // debug validity
     //output *= light_stability;

@@ -103,7 +103,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     for (uint sample_i = 0; sample_i < sample_count && valid_sample_count < valid_sample_count_limit; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / valid_sample_count_limit);
+        //float radius = float(sample_i + sample_radius_offset) * (kernel_radius / valid_sample_count_limit);
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
+        //const bool is_center_sample = sample_i == 0;
+        const bool is_center_sample = all(rpx_offset == 0);
 
         /*if (spatial_reuse_pass_idx == 1) {
             rpx_offset = pass1_offsets[sample_i];
@@ -112,8 +115,22 @@ void main(uint2 px : SV_DispatchThreadID) {
         const int2 rpx = px + rpx_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
 
-        // After the ReSTIR GI paper
-        r.M = min(r.M, 500);
+        if (is_center_sample) {
+            #if 1
+                // I don't quite understand how, but strongly suppressing
+                // the central reservoir's sample count here reduces noise,
+                // especially reducing fireflies, and yet has little effect
+                // on the blurriness of the output.
+                // A decent value seems to be around 10% of the limit
+                // in the preceding exchange pass.
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * 0.1);
+            #else
+                r.M = min(r.M, 500);
+            #endif
+        } else {
+            // After the ReSTIR GI paper
+            r.M = min(r.M, 500);
+        }
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
@@ -136,7 +153,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // TODO: detect this first, and sharpen the threshold. The poor normal counting below
         // is a shitty take at that.
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
-        if (sample_i > 0 && normal_similarity_dot < normal_cutoff) {
+        if (!is_center_sample && normal_similarity_dot < normal_cutoff) {
             poor_normals += 1;
             continue;
         } else {
@@ -147,10 +164,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
         const float ssao_infl = smoothstep(0.0, 0.2, max(1, poor_normals) * abs(sample_ssao - center_ssao));
         // TODO: make threshold adaptive
-        //if (sample_i > 0 && abs(sample_ssao - center_ssao) > 0.1 * max(1, poor_normals)) {
+        //if (!is_center_sample && abs(sample_ssao - center_ssao) > 0.1 * max(1, poor_normals)) {
 
         if (spatial_reuse_pass_idx == 0) {
-            if (sample_i > 0 && ssao_infl > ssao_dart) {
+            if (!is_center_sample && ssao_infl > ssao_dart) {
                 // Note: improves contacts, but results in boiling/noise in corners
                 // This is really just an approximation of a visbility check,
                 // which we can do in a better way.
@@ -171,7 +188,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float prev_dist = length(prev_hit_ws - sample_ray_ctx.ray_hit_ws()); //prev_hit_ws_and_dist.w;
 
 #if 1
-        if (sample_i > 0 && spatial_reuse_pass_idx == 1) {
+        if (!is_center_sample && spatial_reuse_pass_idx == 1) {
             /*const float4 own_hit_ws_and_dist = ray_tex[px];
             const float3 own_hit_ws = own_hit_ws_and_dist.xyz;
             const float own_dist = length(own_hit_ws - view_ray_context.ray_hit_ws());
@@ -196,7 +213,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 #endif
 
         // Reject hits too close to the surface
-        if (sample_i > 0 && !(prev_dist > 1e-8)) {
+        if (!is_center_sample && !(prev_dist > 1e-8)) {
             continue;
         }
 
@@ -205,17 +222,17 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 prev_dir = normalize(prev_dir_unnorm);
 
         // Reject hits below the normal plane
-        if (sample_i > 0 && dot(prev_dir, center_normal_ws) < 1e-5) {
+        if (!is_center_sample && dot(prev_dir, center_normal_ws) < 1e-5) {
             continue;
         }
 
         // Reject neighbors with vastly different depths
         if (spatial_reuse_pass_idx == 0) {
-            if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
+            if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
                 continue;
             }
         } else {
-            if (sample_i > 0 && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.2) {
+            if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.2) {
                 continue;
             }
         }
@@ -227,7 +244,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
             const float wi_z = dot(prev_dir, center_normal_ws);
 
-            if (sample_i > 0 && wi_z * 0.2 < fraction_of_normal_direction_as_offset) {
+            if (!is_center_sample && wi_z * 0.2 < fraction_of_normal_direction_as_offset) {
     			continue;
     		}
         }
@@ -262,7 +279,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
         //jacobian *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
 
-        if (sample_i == 0) {
+        if (is_center_sample) {
             jacobian = 1;
         }
 

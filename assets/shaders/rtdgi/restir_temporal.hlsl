@@ -298,12 +298,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // resampling. To fix this, we simply clamp the previous frame’s M
             // to at most 20× of the current frame’s reservoir’s M
 
-            if (sample_i == 0) {
-                r.M = min(r.M, 10);
-                //r.M = min(r.M, 2);
-            } else {
-                r.M = min(r.M, 5);
-            }
+            r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
 
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));

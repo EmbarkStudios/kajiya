@@ -155,9 +155,9 @@ impl RtdgiRenderer {
         .read(reprojected_history_tex)
         .read(&variance_history_tex)
         .read(reprojection_map)
+        .write(&mut temporal_filtered_tex)
         .write(&mut temporal_output_tex)
         .write(&mut temporal_variance_output_tex)
-        .write(&mut temporal_filtered_tex)
         .constants((
             temporal_output_tex.desc().extent_inv_extent_2d(),
             gbuffer_depth.gbuffer.desc().extent_inv_extent_2d(),
