@@ -336,6 +336,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     }
 
     //result = float3(abs(reprojection_tex[reproj_px].xy) * 100, 0);
+    //result = reproj.z != 0;
     output_tex[px] = float4(result, coverage);
     debug_output_tex[px] = float4(debug_out, 1);
 

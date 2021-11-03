@@ -74,7 +74,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float light_stability = 1;
 
     float reproj_validity_dilated = reproj.z;
-    #if 1
+    #if 0
         // Greatly reduces temporal bleeding of slowly-moving edges
         // TODO: do this at sampling stage instead of patching up the bilinear result
         {

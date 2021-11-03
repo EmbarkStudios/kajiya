@@ -52,14 +52,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float center_depth = half_depth_tex[px];
     const float center_ssao = ssao_tex[px * 2].r;
 
-    //Reservoir1spp reservoir = Reservoir1spp::from_raw(reservoir_input_tex[px]);
     Reservoir1spp reservoir = Reservoir1spp::create();
-
-    float p_q_sel = 0;//reservoir.W;//calculate_luma(irradiance);
+    float p_q_sel = 0;
     float3 dir_sel = 1;
-    // p_q_sel *= max(0, dot(prev_dir, center_normal_ws));
-
-    float M_sum = reservoir.M;
+    float M_sum = 0;
 
     static const float GOLDEN_ANGLE = 2.39996323;
 
@@ -73,15 +69,16 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     //float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
 
-    // Note: pow(ssao, n) is a balance between details and splotches in corner
-    float kernel_radius = lerp(2.0, 10.0, pow(ssao_tex[hi_px].r, 2));
-    if (spatial_reuse_pass_idx == 0 && center_r.M < 10) {
-        kernel_radius = 16.0;
-    }
-
+    float kernel_radius = lerp(2.0, 16.0, ssao_tex[hi_px].r);
     if (spatial_reuse_pass_idx == 1) {
         sample_count = 5;
-        kernel_radius = lerp(4.0, 32.0, pow(ssao_tex[hi_px].r, 4));
+        kernel_radius = lerp(2.0, 32.0, ssao_tex[hi_px].r);
+    }
+
+    // Make kernel crazy if we're low on samples
+    if (center_r.M < RESTIR_TEMPORAL_M_CLAMP * (spatial_reuse_pass_idx == 0 ? 0.1 : 1.0)) {
+        kernel_radius = 24.0;
+        sample_count = 8;
     }
 
     const uint TARGET_M = 512;
@@ -90,7 +87,9 @@ void main(uint2 px : SV_DispatchThreadID) {
     //const float ang_offset = (px.x & 1) + (px.y & 1) * 2;
 
     // Looks the same, no cache thrashing
-    const float ang_offset = uint_to_u01_float(hash1(frame_constants.frame_index)) * M_PI * 2;
+    const float ang_offset = uint_to_u01_float(hash1(
+        frame_constants.frame_index * 2 + spatial_reuse_pass_idx
+    )) * M_PI * 2;
 
     uint valid_sample_count = 0;
     for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
@@ -125,7 +124,12 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float sample_dist2 = dot(sample_offset, sample_offset);
         const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
-        float normal_cutoff = 0.9;
+        #if DIFFUSE_GI_BRDF_SAMPLING
+            float normal_cutoff = 0.9;
+        #else
+            float normal_cutoff = 0.5;
+        #endif
+        
         if (spatial_reuse_pass_idx == 1) {
             normal_cutoff = 0.5;
         }
@@ -149,17 +153,17 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float ssao_dart = uint_to_u01_float(hash1_mut(rng));
         const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
-        const float ssao_infl = smoothstep(0.0, 0.2, max(1, poor_normals) * abs(sample_ssao - center_ssao));
-        // TODO: make threshold adaptive
-        //if (!is_center_sample && abs(sample_ssao - center_ssao) > 0.1 * max(1, poor_normals)) {
+        //const float ssao_infl = smoothstep(0.0, 0.2, max(1, poor_normals) * abs(sample_ssao - center_ssao));
 
-        if (spatial_reuse_pass_idx == 0) {
-            if (!is_center_sample && ssao_infl > ssao_dart) {
-                // Note: improves contacts, but results in boiling/noise in corners
-                // This is really just an approximation of a visbility check,
-                // which we can do in a better way.
-                //continue;
-            }
+        // Balance between details and splotches in corner
+        const float ssao_threshold = spatial_reuse_pass_idx == 0 ? 0.2 : 0.4;
+        const float ssao_infl = smoothstep(0.0, ssao_threshold, abs(sample_ssao - center_ssao));
+
+        if (!is_center_sample && ssao_infl > ssao_dart) {
+            // Note: improves contacts, but results in boiling/noise in corners
+            // This is really just an approximation of a visbility check,
+            // which we can do in a better way.
+            continue;
         }
 
         const float2 sample_uv = get_uv(
@@ -209,7 +213,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 prev_dir = normalize(prev_dir_unnorm);
 
         // Reject hits below the normal plane
-        if (!is_center_sample && dot(prev_dir, center_normal_ws) < 1e-5) {
+        if (!is_center_sample && dot(prev_dir, center_normal_ws) < 1e-3) {
             continue;
         }
 
@@ -260,11 +264,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         // N of hit dot -L. Needed to avoid leaks.
         jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
 
-        // N dot L. Useful for normal maps, micro detail.
-        // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
-        // when we don't use a harsh normal cutoff to exchange reservoirs with.
-        //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
-        //jacobian *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
+        #if DIFFUSE_GI_BRDF_SAMPLING
+            // N dot L. Useful for normal maps, micro detail.
+            // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
+            // when we don't use a harsh normal cutoff to exchange reservoirs with.
+            //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
+            //jacobian *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
+        #endif
 
         if (is_center_sample) {
             jacobian = 1;

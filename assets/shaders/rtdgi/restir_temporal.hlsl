@@ -207,56 +207,24 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float4 reproj = reprojection_tex[hi_px];
 
-    float reproj_validity_dilated = reproj.z;
-    // copy pasta from temporal_filter
-    #if 1
-        // Greatly reduces temporal bleeding of slowly-moving edges
-        // TODO: do this at sampling stage instead of patching up the bilinear result
-        {
-         	const int k = 1;
-            for (int y = -k; y <= k; ++y) {
-                for (int x = -k; x <= k; ++x) {
-                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[hi_px + int2(x, y)].z);
-                }
-            }
-        }
-    #endif
-
     //const bool use_resampling = false;
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
 
-    if (use_resampling/* && reproj_validity_dilated > 0.5*/) {
+    if (use_resampling && reproj.z != 0) {
         float M_sum = reservoir.M;
 
         // Can't use linear interpolation, but we can interpolate stochastically instead
-        // ... or just don't. Artifacts seem only visible when looking at the direct output of this shader.
-        const float2 reproj_rand_offset = 0*float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng)));
-        float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
-        static const float GOLDEN_ANGLE = 2.39996323;
+        const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng)));
+        int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset);
 
-        int2 reproj_px = (gbuffer_tex_size.xy * reproj.xy + reproj_rand_offset) / 2;
-
-        float3 valid_sample_origins[4];
-        valid_sample_origins[0] = refl_ray_origin;
-
-        float valid_sample_M[4] = { reservoir.M, 0, 0, 0 };
         uint valid_sample_count = 0;
-
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
         for (uint sample_i = 0; sample_i < 1; ++sample_i) {
-            float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-            float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * 1.0;
-            //float radius = float(sample_i + 1 + sample_radius_offset) * 1.0;
-            int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
-
-            //int2 rpx = px + reproj_px + sample_offsets[sample_i];
-            const int2 rpx = px + reproj_px + reservoir_px_offset;
+            const int2 rpx = reproj_px;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
 
-            //float4 sample_gbuffer_packed = gbuffer_tex[rpx_hi];
-            //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
             const float3 sample_normal_vs = half_view_normal_tex[rpx];
 
             if (sample_i > 0 && dot(sample_normal_vs, normal_vs) < 0.9) {
@@ -314,19 +282,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             float visibility = 1;
 
-            /*if (sample_i > 0) {
-                RayDesc vis_ray;
-                vis_ray.Direction = sample_dir;
-                vis_ray.Origin = refl_ray_origin;
-                vis_ray.TMin = 0;
-                vis_ray.TMax = sample_dist * 0.95;
-
-                if (rt_is_shadowed(acceleration_structure, vis_ray)) {
-                    //continue;
-                    visibility = 0;
-                }
-            }*/
-
             const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[rpx];
 
             float jacobian = 1;
@@ -364,30 +319,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 hit_normal_sel = prev_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
             }
-
-            valid_sample_M[valid_sample_count] += r.M;
-            valid_sample_origins[valid_sample_count] = sample_origin_ws;
-            valid_sample_count += 1;
         }
 
         valid_sample_count = max(valid_sample_count, 1);
 
-        /*float Z = 0;
-        for (uint v = 0; v < valid_sample_count; ++v) {
-            RayDesc vis_ray;
-            vis_ray.Origin = valid_sample_origins[v];
-            float3 to_hit = ray_hit_sel - vis_ray.Origin;
-            vis_ray.Direction = normalize(to_hit);
-            vis_ray.TMin = 0;
-            vis_ray.TMax = length(to_hit) * 0.95;
-
-            if (v == sel_valid_sample_idx || !rt_is_shadowed(acceleration_structure, vis_ray)) {
-                Z += valid_sample_M[v];
-            }
-        }*/
-
         reservoir.M = M_sum;
-        //reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / Z);
         reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
     }
 
