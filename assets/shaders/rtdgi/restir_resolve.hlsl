@@ -50,6 +50,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float center_depth = half_depth_tex[px];
     const float center_ssao = ssao_tex[px * 2].r;
 
+    const float3 center_bent_normal_ws = normalize(direction_view_to_world(ssao_tex[px * 2].gba));
+
     float3 irradiance_sum = 0;
     float w_sum = 0;
     float W_sum = 0;
@@ -73,7 +75,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_dir = normalize(hit_ws - view_ray_context.ray_hit_ws());
 
         float3 radiance = irradiance_tex[spx].rgb;
-        float w = max(0.0, dot(center_normal_ws, sample_dir)) * M_PI;
+        float w =
+            //max(0.0, min(dot(center_normal_ws, sample_dir), 1.5 * dot(center_bent_normal_ws, sample_dir)))
+            max(0.0, dot(center_normal_ws, sample_dir))
+            // TODO: wtf, why 2
+            * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
         //w *= w * w * w;
         //w = pow(w, 20);
 

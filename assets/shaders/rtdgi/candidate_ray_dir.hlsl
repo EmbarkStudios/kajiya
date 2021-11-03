@@ -12,13 +12,14 @@ float3 rtdgi_candidate_ray_dir(uint2 px, float3x3 tangent_to_world) {
         float3 wi = brdf_sample.wi;
         outgoing_dir = mul(tangent_to_world, wi);
     }
+#elif DIFFUSE_GI_SAMPLING_FULL_SPHERE
+    {
+        outgoing_dir = uniform_sample_sphere(urand);
+    }
 #else
     {
-        //float3 wi = uniform_sample_hemisphere(urand);
-        float3 od; {
-            od = uniform_sample_sphere(urand);
-        }
-        outgoing_dir = od;
+        float3 wi = uniform_sample_hemisphere(urand);
+        outgoing_dir = mul(tangent_to_world, wi);
     }
 #endif
 

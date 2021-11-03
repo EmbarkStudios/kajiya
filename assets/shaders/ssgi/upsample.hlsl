@@ -7,7 +7,7 @@
 [[vk::binding(2)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 
-#define USE_AO_ONLY 1
+#define USE_AO_ONLY 0
 
 float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, float center_depth, float3 center_normal, inout float w_sum) {
     if (depth != 0.0)

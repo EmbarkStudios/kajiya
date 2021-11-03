@@ -74,31 +74,31 @@ void main(uint2 px : SV_DispatchThreadID) {
     //float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
 
     // Note: pow(ssao, n) is a balance between details and splotches in corner
-    float kernel_radius = lerp(2.0, 6.0, pow(ssao_tex[hi_px].r, 2));
+    float kernel_radius = lerp(2.0, 10.0, pow(ssao_tex[hi_px].r, 2));
     if (spatial_reuse_pass_idx == 0 && center_r.M < 10) {
         kernel_radius = 16.0;
     }
 
-    uint valid_sample_count = 0;
-    uint valid_sample_count_limit = 5;
-
     if (spatial_reuse_pass_idx == 1) {
-        //sample_count = 5;
         sample_count = 5;
-        valid_sample_count_limit = 3;
-        kernel_radius = lerp(4.0, 20.0, pow(ssao_tex[hi_px].r, 4));
+        kernel_radius = lerp(4.0, 32.0, pow(ssao_tex[hi_px].r, 4));
     }
 
-    const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-    // early out saves a lot of comp, but leaves noise in tricky cases (old building interior)
-    //for (uint sample_i = 0; sample_i < 16 && valid_sample_count < 8; ++sample_i) {
-    for (uint sample_i = 0; sample_i < sample_count && valid_sample_count < valid_sample_count_limit; ++sample_i) {
+    const uint TARGET_M = 512;
+
+    //const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
+    //const float ang_offset = (px.x & 1) + (px.y & 1) * 2;
+
+    // Looks the same, no cache thrashing
+    const float ang_offset = uint_to_u01_float(hash1(frame_constants.frame_index)) * M_PI * 2;
+
+    uint valid_sample_count = 0;
+    for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / valid_sample_count_limit);
-        //float radius = float(sample_i + sample_radius_offset) * (kernel_radius / valid_sample_count_limit);
+        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
-        //const bool is_center_sample = sample_i == 0;
-        const bool is_center_sample = all(rpx_offset == 0);
+        const bool is_center_sample = sample_i == 0;
+        //const bool is_center_sample = all(rpx_offset == 0);
 
         const int2 rpx = px + rpx_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);

@@ -26,17 +26,19 @@ void main(in int2 px : SV_DispatchThreadID) {
 
     // wired
     {
+        const int k = 1;
+
         float3 avg_normal = 0;
-        {for (int y = -1; y <= 2; ++y) {
-            for (int x = -1; x <= 2; ++x) {
+        {for (int y = -k; y <= k + 1; ++y) {
+            for (int x = -k; x <= k + 1; ++x) {
                 avg_normal += normal_ws_at_px(px * 2 + int2(x, y));
             }
         }}
         avg_normal = normalize(avg_normal);
 
         float lowest_dot = 10;
-        {for (int y = 0; y <= 1; ++y) {
-            for (int x = 0; x <= 1; ++x) {
+        {for (int y = -k + 1; y <= k; ++y) {
+            for (int x = -k + 1; x <= k; ++x) {
                 float3 normal = normal_ws_at_px(px * 2 + int2(x, y));
                 float d = dot(normal, avg_normal);
                 if (d < lowest_dot) {

@@ -9,7 +9,7 @@
 };
 SamplerState sampler_lnc;
 
-#define USE_AO_ONLY 1
+#define USE_AO_ONLY 0
 
 #define LINEAR_TO_WORKING(x) x
 #define WORKING_TO_LINEAR(x) x

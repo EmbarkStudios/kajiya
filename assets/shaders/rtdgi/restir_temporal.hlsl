@@ -183,7 +183,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
 
-        const float p_q = p_q_sel = max(1e-3, calculate_luma(result.out_value));
+        const float p_q = p_q_sel =
+            max(1e-3, calculate_luma(result.out_value))
+            #if !DIFFUSE_GI_BRDF_SAMPLING
+                * max(0, dot(outgoing_dir, normal_ws))
+            #endif
+            ;
+
         const float inv_pdf_q = result.inv_pdf;
 
         irradiance_sel = result.out_value;
@@ -302,7 +308,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
-            //p_q *= max(0, dot(sample_dir, normal_ws));
+            #if !DIFFUSE_GI_BRDF_SAMPLING
+                p_q *= max(0, dot(sample_dir, normal_ws));
+            #endif
 
             float visibility = 1;
 

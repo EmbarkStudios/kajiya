@@ -66,6 +66,8 @@ static const float SKY_DIST = 1e4;
 
 [shader("raygeneration")]
 void main() {
+    return;
+
     uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
