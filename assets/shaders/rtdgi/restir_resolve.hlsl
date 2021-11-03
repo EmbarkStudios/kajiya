@@ -50,7 +50,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float center_depth = half_depth_tex[px];
     const float center_ssao = ssao_tex[px * 2].r;
 
-    const float3 center_bent_normal_ws = normalize(direction_view_to_world(ssao_tex[px * 2].gba));
+    //const float3 center_bent_normal_ws = normalize(direction_view_to_world(ssao_tex[px * 2].gba));
 
     float3 irradiance_sum = 0;
     float w_sum = 0;

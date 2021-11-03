@@ -303,11 +303,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     col *= slice_contrib_weight;
 
-    float bent_normal_angle = h1p + h2p - n_angle * 2;
+    /*float bent_normal_angle = h1p + h2p - n_angle * 2;
     float3 bent_normal_dir = sin(bent_normal_angle) * cross(slice_normal_vs, normal_vs) + cos(bent_normal_angle) * normal_vs;
-    bent_normal_dir = bent_normal_dir;
+    bent_normal_dir = bent_normal_dir;*/
 
-    //output_tex[px] = max(0.0, col);
-    output_tex[px] = float4(max(0.0, col.r), bent_normal_dir);
+    output_tex[px] = max(0.0, col);
+    //output_tex[px] = float4(max(0.0, col.r), bent_normal_dir);
     //bent_normal_out_tex[px] = float4(bent_normal_dir, 0);// / slice_contrib_weight;
 }
