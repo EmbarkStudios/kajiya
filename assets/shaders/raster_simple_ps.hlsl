@@ -44,7 +44,7 @@ PsOut main(PsIn ps) {
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
     float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5);
     if (albedo_texel.a < 0.5) {
-        discard;
+        //discard;
     }
 
     float3 albedo = albedo_texel.xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
@@ -86,7 +86,7 @@ PsOut main(PsIn ps) {
         normal_ws *= -1;
         //normal_ws = geometric_normal_ws;
     }
-    //normal_ws = geometric_normal_ws;
+    normal_ws = geometric_normal_ws;
 
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];

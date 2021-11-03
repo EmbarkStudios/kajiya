@@ -1,0 +1,1 @@
+#define USE_SSGI_NEAR_FIELD 0

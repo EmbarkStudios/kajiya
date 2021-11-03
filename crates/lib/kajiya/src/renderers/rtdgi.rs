@@ -210,6 +210,7 @@ impl RtdgiRenderer {
         wrc: &WrcRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
         ssao_img: &rg::Handle<Image>,
+        ussao_img: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
@@ -420,6 +421,7 @@ impl RtdgiRenderer {
             .read(&*half_view_normal_tex)
             .read(&*half_depth_tex)
             .read(ssao_img)
+            .read(ussao_img)
             .write(&mut irradiance_output_tex)
             .constants((
                 gbuffer_desc.extent_inv_extent_2d(),

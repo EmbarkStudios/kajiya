@@ -19,6 +19,7 @@ pub mod sky;
 pub mod ssgi;
 pub mod surfel_gi;
 pub mod taa;
+pub mod ussgi;
 pub mod wrc;
 
 #[cfg(feature = "dlss")]

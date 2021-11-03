@@ -8,6 +8,7 @@
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/reservoir.hlsl"
+#include "../rtdgi/near_field_settings.hlsl"
 #include "restir_settings.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
@@ -18,8 +19,9 @@
 [[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(6)]] Texture2D<float> half_depth_tex;
 [[vk::binding(7)]] Texture2D<float4> ssao_tex;
-[[vk::binding(8)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(9)]] cbuffer _ {
+[[vk::binding(8)]] Texture2D<float4> ussao_tex;
+[[vk::binding(9)]] RWTexture2D<float4> irradiance_output_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
 };
@@ -72,9 +74,16 @@ void main(uint2 px : SV_DispatchThreadID) {
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
         const float3 hit_ws = ray_tex[spx].xyz;
-        const float3 sample_dir = normalize(hit_ws - view_ray_context.ray_hit_ws());
+        const float3 sample_offset = hit_ws - view_ray_context.ray_hit_ws();
+        const float sample_dist = length(sample_offset);
+        const float3 sample_dir = sample_offset / sample_dist;
+        const float3 sample_hit_normal = hit_normal_tex[spx].xyz;
 
         float3 radiance = irradiance_tex[spx].rgb;
+        if (USE_SSGI_NEAR_FIELD && sample_dist < 0.05 && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
+            radiance = 0;
+        }
+
         float w =
             //max(0.0, min(dot(center_normal_ws, sample_dir), 1.5 * dot(center_bent_normal_ws, sample_dir)))
             max(0.0, dot(center_normal_ws, sample_dir))

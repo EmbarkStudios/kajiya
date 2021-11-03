@@ -12,11 +12,12 @@
 #include "wrc/wrc_settings.hlsl"
 #include "surfel_gi/bindings.hlsl"
 #include "wrc/bindings.hlsl"
+#include "rtdgi/near_field_settings.hlsl"
 
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
-#define USE_SSGI 0
+#define USE_SSGI 1
 #define USE_RTR 0
 #define USE_RTDGI 1
 
@@ -173,7 +174,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gi_irradiance = rtdgi_tex[px].rgb;
     }
 
-    const float4 ssgi = ssgi_tex[px];
+    const float4 ssgi = ssgi_tex[px].gbar;
     #if USE_SSGI
         // HACK: need directionality in GI so that it can be properly masked.
         // If simply masking with the AO term, it tends to over-darken.
@@ -182,9 +183,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
         const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), SSGI_INTENSITY_BIAS);
         gi_irradiance *= biased_ssgi.a;
         gi_irradiance += biased_ssgi.rgb;
+        /*#if USE_SSGI_NEAR_FIELD
+            gi_irradiance += biased_ssgi.rgb;
+        #endif*/
     #endif
 
-    //gi_irradiance *= ssgi.r;
+    //gi_irradiance = ssgi.a;
 
     total_radiance += gi_irradiance
         * brdf.diffuse_brdf.albedo

@@ -20,7 +20,7 @@ impl WorldRenderer {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "root.accum",
-                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_desc.render_extent).usage(
+                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, frame_desc.render_extent).usage(
                     vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_DST,
@@ -94,10 +94,22 @@ impl WorldRenderer {
             &velocity_img,
         );
 
-        let ssgi_tex = self
-            .ssgi
-            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
+        let ssgi_tex = self.ssgi.render(
+            rg,
+            &gbuffer_depth,
+            &reprojection_map,
+            &accum_img,
+            self.bindless_descriptor_set,
+        );
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
+
+        let ussgi_tex = self.ussgi.render(
+            rg,
+            &gbuffer_depth,
+            &reprojection_map,
+            &accum_img,
+            self.bindless_descriptor_set,
+        );
 
         let sun_shadow_mask =
             trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
@@ -119,6 +131,7 @@ impl WorldRenderer {
             &wrc,
             &tlas,
             &ssgi_tex,
+            &ussgi_tex,
         );
 
         // TODO: don't iter over all the things
@@ -159,7 +172,7 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &denoised_shadow_mask,
-            &ssgi_tex,
+            &ussgi_tex,
             &rtr,
             &rtdgi,
             &surfel_state,

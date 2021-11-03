@@ -5,38 +5,43 @@
 #include "../inc/hash.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/gbuffer.hlsl"
+#include "../inc/blue_noise.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(1)]] Texture2D<float> half_depth_tex;
-[[vk::binding(2)]] Texture2D<float4> view_normal_tex;
+// Matches resolution of the output
+[[vk::binding(1)]] Texture2D<float> depth_tex;
+[[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(3)]] Texture2D<float4> prev_radiance_tex;
 [[vk::binding(4)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
 //[[vk::binding(6)]] RWTexture2D<float4> bent_normal_out_tex;
-
-#define USE_AO_ONLY 1
 
 [[vk::binding(6)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
 };
 
-#if 1
-    // Micro-occlusion settings used for denoising
+#ifndef SSGI_FULLRES
+    #define USE_AO_ONLY 1
+    #define USE_SSGI_FACING_CORRECTION 1
 
-    static const uint SSGI_HALF_SAMPLE_COUNT = 6;
-    #define SSGI_KERNEL_RADIUS (100.0 * output_tex_size.w)
-    #define MAX_KERNEL_RADIUS_CS 0.4
-    #define USE_KERNEL_DISTANCE_SCALING 0
-    #define USE_RANDOM_JITTER 0
-#else
-    // Crazy settings for testing with the Cornell Box
+    #if 1
+        // Micro-occlusion settings used for denoising
 
-    static const uint SSGI_HALF_SAMPLE_COUNT = 32;
-    #define SSGI_KERNEL_RADIUS 5
-    #define MAX_KERNEL_RADIUS_CS 100.0
-    #define USE_KERNEL_DISTANCE_SCALING 1
-    #define USE_RANDOM_JITTER 1
+        static const uint SSGI_HALF_SAMPLE_COUNT = 6;
+        #define SSGI_KERNEL_RADIUS (60.0 * output_tex_size.w)
+        #define MAX_KERNEL_RADIUS_CS 0.4
+        #define USE_KERNEL_DISTANCE_SCALING 0
+        #define USE_RANDOM_JITTER 0
+    #else
+        // Crazy settings for testing with the Cornell Box
+
+        static const uint SSGI_HALF_SAMPLE_COUNT = 32;
+        #define SSGI_KERNEL_RADIUS 5
+        #define MAX_KERNEL_RADIUS_CS 100.0
+        #define USE_KERNEL_DISTANCE_SCALING 1
+        #define USE_RANDOM_JITTER 1
+    #endif
 #endif
 
 static const float temporal_rotations[] = { 60.0, 300.0, 180.0, 240.0, 120.0, 0.0 };
@@ -70,11 +75,26 @@ float3 fetch_lighting(float2 uv) {
     return lerp(0.0, prev_radiance_tex[int2(input_tex_size.xy * (uv + reproj.xy))].xyz, reproj.z);
 }
 
-float3 fetch_normal_vs(float2 uv) {
-    int2 px = int2(output_tex_size.xy * uv);
-    float3 normal_vs = view_normal_tex[px].xyz;
-    return normal_vs;
+float fetch_depth(uint2 px) {
+    return depth_tex[px];
 }
+
+#ifdef SSGI_FULLRES
+    // HACK
+    float3 fetch_normal_vs(float2 uv) {
+        int2 px = int2(output_tex_size.xy * uv);
+        float4 gbuffer_packed = gbuffer_tex[px];
+        GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+        const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
+        return normal_vs;
+    }
+#else
+    float3 fetch_normal_vs(float2 uv) {
+        int2 px = int2(output_tex_size.xy * uv);
+        float3 normal_vs = half_view_normal_tex[px].xyz;
+        return normal_vs;
+    }
+#endif
 
 float integrate_half_arc(float h1, float n) {
     float a = -cos(2.0 * h1 - n) + cos(n) + 2.0 * h1 * sin(n);
@@ -101,7 +121,7 @@ float3 project_point_on_plane(float3 pt, float3 normal) {
     return pt - normal * dot(pt, normal);
 }
 
-float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_sample_vs, float4 sample_cs, float3 center_vs, float3 normal_vs, float3 v_vs, float kernel_radius, float theta_cos_max, inout float4 color_accum) {
+float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_sample_vs, float4 sample_cs, float3 center_vs, float3 normal_vs, float3 v_vs, float kernel_radius_vs, float theta_cos_max, inout float4 color_accum) {
     if (sample_cs.z > 0) {
         float4 sample_vs4 = mul(frame_constants.view_constants.sample_to_view, sample_cs);
         float3 sample_vs = sample_vs4.xyz / sample_vs4.w;
@@ -109,9 +129,9 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
         float sample_vs_offset_len = length(sample_vs_offset);
 
         float sample_theta_cos = dot(sample_vs_offset, v_vs) / sample_vs_offset_len;
-        const float sample_distance_normalized = sample_vs_offset_len / kernel_radius;
+        const float sample_distance_normalized = sample_vs_offset_len / kernel_radius_vs;
 
-        if (sample_distance_normalized < 1) {
+        if (sample_distance_normalized < 1.0) {
             //const float sample_influence = 1;
             const float sample_influence = 1.0 - sample_distance_normalized * sample_distance_normalized;
 
@@ -127,7 +147,7 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
                 float3 sample_normal_vs = fetch_normal_vs(cs_to_uv(sample_cs.xy));
                 float theta_cos_prev_trunc = theta_cos_prev;
 
-#if 1
+#if USE_SSGI_FACING_CORRECTION
                 if (i > 0) {
                     // Account for the sampled surface's normal, and how it's facing the center pixel
 
@@ -156,7 +176,10 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
                         integrate_half_arc(h2p, n_angle);
                         
                     lighting *= inv_ao;
-                    lighting *= step(0.0, dot(-normalize(sample_vs_offset), sample_normal_vs));
+
+                    #if USE_SSGI_FACING_CORRECTION
+                        lighting *= step(0.0, dot(normalize(sample_vs_offset), sample_normal_vs));
+                    #endif
                 }
 
                 color_accum += float4(lighting, 1.0);
@@ -172,23 +195,29 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
     return theta_cos_max;
 }
 
+#ifndef SSGI_FULLRES
+#define RES_SCALE 2
+#else
+#define RES_SCALE 1
+#endif
+
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
 
-    const float depth = half_depth_tex[px];
+    const float depth = fetch_depth(px);
     if (0.0 == depth) {
         output_tex[px] = float4(0, 0, 0, 1);
         return;
     }
 
-    float4 gbuffer_packed = gbuffer_tex[px * 2];
+    float4 gbuffer_packed = gbuffer_tex[px * RES_SCALE];
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
 
     float4 col = 0.0.xxxx;
-    float kernel_radius = SSGI_KERNEL_RADIUS;
+    float kernel_radius_cs = SSGI_KERNEL_RADIUS;
 
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     float3 v_vs = -normalize(view_ray_context.ray_dir_vs());
@@ -202,8 +231,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float temporal_offset_noise = temporal_offsets[frame_constants.frame_index / 6 % 4];
 
 #if USE_RANDOM_JITTER
-    uint seed0 = hash3(uint3(frame_constants.frame_index, px.x, px.y));
-    spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
+    temporal_direction_noise += 0.125 * blue_noise_for_pixel(px, frame_constants.frame_index).x;
 #endif
 
     float ss_angle = frac(spatial_direction_noise + temporal_direction_noise) * M_PI;
@@ -215,9 +243,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
     {
         // Convert AO radius into world scale
         #if USE_KERNEL_DISTANCE_SCALING
-            const float cs_kernel_radius_scaled = kernel_radius * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
+            const float cs_kernel_radius_scaled = kernel_radius_cs * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
         #else
-            const float cs_kernel_radius_scaled = kernel_radius;
+            const float cs_kernel_radius_scaled = kernel_radius_cs;
         #endif
 
         cs_slice_dir *= cs_kernel_radius_scaled;
@@ -231,7 +259,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     // Shrink the AO radius
     cs_slice_dir *= kernel_radius_shrinkage;
-    kernel_radius *= kernel_radius_shrinkage;
+
+    const float kernel_radius_vs = kernel_radius_cs * kernel_radius_shrinkage * -ray_hit_vs.z;
 
     float3 center_vs = ray_hit_vs.xyz;
 
@@ -263,11 +292,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float4 sample_cs = float4(ray_hit_cs.xy - cs_slice_dir * t, 0, 1);
             int2 sample_px = int2(output_tex_size.xy * cs_to_uv(sample_cs.xy));
 
-            // TODO: check if this is beneficial, or needs to be flattened
-            if (any(sample_px != prev_sample_coord0)) {
+            [flatten] if (any(sample_px != prev_sample_coord0)) {
                 prev_sample_coord0 = sample_px;
-                sample_cs.z = half_depth_tex[sample_px];
-                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius, theta_cos_max1, color_accum);
+                sample_cs.z = fetch_depth(sample_px);
+                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius_vs, theta_cos_max1, color_accum);
             }
         }
 
@@ -277,11 +305,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float4 sample_cs = float4(ray_hit_cs.xy + cs_slice_dir * t, 0, 1);
             int2 sample_px = int2(output_tex_size.xy * cs_to_uv(sample_cs.xy));
 
-            // TODO: check if this is beneficial, or needs to be flattened
-            if (any(sample_px != prev_sample_coord1)) {
+            [flatten] if (any(sample_px != prev_sample_coord1)) {
                 prev_sample_coord1 = sample_px;
-                sample_cs.z = half_depth_tex[sample_px];
-                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius, theta_cos_max2, color_accum);
+                sample_cs.z = fetch_depth(sample_px);
+                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius_vs, theta_cos_max2, color_accum);
             }
         }
     }
@@ -298,7 +325,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #if USE_AO_ONLY
         col.rgb = col.a;
     #else
-        col.rgb = color_accum.rgb;
+        col = float4(col.a, color_accum.rgb);
+        //col = float4(color_accum.rgb, col.a);
+        //col = col.a;
     #endif
 
     col *= slice_contrib_weight;

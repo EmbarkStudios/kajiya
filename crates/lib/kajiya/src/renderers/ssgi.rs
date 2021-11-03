@@ -14,7 +14,7 @@ impl Default for SsgiRenderer {
     }
 }
 
-const TEX_FMT: vk::Format = vk::Format::R16_SFLOAT;
+const TEX_FMT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 
 impl SsgiRenderer {
     pub fn render(
@@ -23,6 +23,7 @@ impl SsgiRenderer {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         prev_radiance: &rg::Handle<Image>,
+        bindless_descriptor_set: vk::DescriptorSet,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
@@ -42,6 +43,7 @@ impl SsgiRenderer {
             .read(prev_radiance)
             .read(reprojection_map)
             .write(&mut ssgi_tex)
+            .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((
                 gbuffer_desc.extent_inv_extent_2d(),
                 ssgi_tex.desc().extent_inv_extent_2d(),
