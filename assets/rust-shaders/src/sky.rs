@@ -1,6 +1,4 @@
-use crate::atmosphere::*;
-use crate::util::*;
-use crate::frame_constants::FrameConstants;
+use crate::{atmosphere::*, frame_constants::FrameConstants, util::*};
 use macaw::{const_mat3, vec3, Mat3, UVec3, Vec2, Vec3, Vec4, Vec4Swizzles};
 use spirv_std::{Image, Sampler};
 

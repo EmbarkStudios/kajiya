@@ -4,10 +4,10 @@ use crate::{
     frame_constants::FrameConstants,
     util::{depth_to_view_z, get_uv_u},
 };
-use spirv_std::{
-    Image, Sampler,
+use macaw::{
+    uvec2, vec2, IVec2, IVec3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
 };
-use macaw::{uvec2, vec2, IVec2, IVec3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
+use spirv_std::{Image, Sampler};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;
@@ -26,7 +26,7 @@ fn depth_cmp(center_depth: f32, sample_depth: f32, depth_scale: f32) -> Vec2 {
 }
 
 fn spread_cmp(offset_len: f32, spread_len: Vec2) -> Vec2 {
-    return (spread_len - Vec2::splat(offset_len + 1.0)).clamp(Vec2::ZERO, Vec2::ONE);
+    (spread_len - Vec2::splat(offset_len + 1.0)).clamp(Vec2::ZERO, Vec2::ONE)
 }
 
 fn sample_weight(

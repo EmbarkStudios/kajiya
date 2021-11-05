@@ -55,11 +55,11 @@ pub fn atmosphere_height(position_ws: Vec3) -> f32 {
 }
 
 fn density_rayleigh(h: f32) -> f32 {
-    (-0.0f32.max(h / RAYLEIGH_HEIGHT)).exp()
+    -(0.0f32.max(h / RAYLEIGH_HEIGHT)).exp()
 }
 
 fn density_mie(h: f32) -> f32 {
-    (-0.0f32.max(h / MIE_HEIGHT)).exp()
+    -(0.0f32.max(h / MIE_HEIGHT)).exp()
 }
 
 fn density_ozone(h: f32) -> f32 {
@@ -105,7 +105,7 @@ fn phase_mie(costh: f32, mut g: f32) -> f32 {
     g = g.min(0.9381);
     let k = 1.55 * g - 0.55 * g * g * g;
     let kcosth = k * costh;
-    return (1.0 - k * k) / ((4.0 * PI) * (1.0 - kcosth) * (1.0 - kcosth));
+    (1.0 - k * k) / ((4.0 * PI) * (1.0 - kcosth) * (1.0 - kcosth))
 }
 
 /// Calculate a luminance transmittance value from optical depth.
@@ -161,7 +161,8 @@ pub fn integrate_scattering(
         let step_size = ray_time - prev_ray_time;
 
         //float3 local_position = ray_start + ray_dir * ray_time;
-        let local_position: Vec3 = ray_start + ray_dir * macaw::FloatExt::lerp(prev_ray_time, ray_time, 0.5);
+        let local_position: Vec3 =
+            ray_start + ray_dir * macaw::FloatExt::lerp(prev_ray_time, ray_time, 0.5);
         let local_height: f32 = atmosphere_height(local_position);
         let local_density: Vec3 = atmosphere_density(local_height);
 
@@ -184,5 +185,5 @@ pub fn integrate_scattering(
 
     *transmittance = absorb(optical_depth);
 
-    return (rayleigh * C_RAYLEIGH + mie * C_MIE) * light_color * EXPOSURE;
+    (rayleigh * C_RAYLEIGH + mie * C_MIE) * light_color * EXPOSURE
 }

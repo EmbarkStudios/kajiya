@@ -4,6 +4,7 @@
     feature(register_attr, asm),
     register_attr(spirv)
 )]
+#![allow(clippy::too_many_arguments)]
 
 pub mod atmosphere;
 pub mod convolve_cube;

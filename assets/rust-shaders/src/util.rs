@@ -1,7 +1,7 @@
 use crate::frame_constants::FrameConstants;
+use macaw::{const_mat3, FloatExt, Mat3, UVec2, Vec2, Vec3, Vec4, Vec4Swizzles};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
-use macaw::{FloatExt, UVec2, Vec2, Vec3, Mat3, Vec4, Vec4Swizzles, const_mat3};
 
 pub fn get_uv_u(pix: UVec2, tex_size: Vec4) -> Vec2 {
     (pix.as_vec2() + Vec2::splat(0.5)) * tex_size.zw()
@@ -17,30 +17,12 @@ pub fn depth_to_view_z(depth: f32, frame_constants: &FrameConstants) -> f32 {
 }
 
 pub const CUBE_MAP_FACE_ROTATIONS: [Mat3; 6] = [
-    const_mat3!(
-        [0.0, 0.0, -1.0],
-        [0.0, -1.0, 0.0],
-        [-1.0, 0.0, 0.0]), // right
-    const_mat3!(
-        [0.0, 0.0, 1.0],
-        [0.0, -1.0, 0.0],
-        [1.0, 0.0, 0.0]),   // left
-    const_mat3!(
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, 1.0],
-        [0.0, -1.0, 0.0]),   // bottom
-    const_mat3!(
-        [1.0, 0.0, 0.0],
-        [0.0, 0.0, -1.0],
-        [0.0, 1.0, 0.0]),   // top
-    const_mat3!(
-        [1.0, 0.0, 0.0],
-        [0.0, -1.0, 0.0],
-        [0.0, 0.0, -1.0]),  // back
-    const_mat3!(
-        [-1.0, 0.0, 0.0],
-        [0.0, -1.0, 0.0],
-        [0.0, 0.0, 1.0]),  // front
+    const_mat3!([0.0, 0.0, -1.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0]), // right
+    const_mat3!([0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]),   // left
+    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),   // bottom
+    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),   // top
+    const_mat3!([1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]),  // back
+    const_mat3!([-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),  // front
 ];
 
 pub fn radical_inverse_vdc(mut bits: u32) -> f32 {
