@@ -178,7 +178,7 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
                     lighting *= inv_ao;
 
                     #if USE_SSGI_FACING_CORRECTION
-                        lighting *= step(0.0, dot(normalize(sample_vs_offset), sample_normal_vs));
+                        lighting *= step(0.0, dot(-normalize(sample_vs_offset), sample_normal_vs));
                     #endif
                 }
 

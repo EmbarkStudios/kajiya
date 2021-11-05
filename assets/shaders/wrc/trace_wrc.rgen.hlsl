@@ -13,6 +13,7 @@
 #include "../inc/mesh.hlsl"
 #include "../inc/sh.hlsl"
 #include "../inc/quasi_random.hlsl"
+#include "../inc/lights/triangle.hlsl"
 #include "../surfel_gi/bindings.hlsl"
 #include "wrc_settings.hlsl"
 
@@ -30,6 +31,7 @@ DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6)
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
 static const bool FIREFLY_SUPPRESSION = true;
+static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool USE_SURFEL_GI = true;
 static const bool USE_BLEND_OUTPUT = true;
@@ -60,6 +62,7 @@ void main() {
     const uint2 tile = wrc_probe_idx_to_atlas_tile(probe_idx);
     const uint2 atlas_px = tile * WRC_PROBE_DIMS + probe_px;
     const uint3 probe_coord = wrc_probe_idx_to_coord(probe_idx);
+    uint rng = hash_combine2(hash1(probe_idx), frame_constants.frame_index);
 
     float3 irradiance_sum = 0;
     float valid_sample_count = 0;
@@ -139,6 +142,49 @@ void main() {
 
                 if (USE_EMISSIVE) {
                     irradiance_sum += gbuffer.emissive;
+                }
+
+                if (USE_LIGHTS && frame_constants.triangle_light_count > 0/* && path_length > 0*/) {   // rtr comp
+                    const float light_selection_pmf = 1.0 / frame_constants.triangle_light_count;
+                    const uint light_idx = hash1_mut(rng) % frame_constants.triangle_light_count;
+                    //const float light_selection_pmf = 1;
+                    //for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1)
+                    {
+                        const float2 urand = float2(
+                            uint_to_u01_float(hash1_mut(rng)),
+                            uint_to_u01_float(hash1_mut(rng))
+                        );
+
+                        TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
+                        LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
+                        const float3 shadow_ray_origin = primary_hit.position;
+                        const float3 to_light_ws = light_sample.pos - primary_hit.position;
+                        const float dist_to_light2 = dot(to_light_ws, to_light_ws);
+                        const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+
+                        const float to_psa_metric =
+                            max(0.0, dot(to_light_norm_ws, gbuffer.normal))
+                            * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
+                            / dist_to_light2;
+
+                        if (to_psa_metric > 0.0) {
+                            float3 wi = mul(to_light_norm_ws, tangent_to_world);
+
+                            const bool is_shadowed =
+                                rt_is_shadowed(
+                                    acceleration_structure,
+                                    new_ray(
+                                        shadow_ray_origin,
+                                        to_light_norm_ws,
+                                        1e-3,
+                                        sqrt(dist_to_light2) - 2e-3
+                                ));
+
+                            irradiance_sum +=
+                                is_shadowed ? 0 :
+                                    gbuffer.albedo * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf;
+                        }
+                    }
                 }
 
                 if (USE_SURFEL_GI) {

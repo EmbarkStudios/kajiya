@@ -12,6 +12,7 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/mesh.hlsl"
 #include "../inc/sh.hlsl"
+#include "../inc/lights/triangle.hlsl"
 
 #define HEMISPHERE_ONLY 1
 
@@ -35,6 +36,7 @@
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
 static const bool FIREFLY_SUPPRESSION = true;
+static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
@@ -60,7 +62,7 @@ float unpack_dist(float x) {
 [shader("raygeneration")]
 void main() {
     const uint surfel_idx = DispatchRaysIndex().x;
-    uint seed = hash_combine2(hash1(surfel_idx), frame_constants.frame_index);
+    uint rng = hash_combine2(hash1(surfel_idx), frame_constants.frame_index);
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
@@ -82,8 +84,8 @@ void main() {
         RayDesc outgoing_ray;
         {
             float2 urand = float2(
-                uint_to_u01_float(hash1_mut(seed)),
-                uint_to_u01_float(hash1_mut(seed))
+                uint_to_u01_float(hash1_mut(rng)),
+                uint_to_u01_float(hash1_mut(rng))
             );
 
             /*float3 dir = uniform_sample_sphere(urand);
@@ -164,14 +166,57 @@ void main() {
                     irradiance_sum += gbuffer.emissive * throughput;
                 }
 
+                if (USE_LIGHTS && frame_constants.triangle_light_count > 0/* && path_length > 0*/) {   // rtr comp
+                    const float light_selection_pmf = 1.0 / frame_constants.triangle_light_count;
+                    const uint light_idx = hash1_mut(rng) % frame_constants.triangle_light_count;
+                    //const float light_selection_pmf = 1;
+                    //for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1)
+                    {
+                        const float2 urand = float2(
+                            uint_to_u01_float(hash1_mut(rng)),
+                            uint_to_u01_float(hash1_mut(rng))
+                        );
+
+                        TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
+                        LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
+                        const float3 shadow_ray_origin = primary_hit.position;
+                        const float3 to_light_ws = light_sample.pos - primary_hit.position;
+                        const float dist_to_light2 = dot(to_light_ws, to_light_ws);
+                        const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+
+                        const float to_psa_metric =
+                            max(0.0, dot(to_light_norm_ws, gbuffer.normal))
+                            * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
+                            / dist_to_light2;
+
+                        if (to_psa_metric > 0.0) {
+                            float3 wi = mul(to_light_norm_ws, tangent_to_world);
+
+                            const bool is_shadowed =
+                                rt_is_shadowed(
+                                    acceleration_structure,
+                                    new_ray(
+                                        shadow_ray_origin,
+                                        to_light_norm_ws,
+                                        1e-3,
+                                        sqrt(dist_to_light2) - 2e-3
+                                ));
+
+                            irradiance_sum +=
+                                is_shadowed ? 0 :
+                                    throughput * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf;
+                        }
+                    }
+                }
+                
                 if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
                     irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * throughput * gbuffer.albedo;
                 }
 
                 const float3 urand = float3(
-                    uint_to_u01_float(hash1_mut(seed)),
-                    uint_to_u01_float(hash1_mut(seed)),
-                    uint_to_u01_float(hash1_mut(seed))
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng))
                 );
                 BrdfSample brdf_sample = brdf.sample(wo, urand);
 

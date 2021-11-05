@@ -181,11 +181,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
         // Reduce some of the occlusion, but for energy conservation, also reduce
         // the light added.
         const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), SSGI_INTENSITY_BIAS);
-        gi_irradiance *= biased_ssgi.a;
-        gi_irradiance += biased_ssgi.rgb;
-        /*#if USE_SSGI_NEAR_FIELD
+        //gi_irradiance *= biased_ssgi.a;
+        //gi_irradiance += biased_ssgi.rgb;
+        #if USE_SSGI_NEAR_FIELD
             gi_irradiance += biased_ssgi.rgb;
-        #endif*/
+        #endif
     #endif
 
     //gi_irradiance = ssgi.a;

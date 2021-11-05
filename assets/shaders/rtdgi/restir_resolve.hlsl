@@ -80,8 +80,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_hit_normal = hit_normal_tex[spx].xyz;
 
         float3 radiance = irradiance_tex[spx].rgb;
-        if (USE_SSGI_NEAR_FIELD && sample_dist < 0.05 && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
-            radiance = 0;
+        if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
+            float infl = sample_dist / (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
+
+            // eyeballed
+            radiance *= lerp(0.2, 1.0, smoothstep(0.0, 1.0, infl));
         }
 
         float w =
