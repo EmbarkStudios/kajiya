@@ -5,16 +5,6 @@ use spirv_std::{Image, Sampler};
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;
 
-// TODO: Why did we need to swap top and bottom here to match HLSL???
-// const CUBE_MAP_FACE_ROTATIONS: [Mat3; 6] = [
-//     const_mat3!([0.0, 0.0, -1.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0]), // right
-//     const_mat3!([0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]),   // left
-//     const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),   // top
-//     const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),   // bottom
-//     const_mat3!([1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]),  // back
-//     const_mat3!([-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),  // front
-// ];
-
 #[repr(C)]
 pub struct Constants {
     pub face_width: u32,

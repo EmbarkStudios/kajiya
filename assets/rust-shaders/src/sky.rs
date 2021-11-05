@@ -10,9 +10,8 @@ use spirv_std::macros::spirv;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
 
-// TODO: move to cube_map.rs
 const CUBE_MAP_FACE_ROTATIONS: [Mat3; 6] = [
-    // TODO: Why did we need to swap top and bottom here to match HLSL???
+    // TODO: Why did we need to swap top and bottom here to match HLSL?
     const_mat3!([0.0, 0.0, -1.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0]), // right
     const_mat3!([0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]),   // left
     const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),   // bottom
