@@ -5,11 +5,10 @@
     register_attr(spirv)
 )]
 
-#[cfg(not(target_arch = "spirv"))]
-#[macro_use]
-pub extern crate spirv_std_macros;
-
+pub mod atmosphere;
+pub mod convolve_cube;
 pub mod frame_constants;
 pub mod motion_blur;
 pub mod rev_blur;
+pub mod sky;
 pub mod util;

@@ -1,9 +1,10 @@
 // Rust-GPU port of `rev_blur.hlsl` by Henrik Rydgård
 
 use spirv_std::{
-    glam::{UVec3, Vec2, Vec4},
     Image, Sampler,
 };
+
+use macaw::{UVec3, Vec2, Vec4};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;
@@ -45,7 +46,7 @@ pub fn rev_blur_cs(
         for y in -K..=K {
             for x in -K..=K {
                 let uv =
-                    (px.truncate().as_f32() + Vec2::splat(0.5) + Vec2::new(x as f32, y as f32))
+                    (px.truncate().as_vec2() + Vec2::splat(0.5) + Vec2::new(x as f32, y as f32))
                         * inv_size;
                 let sample: Vec4 = input_tex.sample_by_lod(*sampler_lnc, uv, 0.0);
                 self_col += sample;
@@ -54,7 +55,7 @@ pub fn rev_blur_cs(
 
         self_col /= ((2 * K + 1) * (2 * K + 1)) as f32;
     } else {
-        let uv = (px.truncate().as_f32() + Vec2::splat(0.5)) * inv_size;
+        let uv = (px.truncate().as_vec2() + Vec2::splat(0.5)) * inv_size;
         //float4 self_col = input_tex[px / 2];
         self_col = input_tex.sample_by_lod(*sampler_lnc, uv, 0.0);
     }

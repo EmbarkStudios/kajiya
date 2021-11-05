@@ -10,3 +10,4 @@ doctest = false
 
 [dependencies]
 spirv-std = { git = "https://github.com/EmbarkStudios/rust-gpu", rev = "b692ab5afc7fbdb4599b42ab3e0328dc7e8e0e97", features = ["glam"] }
+macaw = { version = "0.14.1", default-features = false, features = ["libm"] }

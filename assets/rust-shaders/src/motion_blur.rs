@@ -5,9 +5,12 @@ use crate::{
     util::{depth_to_view_z, get_uv_u},
 };
 use spirv_std::{
-    glam::{uvec2, vec2, IVec2, IVec3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles},
     Image, Sampler,
 };
+use macaw::{uvec2, vec2, IVec2, IVec3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
+
+#[cfg(not(target_arch = "spirv"))]
+use spirv_std::macros::spirv;
 
 #[repr(C)]
 pub struct Constants {
@@ -65,7 +68,7 @@ pub fn motion_blur(
 
     // Scramble tile coordinates to diffuse the tile quantization in noise
     let mut noise1: i32;
-    let mut tile_offset = px.xy().as_i32();
+    let mut tile_offset = px.xy().as_ivec2();
     {
         tile_offset.x += tile_offset.x << 4;
         tile_offset.x ^= tile_offset.x >> 6;
@@ -81,12 +84,12 @@ pub fn motion_blur(
         noise1 -= 15;
     }
 
-    let velocity_tile_coord = ((uv * depth_tex_size) + tile_offset.as_f32()).as_u32();
+    let velocity_tile_coord = ((uv * depth_tex_size) + tile_offset.as_vec2()).as_uvec2();
     let tile_velocity: Vec4 = tile_velocity_tex.fetch(
         clamp_uvec2(
             velocity_tile_coord,
             UVec2::splat(0),
-            depth_tex_size.as_u32() - UVec2::splat(1),
+            depth_tex_size.as_uvec2() - UVec2::splat(1),
         ) / 16,
     );
     let tile_velocity = blur_scale * tile_velocity.xy();
@@ -99,9 +102,9 @@ pub fn motion_blur(
 
     //float3 center_color = texelFetch(inputImage, px, 0).rgb;
     let center_color: Vec4 = input_tex.fetch(clamp_uvec2(
-        (center_uv * output_tex_size).as_u32(),
+        (center_uv * output_tex_size).as_uvec2(),
         UVec2::splat(0),
-        output_tex_size.as_u32() - UVec2::splat(1),
+        output_tex_size.as_uvec2() - UVec2::splat(1),
     ));
     let center_color = center_color.xyz();
     let center_depth: Vec4 = depth_tex.sample_by_lod(*sampler_nnc, center_uv, 0.0);
@@ -119,8 +122,8 @@ pub fn motion_blur(
             let offset_len1 = (-i as f32 + noise) / kernel_width as f32 * 0.5;
             let uv0 = uv + tile_velocity * offset_len0;
             let uv1 = uv + tile_velocity * offset_len1;
-            let px0 = (uv0 * depth_tex_size).as_u32();
-            let px1 = (uv1 * depth_tex_size).as_u32();
+            let px0 = (uv0 * depth_tex_size).as_uvec2();
+            let px1 = (uv1 * depth_tex_size).as_uvec2();
 
             let d0: Vec4 = depth_tex.fetch(px0);
             let d1: Vec4 = depth_tex.fetch(px1);
