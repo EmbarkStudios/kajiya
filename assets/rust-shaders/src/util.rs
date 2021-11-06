@@ -16,11 +16,14 @@ pub fn depth_to_view_z(depth: f32, frame_constants: &FrameConstants) -> f32 {
         .recip()
 }
 
+// Note: `const_mat3` is initialized with columns, while `float3x3` in HLSL is row-order,
+// therefore the initializers _appear_ transposed compared to HLSL.
+// The difference is only in the `top` and `bottom` ones; the others are symmetric.
 pub const CUBE_MAP_FACE_ROTATIONS: [Mat3; 6] = [
     const_mat3!([0.0, 0.0, -1.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0]), // right
     const_mat3!([0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]),   // left
-    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),   // bottom
-    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),   // top
+    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),   // top
+    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),   // bottom
     const_mat3!([1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]),  // back
     const_mat3!([-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),  // front
 ];
