@@ -6,6 +6,10 @@
 #include "../inc/soft_color_clamp.hlsl"
 #include "rtr_settings.hlsl"
 
+#include "../inc/working_color_space.hlsl"
+#define linear_to_working linear_rgb_to_crunched_rgb
+#define working_to_linear crunched_rgb_to_linear_rgb
+
 #define USE_DUAL_REPROJECTION 1
 #define USE_NEIGHBORHOOD_CLAMP 1
 
@@ -19,57 +23,6 @@
     float4 output_tex_size;
 };
 
-#define ENCODING_SCHEME 0
-
-#if 0 == ENCODING_SCHEME
-float4 linear_to_working(float4 x) {
-    return float4(sqrt(x.xyz), x.w);
-}
-float4 working_to_linear(float4 x) {
-    return float4(x.xyz * x.xyz, x.w);
-}
-#endif
-
-#if 1 == ENCODING_SCHEME
-float4 linear_to_working(float4 v) {
-    return log(1+sqrt(v));
-}
-float4 working_to_linear(float4 v) {
-    v = exp(v) - 1.0;
-    return v * v;
-}
-#endif
-
-#if 2 == ENCODING_SCHEME
-float4 linear_to_working(float4 x) {
-    return x;
-}
-float4 working_to_linear(float4 x) {
-    return x;
-}
-#endif
-
-#if 3 == ENCODING_SCHEME
-float4 linear_to_working(float4 v) {
-    return float4(ycbcr_to_rgb(v.rgb), v.a);
-}
-float4 working_to_linear(float4 v) {
-    return float4(rgb_to_ycbcr(v.rgb), v.a);
-}
-#endif
-
-#if 4 == ENCODING_SCHEME
-float4 linear_to_working(float4 v) {
-    v.rgb = sqrt(max(0.0, v.rgb));
-    v.rgb = rgb_to_ycbcr(v.rgb);
-    return v;
-}
-float4 working_to_linear(float4 v) {
-    v.rgb = ycbcr_to_rgb(v.rgb);
-    v.rgb *= v.rgb;
-    return v;
-}
-#endif
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {

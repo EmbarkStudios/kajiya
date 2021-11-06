@@ -8,8 +8,10 @@
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/reservoir.hlsl"
+#include "../inc/blue_noise.hlsl"
 #include "../rtdgi/near_field_settings.hlsl"
 #include "restir_settings.hlsl"
+#include "candidate_ray_dir.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
 [[vk::binding(1)]] Texture2D<float4> hit_normal_tex;
@@ -20,8 +22,10 @@
 [[vk::binding(6)]] Texture2D<float> half_depth_tex;
 [[vk::binding(7)]] Texture2D<float4> ssao_tex;
 [[vk::binding(8)]] Texture2D<float4> ussao_tex;
-[[vk::binding(9)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(10)]] cbuffer _ {
+[[vk::binding(9)]] Texture2D<float4> candidate_irradiance_tex;
+[[vk::binding(10)]] Texture2D<float4> candidate_hit_tex;
+[[vk::binding(11)]] RWTexture2D<float4> irradiance_output_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
 };
@@ -40,6 +44,9 @@ void main(uint2 px : SV_DispatchThreadID) {
     };
     const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
     float depth = half_depth_tex[px];
+    if (0 == depth) {
+        return;
+    }
 
     const uint seed = frame_constants.frame_index;
     uint rng = hash3(uint3(px, seed));
@@ -79,30 +86,53 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_dir = sample_offset / sample_dist;
         const float3 sample_hit_normal = hit_normal_tex[spx].xyz;
 
-        float3 radiance = irradiance_tex[spx].rgb;
-        if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
-            float infl = sample_dist / (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
-
-            // eyeballed
-            radiance *= lerp(0.2, 1.0, smoothstep(0.0, 1.0, infl));
-        }
-
         float w =
             //max(0.0, min(dot(center_normal_ws, sample_dir), 1.5 * dot(center_bent_normal_ws, sample_dir)))
             max(0.0, dot(center_normal_ws, sample_dir))
             // TODO: wtf, why 2
             * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
+        float3 radiance = irradiance_tex[spx].rgb;
+
+        const bool SPLIT = USE_SPLIT_RT_NEAR_FIELD && !USE_SSGI_NEAR_FIELD;
+        const float CUTOFF_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5);
+        const float CUTOFF_START = 0.0;
+
+        if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
+            float infl = sample_dist / (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
+            // eyeballed
+            radiance *= lerp(0.2, 1.0, smoothstep(0.0, 1.0, infl));
+        }
+
+        if (SPLIT) {
+            radiance *= smoothstep(CUTOFF_START, CUTOFF_END, sample_dist);
+        }
+
+        irradiance_sum += radiance * w * r.W;
+
+        if (SPLIT) {
+            const float hit_t = candidate_hit_tex[rpx].w;
+            if (hit_t < CUTOFF_END) {
+                const float3x3 tangent_to_world = build_orthonormal_basis(center_normal_ws);
+                const float3 outgoing_dir_ws = rtdgi_candidate_ray_dir(rpx, tangent_to_world);
+
+                 w =
+                    max(0.0, dot(center_normal_ws, outgoing_dir_ws))
+                    * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
+                irradiance_sum += candidate_irradiance_tex[rpx].rgb * w * smoothstep(CUTOFF_END, CUTOFF_START, hit_t);
+            }
+        }
+
         //w *= w * w * w;
         //w = pow(w, 20);
 
-        irradiance_sum += radiance * w * r.W;
-        w_sum += w;
+        //irradiance_sum += radiance * w * r.W;
+        //w_sum += w;
         //W_sum += r.W * w;
     }
 
-    #if DIFFUSE_GI_BRDF_SAMPLING
+    /*#if DIFFUSE_GI_BRDF_SAMPLING
         irradiance_sum /= max(1e-20, w_sum);
-    #endif
+    #endif*/
 
     irradiance_output_tex[px] = float4(irradiance_sum, 1);
 }

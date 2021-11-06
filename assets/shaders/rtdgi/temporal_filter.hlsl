@@ -8,6 +8,10 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/gbuffer.hlsl"
 
+#include "../inc/working_color_space.hlsl"
+#define linear_to_working linear_rgb_to_linear_luma_chroma
+#define working_to_linear linear_luma_chroma_to_linear_rgb
+
 #define USE_TEMPORAL_FILTER 1
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
@@ -23,14 +27,13 @@
     float4 gbuffer_tex_size;
 };
 
-
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
     
-    const float4 center = input_tex[px];
+    const float4 center = linear_to_working(input_tex[px]);
     float4 reproj = reprojection_tex[px * 2];
-    float4 history = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+    float4 history = linear_to_working(history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0));
     
 #if 1
 	float4 vsum = 0.0.xxxx;
@@ -40,7 +43,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y)]);
+            float4 neigh = linear_to_working(input_tex[px + int2(x, y)]);
 			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
@@ -64,7 +67,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	const int k = 2;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y) * 2]);
+            float4 neigh = linear_to_working(input_tex[px + int2(x, y) * 2]);
 			nmin = min(nmin, neigh);
             nmax = max(nmax, neigh);
         }
@@ -95,8 +98,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 clamped_history = clamp(history, nmin, nmax);
 #else
     float4 clamped_history = float4(
-        //soft_color_clamp(center.rgb, history.rgb, ex.rgb, dev.rgb),
-        ycbcr_to_rgb(soft_color_clamp(rgb_to_ycbcr(center.rgb), rgb_to_ycbcr(history.rgb), rgb_to_ycbcr(ex.rgb), abs(rgb_to_ycbcr(0.75 * dev.rgb)))),
+        soft_color_clamp(center.rgb, history.rgb, ex.rgb, dev.rgb),
+        //ycbcr_to_rgb(soft_color_clamp(rgb_to_ycbcr(center.rgb), rgb_to_ycbcr(history.rgb), rgb_to_ycbcr(ex.rgb), abs(rgb_to_ycbcr(0.75 * dev.rgb)))),
         history.a
     );
 #endif
@@ -110,14 +113,15 @@ void main(uint2 px: SV_DispatchThreadID) {
         res = center.rgb;
     #endif
 
-    history_output_tex[px] = float4(res, 0);
-    float3 spatial_input = max(0.0.xxx, res);
+    float4 spatial_input = working_to_linear(float4(res, 0));
+
+    history_output_tex[px] = spatial_input;
 
     //spatial_input *= reproj.z;    // debug validity
     //spatial_input *= light_stability;
     //spatial_input = length(dev.rgb);
     //spatial_input = 1-light_stability;
     //spatial_input = abs(dev.rgb);
-    output_tex[px] = float4(spatial_input, light_stability);
+    output_tex[px] = float4(spatial_input.rgb, light_stability);
     //history_output_tex[px] = reproj.w;
 }

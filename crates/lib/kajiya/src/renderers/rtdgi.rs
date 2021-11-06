@@ -265,6 +265,18 @@ impl RtdgiRenderer {
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
+        let mut candidate_irradiance_tex = rg.create(
+            gbuffer_desc
+                .half_res()
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+
+        let mut candidate_hit_tex = rg.create(
+            gbuffer_desc
+                .half_res()
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
+
         let (irradiance_tex, ray_tex, mut temporal_reservoir_tex) = {
             let (mut irradiance_output_tex, irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
@@ -289,18 +301,6 @@ impl RtdgiRenderer {
                 );
 
             let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
-
-            let mut candidate_irradiance_tex = rg.create(
-                gbuffer_desc
-                    .half_res()
-                    .format(vk::Format::R16G16B16A16_SFLOAT),
-            );
-
-            let mut candidate_hit_tex = rg.create(
-                gbuffer_desc
-                    .half_res()
-                    .format(vk::Format::R16G16B16A16_SFLOAT),
-            );
 
             SimpleRenderPass::new_rt(
                 rg.add_pass("rtdgi trace"),
@@ -422,7 +422,10 @@ impl RtdgiRenderer {
             .read(&*half_depth_tex)
             .read(ssao_img)
             .read(ussao_img)
+            .read(&candidate_irradiance_tex)
+            .read(&candidate_hit_tex)
             .write(&mut irradiance_output_tex)
+            .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((
                 gbuffer_desc.extent_inv_extent_2d(),
                 irradiance_output_tex.desc().extent_inv_extent_2d(),

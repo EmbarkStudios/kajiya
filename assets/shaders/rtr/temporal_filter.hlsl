@@ -3,6 +3,7 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/color.hlsl"
 #include "../inc/bilinear.hlsl"
+#include "../inc/working_color_space.hlsl"
 #include "rtr_settings.hlsl"
 
 #define USE_DUAL_REPROJECTION 1
@@ -17,59 +18,8 @@
     float4 output_tex_size;
 };
 
-// Should probably be 3 or 4
-#define ENCODING_SCHEME 4
-
-#if 0 == ENCODING_SCHEME
-float4 linear_to_working(float4 x) {
-    return sqrt(x);
-}
-float4 working_to_linear(float4 x) {
-    return ((x)*(x));
-}
-#endif
-
-#if 1 == ENCODING_SCHEME
-float4 linear_to_working(float4 v) {
-    return log(1+sqrt(v));
-}
-float4 working_to_linear(float4 v) {
-    v = exp(v) - 1.0;
-    return v * v;
-}
-#endif
-
-#if 2 == ENCODING_SCHEME
-float4 linear_to_working(float4 x) {
-    return x;
-}
-float4 working_to_linear(float4 x) {
-    return x;
-}
-#endif
-
-#if 3 == ENCODING_SCHEME
-float4 linear_to_working(float4 v) {
-    return float4(ycbcr_to_rgb(v.rgb), v.a);
-}
-float4 working_to_linear(float4 v) {
-    return float4(rgb_to_ycbcr(v.rgb), v.a);
-}
-#endif
-
-// Strong suppression; reduces noise in very difficult cases but introduces a lot of bias
-#if 4 == ENCODING_SCHEME
-float4 linear_to_working(float4 v) {
-    v.rgb = sqrt(max(0.0, v.rgb));
-    v.rgb = rgb_to_ycbcr(v.rgb);
-    return v;
-}
-float4 working_to_linear(float4 v) {
-    v.rgb = ycbcr_to_rgb(v.rgb);
-    v.rgb *= v.rgb;
-    return v;
-}
-#endif
+#define linear_to_working linear_rgb_to_crunched_luma_chroma
+#define working_to_linear crunched_luma_chroma_to_linear_rgb
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
