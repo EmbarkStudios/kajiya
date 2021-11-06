@@ -18,10 +18,10 @@
 [[vk::binding(2)]] Texture2D<float4> ray_tex;
 [[vk::binding(3)]] Texture2D<float4> reservoir_input_tex;
 [[vk::binding(4)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(6)]] Texture2D<float> half_depth_tex;
-[[vk::binding(7)]] Texture2D<float4> ssao_tex;
-[[vk::binding(8)]] Texture2D<float4> ussao_tex;
+[[vk::binding(5)]] Texture2D<float> depth_tex;
+[[vk::binding(6)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(7)]] Texture2D<float> half_depth_tex;
+[[vk::binding(8)]] Texture2D<float4> ssao_tex;
 [[vk::binding(9)]] Texture2D<float4> candidate_irradiance_tex;
 [[vk::binding(10)]] Texture2D<float4> candidate_hit_tex;
 [[vk::binding(11)]] RWTexture2D<float4> irradiance_output_tex;
@@ -30,52 +30,61 @@
     float4 output_tex_size;
 };
 
+static float ggx_ndf_unnorm(float a2, float cos_theta) {
+	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
+	return a2 / (denom_sqrt * denom_sqrt);
+}
+
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
 }
 
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
-    const uint2 hi_px_subpixels[4] = {
+    /*const uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
         uint2(1, 0),
         uint2(0, 1),
     };
-    const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
-    float depth = half_depth_tex[px];
+    const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];*/
+    float depth = depth_tex[px];
     if (0 == depth) {
+        irradiance_output_tex[px] = 0;
         return;
     }
 
     const uint seed = frame_constants.frame_index;
     uint rng = hash3(uint3(px, seed));
 
-    const float2 uv = get_uv(hi_px, gbuffer_tex_size);
+    const float2 uv = get_uv(px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
 
-    const float3 center_normal_vs = half_view_normal_tex[px].rgb;
-    const float3 center_normal_ws = direction_view_to_world(center_normal_vs);
-    const float center_depth = half_depth_tex[px];
-    const float center_ssao = ssao_tex[px * 2].r;
+    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
+
+    const float3 center_normal_ws = gbuffer.normal;
+    const float3 center_normal_vs = direction_world_to_view(center_normal_ws);
+    const float center_depth = depth;
 
     //const float3 center_bent_normal_ws = normalize(direction_view_to_world(ssao_tex[px * 2].gba));
 
-    float3 irradiance_sum = 0;
+    float3 weighted_irradiance = 0;
     float w_sum = 0;
-    float W_sum = 0;
 
-    const int2 reservoir_offsets[5] = {
-        int2(0, 0),
-        int2(1, 0),
-        int2(-1, 0),
-        int2(0, 1),
-        int2(0, -1),
-    };
+    static const float GOLDEN_ANGLE = 2.39996323;
+    const uint frame_hash = hash1(frame_constants.frame_index);
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_hash) & 3;
+    const float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index);
 
-    for (uint sample_i = 0; sample_i < 1; ++sample_i) {
-        const int2 reservoir_px_offset = reservoir_offsets[sample_i];
-        const int2 rpx = px + reservoir_px_offset;
+    for (uint sample_i = 0; sample_i < 4; ++sample_i) {
+        float3 irradiance_sum = 0;
+
+        //const int2 reservoir_px_offset = 0;
+        float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+        float radius = 1.5 + float(sample_i) * 0.333;
+        int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
+
+        const int2 rpx = px / 2 + reservoir_px_offset;
 
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
         const uint2 spx = reservoir_payload_to_px(r.payload);
@@ -86,8 +95,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_dir = sample_offset / sample_dist;
         const float3 sample_hit_normal = hit_normal_tex[spx].xyz;
 
-        float w =
-            //max(0.0, min(dot(center_normal_ws, sample_dir), 1.5 * dot(center_bent_normal_ws, sample_dir)))
+        float geometric_term =
             max(0.0, dot(center_normal_ws, sample_dir))
             // TODO: wtf, why 2
             * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
@@ -107,7 +115,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             radiance *= smoothstep(CUTOFF_START, CUTOFF_END, sample_dist);
         }
 
-        irradiance_sum += radiance * w * r.W;
+        irradiance_sum += radiance * geometric_term * r.W;
 
         if (SPLIT) {
             const float hit_t = candidate_hit_tex[rpx].w;
@@ -115,10 +123,10 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float3x3 tangent_to_world = build_orthonormal_basis(center_normal_ws);
                 const float3 outgoing_dir_ws = rtdgi_candidate_ray_dir(rpx, tangent_to_world);
 
-                 w =
+                float geometric_term =
                     max(0.0, dot(center_normal_ws, outgoing_dir_ws))
                     * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
-                irradiance_sum += candidate_irradiance_tex[rpx].rgb * w * smoothstep(CUTOFF_END, CUTOFF_START, hit_t);
+                irradiance_sum += candidate_irradiance_tex[rpx].rgb * geometric_term * smoothstep(CUTOFF_END, CUTOFF_START, hit_t);
             }
         }
 
@@ -128,11 +136,23 @@ void main(uint2 px : SV_DispatchThreadID) {
         //irradiance_sum += radiance * w * r.W;
         //w_sum += w;
         //W_sum += r.W * w;
+
+        const float sample_depth = half_depth_tex[rpx];
+        const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
+
+        float w = 1;//max(1e-5, dot(direction_view_to_world(half_view_normal_tex[rpx].rgb), center_normal_ws));
+        w *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
+        w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
+
+        weighted_irradiance += irradiance_sum * w;
+        w_sum += w;
     }
 
     /*#if DIFFUSE_GI_BRDF_SAMPLING
         irradiance_sum /= max(1e-20, w_sum);
     #endif*/
 
-    irradiance_output_tex[px] = float4(irradiance_sum, 1);
+    weighted_irradiance /= max(1e-20, w_sum);
+
+    irradiance_output_tex[px] = float4(weighted_irradiance, 1);
 }

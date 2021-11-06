@@ -47,7 +47,7 @@ float3 rgb_to_ycbcr(float3 col) {
 
 float3 ycbcr_to_rgb(float3 col) {
     float3x3 m = float3x3(1.0, 0.0, 1.5748, 1.0, -0.1873, -.4681, 1.0, 1.8556, 0.0);
-    return mul(m, col);
+    return max(0.0, mul(m, col));
 }
 
 // Rec. 709

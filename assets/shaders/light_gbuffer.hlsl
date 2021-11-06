@@ -17,7 +17,7 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
-#define USE_SSGI 1
+#define USE_SSGI 0
 #define USE_RTR 0
 #define USE_RTDGI 1
 

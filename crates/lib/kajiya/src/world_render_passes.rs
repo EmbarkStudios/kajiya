@@ -103,14 +103,6 @@ impl WorldRenderer {
         );
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
-        let ussgi_tex = self.ussgi.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &accum_img,
-            self.bindless_descriptor_set,
-        );
-
         let sun_shadow_mask =
             trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
 
@@ -131,7 +123,6 @@ impl WorldRenderer {
             &wrc,
             &tlas,
             &ssgi_tex,
-            &ussgi_tex,
         );
 
         // TODO: don't iter over all the things
@@ -172,7 +163,7 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &denoised_shadow_mask,
-            &ussgi_tex,
+            &ssgi_tex,
             &rtr,
             &rtdgi,
             &surfel_state,

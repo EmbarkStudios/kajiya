@@ -4,6 +4,12 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
 
+#include "../inc/working_color_space.hlsl"
+float4 pass_through(float4 v) { return v; }
+#define linear_to_working linear_rgb_to_crunched_luma_chroma
+#define working_to_linear crunched_luma_chroma_to_linear_rgb
+float working_luma(float3 v) { return v.x; }
+
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float2> variance_history_tex;
@@ -17,7 +23,7 @@
 };
 
 
-#define USE_TEMPORAL_FILTER 0
+#define USE_TEMPORAL_FILTER 1
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
@@ -29,11 +35,11 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float2 uv = get_uv(px, output_tex_size);
     
-    float4 center = input_tex[px];
+    float4 center = linear_to_working(input_tex[px]);
     float4 reproj = reprojection_tex[px];
-    float4 history = history_tex[px];
+    float4 history = linear_to_working(history_tex[px]);
 
-    output_tex[px] = center;
+    //output_tex[px] = center;
     //return;
     
     // TODO
@@ -47,23 +53,23 @@ void main(uint2 px: SV_DispatchThreadID) {
     float hist_vsum = 0.0;
     float hist_vsum2 = 0.0;
 
-    float dev_sum = 0.0;
+    //float dev_sum = 0.0;
 
 	const int k = 2;
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y)]);
-            float4 hist_neigh = (history_tex[px + int2(x, y)]);
+            float4 neigh = linear_to_working(input_tex[px + int2(x, y)]);
+            float4 hist_neigh = linear_to_working(history_tex[px + int2(x, y)]);
 
-            float neigh_luma = calculate_luma(neigh.rgb);
-            float hist_luma = calculate_luma(hist_neigh.rgb);
+            float neigh_luma = working_luma(neigh.rgb);
+            float hist_luma = working_luma(hist_neigh.rgb);
 
 			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
 			wsum += w;
 
-            dev_sum += neigh.a * neigh.a * w;
+            //dev_sum += neigh.a * neigh.a * w;
 
             //hist_diff += (neigh_luma - hist_luma) * (neigh_luma - hist_luma) * w;
             hist_diff += abs(neigh_luma - hist_luma) / max(1e-5, neigh_luma + hist_luma) * w;
@@ -78,13 +84,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     hist_diff /= wsum;
     hist_vsum /= wsum;
     hist_vsum2 /= wsum;
-    dev_sum /= wsum;
+    //dev_sum /= wsum;
 
     const float2 moments_history = variance_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
-    //const float center_luma = calculate_luma(center.rgb);
-    const float center_luma = calculate_luma(center.rgb) + (hist_vsum - calculate_luma(ex.rgb));// - 0.5 * calculate_luma(control_variate.rgb));
+    //const float center_luma = working_luma(center.rgb);
+    const float center_luma = working_luma(center.rgb) + (hist_vsum - working_luma(ex.rgb));// - 0.5 * working_luma(control_variate.rgb));
     const float2 current_moments = float2(center_luma, center_luma * center_luma);
-    variance_history_output_tex[px] = lerp(moments_history, current_moments, 0.25);
+    variance_history_output_tex[px] = max(0.0, lerp(moments_history, current_moments, 0.25));
     const float center_temporal_dev = sqrt(max(0.0, moments_history.y - moments_history.x * moments_history.x));
 
     float center_dev = center.a;
@@ -93,26 +99,26 @@ void main(uint2 px: SV_DispatchThreadID) {
     
     // Temporal variance estimate with a spatial boost
     // TODO: this version reduces flicker in pica and on skeletons in battle, but has halos in cornell_box
-    //dev.rgb = center_dev * dev.rgb / max(1e-8, clamp(calculate_luma(dev.rgb), center_dev * 0.1, center_dev * 3.0));
+    //dev.rgb = center_dev * dev.rgb / max(1e-8, clamp(working_luma(dev.rgb), center_dev * 0.1, center_dev * 3.0));
 
     // Spatiotemporal variance estimate
     // TODO: this version seems to work best, but needs to take care near sky
     // TODO: also probably needs to be rgb :P
-    dev.rgb = sqrt(dev_sum);
+    //dev.rgb = sqrt(dev_sum);
 
     // Temporal variance estimate with spatial colors
-    //dev.rgb *= center_dev / max(1e-8, calculate_luma(dev.rgb));
+    //dev.rgb *= center_dev / max(1e-8, working_luma(dev.rgb));
 
     float3 hist_dev = sqrt(abs(hist_vsum2 - hist_vsum * hist_vsum));
     //dev.rgb *= 0.1 / max(1e-5, clamp(hist_dev, dev.rgb * 0.1, dev.rgb * 10.0));
 
-    //float temporal_change = abs(hist_vsum - calculate_luma(ex.rgb)) / max(1e-8, hist_vsum + calculate_luma(ex.rgb));
-    float temporal_change = abs(hist_vsum - calculate_luma(ex.rgb)) / max(1e-8, hist_vsum + calculate_luma(ex.rgb));
-    //float temporal_change = 0.1 * abs(hist_vsum - calculate_luma(ex.rgb)) / max(1e-5, calculate_luma(dev.rgb));
-    //temporal_change = 0.02 * temporal_change / max(1e-5, calculate_luma(dev.rgb));
+    //float temporal_change = abs(hist_vsum - working_luma(ex.rgb)) / max(1e-8, hist_vsum + working_luma(ex.rgb));
+    float temporal_change = abs(hist_vsum - working_luma(ex.rgb)) / max(1e-8, hist_vsum + working_luma(ex.rgb));
+    //float temporal_change = 0.1 * abs(hist_vsum - working_luma(ex.rgb)) / max(1e-5, working_luma(dev.rgb));
+    //temporal_change = 0.02 * temporal_change / max(1e-5, working_luma(dev.rgb));
     //temporal_change = WaveActiveSum(temporal_change) / WaveActiveSum(1);
 
-    const float n_deviations = 5.0;// * WaveActiveMin(light_stability);
+    const float n_deviations = 3.0;// * WaveActiveMin(light_stability);
     //dev = max(dev, history * 0.1);
     //dev = min(dev, history * 0.01);
 	float4 nmin = center - dev * n_deviations;
@@ -146,7 +152,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
 #else
     float4 clamped_history = float4(
-        soft_color_clamp(center.rgb, history.rgb, ex.rgb, 0.5 * dev.rgb),
+        soft_color_clamp(center.rgb, history.rgb, ex.rgb, 1.5 * dev.rgb),
         history.a
     );
 #endif
@@ -160,22 +166,23 @@ void main(uint2 px: SV_DispatchThreadID) {
     //clamped_history = history;
     //clamped_history = center;
 
-    const float remapped_temporal_change = smoothstep(0.01, 0.6, temporal_change);
     const float variance_adjusted_temporal_change = smoothstep(0.1, 1.0, 0.05 * temporal_change / center_temporal_dev);
 
     float max_sample_count = 32;
     max_sample_count = lerp(max_sample_count, 4, variance_adjusted_temporal_change);
     //max_sample_count = lerp(max_sample_count, 1, smoothstep(0.01, 0.6, 10 * temporal_change * (center_dev / max(1e-5, center_luma))));
     max_sample_count *= light_stability;
-    //max_sample_count = 16;
+
+// hax
+//max_sample_count = 16;
 
     float current_sample_count = history.a;
     
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);
 
-    history_output_tex[px] = float4(res, min(current_sample_count, max_sample_count) + 1);
-    float3 output = max(0.0.xxx, res);
+    float4 output = working_to_linear(float4(res, min(current_sample_count, max_sample_count) + 1));
+    history_output_tex[px] = output;
 
     //output = smoothstep(1.0, 3.0, history_dist);
     //output = abs(history.rgb - ex.rgb);
@@ -196,16 +203,17 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output = abs(res);
     //output = WaveActiveSum(center.rgb) / WaveActiveSum(1);
     //output = WaveActiveSum(history.rgb) / WaveActiveSum(1);
-    //output = 0.01 * temporal_change / max(1e-5, calculate_luma(dev.rgb));
+    //output.rgb = 0.1 * temporal_change / max(1e-5, working_luma(dev.rgb));
     //output = pow(smoothstep(0.1, 1, temporal_change), 1.0);
     //output = center_temporal_dev;
     //output = center_dev / max(1e-5, center_luma);
     //output = 1 - smoothstep(0.01, 0.6, temporal_change);
     //output = pow(smoothstep(0.02, 0.6, 0.01 * temporal_change / center_temporal_dev), 0.25);
     //output = max_sample_count / 32.0;
-    //output = variance_adjusted_temporal_change;
+    //output.rgb = temporal_change * 0.1;
+    //output.rgb = variance_adjusted_temporal_change * 0.1;
 
-    output_tex[px] = float4(max(0.0.xxx, output), 1.0);
+    output_tex[px] = float4(output.rgb, 1.0);
     //output_tex[px] = float4(current_sample_count.xxx / 32, 1.0);
     //history_output_tex[px] = reproj.w;
 }

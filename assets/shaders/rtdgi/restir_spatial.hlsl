@@ -26,6 +26,8 @@
     uint spatial_reuse_pass_idx;
 };
 
+static const float CENTER_SAMPLE_M_TRUNCATION = 0.2;
+
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
 }
@@ -75,18 +77,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         kernel_radius = lerp(2.0, 32.0, ssao_tex[hi_px].r);
     }
 
-    // Make kernel crazy if we're low on samples
-    if (center_r.M < RESTIR_TEMPORAL_M_CLAMP * (spatial_reuse_pass_idx == 0 ? 0.1 : 1.0)) {
-        kernel_radius = 24.0;
-        sample_count = 8;
-    }
-
     const uint TARGET_M = 512;
 
-    //const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-    //const float ang_offset = (px.x & 1) + (px.y & 1) * 2;
-
-    // Looks the same, no cache thrashing
+    // Same per pixel to avoid cache thrashing. Looks the same as with random rotations per pixel.
     const float ang_offset = uint_to_u01_float(hash1(
         frame_constants.frame_index * 2 + spatial_reuse_pass_idx
     )) * M_PI * 2;
@@ -109,7 +102,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // and yet has a pretty small impact on the sharpness of the output.
                 // A decent value seems to be around 20% of the limit
                 // in the preceding exchange pass.
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * 0.2);
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * CENTER_SAMPLE_M_TRUNCATION);
             #else
                 r.M = min(r.M, 500);
             #endif
@@ -130,7 +123,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             float normal_cutoff = 0.5;
         #endif
         
-        if (spatial_reuse_pass_idx == 1) {
+        if (spatial_reuse_pass_idx != 0) {
             normal_cutoff = 0.5;
         }
 
@@ -178,31 +171,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
         const float prev_dist = length(prev_hit_ws - sample_ray_ctx.ray_hit_ws()); //prev_hit_ws_and_dist.w;
 
-#if 1
-        if (!is_center_sample && spatial_reuse_pass_idx == 1) {
-            /*const float4 own_hit_ws_and_dist = ray_tex[px];
-            const float3 own_hit_ws = own_hit_ws_and_dist.xyz;
-            const float own_dist = length(own_hit_ws - view_ray_context.ray_hit_ws());
-
-            if (dot(
-                normalize(prev_hit_ws - sample_ray_ctx.ray_hit_ws()),
-                normalize(own_hit_ws - view_ray_context.ray_hit_ws())
-            ) < 0.9) {
-                continue;
-            } else {
-                if (2 * abs(prev_dist - own_dist) / (prev_dist + own_dist) > 10) {
-                    continue;
-                }
-            }*/
-
-            const float a = candidate_input_tex[px].y;
-            const float b = candidate_input_tex[rpx].y;
-            if (2 * abs(a - b) / (a + b) > 1) {
-                continue;
-            }
-        }
-#endif
-
         // Reject hits too close to the surface
         if (!is_center_sample && !(prev_dist > 1e-8)) {
             continue;
@@ -217,6 +185,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
+        // TODO: combine all those into a single similarity metric?
+
         // Reject neighbors with vastly different depths
         if (spatial_reuse_pass_idx == 0) {
             if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
@@ -229,7 +199,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         // Approx shadowing
-        //if (spatial_reuse_pass_idx == 0)
         {
     		const float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
             const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
@@ -240,14 +209,11 @@ void main(uint2 px : SV_DispatchThreadID) {
     		}
         }
 
-        // TODO: combine all those into a single similarity metric
-
         const float4 prev_irrad = irradiance_tex[spx];
         const float4 prev_hit_normal_ws_dot = hit_normal_tex[spx];
 
         float p_q = 1;
         p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
-        //p_q *= exp2(-sqrt(sample_dist2) * 0.5);
 
         // Actually looks more noisy with this the N dot L when using BRDF sampling.
         // With (hemi)spherical sampling, it's fine.
@@ -291,28 +257,12 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     reservoir.M = M_sum;
-    reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
+    reservoir.W =
+        (1.0 / max(1e-5, p_q_sel))
+        * (reservoir.w_sum / max(CENTER_SAMPLE_M_TRUNCATION, reservoir.M));
 
-    // TODO: find the NaN
-    if (!(reservoir.W >= 0)) {
-        reservoir = Reservoir1spp::create();
-    }
+    // (Source of bias) suppress fireflies
+    reservoir.W = min(reservoir.W, 5);
 
     reservoir_output_tex[px] = reservoir.as_raw();
-
-    /*float3 irradiance = irradiance_tex[reservoir_payload_to_px(reservoir.payload)].rgb;
-    float likelihood = calculate_luma(irradiance) * center_r.W;
-
-    #if 1
-        irradiance_output_tex[px] = float4(
-            irradiance * reservoir.W
-            //TODO
-             //* saturate(dot(dir_sel, center_normal_ws))
-             , 1);
-
-            //irradiance_output_tex[px] = reservoir.w_sum / max(1e-5, calculate_luma(irradiance)) * 0.001;
-            //irradiance_output_tex[px] = float4(irradiance, 1);
-            //irradiance_output_tex[px] = reservoir.W * 0.01;
-        return;
-    #endif*/
 }

@@ -32,6 +32,8 @@ pub struct RtdgiRenderer {
     pub spatial_reuse_pass_count: u32,
 }
 
+const COLOR_BUFFER_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+
 fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
     unsafe {
         std::slice::from_raw_parts(v.as_ptr() as *const u8, v.len() * std::mem::size_of::<T>())
@@ -73,7 +75,7 @@ impl RtdgiRenderer {
 
 impl RtdgiRenderer {
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
-        ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, extent)
+        ImageDesc::new_2d(COLOR_BUFFER_FORMAT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
@@ -210,7 +212,6 @@ impl RtdgiRenderer {
         wrc: &WrcRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
         ssao_img: &rg::Handle<Image>,
-        ussao_img: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
@@ -236,7 +237,8 @@ impl RtdgiRenderer {
                 rg,
                 Self::temporal_tex_desc(
                     gbuffer_desc
-                        .format(vk::Format::R32G32B32A32_SFLOAT)
+                        // TODO: should really be rgba8
+                        .format(vk::Format::R16G16B16A16_SFLOAT)
                         .half_res()
                         .extent_2d(),
                 ),
@@ -259,7 +261,7 @@ impl RtdgiRenderer {
             self.temporal_candidate_tex.get_output_and_history(
                 rg,
                 ImageDesc::new_2d(
-                    vk::Format::R32G32B32A32_SFLOAT,
+                    vk::Format::R16G16B16A16_SFLOAT,
                     gbuffer_desc.half_res().extent_2d(),
                 )
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
@@ -287,7 +289,8 @@ impl RtdgiRenderer {
             let (mut ray_output_tex, ray_history_tex) =
                 self.temporal_ray_tex.get_output_and_history(
                     rg,
-                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
+                        .format(vk::Format::R16G16B16A16_SFLOAT),
                 );
 
             let (mut reservoir_output_tex, reservoir_history_tex) =
@@ -364,8 +367,7 @@ impl RtdgiRenderer {
             let mut irradiance_output_tex = rg.create(
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::empty())
-                    .half_res()
-                    .format(vk::Format::R32G32B32A32_SFLOAT),
+                    .format(COLOR_BUFFER_FORMAT),
             );
 
             let mut reservoir_output_tex0 = rg.create(
@@ -418,10 +420,10 @@ impl RtdgiRenderer {
             .read(&ray_tex)
             .read(reservoir_input_tex)
             .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&*half_view_normal_tex)
             .read(&*half_depth_tex)
             .read(ssao_img)
-            .read(ussao_img)
             .read(&candidate_irradiance_tex)
             .read(&candidate_hit_tex)
             .write(&mut irradiance_output_tex)
@@ -435,7 +437,7 @@ impl RtdgiRenderer {
             irradiance_output_tex
         };
 
-        let filtered_tex = self.temporal(
+        /*let filtered_tex = self.temporal(
             rg,
             &irradiance_tex,
             gbuffer_depth,
@@ -464,7 +466,8 @@ impl RtdgiRenderer {
             super::rtr::SPATIAL_RESOLVE_OFFSETS,
         ))
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .dispatch(upsampled_tex.desc().extent);
+        .dispatch(upsampled_tex.desc().extent);*/
+        let upsampled_tex = irradiance_tex;
 
         let filtered_tex = self.temporal2(
             rg,

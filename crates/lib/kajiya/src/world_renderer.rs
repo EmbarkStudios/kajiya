@@ -7,7 +7,7 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
         lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
-        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer, ussgi::UssgiRenderer,
+        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
     viewport::ViewConstants,
 };
@@ -160,7 +160,6 @@ pub struct WorldRenderer {
     pub reset_reference_accumulation: bool,
 
     pub ssgi: SsgiRenderer,
-    pub ussgi: UssgiRenderer,
     pub rtr: RtrRenderer,
     pub lighting: LightingRenderer,
     pub rtdgi: RtdgiRenderer,
@@ -357,7 +356,6 @@ impl WorldRenderer {
             supersample_offsets,
 
             ssgi: Default::default(),
-            ussgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             lighting: LightingRenderer::new(),
             rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
