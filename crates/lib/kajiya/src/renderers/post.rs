@@ -102,45 +102,6 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
     output
 }
 
-#[allow(dead_code)]
-fn edge_preserving_filter_luminance(
-    rg: &mut RenderGraph,
-    input: &rg::Handle<Image>,
-) -> rg::Handle<Image> {
-    let mut lum_tex = rg.create(input.desc().format(vk::Format::R16G16_SFLOAT));
-
-    SimpleRenderPass::new_compute(
-        rg.add_pass("log luminance"),
-        "/shaders/tonemap/extract_log_luminance.hlsl",
-    )
-    .read(input)
-    .write(&mut lum_tex)
-    .dispatch(lum_tex.desc().extent);
-
-    let mut input = &lum_tex;
-    let mut input_next: Option<_> = None;
-
-    for i in 0..7 {
-        let mut output = rg.create(input.desc().format(vk::Format::R16G16_SFLOAT));
-        let px_skip: u32 = 1 << (6 - i);
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("a-trous"),
-            "/shaders/tonemap/luminance-a-trous.hlsl",
-        )
-        .read(input)
-        .read(&lum_tex)
-        .write(&mut output)
-        .constants((input.desc().extent_inv_extent_2d(), px_skip))
-        .dispatch(output.desc().extent);
-
-        input_next = Some(output);
-        input = input_next.as_ref().unwrap();
-    }
-
-    input_next.unwrap()
-}
-
 pub fn post_process(
     rg: &mut RenderGraph,
     input: &rg::Handle<Image>,
