@@ -12,11 +12,11 @@ members = [
     "crates/lib/kajiya",
 
     "crates/lib/ash-imgui",
+
+    "assets/rust-shaders",
 ]
 
-# The shaders use nightly features, and so cannot be built for the CPU on stable.
 exclude = [
-    "assets/rust-shaders",
     "assets/rust-shaders/builder",
     "crates/lib/ngx_dlss"
 ]

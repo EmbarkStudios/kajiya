@@ -9,3 +9,5 @@ edition = "2021"
 anyhow = "1.0"
 nanoserde = "0.1"
 spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu", rev = "b692ab5afc7fbdb4599b42ab3e0328dc7e8e0e97" }
+
+[workspace]
