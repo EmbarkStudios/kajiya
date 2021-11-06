@@ -55,11 +55,11 @@ pub fn atmosphere_height(position_ws: Vec3) -> f32 {
 }
 
 fn density_rayleigh(h: f32) -> f32 {
-    -(0.0f32.max(h / RAYLEIGH_HEIGHT)).exp()
+    (-(0.0f32.max(h / RAYLEIGH_HEIGHT))).exp()
 }
 
 fn density_mie(h: f32) -> f32 {
-    -(0.0f32.max(h / MIE_HEIGHT)).exp()
+    (-(0.0f32.max(h / MIE_HEIGHT))).exp()
 }
 
 fn density_ozone(h: f32) -> f32 {
