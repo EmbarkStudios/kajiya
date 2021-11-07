@@ -79,9 +79,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const uint TARGET_M = 512;
 
-    // Same per pixel to avoid cache thrashing. Looks the same as with random rotations per pixel.
-    const float ang_offset = uint_to_u01_float(hash1(
-        frame_constants.frame_index * 2 + spatial_reuse_pass_idx
+    // Scrambling angles here would be nice, but results in bad cache thrashing.
+    // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
+    // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
+    const float ang_offset = uint_to_u01_float(hash3(
+        uint3((px >> 2), frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
     )) * M_PI * 2;
 
     uint valid_sample_count = 0;
@@ -89,6 +91,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
+
         const bool is_center_sample = sample_i == 0;
         //const bool is_center_sample = all(rpx_offset == 0);
 
@@ -152,7 +155,10 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // Balance between details and splotches in corner
         const float ssao_threshold = spatial_reuse_pass_idx == 0 ? 0.2 : 0.4;
-        const float ssao_infl = smoothstep(0.0, ssao_threshold, abs(sample_ssao - center_ssao));
+
+        // Was: abs(sample_ssao - center_ssao); that can however reject too aggressively.
+        // Some leaking is better than flicker and very dark corners.
+        const float ssao_infl = smoothstep(0.0, ssao_threshold, (sample_ssao - center_ssao));
 
         if (!is_center_sample && ssao_infl > ssao_dart) {
             // Note: improves contacts, but results in boiling/noise in corners
