@@ -151,14 +151,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float ssao_dart = uint_to_u01_float(hash1_mut(rng));
         const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
-        //const float ssao_infl = smoothstep(0.0, 0.2, max(1, poor_normals) * abs(sample_ssao - center_ssao));
 
         // Balance between details and splotches in corner
         const float ssao_threshold = spatial_reuse_pass_idx == 0 ? 0.2 : 0.4;
 
         // Was: abs(sample_ssao - center_ssao); that can however reject too aggressively.
         // Some leaking is better than flicker and very dark corners.
-        const float ssao_infl = smoothstep(0.0, ssao_threshold, (sample_ssao - center_ssao));
+        const float ssao_infl = smoothstep(0.0, ssao_threshold, abs(sample_ssao - center_ssao));
 
         if (!is_center_sample && ssao_infl > ssao_dart) {
             // Note: improves contacts, but results in boiling/noise in corners

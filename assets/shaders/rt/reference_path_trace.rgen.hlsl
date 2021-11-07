@@ -28,7 +28,7 @@ static const bool FIREFLY_SUPPRESSION = !true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;
-static const bool INDIRECT_ONLY = true;
+static const bool INDIRECT_ONLY = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
 static const bool USE_SOFT_SHADOWS = true;
@@ -107,7 +107,12 @@ void main() {
 
         float roughness_bias = 0.0;
 
-        RayCone ray_cone = pixel_ray_cone_from_image_height(DispatchRaysDimensions().y);
+        RayCone ray_cone = pixel_ray_cone_from_image_height(
+            DispatchRaysDimensions().y
+        );
+
+        // Bias for texture sharpness
+        ray_cone.spread_angle *= 0.3;
 
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {

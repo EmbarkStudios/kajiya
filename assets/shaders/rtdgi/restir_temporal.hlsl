@@ -214,8 +214,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         float M_sum = reservoir.M;
 
         // Can't use linear interpolation, but we can interpolate stochastically instead
-        const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng)));
-        int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset);
+        //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
+        // Or not at all.
+        const float2 reproj_rand_offset = 0.0;
+        int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
 
         uint valid_sample_count = 0;
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
