@@ -150,7 +150,7 @@ impl RtdgiRenderer {
         );
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("rtdgi temporal2"),
+            rg.add_pass("rtdgi temporal"),
             "/shaders/rtdgi/temporal_filter2.hlsl",
         )
         .read(input_color)

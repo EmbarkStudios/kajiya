@@ -225,33 +225,63 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // Raymarch to check occlusion
             if (!is_center_sample) {
-                const int k_count = 3;
-                const int range_px = k_count * 3;   // Note: causes flicker if smaller
+                #if 0
+                    const int k_count = 3;
+                    const int range_px = k_count * 3;   // Note: causes flicker if smaller
 
-                for (int k = 0; k < k_count; ++k) {
-                    float3 dir_to_sample_hit_vs = direction_world_to_view(dir_to_sample_hit);
-                    float2 intermediary_sample_uv = uv + normalize(dir_to_sample_hit_vs.xy) * float2(1, -1) * output_tex_size.zw * (k + 0.5) / k_count * range_px;
-                    const int2 intermediary_sample_px = int2(floor(intermediary_sample_uv * output_tex_size.xy));
-                    intermediary_sample_uv = (intermediary_sample_px + 0.5) * output_tex_size.zw;
+                    for (int k = 0; k < k_count; ++k) {
+                        float3 dir_to_sample_hit_vs = direction_world_to_view(dir_to_sample_hit);
+                        float2 intermediary_sample_uv = uv + normalize(dir_to_sample_hit_vs.xy) * float2(1, -1) * output_tex_size.zw * (k + 0.5) / k_count * range_px;
+                        const int2 intermediary_sample_px = int2(floor(intermediary_sample_uv * output_tex_size.xy));
+                        intermediary_sample_uv = (intermediary_sample_px + 0.5) * output_tex_size.zw;
 
-                    const float intermediary_sample_depth = half_depth_tex[intermediary_sample_px];
-                    if (intermediary_sample_depth == 0) {
-                        continue;
+                        const float intermediary_sample_depth = half_depth_tex[intermediary_sample_px];
+                        if (intermediary_sample_depth == 0) {
+                            continue;
+                        }
+
+                        const ViewRayContext intermediary_sample_ray_ctx = ViewRayContext::from_uv_and_depth(intermediary_sample_uv, intermediary_sample_depth);
+                        const float3 intermediary_surface_offset_vs = intermediary_sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs();
+                        if (length(intermediary_surface_offset_vs) > length(surface_offset_vs)) {
+                            continue;
+                        }
+
+                        if (dot(dir_to_sample_hit_vs, intermediary_surface_offset_vs) > dist_to_sample_hit) {
+                            //continue;
+                        }
+
+                        const float intermediary_sample_inclination = dot(normalize(intermediary_surface_offset_vs), center_normal_vs);
+                        visibility *= ray_inclination > intermediary_sample_inclination;
                     }
+                #else
+                    // TODO: finish the derivations, don't perspective-project for every sample.
 
-                    const ViewRayContext intermediary_sample_ray_ctx = ViewRayContext::from_uv_and_depth(intermediary_sample_uv, intermediary_sample_depth);
-                    const float3 intermediary_surface_offset_vs = intermediary_sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs();
-                    if (length(intermediary_surface_offset_vs) > length(surface_offset_vs)) {
-                        continue;
+                    const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
+                    const float3 raymarch_end_ws =
+                        view_ray_context.ray_hit_ws()
+                        // TODO: what's a good max distance to raymarch? Probably need to project some stuff
+                        + raymarch_dir_unnorm_ws * min(1.0, length(surface_offset_vs) / length(raymarch_dir_unnorm_ws));
+
+                    const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
+                    const float2 raymarch_len_px = (raymarch_end_uv - uv) * output_tex_size.xy;
+
+                    const int k_count = min(3, int(floor(length(raymarch_len_px) / 3)));
+
+                    // Depth values only have the front; assume a certain thickness.
+                    const float Z_LAYER_THICKNESS = 0.03;
+
+                    for (int k = 0; k < k_count; ++k) {
+                        const float t = (k + 0.5) / k_count;
+                        const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
+                        const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
+                        const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
+                        if (depth_at_interp > interp_pos_cs.z
+                            && inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp) < Z_LAYER_THICKNESS
+                        ) {
+                            visibility = 0;
+                        }
                     }
-
-                    if (dot(dir_to_sample_hit_vs, intermediary_surface_offset_vs) > dist_to_sample_hit) {
-                        //continue;
-                    }
-
-                    const float intermediary_sample_inclination = dot(normalize(intermediary_surface_offset_vs), center_normal_vs);
-                    visibility *= ray_inclination > intermediary_sample_inclination;
-                }
+                #endif
     		}
         }
 
@@ -295,8 +325,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         float w = p_q * r.W * r.M;
-        //if (reservoir.update(w * jacobian * visibility, r.payload, rng)) {
-        if (reservoir.update(w * jacobian, r.payload, rng)) {
+        if (reservoir.update(w * jacobian * visibility, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = dir_to_sample_hit;
         }
