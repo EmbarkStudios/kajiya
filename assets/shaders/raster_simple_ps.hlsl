@@ -44,7 +44,7 @@ PsOut main(PsIn ps) {
     //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
     float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5);
     if (albedo_texel.a < 0.5) {
-        //discard;
+        discard;
     }
 
     float3 albedo = albedo_texel.xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
@@ -57,7 +57,10 @@ PsOut main(PsIn ps) {
     float metalness = metalness_roughness.z * material.metalness_factor;
 
     Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
-    const float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, -0.5).xyz * 2.0 - 1.0;
+    float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, -0.5).xyz * 2.0 - 1.0;
+
+    // bistro hack
+    //ts_normal.zy *= -1;
 
     float3 normal_ws; {
         float3 normal_os = ps.normal;

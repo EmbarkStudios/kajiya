@@ -86,6 +86,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         uint3((px >> 2), frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
     )) * M_PI * 2;
 
+    //sample_count = 1;
+
     uint valid_sample_count = 0;
     for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
@@ -178,21 +180,23 @@ void main(uint2 px : SV_DispatchThreadID) {
         const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
         const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
-        const float4 prev_hit_ws_and_dist = ray_tex[spx];
-        const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
-        const float prev_dist = length(prev_hit_ws - sample_ray_ctx.ray_hit_ws());
+        const float4 sample_hit_ws_and_dist = ray_tex[spx] + float4(get_eye_position(), 0.0);
+        const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
+        const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
+        const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
+        const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
         // Reject hits too close to the surface
         if (!is_center_sample && !(prev_dist > 1e-8)) {
             continue;
         }
 
-        const float3 prev_dir_unnorm = prev_hit_ws - view_ray_context.biased_secondary_ray_origin_ws();
-        const float prev_dist_now = length(prev_dir_unnorm);
-        const float3 prev_dir = normalize(prev_dir_unnorm);
+        const float3 dir_to_sample_hit_unnorm = sample_hit_ws - view_ray_context.biased_secondary_ray_origin_ws();
+        const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
+        const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
         // Reject hits below the normal plane
-        if (!is_center_sample && dot(prev_dir, center_normal_ws) < 1e-3) {
+        if (!is_center_sample && dot(dir_to_sample_hit, center_normal_ws) < 1e-5) {
             continue;
         }
 
@@ -213,7 +217,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         {
     		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
             const float sample_inclination = dot(normalize(surface_offset_vs), center_normal_vs);
-            const float ray_inclination = dot(prev_dir, center_normal_ws);
+            const float ray_inclination = dot(dir_to_sample_hit, center_normal_ws);
 
             if (!is_center_sample && ray_inclination * 0.2 < sample_inclination) {
                 continue;
@@ -225,8 +229,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const int range_px = k_count * 3;   // Note: causes flicker if smaller
 
                 for (int k = 0; k < k_count; ++k) {
-                    float3 prev_dir_vs = direction_world_to_view(prev_dir);
-                    float2 intermediary_sample_uv = uv + normalize(prev_dir_vs.xy) * float2(1, -1) * output_tex_size.zw * (k + 0.5) / k_count * range_px;
+                    float3 dir_to_sample_hit_vs = direction_world_to_view(dir_to_sample_hit);
+                    float2 intermediary_sample_uv = uv + normalize(dir_to_sample_hit_vs.xy) * float2(1, -1) * output_tex_size.zw * (k + 0.5) / k_count * range_px;
                     const int2 intermediary_sample_px = int2(floor(intermediary_sample_uv * output_tex_size.xy));
                     intermediary_sample_uv = (intermediary_sample_px + 0.5) * output_tex_size.zw;
 
@@ -240,14 +244,18 @@ void main(uint2 px : SV_DispatchThreadID) {
                     if (length(intermediary_surface_offset_vs) > length(surface_offset_vs)) {
                         continue;
                     }
-                    
+
+                    if (dot(dir_to_sample_hit_vs, intermediary_surface_offset_vs) > dist_to_sample_hit) {
+                        //continue;
+                    }
+
                     const float intermediary_sample_inclination = dot(normalize(intermediary_surface_offset_vs), center_normal_vs);
                     visibility *= ray_inclination > intermediary_sample_inclination;
                 }
     		}
         }
 
-        const float4 prev_hit_normal_ws_dot = hit_normal_tex[spx];
+        const float4 sample_hit_normal_ws_dot = hit_normal_tex[spx];
 
         float p_q = 1;
         p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
@@ -255,24 +263,27 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Actually looks more noisy with this the N dot L when using BRDF sampling.
         // With (hemi)spherical sampling, it's fine.
         #if !DIFFUSE_GI_BRDF_SAMPLING
-            p_q *= max(0, dot(prev_dir, center_normal_ws));
+            p_q *= max(0, dot(dir_to_sample_hit, center_normal_ws));
         #endif
 
         float jacobian = 1;
 
         // Distance falloff. Needed to avoid leaks.
-        jacobian *= max(0.0, prev_dist) / max(1e-5, prev_dist_now);
+        jacobian *= max(0.0, prev_dist) / max(1e-4, dist_to_sample_hit);
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks.
-        jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, prev_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
+        jacobian *=
+            max(0.0, -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit))
+            /// max(1e-5, sample_hit_normal_ws_dot.w);
+            / max(1e-5, -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws));
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             // N dot L. Useful for normal maps, micro detail.
             // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
             // when we don't use a harsh normal cutoff to exchange reservoirs with.
-            //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws));
-            //jacobian *= max(0.0, prev_irrad.a) / dot(prev_dir, center_normal_ws);
+            //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
+            //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
         #endif
 
         if (is_center_sample) {
@@ -284,9 +295,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         float w = p_q * r.W * r.M;
-        if (reservoir.update(w * jacobian * visibility, r.payload, rng)) {
+        //if (reservoir.update(w * jacobian * visibility, r.payload, rng)) {
+        if (reservoir.update(w * jacobian, r.payload, rng)) {
             p_q_sel = p_q;
-            dir_sel = prev_dir;
+            dir_sel = dir_to_sample_hit;
         }
 
         M_sum += r.M;

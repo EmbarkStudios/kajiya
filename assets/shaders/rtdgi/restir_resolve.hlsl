@@ -89,7 +89,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
-        const float3 hit_ws = ray_tex[spx].xyz;
+        const float3 hit_ws = ray_tex[spx].xyz + get_eye_position();
         const float3 sample_offset = hit_ws - view_ray_context.ray_hit_ws();
         const float sample_dist = length(sample_offset);
         const float3 sample_dir = sample_offset / sample_dist;
@@ -103,13 +103,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const bool SPLIT = USE_SPLIT_RT_NEAR_FIELD && !USE_SSGI_NEAR_FIELD;
         const float CUTOFF_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5);
-        const float CUTOFF_START = 0.0;
+        const float CUTOFF_START = CUTOFF_END * 0.5;
 
-        if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
+        /*if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
             float infl = sample_dist / (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
             // eyeballed
             radiance *= lerp(0.2, 1.0, smoothstep(0.0, 1.0, infl));
-        }
+        }*/
 
         if (SPLIT) {
             radiance *= smoothstep(CUTOFF_START, CUTOFF_END, sample_dist);
@@ -130,17 +130,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
         }
 
-        //w *= w * w * w;
-        //w = pow(w, 20);
-
-        //irradiance_sum += radiance * w * r.W;
-        //w_sum += w;
-        //W_sum += r.W * w;
-
         const float sample_depth = half_depth_tex[rpx];
         const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
-        float w = 1;//max(1e-5, dot(direction_view_to_world(half_view_normal_tex[rpx].rgb), center_normal_ws));
+        float w = 1;
         w *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
         w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 

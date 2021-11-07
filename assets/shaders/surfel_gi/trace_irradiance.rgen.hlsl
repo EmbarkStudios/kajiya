@@ -66,7 +66,7 @@ void main() {
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
-    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 32);
+    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 1024);
 
     DiffuseBrdf brdf;
     const float3x3 tangent_to_world = build_orthonormal_basis(surfel.normal);

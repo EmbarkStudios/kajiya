@@ -210,6 +210,16 @@ void main(uint2 px : SV_DispatchThreadID) {
     //const bool use_resampling = false;
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
 
+    // 1 (center) plus offset samples
+    const uint MAX_RESOLVE_SAMPLE_COUNT = 5;
+
+    int2 sample_offsets[4] = {
+        int2(1, 0),
+        int2(0, 1),
+        int2(-1, 0),
+        int2(0, -1),
+    };
+
     if (use_resampling && reproj.z != 0) {
         float M_sum = reservoir.M;
 
@@ -221,28 +231,36 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         uint valid_sample_count = 0;
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-        for (uint sample_i = 0; sample_i < 1; ++sample_i) {
-            const int2 rpx = reproj_px;
+        for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
+            const int2 rpx_offset = sample_i == 0
+                ? 0
+                : sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
+            const int2 rpx = reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
 
             const float3 sample_normal_vs = half_view_normal_tex[rpx];
 
-            if (sample_i > 0 && dot(sample_normal_vs, normal_vs) < 0.9) {
+            // Note: also doing this for sample 0, as under extreme aliasing,
+            // we can easily get bad samples in.
+            if (dot(sample_normal_vs, normal_vs) < 0.3) {
                 continue;
             }
 
             const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
             const float sample_depth = depth_tex[rpx_hi];
-            if (sample_i > 0 && 0 == sample_depth) {
+            
+            // Note: also doing this for sample 0, as under extreme aliasing,
+            // we can easily get bad samples in.
+            if (0 == sample_depth) {
                 continue;
             }
 
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float3 sample_origin_ws = sample_ray_ctx.biased_secondary_ray_origin_ws();
 
-            const float4 prev_hit_ws_and_dist = ray_history_tex[rpx];
+            const float4 prev_hit_ws_and_dist = ray_history_tex[rpx] + float4(get_prev_eye_position(), 0.0);
             const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
             const float prev_dist = prev_hit_ws_and_dist.w;
             //const float prev_dist = length(prev_hit_ws - sample_origin_ws);
@@ -255,7 +273,9 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float sample_dist = length(sample_dir_unnorm);
             const float3 sample_dir = normalize(sample_dir_unnorm);
 
-            if (sample_i > 0 && dot(sample_dir, normal_ws) < 1e-3) {
+            // Note: also doing this for sample 0, as under extreme aliasing,
+            // we can easily get bad samples in.
+            if (dot(sample_dir, normal_ws) < 1e-3) {
                 continue;
             }
             
@@ -292,7 +312,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             //if (sample_i > 0)
             {
                 // Distance falloff. Needed to avoid leaks.
-                jacobian *= clamp(prev_dist, 1e-3, 1e3) / clamp(sample_dist, 1e-3, 1e3);
+                jacobian *= clamp(prev_dist, 1e-4, 1e4) / clamp(sample_dist, 1e-4, 1e4);
                 jacobian *= jacobian;
 
                 // N of hit dot -L. Needed to avoid leaks.
@@ -321,6 +341,9 @@ void main(uint2 px : SV_DispatchThreadID) {
                 hit_normal_sel = prev_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
             }
+
+            // Terminate as soon as we have a good sample
+            break;
         }
 
         valid_sample_count = max(valid_sample_count, 1);
@@ -360,7 +383,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_tex[px] = hit_normal_ws_dot;
-    ray_out_tex[px] = float4(ray_hit_sel, length(ray_hit_sel - refl_ray_origin));
+    ray_out_tex[px] = float4(ray_hit_sel - get_eye_position(), length(ray_hit_sel - refl_ray_origin));
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

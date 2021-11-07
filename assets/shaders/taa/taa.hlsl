@@ -32,7 +32,7 @@
 #define RESET_ACCUMULATION 0
 #define USE_NEIGHBORHOOD_CLAMPING 1
 #define TARGET_SAMPLE_COUNT 4
-#define SHORT_CIRCUIT 0
+#define SHORT_CIRCUIT 1
 
 
 struct InputRemap {
