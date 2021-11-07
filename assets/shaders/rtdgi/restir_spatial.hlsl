@@ -112,6 +112,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
+        float4 prev_irrad = irradiance_tex[spx];
+        float visibility = 1;
 
         const int2 sample_offset = int2(px) - int2(rpx);
         const float sample_dist2 = dot(sample_offset, sample_offset);
@@ -163,13 +165,17 @@ void main(uint2 px : SV_DispatchThreadID) {
             rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
             gbuffer_tex_size);
         const float sample_depth = half_depth_tex[rpx];
+        
+        if (sample_depth == 0.0) {
+            continue;
+        }
 
         const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
         const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
         const float4 prev_hit_ws_and_dist = ray_tex[spx];
         const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
-        const float prev_dist = length(prev_hit_ws - sample_ray_ctx.ray_hit_ws()); //prev_hit_ws_and_dist.w;
+        const float prev_dist = length(prev_hit_ws - sample_ray_ctx.ray_hit_ws());
 
         // Reject hits too close to the surface
         if (!is_center_sample && !(prev_dist > 1e-8)) {
@@ -200,16 +206,42 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // Approx shadowing
         {
-    		const float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
-            const float fraction_of_normal_direction_as_offset = dot(surface_offset, center_normal_vs) / length(surface_offset);
-            const float wi_z = dot(prev_dir, center_normal_ws);
+    		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
+            const float sample_inclination = dot(normalize(surface_offset_vs), center_normal_vs);
+            const float ray_inclination = dot(prev_dir, center_normal_ws);
 
-            if (!is_center_sample && wi_z * 0.2 < fraction_of_normal_direction_as_offset) {
-    			continue;
+            if (!is_center_sample && ray_inclination * 0.2 < sample_inclination) {
+                continue;
+            }
+
+            // Raymarch to check occlusion
+            if (!is_center_sample) {
+                const int k_count = 3;
+                const int range_px = k_count * 3;   // Note: causes flicker if smaller
+
+                for (int k = 0; k < k_count; ++k) {
+                    float3 prev_dir_vs = direction_world_to_view(prev_dir);
+                    float2 intermediary_sample_uv = uv + normalize(prev_dir_vs.xy) * float2(1, -1) * output_tex_size.zw * (k + 0.5) / k_count * range_px;
+                    const int2 intermediary_sample_px = int2(floor(intermediary_sample_uv * output_tex_size.xy));
+                    intermediary_sample_uv = (intermediary_sample_px + 0.5) * output_tex_size.zw;
+
+                    const float intermediary_sample_depth = half_depth_tex[intermediary_sample_px];
+                    if (intermediary_sample_depth == 0) {
+                        continue;
+                    }
+
+                    const ViewRayContext intermediary_sample_ray_ctx = ViewRayContext::from_uv_and_depth(intermediary_sample_uv, intermediary_sample_depth);
+                    const float3 intermediary_surface_offset_vs = intermediary_sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs();
+                    if (length(intermediary_surface_offset_vs) > length(surface_offset_vs)) {
+                        continue;
+                    }
+                    
+                    const float intermediary_sample_inclination = dot(normalize(intermediary_surface_offset_vs), center_normal_vs);
+                    visibility *= ray_inclination > intermediary_sample_inclination;
+                }
     		}
         }
 
-        const float4 prev_irrad = irradiance_tex[spx];
         const float4 prev_hit_normal_ws_dot = hit_normal_tex[spx];
 
         float p_q = 1;
@@ -224,7 +256,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         float jacobian = 1;
 
         // Distance falloff. Needed to avoid leaks.
-        jacobian *= max(0.0, prev_dist) / max(1e-4, prev_dist_now);
+        jacobian *= max(0.0, prev_dist) / max(1e-5, prev_dist_now);
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks.
@@ -247,7 +279,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         float w = p_q * r.W * r.M;
-        if (reservoir.update(w * jacobian, r.payload, rng)) {
+        if (reservoir.update(w * jacobian * visibility, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = prev_dir;
         }
@@ -258,10 +290,12 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     reservoir.M = M_sum;
     reservoir.W =
-        (1.0 / max(1e-5, p_q_sel))
+        (1.0 / max(1e-8, p_q_sel))
         * (reservoir.w_sum / max(CENTER_SAMPLE_M_TRUNCATION, reservoir.M));
 
-    // (Source of bias) suppress fireflies
+    // (Source of bias?) suppress fireflies
+    // Unclear what kind of bias. When clamped lower, e.g. 1.0,
+    // the whole scene gets darker.
     reservoir.W = min(reservoir.W, 5);
 
     reservoir_output_tex[px] = reservoir.as_raw();

@@ -329,8 +329,7 @@ fn main() -> anyhow::Result<()> {
             //state.sun.phi %= std::f32::consts::TAU;
 
             let sun_direction = state.sun.direction();
-            //sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
-            sun_direction_interp = sun_direction;
+            sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
             #[allow(clippy::comparison_chain)]
             if light_instances.len() > state.lights.count as usize {
