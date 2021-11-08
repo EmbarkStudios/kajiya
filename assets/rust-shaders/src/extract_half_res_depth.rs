@@ -21,7 +21,8 @@ pub fn extract_half_res_depth(
         IVec2::new(0, 1),
     ];
 
-    let src_px: IVec2 = px.as_ivec2() * 2 + hi_px_subpixels[(frame_constants.frame_idx & 3) as usize];
+    let src_px: IVec2 =
+        px.as_ivec2() * 2 + hi_px_subpixels[(frame_constants.frame_idx & 3) as usize];
     let input: Vec4 = input_tex.fetch(src_px);
     unsafe {
         output_tex.write(px, input);

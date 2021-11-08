@@ -1,5 +1,5 @@
-use crate::pack_unpack::unpack_normal_11_10_11_no_normalize;
 use crate::frame_constants::FrameConstants;
+use crate::pack_unpack::unpack_normal_11_10_11_no_normalize;
 use macaw::{IVec2, UVec3, Vec3, Vec4};
 use spirv_std::Image;
 
@@ -23,7 +23,8 @@ pub fn extract_half_res_gbuffer_view_normal_rgba8(
         IVec2::new(0, 1),
     ];
 
-    let src_px: IVec2 = px.as_ivec2() * 2 + hi_px_subpixels[(frame_constants.frame_idx & 3) as usize];    // TODO: use gbuffer unpacking
+    let src_px: IVec2 =
+        px.as_ivec2() * 2 + hi_px_subpixels[(frame_constants.frame_idx & 3) as usize]; // TODO: use gbuffer unpacking
 
     let input: Vec4 = input_tex.fetch(IVec2::new(src_px.x as i32, src_px.y as i32));
     let normal: Vec3 = unpack_normal_11_10_11_no_normalize(input.y);
