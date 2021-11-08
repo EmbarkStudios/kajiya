@@ -12,16 +12,12 @@ pub fn extract_half_res_gbuffer_view_normal_rgba8(
             .usage(vk::ImageUsageFlags::empty())
             .format(vk::Format::R8G8B8A8_SNORM),
     );
-    SimpleRenderPass::new_compute(
+    SimpleRenderPass::new_compute_rust(
         rg.add_pass("extract view normal/2"),
-        "/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
+        "extract_half_res_gbuffer_view_normal_rgba8::extract_half_res_gbuffer_view_normal_rgba8",
     )
     .read(gbuffer)
     .write(&mut output_tex)
-    .constants((
-        gbuffer.desc().extent_inv_extent_2d(),
-        output_tex.desc().extent_inv_extent_2d(),
-    ))
     .dispatch(output_tex.desc().extent);
     output_tex
 }
