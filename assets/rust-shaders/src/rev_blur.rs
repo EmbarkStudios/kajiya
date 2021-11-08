@@ -1,5 +1,3 @@
-// Rust-GPU port of `rev_blur.hlsl` by Henrik Rydgård
-
 use spirv_std::{Image, Sampler};
 
 use macaw::{UVec3, Vec2, Vec4};

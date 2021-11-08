@@ -1,5 +1,3 @@
-// Rust-GPU port of `motion_blur.hlsl` by Viktor Zoutman
-
 use crate::{
     frame_constants::FrameConstants,
     util::{depth_to_view_z, get_uv_u},
