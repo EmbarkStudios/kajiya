@@ -69,12 +69,17 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
-    //float radius_mult = spatial_reuse_pass_idx == 0 ? 1.5 : 3.5;
+    // Don't be picky at low contribution counts. SSAO weighing
+    // in those circumstances results in boiling near edges.
+    float ssao_factor_importance =
+        spatial_reuse_pass_idx == 0
+        ? smoothstep(10.0, 5.0, center_r.M)
+        : smoothstep(50.0, 0.0, center_r.M);
 
-    float kernel_radius = lerp(2.0, 16.0, ssao_tex[hi_px].r);
+    float kernel_radius = lerp(2.0, 16.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
     if (spatial_reuse_pass_idx == 1) {
         sample_count = 5;
-        kernel_radius = lerp(2.0, 32.0, ssao_tex[hi_px].r);
+        kernel_radius = lerp(2.0, 32.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
     }
 
     const uint TARGET_M = 512;
@@ -159,7 +164,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // Was: abs(sample_ssao - center_ssao); that can however reject too aggressively.
         // Some leaking is better than flicker and very dark corners.
-        const float ssao_infl = smoothstep(0.0, ssao_threshold, abs(sample_ssao - center_ssao));
+        const float ssao_infl =
+            smoothstep(0.0, ssao_threshold, ssao_factor_importance * abs(sample_ssao - center_ssao));
 
         if (!is_center_sample && ssao_infl > ssao_dart) {
             // Note: improves contacts, but results in boiling/noise in corners
@@ -213,12 +219,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
         }
 
-        // Approx shadowing
         {
     		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
             const float sample_inclination = dot(normalize(surface_offset_vs), center_normal_vs);
             const float ray_inclination = dot(dir_to_sample_hit, center_normal_ws);
 
+            // Approx shadowing (bias)
             if (!is_center_sample && ray_inclination * 0.2 < sample_inclination) {
                 continue;
             }
@@ -315,7 +321,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     // (Source of bias?) suppress fireflies
     // Unclear what kind of bias. When clamped lower, e.g. 1.0,
     // the whole scene gets darker.
-    reservoir.W = min(reservoir.W, 5);
+    // reservoir.W = min(reservoir.W, 5);
+
+    // TODO: find out if we can get away with this:
+    reservoir.W = min(reservoir.W, 2);
 
     reservoir_output_tex[px] = reservoir.as_raw();
 }
