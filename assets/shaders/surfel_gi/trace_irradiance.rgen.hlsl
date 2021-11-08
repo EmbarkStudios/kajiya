@@ -13,8 +13,10 @@
 #include "../inc/mesh.hlsl"
 #include "../inc/sh.hlsl"
 #include "../inc/lights/triangle.hlsl"
+#include "../wrc/bindings.hlsl"
 
 #define HEMISPHERE_ONLY 1
+#define USE_WORLD_RADIANCE_CACHE 1
 
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
@@ -25,10 +27,12 @@
 [[vk::binding(3)]] ByteAddressBuffer surfel_hash_value_buf;
 [[vk::binding(4)]] ByteAddressBuffer cell_index_offset_buf;
 [[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
-[[vk::binding(6)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(7)]] RWStructuredBuffer<float4> surfel_sh_buf;
+DEFINE_WRC_BINDINGS(6)
+[[vk::binding(7)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> surfel_sh_buf;
 
 #include "../inc/sun.hlsl"
+#include "../wrc/lookup.hlsl"
 
 #include "lookup.hlsl"
 
@@ -106,6 +110,24 @@ void main() {
                 1e-3,
                 FLT_MAX
             );
+        }
+
+        #if USE_WORLD_RADIANCE_CACHE
+            WrcFarField far_field =
+                WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
+                    .with_interpolation_urand(float3(
+                        uint_to_u01_float(hash1_mut(rng)),
+                        uint_to_u01_float(hash1_mut(rng)),
+                        uint_to_u01_float(hash1_mut(rng))
+                    ))
+                    .with_query_normal(surfel.normal)
+                    .query();
+        #else
+            WrcFarField far_field = WrcFarField::create_miss();
+        #endif
+
+        if (far_field.is_hit()) {
+            outgoing_ray.TMax = far_field.probe_t;
         }
 
         // ----
@@ -231,11 +253,15 @@ void main() {
                     break;
                 }
             } else {
-                if (0 == path_length) {
-                    hit_dist_wt += float2(pack_dist(1), 1);
-                }
+                if (far_field.is_hit()) {
+                    irradiance_sum += throughput * far_field.radiance * far_field.inv_pdf;
+                } else {
+                    if (0 == path_length) {
+                        hit_dist_wt += float2(pack_dist(1), 1);
+                    }
 
-                irradiance_sum += throughput * sample_environment_light(outgoing_ray.Direction);
+                    irradiance_sum += throughput * sample_environment_light(outgoing_ray.Direction);
+                }
 
                 break;
             }

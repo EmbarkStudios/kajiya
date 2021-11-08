@@ -176,8 +176,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 // hax
 //max_sample_count = 16;
 
-    float current_sample_count = history.a;
-    
+    float current_sample_count = min(history.a, 32);
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);
 

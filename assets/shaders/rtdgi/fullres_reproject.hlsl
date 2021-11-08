@@ -23,6 +23,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
     float4 history = 0.0.xxxx;
 
+    /*if (length(uv - 0.5.xx) < 0.1) {
+        output_tex[px] = 0;
+        return;
+    }*/
+
     //if (quad_reproj_valid_packed < 15) {
     if (0 == quad_reproj_valid_packed) {
         // Everything invalid

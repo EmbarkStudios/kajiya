@@ -11,7 +11,7 @@ static const float WRC_MIN_TRACE_DIST = M_CBRT_2;
 float3 wrc_grid_center() {
     //return float3(0, 0.4 + sin(frame_constants.frame_index * 0.015) * 0.5, 0);
     return float3(0, 1.5, 0);
-    //return 0.0.xxx;
+    //return float3(0, 0, 0);
 }
 
 float3 wrc_probe_center(int3 probe_idx) {

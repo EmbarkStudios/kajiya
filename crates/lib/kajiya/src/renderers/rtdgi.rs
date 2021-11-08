@@ -232,6 +232,23 @@ impl RtdgiRenderer {
         .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
         .dispatch(reprojected_history_tex.desc().extent);
 
+        let reprojected_history_tex = {
+            let mut filtered_reprojected_history_tex =
+                rg.create(Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass("rtdgi fill gaps"),
+                "/shaders/rtdgi/rtdgi_fill_gaps.hlsl",
+            )
+            .read(&reprojected_history_tex)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .write(&mut filtered_reprojected_history_tex)
+            .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
+            .dispatch(reprojected_history_tex.desc().extent);
+
+            filtered_reprojected_history_tex
+        };
+
         let (mut hit_normal_output_tex, hit_normal_history_tex) =
             self.temporal_hit_normal_tex.get_output_and_history(
                 rg,

@@ -13,7 +13,7 @@ use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
 use rg::BindToSimpleRenderPass;
 use vk::BufferUsageFlags;
 
-use super::GbufferDepth;
+use super::{wrc::WrcRenderState, GbufferDepth};
 
 const MAX_SURFEL_CELLS: usize = 1024 * 1024;
 const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
@@ -221,6 +221,7 @@ impl SurfelGiRenderState {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
+        wrc: &WrcRenderState,
     ) {
         let indirect_args_buf = {
             let mut indirect_args_buf = rg.create(BufferDesc::new(
@@ -254,6 +255,7 @@ impl SurfelGiRenderState {
         .read(&self.surfel_hash_value_buf)
         .read(&self.cell_index_offset_buf)
         .read(&self.surfel_index_buf)
+        .bind(wrc)
         .write(&mut self.surfel_irradiance_buf)
         .write(&mut self.surfel_sh_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)

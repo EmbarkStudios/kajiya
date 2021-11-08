@@ -75,16 +75,16 @@ pub struct RayTracingAccelerationScratchBuffer {
     buffer: Arc<Mutex<super::buffer::Buffer>>,
 }
 
+const RT_SCRATCH_BUFFER_SIZE: usize = 1024 * 1024 * 144;
+
 impl Device {
     pub fn create_ray_tracing_acceleration_scratch_buffer(
         &self,
     ) -> Result<RayTracingAccelerationScratchBuffer> {
-        const INITIAL_SIZE: usize = 1024 * 1024 * 144;
-
         let buffer = self
             .create_buffer(
                 super::buffer::BufferDesc {
-                    size: INITIAL_SIZE,
+                    size: RT_SCRATCH_BUFFER_SIZE,
                     usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                     mapped: false,
@@ -333,6 +333,8 @@ impl Device {
                 .context("create_acceleration_structure")?;
 
             let scratch_buffer = scratch_buffer.buffer.lock();
+
+            // See `RT_SCRATCH_BUFFER_SIZE`
             assert!(
                 memory_requirements.build_scratch_size as usize <= scratch_buffer.desc.size,
                 "todo: resize scratch"

@@ -60,7 +60,7 @@ PsOut main(PsIn ps) {
     float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, -0.5).xyz * 2.0 - 1.0;
 
     // bistro hack
-    //ts_normal.zy *= -1;
+    ts_normal.zy *= -1;
 
     float3 normal_ws; {
         float3 normal_os = ps.normal;

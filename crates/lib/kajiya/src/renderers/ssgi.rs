@@ -14,7 +14,7 @@ impl Default for SsgiRenderer {
     }
 }
 
-const TEX_FMT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
+const TEX_FMT: vk::Format = vk::Format::R16_SFLOAT;
 
 impl SsgiRenderer {
     pub fn render(
