@@ -71,7 +71,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Don't be picky at low contribution counts. SSAO weighing
     // in those circumstances results in boiling near edges.
-     float ssao_factor_importance =
+    const float ssao_factor_importance =
         spatial_reuse_pass_idx == 0
         ? smoothstep(10.0, 5.0, center_r.M)
         : smoothstep(50.0, 0.0, center_r.M);

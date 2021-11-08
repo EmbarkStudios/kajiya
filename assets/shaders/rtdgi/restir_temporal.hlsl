@@ -220,7 +220,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         int2(0, -1),
     };
 
-    if (use_resampling && reproj.z != 0) {
+    if (use_resampling) {
         float M_sum = reservoir.M;
 
         // Can't use linear interpolation, but we can interpolate stochastically instead
@@ -232,7 +232,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         uint valid_sample_count = 0;
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
         for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
-            const int2 rpx_offset = sample_i == 0
+            const int2 rpx_offset =
+                sample_i == 0
                 ? 0
                 : sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
             const int2 rpx = reproj_px + rpx_offset;
@@ -244,7 +245,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
-            if (dot(sample_normal_vs, normal_vs) < 0.3) {
+            if (dot(sample_normal_vs, normal_vs) < (sample_i == 0 ? 0.3 : -0.1)) {
                 continue;
             }
 
@@ -254,6 +255,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
             if (0 == sample_depth) {
+                continue;
+            }
+
+            if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
                 continue;
             }
 
