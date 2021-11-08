@@ -102,8 +102,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         float3 radiance = irradiance_tex[spx].rgb;
 
         const bool SPLIT = USE_SPLIT_RT_NEAR_FIELD && !USE_SSGI_NEAR_FIELD;
-        const float CUTOFF_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5);
-        const float CUTOFF_START = CUTOFF_END * 0.5;
+        const float NEAR_FIELD_FADE_OUT_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5);
+        const float NEAR_FIELD_FADE_OUT_START = NEAR_FIELD_FADE_OUT_END * 0.5;
 
         /*if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
             float infl = sample_dist / (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
@@ -112,21 +112,21 @@ void main(uint2 px : SV_DispatchThreadID) {
         }*/
 
         if (SPLIT) {
-            radiance *= smoothstep(CUTOFF_START, CUTOFF_END, sample_dist);
+            radiance *= smoothstep(NEAR_FIELD_FADE_OUT_START, NEAR_FIELD_FADE_OUT_END, sample_dist);
         }
 
         irradiance_sum += radiance * geometric_term * r.W;
 
         if (SPLIT) {
             const float hit_t = candidate_hit_tex[rpx].w;
-            if (hit_t < CUTOFF_END) {
+            if (hit_t < NEAR_FIELD_FADE_OUT_END) {
                 const float3x3 tangent_to_world = build_orthonormal_basis(center_normal_ws);
                 const float3 outgoing_dir_ws = rtdgi_candidate_ray_dir(rpx, tangent_to_world);
 
                 float geometric_term =
                     max(0.0, dot(center_normal_ws, outgoing_dir_ws))
                     * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
-                irradiance_sum += candidate_irradiance_tex[rpx].rgb * geometric_term * smoothstep(CUTOFF_END, CUTOFF_START, hit_t);
+                irradiance_sum += candidate_irradiance_tex[rpx].rgb * geometric_term * smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, hit_t);
             }
         }
 

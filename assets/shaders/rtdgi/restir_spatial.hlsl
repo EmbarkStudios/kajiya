@@ -71,7 +71,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Don't be picky at low contribution counts. SSAO weighing
     // in those circumstances results in boiling near edges.
-    float ssao_factor_importance =
+     float ssao_factor_importance =
         spatial_reuse_pass_idx == 0
         ? smoothstep(10.0, 5.0, center_r.M)
         : smoothstep(50.0, 0.0, center_r.M);
@@ -242,23 +242,21 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
                 const float2 raymarch_len_px = (raymarch_end_uv - uv) * output_tex_size.xy;
 
-                const uint MIN_PX_PER_STEP = 3;
+                const uint MIN_PX_PER_STEP = 2;
                 const uint MAX_TAPS = 3;
 
                 const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
 
                 // Depth values only have the front; assume a certain thickness.
-                const float Z_LAYER_THICKNESS = 0.03;
+                const float Z_LAYER_THICKNESS = 0.05;
 
                 for (int k = 0; k < k_count; ++k) {
                     const float t = (k + 0.5) / k_count;
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
                     const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z
-                        && inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp) < Z_LAYER_THICKNESS
-                    ) {
-                        visibility = 0;
+                    if (depth_at_interp > interp_pos_cs.z) {
+                        visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
                     }
                 }
     		}
