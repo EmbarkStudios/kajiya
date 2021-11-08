@@ -8,6 +8,7 @@
 
 pub mod atmosphere;
 pub mod convolve_cube;
+pub mod extract_half_res_depth;
 pub mod frame_constants;
 pub mod motion_blur;
 pub mod rev_blur;
