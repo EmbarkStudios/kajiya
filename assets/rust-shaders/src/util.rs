@@ -7,7 +7,55 @@ pub fn get_uv_u(pix: UVec2, tex_size: Vec4) -> Vec2 {
     (pix.as_vec2() + Vec2::splat(0.5)) * tex_size.zw()
 }
 
+// Replacement for abs due to SPIR-V codegen bug. See https://github.com/EmbarkStudios/rust-gpu/issues/468
+pub fn abs_f32(x: f32) -> f32 {
+    if x >= 0.0 {
+        x
+    } else {
+        -x
+    }
+}
+
+// For element `i` of `self`, return `v[i].abs()`
+// Work around for https://github.com/EmbarkStudios/rust-gpu/issues/468.
+pub fn abs_vec2(v: Vec2) -> Vec2 {
+    Vec2::new(abs_f32(v.x), abs_f32(v.y))
+}
+
+// For element `i` of `self`, return `v[i].abs()`
+// Work around for https://github.com/EmbarkStudios/rust-gpu/issues/468.
+pub fn abs_vec3(v: Vec3) -> Vec3 {
+    Vec3::new(abs_f32(v.x), abs_f32(v.y), abs_f32(v.z))
+}
+
+// For element `i` of `self`, return `v[i].abs()`
+// Work around for https://github.com/EmbarkStudios/rust-gpu/issues/468.
+pub fn abs_vec4(v: Vec4) -> Vec4 {
+    Vec4::new(abs_f32(v.x), abs_f32(v.y), abs_f32(v.z), abs_f32(v.w))
+}
+
+
+// Replacement for signum due to SPIR-V codegen bug. See https://github.com/EmbarkStudios/rust-gpu/issues/468
+pub fn signum_f32(x: f32) -> f32 {
+    if x > 0.0 {
+        1.0
+    } else if x < 0.0 {
+        -1.0
+    } else {
+        0.0
+    }
+}
+
 pub fn depth_to_view_z(depth: f32, frame_constants: &FrameConstants) -> f32 {
+    (depth
+        * -frame_constants
+            .view_constants
+            .clip_to_view
+            .to_cols_array_2d()[2][3])
+        .recip()
+}
+
+pub fn depth_to_view_z_vec4(depth: Vec4, frame_constants: &FrameConstants) -> Vec4 {
     (depth
         * -frame_constants
             .view_constants
@@ -67,4 +115,15 @@ pub fn uniform_sample_cone(urand: Vec2, cos_theta_max: f32) -> Vec3 {
     let sin_theta = (1.0 - cos_theta * cos_theta).saturate().sqrt();
     let phi = urand.y * core::f32::consts::TAU;
     Vec3::new(sin_theta * phi.cos(), sin_theta * phi.sin(), cos_theta)
+}
+
+pub fn uv_to_cs(mut uv: Vec2) -> Vec2 {
+    uv.y = 1.0 - uv.y;
+    (uv - Vec2::new(0.5, 0.5)) * Vec2::new(2.0, 2.0)
+}
+
+pub fn cs_to_uv(cs: Vec2) -> Vec2 {
+    let mut uv = cs * Vec2::new(0.5, 0.5) + Vec2::new(0.5, 0.5);
+    uv.y = 1.0 - uv.y;
+    uv
 }

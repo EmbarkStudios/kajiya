@@ -42,7 +42,7 @@ pub struct FrameConstants {
 
     pub sun_direction: Vec4,
 
-    pub frame_idx: u32,
+    pub frame_index: u32,
     pub delta_time_seconds: f32,
     pub sun_angular_radius_cos: f32,
     pub global_fog_thickness: f32,
