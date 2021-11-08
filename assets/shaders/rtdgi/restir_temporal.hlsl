@@ -258,6 +258,9 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
+            // TODO: some more rejection based on the reprojection map.
+            // This one is not enough ("battle", buttom of tower).
+
             if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
                 continue;
             }

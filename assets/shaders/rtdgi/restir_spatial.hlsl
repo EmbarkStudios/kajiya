@@ -71,10 +71,14 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Don't be picky at low contribution counts. SSAO weighing
     // in those circumstances results in boiling near edges.
+    #if 1
     const float ssao_factor_importance =
         spatial_reuse_pass_idx == 0
-        ? smoothstep(10.0, 5.0, center_r.M)
-        : smoothstep(50.0, 0.0, center_r.M);
+        ? smoothstep(5.0, 10.0, center_r.M)
+        : smoothstep(25.0, 50.0, center_r.M);
+    #else
+        const float ssao_factor_importance = 0;
+    #endif
 
     float kernel_radius = lerp(2.0, 16.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
     if (spatial_reuse_pass_idx == 1) {
