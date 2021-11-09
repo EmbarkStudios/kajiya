@@ -6,7 +6,7 @@ use crate::frame_constants::FrameConstants;
 use crate::tonemap::*;
 use crate::color::lin_srgb_to_luminance;
 use macaw::{lerp, IVec2, UVec3, Vec3, Vec4};
-use spirv_std::{Image, Sampler};
+use spirv_std::{Image, Sampler, RuntimeArray};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;
@@ -76,9 +76,9 @@ fn bitwise_and(a: IVec2, b: IVec2) -> IVec2 {
 #[spirv(compute(threads(8, 8)))]
 pub fn post_combine_cs(
     #[spirv(descriptor_set = 0, binding = 0)] input_tex: &Image!(2D, type=f32, sampled=true),
-    #[spirv(descriptor_set = 0, binding = 1)] rev_blur_pyramid_tex: &Image!(2D, type=f32, sampled=true),
-    #[spirv(descriptor_set = 0, binding = 2)] blue_noise_lut: &Image!(2D, type=f32, sampled=true),
+    #[spirv(descriptor_set = 0, binding = 2)] rev_blur_pyramid_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 3)] output_tex: &Image!(2D, type=f32, sampled=false),
+    #[spirv(descriptor_set = 2, binding = 1)] bindless_textures: &RuntimeArray<Image!(2D, type=f32, sampled=true)>,
 
     #[spirv(descriptor_set = 0, binding = 32)] sampler_lnc: &Sampler,
     #[spirv(uniform, descriptor_set = 0, binding = 4)] constants: &Constants,
@@ -136,6 +136,7 @@ pub fn post_combine_cs(
     if USE_DITHER {
         // Dither
         let urand_idx = frame_constants.frame_index as i32;
+        let blue_noise_lut = unsafe { bindless_textures.index(crate::constants::BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0) };
         // 256x256 blue noise
         let dither = triangle_remap({
             let value: Vec4 = blue_noise_lut.fetch(bitwise_and(

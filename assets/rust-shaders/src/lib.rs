@@ -10,6 +10,7 @@ pub mod atmosphere;
 pub mod bilinear;
 pub mod calculate_reprojection_map;
 pub mod color;
+pub mod constants;
 pub mod convolve_cube;
 pub mod copy_depth_to_r;
 pub mod frame_constants;
