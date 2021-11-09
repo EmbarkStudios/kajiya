@@ -80,15 +80,13 @@ pub fn calculate_reprojection_map_cs(
 
     // Account for quantization of the `uv_diff` in R16G16B16A16_SNORM.
     // This is so we calculate validity masks for pixels that the users will actually be using.
-    uv_diff = (uv_diff * 32767.0).trunc() / 32767.0;
+    uv_diff = (uv_diff * 32767.0 + Vec2::splat(0.5)).trunc() / 32767.0;
     prev_uv = uv + uv_diff;
 
     let mut prev_pvs: Vec4 = frame_constants.view_constants.prev_clip_to_prev_view * prev_pcs;
     prev_pvs /= prev_pvs.w;
 
     // Based on "Fast Denoising with Self Stabilizing Recurrent Blurs"
-
-    // let plane_dist_prev = normal_vs.dot(prev_pvs.xyz());
 
     // Note: departure from the quoted technique: they calculate reprojected sample depth by linearly
     // scaling plane distance with view-space Z, which is not correct unless the plane is aligned with view.

@@ -117,13 +117,10 @@ pub fn uniform_sample_cone(urand: Vec2, cos_theta_max: f32) -> Vec3 {
     Vec3::new(sin_theta * phi.cos(), sin_theta * phi.sin(), cos_theta)
 }
 
-pub fn uv_to_cs(mut uv: Vec2) -> Vec2 {
-    uv.y = 1.0 - uv.y;
-    (uv - Vec2::new(0.5, 0.5)) * Vec2::new(2.0, 2.0)
+pub fn uv_to_cs(uv: Vec2) -> Vec2 {
+    (uv - Vec2::new(0.5, 0.5)) * Vec2::new(2.0, -2.0)
 }
 
 pub fn cs_to_uv(cs: Vec2) -> Vec2 {
-    let mut uv = cs * Vec2::new(0.5, 0.5) + Vec2::new(0.5, 0.5);
-    uv.y = 1.0 - uv.y;
-    uv
+    cs * Vec2::new(0.5, -0.5) + Vec2::new(0.5, 0.5)
 }
