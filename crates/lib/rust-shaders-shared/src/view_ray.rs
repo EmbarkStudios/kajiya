@@ -2,6 +2,7 @@ use crate::frame_constants::FrameConstants;
 use crate::util::*;
 use macaw::*;
 
+#[repr(C)]
 pub struct ViewRayContext {
     pub ray_dir_cs: Vec4,
     pub ray_dir_vs_h: Vec4,

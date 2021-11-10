@@ -75,9 +75,9 @@ impl SsgiRenderer {
                     .format(vk::Format::R16_SFLOAT),
             );
 
-            SimpleRenderPass::new_compute(
+            SimpleRenderPass::new_compute_rust(
                 rg.add_pass("ssgi spatial"),
-                "/shaders/ssgi/spatial_filter.hlsl",
+                "ssgi::spatial_filter_cs",
             )
             .read(input)
             .read(&half_depth_tex)
@@ -96,9 +96,9 @@ impl SsgiRenderer {
         let (mut filtered_output_tex, history_tex) = temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
-        SimpleRenderPass::new_compute(
+        SimpleRenderPass::new_compute_rust(
             rg.add_pass("ssgi temporal"),
-            "/shaders/ssgi/temporal_filter.hlsl",
+            "ssgi::temporal_filter_cs",
         )
         .read(&upsampled_tex)
         .read(&history_tex)
@@ -123,7 +123,7 @@ impl SsgiRenderer {
     ) -> rg::Handle<Image> {
         let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16_SFLOAT));
 
-        SimpleRenderPass::new_compute(rg.add_pass("ssgi upsample"), "/shaders/ssgi/upsample.hlsl")
+        SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi upsample"), "ssgi::upsample_cs")
             .read(ssgi)
             .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
             .read(gbuffer)

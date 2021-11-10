@@ -1,10 +1,8 @@
-use crate::{
-    camera::CameraMatrices,
-    math::{Mat4, Vec2},
-};
+use crate::camera::CameraMatrices;
+use macaw::{Mat4, Vec2, Vec3, UVec2};
 
 #[derive(Clone, Copy)]
-#[repr(C)]
+#[repr(C, align(16))]
 pub struct ViewConstants {
     pub view_to_clip: Mat4,
     pub clip_to_view: Mat4,
@@ -31,16 +29,16 @@ impl ViewConstants {
         render_extent: [u32; 2],
     ) -> VieportConstantBuilder {
         VieportConstantBuilder {
-            render_extent,
+            render_extent: render_extent.into(),
             camera_matrices: camera_matrices.into(),
             prev_camera_matrices: prev_camera_matrices.into(),
             pixel_offset: Vec2::ZERO,
         }
     }
 
-    pub fn set_pixel_offset(&mut self, v: Vec2, [width, height]: [u32; 2]) {
+    pub fn set_pixel_offset(&mut self, v: Vec2, render_extent: UVec2) {
         let sample_offset_pixels = v;
-        let sample_offset_clip = Vec2::new((2.0 * v.x) / width as f32, (2.0 * v.y) / height as f32);
+        let sample_offset_clip = Vec2::new((2.0 * v.x) / render_extent.x as f32, (2.0 * v.y) / render_extent.y as f32);
 
         let mut jitter_matrix = Mat4::IDENTITY;
         jitter_matrix.w_axis = (-sample_offset_clip).extend(0.0).extend(1.0);
@@ -61,19 +59,19 @@ impl ViewConstants {
         self.sample_offset_clip = sample_offset_clip;
     }
 
-    pub fn eye_position(&self) -> glam::Vec3 {
+    pub fn eye_position(&self) -> Vec3 {
         let eye_pos_h = self.view_to_world.w_axis;
         eye_pos_h.truncate() / eye_pos_h.w
     }
 
-    pub fn prev_eye_position(&self) -> glam::Vec3 {
+    pub fn prev_eye_position(&self) -> Vec3 {
         let eye_pos_h = self.prev_view_to_prev_world.w_axis;
         eye_pos_h.truncate() / eye_pos_h.w
     }
 }
 
 pub struct VieportConstantBuilder {
-    render_extent: [u32; 2],
+    render_extent: UVec2,
     camera_matrices: CameraMatrices,
     prev_camera_matrices: CameraMatrices,
     pixel_offset: Vec2,

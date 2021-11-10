@@ -1,34 +1,14 @@
-use macaw::{Mat4, UVec4, Vec2, Vec4};
+use crate::view_constants::ViewConstants;
+use macaw::{IVec4, Vec4};
 
 pub const MAX_CSGI_CASCADE_COUNT: usize = 4;
 
 #[repr(C, align(16))]
-#[derive(Copy, Clone)]
-pub struct ViewConstants {
-    pub view_to_clip: Mat4,
-    pub clip_to_view: Mat4,
-    pub view_to_sample: Mat4,
-    pub sample_to_view: Mat4,
-    pub world_to_view: Mat4,
-    pub view_to_world: Mat4,
-
-    pub clip_to_prev_clip: Mat4,
-
-    pub prev_view_to_prev_clip: Mat4,
-    pub prev_clip_to_prev_view: Mat4,
-    pub prev_world_to_prev_view: Mat4,
-    pub prev_view_to_prev_world: Mat4,
-
-    pub sample_offset_pixels: Vec2,
-    pub sample_offset_clip: Vec2,
-}
-
-#[repr(C, align(16))]
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Default)]
 pub struct GiCascadeConstants {
-    pub scroll_frac: UVec4,
-    pub scroll_int: UVec4,
-    pub voxels_scrolled_this_frame: UVec4,
+    pub scroll_frac: IVec4,
+    pub scroll_int: IVec4,
+    pub voxels_scrolled_this_frame: IVec4,
     pub volume_size: f32,
     pub voxel_size: f32,
     pub pad0: u32,
