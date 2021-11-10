@@ -59,8 +59,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 dir_sel = 1;
     float M_sum = 0;
 
-    static const float GOLDEN_ANGLE = 2.39996323;
-
     // TODO: split off into a separate temporal stage, following ReSTIR GI
     uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
@@ -190,7 +188,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
         const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
-        const float4 sample_hit_ws_and_dist = ray_tex[spx] + float4(get_eye_position(), 0.0);
+        const float4 sample_hit_ws_and_dist = ray_tex[spx];// + float4(get_eye_position(), 0.0);
         const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
         const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
         const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);

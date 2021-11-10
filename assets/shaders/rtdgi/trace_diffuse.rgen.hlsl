@@ -20,7 +20,7 @@
 #define USE_SOFT_SHADOWS 0
 
 #define USE_SURFEL_GI 1
-#define USE_WORLD_RADIANCE_CACHE 1
+#define USE_WORLD_RADIANCE_CACHE 0
 
 #define ROUGHNESS_BIAS 0.5
 #define USE_SCREEN_GI_REPROJECTION 0
@@ -34,15 +34,18 @@
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> reprojected_gi_tex;
-[[vk::binding(3)]] Texture2D<float> ssao_tex;
-DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
-[[vk::binding(7)]] Texture2D<float4> reprojection_tex;
-DEFINE_SURFEL_GI_BINDINGS(8, 9, 10, 11, 12, 13)
-DEFINE_WRC_BINDINGS(14)
-[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(16)]] RWTexture2D<float4> candidate_irradiance_out_tex;
-[[vk::binding(17)]] RWTexture2D<float4> candidate_hit_out_tex;
-[[vk::binding(18)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float4> reservoir_ray_history_tex;
+[[vk::binding(4)]] Texture2D<float> ssao_tex;
+DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(5, 6, 7)
+[[vk::binding(8)]] Texture2D<float4> reprojection_tex;
+DEFINE_SURFEL_GI_BINDINGS(9, 10, 11, 12, 13, 14)
+DEFINE_WRC_BINDINGS(15)
+[[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(17)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(18)]] RWTexture2D<float4> candidate_irradiance_out_tex;
+[[vk::binding(19)]] RWTexture2D<float4> candidate_normal_out_tex;
+[[vk::binding(20)]] RWTexture2D<float> rt_history_validity_out_tex;
+[[vk::binding(21)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -96,7 +99,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     // TODO: cone spread angle
     const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
         .with_cone(ray_cone)
-        .with_cull_back_faces(true)
+        .with_cull_back_faces(!true)
         .with_path_length(1)
         .trace(acceleration_structure);
 
@@ -269,12 +272,9 @@ void main() {
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
-
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
-
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
-
     const float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     RayDesc outgoing_ray;
@@ -286,6 +286,44 @@ void main() {
     uint rng = hash3(uint3(px, frame_constants.frame_index));
     TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
 
-    candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
-    candidate_hit_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
+    const float4 reproj = reprojection_tex[hi_px];
+    const int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + 0.5);
+
+    const float3 prev_ray_orig = ray_orig_history_tex[reproj_px];
+    const float3 prev_hit_pos = reservoir_ray_history_tex[reproj_px].xyz/* + get_prev_eye_position()*/;
+
+    bool is_prev_valid = true;
+
+    // Find whether the ray traces the same hit point as previously,
+    // but don't bother for screen edges.
+    /*if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)) && length(prev_hit_pos - prev_ray_orig) > 0.1)
+    {
+        is_prev_valid =
+            !rt_is_shadowed(
+                acceleration_structure,
+                new_ray(
+                    prev_ray_orig,
+                    prev_hit_pos - prev_ray_orig,
+                    0.01,
+                    0.999
+            )) &&
+            (
+                length(prev_hit_pos - prev_ray_orig) > 0.5 * SKY_DIST
+                ||
+                rt_is_shadowed(
+                    acceleration_structure,
+                    new_ray(
+                        prev_ray_orig,
+                        prev_hit_pos - prev_ray_orig,
+                        0.99,
+                        2.0
+                ))
+            );
+    }*/
+    
+    is_prev_valid = true;
+
+    candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
+    candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
+    rt_history_validity_out_tex[px] = is_prev_valid ? 0.0 : 1.0;
 }

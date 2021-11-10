@@ -119,6 +119,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     float2 texel_center_offset = abs(0.5 - frac(prev_uv * output_tex_size.xy));
     float accuracy = 1.0 - texel_center_offset.x - texel_center_offset.y;
 
+    // Mark off-screen reprojections
+    if (any(saturate(prev_uv) != prev_uv)) {
+        accuracy = 0;
+    }
+
     output_tex[px] = float4(
         uv_diff,
         validity,

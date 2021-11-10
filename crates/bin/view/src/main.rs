@@ -184,14 +184,14 @@ fn main() -> anyhow::Result<()> {
         ));
     }
 
-    /*let car_mesh = kajiya
+    let car_mesh = kajiya
         .world_renderer
-        .add_baked_mesh("/baked/336_lrm.mesh")?;
+        .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::default())?;
     let mut car_pos = Vec3::Y * -0.01;
     let mut car_rot = 0.0f32;
     let car_inst = kajiya
         .world_renderer
-        .add_instance(car_mesh, car_pos, Quat::IDENTITY);*/
+        .add_instance(car_mesh, car_pos, Quat::IDENTITY);
 
     let mut state = persisted_app_state
         .clone()
@@ -260,15 +260,15 @@ fn main() -> anyhow::Result<()> {
                 ctx.world_renderer.reset_reference_accumulation = true;
             }*/
 
-            /*if keyboard.is_down(VirtualKeyCode::Z) {
-                car_pos.x += mouse_state.delta.x / 100.0;
+            if keyboard.is_down(VirtualKeyCode::Z) {
+                car_pos.x += mouse.delta.x / 100.0;
             }
-            car_rot += 0.5 * ctx.dt;
+            //car_rot += 0.5 * ctx.dt;
             ctx.world_renderer.set_instance_transform(
                 car_inst,
                 car_pos,
                 Quat::from_rotation_y(car_rot),
-            );*/
+            );
 
             for inst in &render_instances {
                 ctx.world_renderer

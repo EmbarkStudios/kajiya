@@ -194,8 +194,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     const float3 normal_vs = direction_world_to_view(gbuffer.normal);
 
-    static const float GOLDEN_ANGLE = 2.39996323;
-
     // The footprint of our kernel increases with roughness, and scales with distance.
     // The latter is a simple relationship of distance to camera and distance to hit point,
     // and for the roughness factor we can bound a cone.

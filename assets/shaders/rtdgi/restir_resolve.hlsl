@@ -71,7 +71,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 weighted_irradiance = 0;
     float w_sum = 0;
 
-    static const float GOLDEN_ANGLE = 2.39996323;
     const uint frame_hash = hash1(frame_constants.frame_index);
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_hash) & 3;
     const float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index);
@@ -89,7 +88,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
-        const float3 hit_ws = ray_tex[spx].xyz + get_eye_position();
+        const float3 hit_ws = ray_tex[spx].xyz;// + get_eye_position();
         const float3 sample_offset = hit_ws - view_ray_context.ray_hit_ws();
         const float sample_dist = length(sample_offset);
         const float3 sample_dir = sample_offset / sample_dist;

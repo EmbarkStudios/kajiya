@@ -23,7 +23,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     // TODO: do something that destroys caches less.
 
-    static const float GOLDEN_ANGLE = 2.39996323;
     const float ang_off = (frame_constants.frame_index * 3) % 32 * M_PI * 2;
     
     [loop]

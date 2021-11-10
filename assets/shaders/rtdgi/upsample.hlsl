@@ -66,7 +66,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         const uint filter_idx = uint(clamp(center_ssao * 3.0, 0.0, 7.0));
         
-        static const float GOLDEN_ANGLE = 2.39996323;
         float4 blue = blue_noise_for_pixel(half_px, frame_constants.frame_index);
 
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {

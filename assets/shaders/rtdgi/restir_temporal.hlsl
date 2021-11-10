@@ -35,17 +35,20 @@
 [[vk::binding(3)]] Texture2D<float4> candidate_hit_tex;
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(7)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(8)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
-[[vk::binding(10)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(11)]] Texture2D<float4> hit_normal_history_tex;
-[[vk::binding(12)]] Texture2D<float4> candidate_history_tex;
-[[vk::binding(13)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(14)]] RWTexture2D<float4> ray_out_tex;
-[[vk::binding(15)]] RWTexture2D<float4> hit_normal_tex;
-[[vk::binding(16)]] RWTexture2D<float4> reservoir_out_tex;
-[[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(18)]] cbuffer _ {
+[[vk::binding(8)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(9)]] Texture2D<float4> ray_history_tex;
+[[vk::binding(10)]] Texture2D<float4> reservoir_history_tex;
+[[vk::binding(11)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(12)]] Texture2D<float4> hit_normal_history_tex;
+[[vk::binding(13)]] Texture2D<float4> candidate_history_tex;
+[[vk::binding(14)]] Texture2D<float> rt_invalidity_tex;
+[[vk::binding(15)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(16)]] RWTexture2D<float3> ray_orig_output_tex;
+[[vk::binding(17)]] RWTexture2D<float4> ray_output_tex;
+[[vk::binding(18)]] RWTexture2D<float4> hit_normal_tex;
+[[vk::binding(19)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(20)]] RWTexture2D<float4> candidate_out_tex;
+[[vk::binding(21)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -62,16 +65,18 @@ struct TraceResult {
     float3 hit_normal_ws;
     float hit_t;
     float inv_pdf;
+    bool prev_sample_valid;
 };
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
     const float4 candidate_irradiance_inv_pdf = candidate_irradiance_tex[px];
     TraceResult result;
     result.out_value = candidate_irradiance_inv_pdf.rgb;
-    result.inv_pdf = candidate_irradiance_inv_pdf.a;
+    result.inv_pdf = abs(candidate_irradiance_inv_pdf.a);
     float4 hit = candidate_hit_tex[px];
     result.hit_t = hit.w;
     result.hit_normal_ws = hit.xyz;
+    result.prev_sample_valid = candidate_irradiance_inv_pdf.a > 0;
     return result;
 }
 
@@ -98,27 +103,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
-
-    //float4 gbuffer_packed = gbuffer_tex[hi_px];
-    //GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
-
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
     const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
-
-    float3 wo = mul(-view_ray_context.ray_dir_ws(), tangent_to_world);
-
-    // Hack for shading normals facing away from the outgoing ray's direction:
-    // We flip the outgoing ray along the shading normal, so that the reflection's curvature
-    // continues, albeit at a lower rate.
-    if (wo.z < 0.0) {
-        wo.z *= -0.25;
-        wo = normalize(wo);
-    }
-
-    DiffuseBrdf brdf;
-    brdf.albedo = 1.0.xxx;
+    float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
     uint rng = hash3(uint3(px, seed));
@@ -126,48 +115,14 @@ void main(uint2 px : SV_DispatchThreadID) {
     // TODO: use
     float3 light_radiance = 0.0.xxx;
 
-    // HACK; should be in dedicated passes
-    /*if (USE_LIGHTS) {
-        float2 urand = blue_noise_for_pixel(px, frame_constants.frame_index + 100).xy;
-
-        for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
-            TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
-            LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
-            const float3 shadow_ray_origin = view_ray_context.ray_hit_ws();
-            const float3 to_light_ws = light_sample.pos - shadow_ray_origin;
-            const float dist_to_light2 = dot(to_light_ws, to_light_ws);
-            const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
-
-            const float to_psa_metric =
-                max(0.0, dot(to_light_norm_ws, normal_ws))
-                * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
-                / dist_to_light2;
-
-            if (to_psa_metric > 0.0) {
-                const bool is_shadowed =
-                    rt_is_shadowed(
-                        acceleration_structure,
-                        new_ray(
-                            shadow_ray_origin,
-                            to_light_norm_ws,
-                            1e-3,
-                            sqrt(dist_to_light2) - 2e-3
-                    ));
-
-                light_radiance +=
-                    !is_shadowed ? (triangle_light.radiance() * brdf.albedo / light_sample.pdf.value * to_psa_metric / M_PI) : 0;
-            }
-        }
-    }*/
-
-    float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
-
     float p_q_sel = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
+    float3 ray_orig_sel = 0;
     float3 ray_hit_sel = 1;
     float3 hit_normal_sel = 1;
     uint sel_valid_sample_idx = 0;
+    bool prev_sample_valid = false;
 
     Reservoir1spp reservoir = Reservoir1spp::create();
     const uint reservoir_payload = px.x | (px.y << 16);
@@ -193,8 +148,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float inv_pdf_q = result.inv_pdf;
 
         irradiance_sel = result.out_value;
+        ray_orig_sel = outgoing_ray.Origin;
         ray_hit_sel = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
         hit_normal_sel = result.hit_normal_ws;
+        prev_sample_valid = result.prev_sample_valid;
 
         reservoir.payload = reservoir_payload;
         reservoir.w_sum = p_q * inv_pdf_q;
@@ -205,10 +162,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
 
-    const float4 reproj = reprojection_tex[hi_px];
-
     //const bool use_resampling = false;
-    const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
+    const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
 
     // 1 (center) plus offset samples
     const uint MAX_RESOLVE_SAMPLE_COUNT = 5;
@@ -220,22 +175,32 @@ void main(uint2 px : SV_DispatchThreadID) {
         int2(0, -1),
     };
 
+    const float rt_invalidity = sqrt(rt_invalidity_tex[px]);
+
     if (use_resampling) {
         float M_sum = reservoir.M;
 
-        // Can't use linear interpolation, but we can interpolate stochastically instead
-        //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
-        // Or not at all.
-        const float2 reproj_rand_offset = 0.0;
-        int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
-
         uint valid_sample_count = 0;
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
-        for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
+
+        // TODO: permutation sampling
+        for (uint sample_i = 0; sample_i < 5; ++sample_i) {
             const int2 rpx_offset =
                 sample_i == 0
                 ? 0
-                : sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
+                //: int2((r2_sequence(frame_constants.frame_index & 127) - 0.5) * 2.5)
+                : sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3]
+                ;
+
+            const float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
+
+            // Can't use linear interpolation, but we can interpolate stochastically instead
+            //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
+            // Or not at all.
+            const float2 reproj_rand_offset = 0.0;
+            //int2 reproj_px = floor((sample_i == 0 ? px : (px ^ 3)) + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
+            int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
+
             const int2 rpx = reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
@@ -260,15 +225,14 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // TODO: some more rejection based on the reprojection map.
             // This one is not enough ("battle", buttom of tower).
-
-            if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
+            if (inverse_depth_relative_diff(depth, sample_depth) > 0.2 || reproj.z == 0) {
                 continue;
             }
 
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float3 sample_origin_ws = sample_ray_ctx.biased_secondary_ray_origin_ws();
 
-            const float4 prev_hit_ws_and_dist = ray_history_tex[rpx] + float4(get_prev_eye_position(), 0.0);
+            const float4 prev_hit_ws_and_dist = ray_history_tex[rpx]/* + float4(get_prev_eye_position(), 0.0)*/;
             const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
             const float prev_dist = prev_hit_ws_and_dist.w;
             //const float prev_dist = length(prev_hit_ws - sample_origin_ws);
@@ -289,8 +253,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             
             const float4 prev_irrad = irradiance_history_tex[rpx];
 
-            //if (prev_irrad.r > prev_irrad.b) {continue;}
-
             // TODO: need the previous normal (last frame)
             //const float4 prev_hit_normal_ws_dot = hit_normal_tex[rpx];
 
@@ -302,7 +264,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             // resampling. To fix this, we simply clamp the previous frame’s M
             // to at most 20× of the current frame’s reservoir’s M
 
-            r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
+            r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
+            //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
 
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
@@ -345,13 +308,17 @@ void main(uint2 px : SV_DispatchThreadID) {
                 jacobian = jacobian;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
+                ray_orig_sel = ray_orig_history_tex[rpx];
                 ray_hit_sel = prev_hit_ws;
                 hit_normal_sel = prev_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
             }
 
             // Terminate as soon as we have a good sample
-            break;
+            //if (sample_i == 0)
+            {
+                break;
+            }
         }
 
         valid_sample_count = max(valid_sample_count, 1);
@@ -389,9 +356,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
+    ray_orig_output_tex[px] = ray_orig_sel;
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_tex[px] = hit_normal_ws_dot;
-    ray_out_tex[px] = float4(ray_hit_sel - get_eye_position(), length(ray_hit_sel - refl_ray_origin));
+    ray_output_tex[px] = float4(ray_hit_sel/* - get_eye_position()*/, length(ray_hit_sel - refl_ray_origin));
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

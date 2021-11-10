@@ -28,4 +28,6 @@
 #define FP16_MIN_POS 0.000000059604645
 #define FP16_MAX 65504
 
+static const float GOLDEN_ANGLE = 2.39996323;
+
 #endif

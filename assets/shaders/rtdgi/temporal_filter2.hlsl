@@ -14,10 +14,11 @@ float working_luma(float3 v) { return v.x; }
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float2> variance_history_tex;
 [[vk::binding(3)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(4)]] RWTexture2D<float4> output_tex;
-[[vk::binding(5)]] RWTexture2D<float4> history_output_tex;
-[[vk::binding(6)]] RWTexture2D<float2> variance_history_output_tex;
-[[vk::binding(7)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float> rt_history_validity_tex;
+[[vk::binding(5)]] RWTexture2D<float4> output_tex;
+[[vk::binding(6)]] RWTexture2D<float4> history_output_tex;
+[[vk::binding(7)]] RWTexture2D<float2> variance_history_output_tex;
+[[vk::binding(8)]] cbuffer _ {
     float4 output_tex_size;
     float4 gbuffer_tex_size;
 };
@@ -117,12 +118,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     //float temporal_change = 0.1 * abs(hist_vsum - working_luma(ex.rgb)) / max(1e-5, working_luma(dev.rgb));
     //temporal_change = 0.02 * temporal_change / max(1e-5, working_luma(dev.rgb));
     //temporal_change = WaveActiveSum(temporal_change) / WaveActiveSum(1);
-
-    const float n_deviations = 3.0;// * WaveActiveMin(light_stability);
-    //dev = max(dev, history * 0.1);
-    //dev = min(dev, history * 0.01);
-	float4 nmin = center - dev * n_deviations;
-	float4 nmax = center + dev * n_deviations;
 #endif
 
 #if 0
@@ -148,11 +143,41 @@ void main(uint2 px: SV_DispatchThreadID) {
     //const float light_stability = 1;
     //const float light_stability = center.w > 0.0 ? 1.0 : 0.0;
 
-#if 0
+    /*float rt_invalid = 0;
+	{
+        const int k = 3;
+        float w_sum = 0;
+        for (int y = -k; y <= k; ++y) {
+            for (int x = -k; x <= k; ++x) {
+                const int2 offset = int2(x, y) * 2;
+                //float w = 1;
+                float w = exp2(-0.05 * dot(offset, offset));
+                w_sum += w;
+                rt_invalid += rt_history_validity_tex[px / 2 + offset] * w;
+            }
+        }
+        rt_invalid /= w_sum;
+        //rt_invalid = WaveActiveMax(rt_invalid);
+    }    */
+    const float rt_invalid = sqrt(saturate(rt_history_validity_tex[px / 2]));
+
+    float current_sample_count = min(history.a, 32);
+
+    float clamp_box_size = 1
+        * lerp(0.25, 1.0, 1.0 - rt_invalid)
+        //* lerp(0.25, 1.0, pow(saturate(current_sample_count / 32.0), 2))
+        * 3
+        ;
+    clamp_box_size = max(clamp_box_size, 0.5);
+
+	float4 nmin = center - dev * clamp_box_size;
+	float4 nmax = center + dev * clamp_box_size;
+
+#if 1
 	float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
 #else
     float4 clamped_history = float4(
-        soft_color_clamp(center.rgb, history.rgb, ex.rgb, 1.5 * dev.rgb),
+        soft_color_clamp(center.rgb, history.rgb, ex.rgb, clamp_box_size * dev.rgb),
         history.a
     );
 #endif
@@ -172,15 +197,16 @@ void main(uint2 px: SV_DispatchThreadID) {
     max_sample_count = lerp(max_sample_count, 4, variance_adjusted_temporal_change);
     //max_sample_count = lerp(max_sample_count, 1, smoothstep(0.01, 0.6, 10 * temporal_change * (center_dev / max(1e-5, center_luma))));
     max_sample_count *= light_stability;
+    max_sample_count *= lerp(1.0, 0.0, rt_invalid);
 
 // hax
 //max_sample_count = 16;
 
-    float current_sample_count = min(history.a, 32);
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);
 
-    float4 output = working_to_linear(float4(res, min(current_sample_count, max_sample_count) + 1));
+    const float output_sample_count = min(current_sample_count, max_sample_count) + 1;
+    float4 output = working_to_linear(float4(res, output_sample_count));
     history_output_tex[px] = output;
 
     //output = smoothstep(1.0, 3.0, history_dist);
@@ -204,15 +230,18 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output = WaveActiveSum(history.rgb) / WaveActiveSum(1);
     //output.rgb = 0.1 * temporal_change / max(1e-5, working_luma(dev.rgb));
     //output = pow(smoothstep(0.1, 1, temporal_change), 1.0);
-    //output = center_temporal_dev;
+    //output.rgb = center_temporal_dev;
     //output = center_dev / max(1e-5, center_luma);
     //output = 1 - smoothstep(0.01, 0.6, temporal_change);
     //output = pow(smoothstep(0.02, 0.6, 0.01 * temporal_change / center_temporal_dev), 0.25);
     //output = max_sample_count / 32.0;
     //output.rgb = temporal_change * 0.1;
     //output.rgb = variance_adjusted_temporal_change * 0.1;
+    //output.rgb = rt_history_validity_tex[px / 2];
+    //output.rgb = lerp(output.rgb, rt_invalid, 0.9);
+    //output.rgb = lerp(output.rgb, pow(output_sample_count / 32.0, 4), 0.9);
 
-    output_tex[px] = float4(output.rgb, 1.0);
-    //output_tex[px] = float4(current_sample_count.xxx / 32, 1.0);
-    //history_output_tex[px] = reproj.w;
+    output_tex[px] = float4(output.rgb, saturate(output_sample_count / 32.0));
+    //output_tex[px] = float4(output.rgb, output_sample_count);
+    //output_tex[px] = float4(output.rgb, 1.0 - rt_invalid);
 }

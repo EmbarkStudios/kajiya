@@ -5,7 +5,6 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/unjitter_taa.hlsl"
-#include "../inc/soft_color_clamp.hlsl"
 #include "taa_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
