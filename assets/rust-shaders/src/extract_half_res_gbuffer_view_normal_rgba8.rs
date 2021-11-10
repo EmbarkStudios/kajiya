@@ -24,8 +24,9 @@ pub fn extract_half_res_gbuffer_view_normal_rgba8(
     ];
 
     let src_px: IVec2 =
-        px.as_ivec2() * 2 + hi_px_subpixels[(frame_constants.frame_idx & 3) as usize]; // TODO: use gbuffer unpacking
+        px.as_ivec2() * 2 + hi_px_subpixels[(frame_constants.frame_idx & 3) as usize];
 
+    // TODO: use gbuffer unpacking
     let input: Vec4 = input_tex.fetch(IVec2::new(src_px.x as i32, src_px.y as i32));
     let normal: Vec3 = unpack_normal_11_10_11_no_normalize(input.y);
     let normal_vs: Vec3 = frame_constants
