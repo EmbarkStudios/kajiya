@@ -125,7 +125,6 @@ impl LazyWorker for CompileRustShaderCrate {
     }
 }
 
-// Based on code by Viktor Zoutman
 // Runs cargo in a sub-process to execute the rust shader builder.
 fn compile_rust_shader_crate_thread(
     cancel_rx: std::sync::mpsc::Receiver<()>,
