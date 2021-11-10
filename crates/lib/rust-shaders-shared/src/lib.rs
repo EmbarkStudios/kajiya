@@ -2,8 +2,8 @@
 
 pub mod camera;
 pub mod frame_constants;
-pub mod ssgi;
 pub mod gbuffer;
+pub mod ssgi;
 pub mod util;
 pub mod view_constants;
 pub mod view_ray;

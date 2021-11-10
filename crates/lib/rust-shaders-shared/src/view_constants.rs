@@ -1,5 +1,5 @@
 use crate::camera::CameraMatrices;
-use macaw::{Mat4, Vec2, Vec3, UVec2};
+use macaw::{Mat4, UVec2, Vec2, Vec3};
 
 #[derive(Clone, Copy)]
 #[repr(C, align(16))]
@@ -38,7 +38,10 @@ impl ViewConstants {
 
     pub fn set_pixel_offset(&mut self, v: Vec2, render_extent: UVec2) {
         let sample_offset_pixels = v;
-        let sample_offset_clip = Vec2::new((2.0 * v.x) / render_extent.x as f32, (2.0 * v.y) / render_extent.y as f32);
+        let sample_offset_clip = Vec2::new(
+            (2.0 * v.x) / render_extent.x as f32,
+            (2.0 * v.y) / render_extent.y as f32,
+        );
 
         let mut jitter_matrix = Mat4::IDENTITY;
         jitter_matrix.w_axis = (-sample_offset_clip).extend(0.0).extend(1.0);

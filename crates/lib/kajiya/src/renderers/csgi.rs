@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use glam::{Vec3, IVec4};
+use glam::{IVec4, Vec3};
 use kajiya_backend::{
     ash::vk,
     vk_sync::AccessType,
@@ -161,8 +161,9 @@ impl CsgiRenderer {
 
             //dbg!(gi_volume_scroll_frac, gi_volume_scroll_int);
 
-            let voxels_scrolled_this_frame: IVec4 =
-                self.cur_scroll[cascade_i].volume_scroll_offset_from(&self.prev_scroll[cascade_i]).into();
+            let voxels_scrolled_this_frame: IVec4 = self.cur_scroll[cascade_i]
+                .volume_scroll_offset_from(&self.prev_scroll[cascade_i])
+                .into();
 
             GiCascadeConstants {
                 scroll_frac: gi_volume_scroll_frac.into(),

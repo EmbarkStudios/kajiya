@@ -1,6 +1,6 @@
 use crate::atmosphere::*;
-use rust_shaders_shared::{frame_constants::FrameConstants, util::*};
 use macaw::{UVec3, Vec2, Vec3};
+use rust_shaders_shared::{frame_constants::FrameConstants, util::*};
 use spirv_std::Image;
 
 #[cfg(not(target_arch = "spirv"))]

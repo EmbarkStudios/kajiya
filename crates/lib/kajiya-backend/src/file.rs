@@ -17,7 +17,10 @@ lazy_static! {
         vec![
             ("/kajiya".to_owned(), PathBuf::from(".")),
             ("/shaders".to_owned(), PathBuf::from("assets/shaders")),
-            ("/rust-shaders-compiled".to_owned(), PathBuf::from("assets/rust-shaders-compiled")),
+            (
+                "/rust-shaders-compiled".to_owned(),
+                PathBuf::from("assets/rust-shaders-compiled")
+            ),
             ("/images".to_owned(), PathBuf::from("assets/images")),
             ("/baked".to_owned(), PathBuf::from("baked"))
         ]

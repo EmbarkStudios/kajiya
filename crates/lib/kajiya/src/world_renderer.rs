@@ -8,11 +8,6 @@ use crate::{
         rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
 };
-use rust_shaders_shared::{
-    camera::CameraMatrices,
-    frame_constants::{FrameConstants, GiCascadeConstants, MAX_CSGI_CASCADE_COUNT},
-    view_constants::ViewConstants,
-};
 use glam::{Mat3, Quat, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
@@ -26,6 +21,11 @@ use kajiya_rg::{self as rg};
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use rg::renderer::FrameConstantsLayout;
+use rust_shaders_shared::{
+    camera::CameraMatrices,
+    frame_constants::{FrameConstants, GiCascadeConstants, MAX_CSGI_CASCADE_COUNT},
+    view_constants::ViewConstants,
+};
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 
@@ -877,8 +877,7 @@ impl WorldRenderer {
 
         // Initialize constants for the maximum allowed cascade count, even if we're not using them,
         // so that we don't need to change the layout of frame constants up to this limit.
-        let mut gi_cascades: [GiCascadeConstants; MAX_CSGI_CASCADE_COUNT] =
-            Default::default();
+        let mut gi_cascades: [GiCascadeConstants; MAX_CSGI_CASCADE_COUNT] = Default::default();
 
         self.csgi
             .update_eye_position(&view_constants.eye_position(), self.world_gi_scale);

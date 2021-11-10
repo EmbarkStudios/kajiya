@@ -1,4 +1,4 @@
-use macaw::{Vec3, Vec4, Mat4};
+use macaw::{Mat4, Vec3, Vec4};
 
 #[derive(PartialEq, Clone, Copy)]
 #[repr(C)]

@@ -1,11 +1,11 @@
 // Rust-GPU port of `motion_blur.hlsl` by Viktor Zoutman
 
+use macaw::{
+    uvec2, vec2, IVec2, IVec3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
+};
 use rust_shaders_shared::{
     frame_constants::FrameConstants,
     util::{depth_to_view_z, get_uv_u},
-};
-use macaw::{
-    uvec2, vec2, IVec2, IVec3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
 };
 use spirv_std::{Image, Sampler};
 

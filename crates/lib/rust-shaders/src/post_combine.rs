@@ -1,12 +1,12 @@
 // Lots of Tomasz' prototyping remainders in this file, plus disabled dither for now.
 #![allow(dead_code)]
 
-use rust_shaders_shared::util::{abs_f32, get_uv_u, signum_f32};
-use rust_shaders_shared::frame_constants::FrameConstants;
-use crate::tonemap::*;
 use crate::color::lin_srgb_to_luminance;
+use crate::tonemap::*;
 use macaw::{lerp, IVec2, UVec3, Vec3, Vec4};
-use spirv_std::{Image, Sampler, RuntimeArray};
+use rust_shaders_shared::frame_constants::FrameConstants;
+use rust_shaders_shared::util::{abs_f32, get_uv_u, signum_f32};
+use spirv_std::{Image, RuntimeArray, Sampler};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;
@@ -78,7 +78,9 @@ pub fn post_combine_cs(
     #[spirv(descriptor_set = 0, binding = 0)] input_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 2)] rev_blur_pyramid_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 3)] output_tex: &Image!(2D, type=f32, sampled=false),
-    #[spirv(descriptor_set = 2, binding = 1)] bindless_textures: &RuntimeArray<Image!(2D, type=f32, sampled=true)>,
+    #[spirv(descriptor_set = 2, binding = 1)] bindless_textures: &RuntimeArray<
+        Image!(2D, type=f32, sampled=true),
+    >,
 
     #[spirv(descriptor_set = 0, binding = 32)] sampler_lnc: &Sampler,
     #[spirv(uniform, descriptor_set = 0, binding = 4)] constants: &Constants,
@@ -136,7 +138,9 @@ pub fn post_combine_cs(
     if USE_DITHER {
         // Dither
         let urand_idx = frame_constants.frame_index as i32;
-        let blue_noise_lut = unsafe { bindless_textures.index(crate::constants::BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0) };
+        let blue_noise_lut = unsafe {
+            bindless_textures.index(crate::constants::BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0)
+        };
         // 256x256 blue noise
         let dither = triangle_remap({
             let value: Vec4 = blue_noise_lut.fetch(bitwise_and(

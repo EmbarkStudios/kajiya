@@ -40,10 +40,13 @@ pub fn calculate_reprojection_map(
     .constants(output_tex.desc().extent_inv_extent_2d())
     .dispatch(output_tex.desc().extent);
 
-    SimpleRenderPass::new_compute_rust(rg.add_pass("copy depth"), "copy_depth_to_r::copy_depth_to_r_cs")
-        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .write(&mut prev_depth)
-        .dispatch(prev_depth.desc().extent);
+    SimpleRenderPass::new_compute_rust(
+        rg.add_pass("copy depth"),
+        "copy_depth_to_r::copy_depth_to_r_cs",
+    )
+    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+    .write(&mut prev_depth)
+    .dispatch(prev_depth.desc().extent);
 
     output_tex
 }

@@ -116,7 +116,9 @@ impl LazyWorker for CompileRustShaderCrate {
                         invalidation_trigger();
                     }
                 })
-                .with_context(|| format!("CompileRustShaderCrate: trying to watch {:?}", src_dir))?;
+                .with_context(|| {
+                    format!("CompileRustShaderCrate: trying to watch {:?}", src_dir)
+                })?;
         }
 
         Ok(())

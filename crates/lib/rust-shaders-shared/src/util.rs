@@ -1,5 +1,7 @@
 use crate::frame_constants::FrameConstants;
-use macaw::{const_mat3, FloatExt, Mat3, UVec2, UVec3, Vec2, Vec3, Vec4, Vec3Swizzles, Vec4Swizzles};
+use macaw::{
+    const_mat3, FloatExt, Mat3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
+};
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
 
@@ -220,7 +222,6 @@ fn mymax(a: i32, b: i32) -> i32 {
     }
 }
 
-
 // https://www.khronos.org/registry/OpenGL/extensions/EXT/EXT_texture_shared_exponent.txt
 pub fn float3_to_rgb9e5(rgb: Vec3) -> u32 {
     let rc = clamp_range_for_rgb9e5(rgb.x);
@@ -303,4 +304,3 @@ pub fn uint_to_u01_float(h: u32) -> f32 {
 pub fn sign(val: f32) -> f32 {
     ((0.0 < val) as i32 - (val < 0.0) as i32) as f32
 }
-

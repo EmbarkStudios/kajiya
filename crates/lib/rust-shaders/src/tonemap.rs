@@ -1,5 +1,5 @@
-use macaw::{prelude::*, Vec3};
 use crate::color;
+use macaw::{prelude::*, Vec3};
 
 pub fn tonemap_curve(v: f32) -> f32 {
     let c = v + v * v + 0.5 * v * v * v;

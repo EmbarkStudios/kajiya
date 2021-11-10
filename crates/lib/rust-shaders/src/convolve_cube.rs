@@ -1,5 +1,5 @@
-use rust_shaders_shared::util::*;
 use macaw::{Mat3, UVec3, Vec2, Vec3, Vec4};
+use rust_shaders_shared::util::*;
 use spirv_std::{Image, Sampler};
 
 #[cfg(not(target_arch = "spirv"))]
