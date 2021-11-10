@@ -1,8 +1,8 @@
 // Lots of Tomasz' prototyping remainders in this file, plus disabled dither for now.
 #![allow(dead_code)]
 
-use crate::util::{abs_f32, get_uv_u, signum_f32};
-use crate::frame_constants::FrameConstants;
+use rust_shaders_shared::util::{abs_f32, get_uv_u, signum_f32};
+use rust_shaders_shared::frame_constants::FrameConstants;
 use crate::tonemap::*;
 use crate::color::lin_srgb_to_luminance;
 use macaw::{lerp, IVec2, UVec3, Vec3, Vec4};

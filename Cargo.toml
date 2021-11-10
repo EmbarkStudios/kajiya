@@ -10,14 +10,14 @@ members = [
     "crates/lib/kajiya-rg",
     "crates/lib/kajiya-simple",
     "crates/lib/kajiya",
+    "crates/lib/rust-shaders",
+    "crates/lib/rust-shaders-shared",
 
     "crates/lib/ash-imgui",
-
-    "assets/rust-shaders",
 ]
 
 exclude = [
-    "assets/rust-shaders/builder",
+    "crates/bin/rust-shasder-builder",
     "crates/lib/ngx_dlss"
 ]
 

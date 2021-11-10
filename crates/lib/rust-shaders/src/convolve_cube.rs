@@ -1,4 +1,4 @@
-use crate::util::*;
+use rust_shaders_shared::util::*;
 use macaw::{Mat3, UVec3, Vec2, Vec3, Vec4};
 use spirv_std::{Image, Sampler};
 

@@ -1331,6 +1331,7 @@ dependencies = [
  "raw-window-handle",
  "relative-path",
  "ron",
+ "rust-shaders-shared",
  "smol",
  "structopt",
  "thiserror",
@@ -2158,6 +2159,16 @@ name = "rust-shaders"
 version = "0.1.0"
 dependencies = [
  "macaw",
+ "rust-shaders-shared",
+ "spirv-std",
+]
+
+[[package]]
+name = "rust-shaders-shared"
+version = "0.1.0"
+dependencies = [
+ "macaw",
+ "num-traits",
  "spirv-std",
 ]
 

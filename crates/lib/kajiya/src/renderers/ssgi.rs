@@ -1,6 +1,7 @@
 use super::{GbufferDepth, PingPongTemporalResource};
 use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, SimpleRenderPass, TemporalRenderGraph};
+use rust_shaders_shared::ssgi::SsgiConstants;
 
 pub struct SsgiRenderer {
     ssgi_tex: PingPongTemporalResource,
@@ -33,16 +34,16 @@ impl SsgiRenderer {
                 .format(vk::Format::R16_SFLOAT),
         );
 
-        SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/shaders/ssgi/ssgi.hlsl")
+        SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi"), "ssgi::ssgi_cs")
             .read(&gbuffer_depth.gbuffer)
             .read(&*half_depth_tex)
             .read(&*half_view_normal_tex)
             .read(prev_radiance)
             .read(reprojection_map)
             .write(&mut ssgi_tex)
-            .constants((
-                gbuffer_desc.extent_inv_extent_2d(),
-                ssgi_tex.desc().extent_inv_extent_2d(),
+            .constants(SsgiConstants::default_with_size(
+                gbuffer_desc.extent_inv_extent_2d().into(),
+                ssgi_tex.desc().extent_inv_extent_2d().into(),
             ))
             .dispatch(ssgi_tex.desc().extent);
 

@@ -10,7 +10,7 @@ struct RustShaderCompileResult {
 
 fn main() -> anyhow::Result<()> {
     let builder_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let compile_result = SpirvBuilder::new(builder_root.join("../"), "spirv-unknown-vulkan1.1")
+    let compile_result = SpirvBuilder::new(builder_root.join("../../lib/rust-shaders/"), "spirv-unknown-vulkan1.1")
         .deny_warnings(true)
         .capability(Capability::StorageImageWriteWithoutFormat)
         .capability(Capability::Int8)
@@ -21,7 +21,7 @@ fn main() -> anyhow::Result<()> {
         .spirv_metadata(SpirvMetadata::NameVariables)
         .build()?;
 
-    let target_spv_dir = builder_root.join("../compiled");
+    let target_spv_dir = builder_root.join("../../../assets/rust-shaders-compiled");
     std::fs::create_dir_all(&target_spv_dir).context("Creating the SPIR-V output directory")?;
 
     // Move all the compiled shaders to the `target_spv_dir`, and create a json file
