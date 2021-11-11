@@ -45,9 +45,9 @@ DEFINE_WRC_BINDINGS(12)
 #include "wrc/lookup.hlsl"
 #include "wrc/wrc_intersect_probe_grid.hlsl"
 
-#define SHADING_MODE_DEFAULT 2
+#define SHADING_MODE_DEFAULT 0
 #define SHADING_MODE_NO_TEXTURES 1
-#define SHADING_MODE_DIFFUSE_GI 0
+#define SHADING_MODE_DIFFUSE_GI 2
 #define SHADING_MODE_REFLECTIONS 3
 #define SHADING_MODE_RTX_OFF 4
 #define SHADING_MODE_SURFEL_GI 5

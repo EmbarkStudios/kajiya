@@ -14,7 +14,8 @@ impl Default for SsgiRenderer {
     }
 }
 
-const TEX_FMT: vk::Format = vk::Format::R16_SFLOAT;
+const INTERNAL_TEX_FMT: vk::Format = vk::Format::R16_SFLOAT;
+const FINAL_TEX_FMT: vk::Format = vk::Format::R8_UNORM;
 
 impl SsgiRenderer {
     pub fn render(
@@ -33,7 +34,7 @@ impl SsgiRenderer {
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
-                .format(TEX_FMT),
+                .format(INTERNAL_TEX_FMT),
         );
 
         SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/shaders/ssgi/ssgi.hlsl")
@@ -75,7 +76,7 @@ impl SsgiRenderer {
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::empty())
                     .half_res()
-                    .format(TEX_FMT),
+                    .format(INTERNAL_TEX_FMT),
             );
 
             SimpleRenderPass::new_compute(
@@ -96,8 +97,10 @@ impl SsgiRenderer {
             )
         };
 
-        let (mut filtered_output_tex, history_tex) = temporal_tex
+        let (mut history_output_tex, history_tex) = temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+        let mut filtered_output_tex = rg.create(gbuffer_desc.format(FINAL_TEX_FMT));
 
         SimpleRenderPass::new_compute(
             rg.add_pass("ssgi temporal"),
@@ -107,14 +110,15 @@ impl SsgiRenderer {
         .read(&history_tex)
         .read(reprojection_map)
         .write(&mut filtered_output_tex)
-        .constants(filtered_output_tex.desc().extent_inv_extent_2d())
-        .dispatch(filtered_output_tex.desc().extent);
+        .write(&mut history_output_tex)
+        .constants(history_output_tex.desc().extent_inv_extent_2d())
+        .dispatch(history_output_tex.desc().extent);
 
         filtered_output_tex.into()
     }
 
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
-        ImageDesc::new_2d(TEX_FMT, extent)
+        ImageDesc::new_2d(INTERNAL_TEX_FMT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
@@ -124,7 +128,7 @@ impl SsgiRenderer {
         depth: &rg::Handle<Image>,
         gbuffer: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let mut output_tex = rg.create(gbuffer.desc().format(TEX_FMT));
+        let mut output_tex = rg.create(gbuffer.desc().format(INTERNAL_TEX_FMT));
 
         SimpleRenderPass::new_compute(rg.add_pass("ssgi upsample"), "/shaders/ssgi/upsample.hlsl")
             .read(ssgi)

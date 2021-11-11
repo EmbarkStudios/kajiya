@@ -3,8 +3,9 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(3)]] RWTexture2D<float4> final_output_tex;
+[[vk::binding(4)]] RWTexture2D<float4> history_output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
 };
 SamplerState sampler_lnc;
@@ -56,6 +57,6 @@ void main(uint2 px: SV_DispatchThreadID) {
         res = res.r;
     #endif
     
-    output_tex[px] = LINEAR_TO_WORKING(res);
-    //output_tex[px] = reproj.w;
+    history_output_tex[px] = LINEAR_TO_WORKING(res);
+    final_output_tex[px] = res;
 }

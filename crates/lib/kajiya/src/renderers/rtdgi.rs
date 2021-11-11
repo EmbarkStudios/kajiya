@@ -145,6 +145,7 @@ impl RtdgiRenderer {
         .read(input_color)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(ssao_img)
+        .read(&gbuffer_depth.geometric_normal)
         .write(&mut spatial_filtered_tex)
         .constants((spatial_filtered_tex.desc().extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)

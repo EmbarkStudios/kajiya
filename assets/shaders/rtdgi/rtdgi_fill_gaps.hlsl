@@ -11,7 +11,7 @@
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     const float4 center = input_tex[px];
-    if (!true || center.w > 0) {
+    if (true || center.w > 0) {
         output_tex[px] = center;
         return;
     }

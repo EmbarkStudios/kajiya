@@ -1,7 +1,6 @@
 #include "../inc/color.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/quasi_random.hlsl"
-#include "../inc/blue_noise.hlsl"
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 
@@ -11,10 +10,26 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> ssao_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float3> geometric_normal_tex;
+[[vk::binding(4)]] RWTexture2D<float4> output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
 };
+
+float square(float x) { return x * x; }
+float max3(float x, float y, float z) { return max(x, max(y, z)); }
+
+float3 crunch(float3 v) {
+    //return sqrt(v);
+    //return v;
+    return v * rcp(max3(v.r, v.g, v.b) + 1.0);
+}
+
+float3 uncrunch(float3 v) {
+    //return v * v;
+    //return v;
+    return v * rcp(1.0 - max3(v.r, v.g, v.b));
+}
 
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
@@ -24,29 +39,39 @@ void main(in uint2 px : SV_DispatchThreadID) {
     #endif
     
     float4 sum = 0;
-    float ex = 0;
-    float ex2 = 0;
 
     const float center_validity = input_tex[px].a;
     const float center_depth = depth_tex[px];
     const float center_ssao = ssao_tex[px].r;
+    const float3 center_value = input_tex[px].rgb;
+    const float3 center_normal_vs = geometric_normal_tex[px] * 2.0 - 1.0;
 
-    #define USE_POISSON 1
+    if (center_validity == 1) {
+        output_tex[px] = float4(center_value, 1.0);
+        return;
+    }
 
-    //float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index);
-    //float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index);
-    float2 blue = r2_sequence(frame_constants.frame_index % 128);
+    const float ang_off = (frame_constants.frame_index * 11) % 32 * M_PI * 2;
 
-    float spatial_sharpness = 0.25;//lerp(0.5, 0.25, saturate(center_ssao));
-    //const int sample_count = max(1, 16 * saturate(1.0 - center_validity));
-    const int sample_count = clamp(int(exp2(4 * saturate(1.0 - center_validity))), 1, 16);
-    //const int sample_count = 16;
+    const uint MAX_SAMPLE_COUNT = 8;
+    const float MAX_RADIUS_PX = 16.0;
+
+    // Feeds into the `pow` to remap sample index to radius.
+    // At 0.5 (sqrt), it's proper circle sampling, with higher values becoming conical.
+    // Must be constants, so the `pow` can be const-folded.
+    const float KERNEL_SHARPNESS = 0.666;
+
+    const uint sample_count = min(uint(exp2(4.0 * square(1.0 - center_validity))), MAX_SAMPLE_COUNT);
 
     {
-        for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-            float ang = (sample_i + blue.x) * GOLDEN_ANGLE;
-            //float radius = 1.5 + float(sample_i) * lerp(0.333, 0.8, center_ssao);
-            float radius = sqrt(float(sample_i)) * 4.0;
+        sum += float4(crunch(center_value), 1);
+
+        const float RADIUS_SAMPLE_MULT = MAX_RADIUS_PX / pow(float(MAX_SAMPLE_COUNT - 1), KERNEL_SHARPNESS);
+
+        // Note: faster on RTX2080 than a dynamic loop
+        for (uint sample_i = 1; sample_i < MAX_SAMPLE_COUNT; ++sample_i) {
+            float ang = (sample_i + ang_off) * GOLDEN_ANGLE;
+            float radius = pow(float(sample_i), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT;
             int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
             const int2 sample_px = px + sample_offset;
 
@@ -54,38 +79,22 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const float3 sample_val = input_tex[sample_px].rgb;
             const float sample_ssao = ssao_tex[sample_px].r;
 
-            if (sample_depth != 0) {
+            if (sample_depth != 0 && sample_i < sample_count) {
                 float wt = 1;
-                //wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
                 //wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 20);
-                wt *= exp2(-100.0 * abs(/*center_normal_vs.z * */(center_depth / sample_depth - 1.0)));
+                wt *= exp2(-100.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
                 #if USE_SSAO_STEERING
-                    wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
+                    wt *= exp2(-5.0 * abs(sample_ssao - center_ssao));
                 #endif
 
-                sum += float4(sample_val, 1) * wt;
-                
-                float luma = calculate_luma(sample_val);
-                ex += luma * wt;
-                ex2 += luma * luma * wt;
+                sum += float4(crunch(sample_val), 1.0) * wt;
             }
-
-            // Adaptive stopping
-            /*if (sample_i >= 3) {
-                float var = abs(ex2 / sum.a - (ex / sum.a) * (ex / sum.a));
-                var *= (sample_i + 1) / sample_i;   // Bessel's correction, 0-based
-                float rel_dev = sqrt(var) / (abs(ex) / sum.a);
-                if (rel_dev < 0.3)
-                {
-                    break;
-                }
-            }*/
         }
     }
 
     float norm_factor = 1.0 / max(1e-5, sum.a);
-    float3 filtered = sum.rgb * norm_factor;
+    float3 filtered = uncrunch(sum.rgb * norm_factor);
 
     output_tex[px] = float4(filtered, 1.0);
 }
