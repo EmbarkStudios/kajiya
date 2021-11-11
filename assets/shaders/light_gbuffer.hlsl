@@ -18,7 +18,7 @@
 #include "inc/color.hlsl"
 
 #define USE_SSGI 0
-#define USE_RTR 0
+#define USE_RTR 1
 #define USE_RTDGI 1
 
 #define SSGI_INTENSITY_BIAS 0.0
@@ -58,6 +58,7 @@ DEFINE_WRC_BINDINGS(12)
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
+    uint rng = hash3(uint3(px, frame_constants.frame_index));
 
     RayDesc outgoing_ray;
     const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
@@ -119,6 +120,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
     pt_ws /= pt_ws.w;
 
     const float3 to_light_norm = SUN_DIRECTION;
+    /*const float3 to_light_norm = sample_sun_direction(
+        float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))),
+        true
+    );*/
+
     float shadow_mask = shadow_mask_tex[px].x;
 
     if (debug_shading_mode == SHADING_MODE_RTX_OFF) {

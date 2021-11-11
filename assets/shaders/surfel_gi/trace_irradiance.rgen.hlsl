@@ -292,10 +292,10 @@ void main() {
     const float value_mult = HEMISPHERE_ONLY ? 1 : 2;
 
     //surfel_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
-    surfel_irradiance_buf[surfel_idx] = float4(
+    surfel_irradiance_buf[surfel_idx] = max(0.0, float4(
         lerp(prev_total_radiance_packed.rgb, irradiance_sum, blend_factor_new),
         total_sample_count
-    );
+    ));
     //surfel_sh_buf[surfel_idx * 3 + 0] = lerp(surfel_sh_buf[surfel_idx * 3 + 0], r_values, blend_factor_new);
     //surfel_sh_buf[surfel_idx * 3 + 1] = lerp(surfel_sh_buf[surfel_idx * 3 + 1], g_values, blend_factor_new);
     //surfel_sh_buf[surfel_idx * 3 + 2] = lerp(surfel_sh_buf[surfel_idx * 3 + 2], b_values, blend_factor_new);

@@ -11,20 +11,20 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
+#include "../surfel_gi/bindings.hlsl"
+#include "../wrc/bindings.hlsl"
 #include "rtr_settings.hlsl"
 
 #define USE_SOFT_SHADOWS 1
 #define USE_TEMPORAL_JITTER 1
 #define USE_HEAVY_BIAS 0
-#define USE_SHORT_RAYS_FOR_ROUGH 0
-//#define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
+
+#define USE_WORLD_RADIANCE_CACHE 1
+#define USE_SURFEL_GI 1
 
 // Note: should be off when using dedicated specular lighting passes in addition to RTR
 #define USE_EMISSIVE 1
-
 #define USE_LIGHTS 1
-
-#define SUPPRESS_GI_FOR_NEAR_HITS 1
 
 // Debug bias in sample reuse with position-based hit storage
 #define COLOR_CODE_GROUND_SKY_BLACK_WHITE 0
@@ -53,12 +53,17 @@
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(2, 3, 4)
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(7)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(8)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(9)]] RWTexture2D<float4> out2_tex;
-[[vk::binding(10)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(7, 8, 9, 10, 11, 12)
+DEFINE_WRC_BINDINGS(13)
+[[vk::binding(14)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(15)]] RWTexture2D<float4> out1_tex;
+[[vk::binding(16)]] RWTexture2D<float4> out2_tex;
+[[vk::binding(17)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
+
+#include "../surfel_gi/lookup.hlsl"
+#include "../wrc/lookup.hlsl"
 
 // Large enough to mean "far away" and small enough so that
 // the hit points/vectors fit within fp16.
@@ -66,8 +71,6 @@ static const float SKY_DIST = 1e4;
 
 [shader("raygeneration")]
 void main() {
-    return;
-
     uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
@@ -154,14 +157,26 @@ void main() {
         outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
         outgoing_ray.Origin = refl_ray_origin;
         outgoing_ray.TMin = 0;
+        outgoing_ray.TMax = SKY_DIST;
 
-        /*if (use_short_ray) {
-            outgoing_ray.TMax = gi_voxel_size(cascade_idx).x * SHORT_RAY_SIZE_VOXEL_CELLS * lerp(4.0, 1.0, gbuffer.roughness);
-        } else*/ {
-            outgoing_ray.TMax = SKY_DIST;
+        WrcFarField far_field = WrcFarField::create_miss();
+        if (USE_WORLD_RADIANCE_CACHE && gbuffer.roughness + uint_to_u01_float(hash1_mut(rng)) * 0.1 > 0.7) {
+            far_field =
+                WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
+                    .with_interpolation_urand(float3(
+                        uint_to_u01_float(hash1_mut(rng)),
+                        uint_to_u01_float(hash1_mut(rng)),
+                        uint_to_u01_float(hash1_mut(rng))
+                    ))
+                    .with_query_normal(gbuffer.normal)
+                    .query();
         }
 
-        const float reflected_cone_spread_angle = 0.1;     // TODO
+        if (far_field.is_hit()) {
+            outgoing_ray.TMax = far_field.probe_t;
+        }
+
+        const float reflected_cone_spread_angle = 0.2;
         const RayCone ray_cone =
             pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
             .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
@@ -275,7 +290,14 @@ void main() {
                         }
                     }
 
-                    // TODO: total_radiance += gi * gbuffer.albedo;
+                    if (USE_SURFEL_GI) {
+                        float3 gi = lookup_surfel_gi(
+                            primary_hit.position,
+                            gbuffer.normal
+                        );
+
+                        total_radiance += gi * gbuffer.albedo;
+                    }
                }
             }
 
@@ -308,15 +330,13 @@ void main() {
         } else {
             //out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
 
+            float hit_t = SKY_DIST;
             float3 far_gi;
-            /*if (use_short_ray) {
-                far_gi = lookup_gi(
-                    outgoing_ray.Origin + outgoing_ray.Direction * max(0.0, outgoing_ray.TMax - gi_voxel_size(cascade_idx).x),
-                    0.0.xxx,    // don't offset by any normal
-                    GiLookupParams::make_default()
-                        .with_sample_directional_radiance(outgoing_ray.Direction)
-                );
-            } else*/ {
+
+            if (far_field.is_hit()) {
+                far_gi = far_field.radiance * far_field.inv_pdf;
+                hit_t = far_field.approx_surface_t;
+            } else {
                 far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
             }
 
@@ -327,7 +347,7 @@ void main() {
                 #else
                     brdf_sample.wi.z
                 #endif
-                / (SKY_DIST * SKY_DIST);
+                / (hit_t * hit_t);
 
             #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
                 out0_tex[px] = float4(2.0.xxx, 1);
@@ -339,7 +359,7 @@ void main() {
                 #if RTR_RAY_HIT_STORED_AS_POSITION
                     view_ray_context.ray_hit_vs() +
                 #endif
-                direction_vs * SKY_DIST,
+                direction_vs * hit_t,
                 #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
                     to_surface_area_measure *
                 #endif

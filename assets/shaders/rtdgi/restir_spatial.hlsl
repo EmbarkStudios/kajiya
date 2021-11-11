@@ -26,7 +26,8 @@
     uint spatial_reuse_pass_idx;
 };
 
-static const float CENTER_SAMPLE_M_TRUNCATION = 0.2;
+// Not needed anymore? `W` clamping seems sufficient for the fireflies
+static const float CENTER_SAMPLE_M_TRUNCATION = 1;  // 0.2;
 
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);

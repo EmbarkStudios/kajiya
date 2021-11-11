@@ -35,6 +35,8 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool USE_SURFEL_GI = true;
 static const bool USE_BLEND_OUTPUT = true;
+static const bool USE_FLICKER_SUPPRESSION = true;
+static const uint TARGET_SAMPLE_COUNT = 8;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -62,7 +64,9 @@ void main() {
     const uint2 tile = wrc_probe_idx_to_atlas_tile(probe_idx);
     const uint2 atlas_px = tile * WRC_PROBE_DIMS + probe_px;
     const uint3 probe_coord = wrc_probe_idx_to_coord(probe_idx);
-    uint rng = hash_combine2(hash1(probe_idx), frame_constants.frame_index);
+    const uint sequence_index = frame_constants.frame_index % TARGET_SAMPLE_COUNT;
+
+    uint rng = hash_combine2(hash1(probe_idx), sequence_index);
 
     float3 irradiance_sum = 0;
     float valid_sample_count = 0;
@@ -77,7 +81,7 @@ void main() {
         {
             float3 dir;
             if (USE_BLEND_OUTPUT) {
-                dir = octa_decode((probe_px + r2_sequence(frame_constants.frame_index)) / WRC_PROBE_DIMS);
+                dir = octa_decode((probe_px + r2_sequence(sequence_index)) / WRC_PROBE_DIMS);
             } else {
                 dir = octa_decode((probe_px + 0.5) / WRC_PROBE_DIMS);
             }
@@ -200,16 +204,22 @@ void main() {
     }
 
     irradiance_sum /= max(1.0, valid_sample_count);
+    irradiance_sum = max(0.0, irradiance_sum);
 
     float avg_dist = unpack_dist(hit_dist_wt.x / max(1, hit_dist_wt.y));
 
     //radiance_atlas_out_tex[atlas_px] = float4(float2(probe_px + 0.5) / WRC_PROBE_DIMS, 0.0.xx);
 
     if (USE_BLEND_OUTPUT) {
-        radiance_atlas_out_tex[atlas_px] = lerp(
-            radiance_atlas_out_tex[atlas_px],
-            float4(irradiance_sum, avg_dist),
-            1.0 / 8.0);
+        float4 prev_value = radiance_atlas_out_tex[atlas_px];
+        float4 new_value = float4(irradiance_sum, avg_dist);
+        float4 blended_value = lerp(prev_value, new_value, 1.0 / TARGET_SAMPLE_COUNT);
+
+        if (USE_FLICKER_SUPPRESSION) {
+            blended_value.rgb = min(blended_value.rgb, prev_value.rgb * 2 + 1);
+        }
+
+        radiance_atlas_out_tex[atlas_px] = blended_value;
     } else {
         radiance_atlas_out_tex[atlas_px] = float4(irradiance_sum, avg_dist);
     }

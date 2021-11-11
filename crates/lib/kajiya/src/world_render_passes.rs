@@ -140,6 +140,8 @@ impl WorldRenderer {
             self.bindless_descriptor_set,
             &tlas,
             &rtdgi,
+            &surfel_state,
+            &wrc,
         );
 
         if any_triangle_lights {

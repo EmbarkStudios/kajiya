@@ -85,7 +85,7 @@ PsOut main(PsIn ps) {
     float3 geometric_normal_ws = direction_view_to_world(geometric_normal_vs);
 
     // Fix invalid normals
-    if (dot(normal_ws, geometric_normal_ws) < 0) {
+    if (dot(normal_ws, geometric_normal_ws) < 0.0) {
         normal_ws *= -1;
         //normal_ws = geometric_normal_ws;
     }
@@ -99,7 +99,7 @@ PsOut main(PsIn ps) {
         * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    metalness = 0;
+    //metalness = 0;
     //roughness = 0.1;
     //albedo = 0.0;
 

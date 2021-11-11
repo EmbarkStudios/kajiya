@@ -167,15 +167,21 @@ void main(uint2 px : SV_DispatchThreadID) {
         uint valid_sample_count = 0;
         const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        for (uint sample_i = 0; sample_i < 5 && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+        // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
+        // could be due to lack of bias compensation (the `Z` term)
+        for (uint sample_i = 0; sample_i < 5 && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-            const float rpx_offset_radius = sqrt(float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1) * 6.0;
-            const float2 reservoir_px_offset_base = float2(cos(ang), sin(ang)) * rpx_offset_radius;
+            const float rpx_offset_radius = sqrt(
+                float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
+            ) * clamp(10 - M_sum, 1, 7);
+            const float2 reservoir_px_offset_base = float2(
+                cos(ang), sin(ang)
+            ) * rpx_offset_radius;
 
             const int2 rpx_offset =
                 sample_i == 0
                 ? 0
-                //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3] * clamp(8 - M_sum, 1, 7);
+                //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
                 : int2(reservoir_px_offset_base)
                 ;
 
@@ -314,7 +320,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
                 const float2 raymarch_len_px = (raymarch_end_uv - uv) * gbuffer_tex_size.xy;
 
-                const uint MIN_PX_PER_STEP = 1;
+                const uint MIN_PX_PER_STEP = 2;
                 const uint MAX_TAPS = 2;
 
                 const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));

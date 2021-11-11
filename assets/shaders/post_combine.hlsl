@@ -20,8 +20,9 @@
 #define USE_TIGHT_BLUR 0
 #define USE_DITHER 1
 #define USE_SHARPEN 1
+#define USE_VIGNETTE 1
 
-static const float sharpen_amount = 0.2;
+static const float sharpen_amount = 0.1;
 static const float glare_amount = 0.05;
 //static const float glare_amount = 0.0;
 
@@ -66,7 +67,6 @@ float local_tmo_constrain(float x, float max_compression) {
         return x;
     #endif
 }
-
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
@@ -153,12 +153,15 @@ void main(uint2 px: SV_DispatchThreadID) {
         //col *= 4;
         //col *= 16;
 
+        #if USE_VIGNETTE
+            col *= exp(-2 * pow(length(uv - 0.5), 3));
+        #endif
+
         col = neutral_tonemap(col);
-        //col = 1-exp(-col);
     #endif
 
     // Boost saturation and contrast to compensate for the loss from glare
-    col = saturate(lerp(calculate_luma(col), col, 1.05));
+    //col = saturate(lerp(calculate_luma(col), col, 1.05));
     col = pow(col, 1.03);
 #endif
 
