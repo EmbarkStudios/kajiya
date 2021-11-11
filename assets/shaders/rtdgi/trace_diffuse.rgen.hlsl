@@ -294,34 +294,34 @@ void main() {
 
     bool is_prev_valid = true;
 
-    // Find whether the ray traces the same hit point as previously,
-    // but don't bother for screen edges.
-    /*if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)) && length(prev_hit_pos - prev_ray_orig) > 0.1)
-    {
-        is_prev_valid =
-            !rt_is_shadowed(
-                acceleration_structure,
-                new_ray(
-                    prev_ray_orig,
-                    prev_hit_pos - prev_ray_orig,
-                    0.01,
-                    0.999
-            )) &&
-            (
-                length(prev_hit_pos - prev_ray_orig) > 0.5 * SKY_DIST
-                ||
-                rt_is_shadowed(
+    if (RESTIR_USE_PATH_VALIDATION) {
+        // Find whether the ray traces the same hit point as previously,
+        // but don't bother for screen edges.
+        if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)) && length(prev_hit_pos - prev_ray_orig) > 0.1)
+        {
+            is_prev_valid =
+                !rt_is_shadowed(
                     acceleration_structure,
                     new_ray(
                         prev_ray_orig,
                         prev_hit_pos - prev_ray_orig,
-                        0.99,
-                        2.0
-                ))
-            );
-    }*/
-    
-    is_prev_valid = true;
+                        0.01,
+                        0.999
+                )) &&
+                (
+                    length(prev_hit_pos - prev_ray_orig) > 0.5 * SKY_DIST
+                    ||
+                    rt_is_shadowed(
+                        acceleration_structure,
+                        new_ray(
+                            prev_ray_orig,
+                            prev_hit_pos - prev_ray_orig,
+                            0.99,
+                            2.0
+                    ))
+                );
+        }
+    }
 
     candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
     candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);

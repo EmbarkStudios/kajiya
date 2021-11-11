@@ -73,17 +73,15 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const uint frame_hash = hash1(frame_constants.frame_index);
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_hash) & 3;
-    const float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index);
+    const float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index) * M_TAU;
 
     for (uint sample_i = 0; sample_i < 4; ++sample_i) {
         float3 irradiance_sum = 0;
 
-        //const int2 reservoir_px_offset = 0;
-        float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-        float radius = 1.5 + float(sample_i) * 0.333;
-        int2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
-
-        const int2 rpx = px / 2 + reservoir_px_offset;
+        const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+        const float radius = pow(float(sample_i), 0.666) * 1.0 + 0.4;
+        const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
+        const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));
 
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
         const uint2 spx = reservoir_payload_to_px(r.payload);

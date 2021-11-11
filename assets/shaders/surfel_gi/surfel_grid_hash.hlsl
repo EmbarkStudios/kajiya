@@ -6,7 +6,7 @@
 // surfel_hash_key_buf
 //      4*k: checksum
 
-static const uint MAX_SURFEL_GRID_CELLS = 1024 * 1024;
+static const uint MAX_SURFEL_GRID_CELLS = 1024 * 256;
 static const float SURFEL_GRID_CELL_DIAMETER = 0.25;
 
 static const float SURFEL_RADIUS = 0.3;

@@ -14,21 +14,6 @@
 #include "../surfel_gi/bindings.hlsl"
 #include "restir_settings.hlsl"
 
-// Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
-#define USE_SOFT_SHADOWS 0
-
-#define USE_SURFEL_GI 1
-
-#define USE_TEMPORAL_JITTER 1
-#define USE_SHORT_RAYS_ONLY 0
-#define SHORT_RAY_SIZE_VOXEL_CELLS 4.0
-#define ROUGHNESS_BIAS 0.5
-#define SUPPRESS_GI_FOR_NEAR_HITS 1
-#define USE_SCREEN_GI_REPROJECTION 0
-
-#define USE_EMISSIVE 1
-#define USE_LIGHTS 1
-
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> candidate_irradiance_tex;
@@ -45,7 +30,7 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 [[vk::binding(15)]] RWTexture2D<float4> irradiance_out_tex;
 [[vk::binding(16)]] RWTexture2D<float3> ray_orig_output_tex;
 [[vk::binding(17)]] RWTexture2D<float4> ray_output_tex;
-[[vk::binding(18)]] RWTexture2D<float4> hit_normal_tex;
+[[vk::binding(18)]] RWTexture2D<float4> hit_normal_output_tex;
 [[vk::binding(19)]] RWTexture2D<float4> reservoir_out_tex;
 [[vk::binding(20)]] RWTexture2D<float4> candidate_out_tex;
 [[vk::binding(21)]] cbuffer _ {
@@ -96,7 +81,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     if (0.0 == depth) {
         irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
-        hit_normal_tex[px] = 0.0.xxxx;
+        hit_normal_output_tex[px] = 0.0.xxxx;
         reservoir_out_tex[px] = 0.0.xxxx;
         return;
     }
@@ -109,8 +94,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
     float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
-    const uint seed = USE_TEMPORAL_JITTER ? frame_constants.frame_index : 0;
-    uint rng = hash3(uint3(px, seed));
+    uint rng = hash3(uint3(px, frame_constants.frame_index));
 
     // TODO: use
     float3 light_radiance = 0.0.xxx;
@@ -181,29 +165,27 @@ void main(uint2 px : SV_DispatchThreadID) {
         float M_sum = reservoir.M;
 
         uint valid_sample_count = 0;
-        const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
+        const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        // TODO: permutation sampling
-        for (uint sample_i = 0; sample_i < 2 && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+        for (uint sample_i = 0; sample_i < 5 && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+            const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
+            const float rpx_offset_radius = sqrt(float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1) * 6.0;
+            const float2 reservoir_px_offset_base = float2(cos(ang), sin(ang)) * rpx_offset_radius;
+
             const int2 rpx_offset =
                 sample_i == 0
                 ? 0
-                //: int2((r2_sequence(frame_constants.frame_index & 127) - 0.5) * 2.5)
-                : sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3]
+                //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3] * clamp(8 - M_sum, 1, 7);
+                : int2(reservoir_px_offset_base)
                 ;
 
             const float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
-
-            /*const int2 prev_rpx_offset =
-                sample_i == 0
-                ? 0
-                : sample_offsets[((sample_i - 1) + (frame_constants.frame_index - 1)) & 3]
-                ;*/
 
             // Can't use linear interpolation, but we can interpolate stochastically instead
             //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
             // Or not at all.
             const float2 reproj_rand_offset = 0.0;
+
             int2 reproj_px = floor((
                 sample_i == 0
                 ? px
@@ -220,15 +202,15 @@ void main(uint2 px : SV_DispatchThreadID) {
             const int2 rpx = reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
-            Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
-
             const float3 sample_normal_vs = half_view_normal_tex[rpx];
-
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
-            if (dot(sample_normal_vs, normal_vs) < (sample_i == 0 ? 0.3 : -0.1)) {
+            if (dot(sample_normal_vs, normal_vs) < 0.7) {
                 continue;
             }
+
+            Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
+            const uint2 spx = reservoir_payload_to_px(r.payload);
 
             const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
             const float sample_depth = depth_tex[rpx_hi];
@@ -245,32 +227,32 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-            const float3 sample_origin_ws = sample_ray_ctx.biased_secondary_ray_origin_ws();
+            //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+            const float4 sample_hit_ws_and_dist = ray_history_tex[spx]/* + float4(get_prev_eye_position(), 0.0)*/;
+            const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
+            //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
+            //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
+            const float prev_dist = sample_hit_ws_and_dist.w;
+            //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
-            const float4 prev_hit_ws_and_dist = ray_history_tex[rpx]/* + float4(get_prev_eye_position(), 0.0)*/;
-            const float3 prev_hit_ws = prev_hit_ws_and_dist.xyz;
-            const float prev_dist = prev_hit_ws_and_dist.w;
-            //const float prev_dist = length(prev_hit_ws - sample_origin_ws);
+            // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
+            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
 
             /*if (sample_i > 0 && !(prev_dist > 1e-4)) {
                 continue;
             }*/
 
-            const float3 sample_dir_unnorm = prev_hit_ws - refl_ray_origin;
-            const float sample_dist = length(sample_dir_unnorm);
-            const float3 sample_dir = normalize(sample_dir_unnorm);
+            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin;
+            const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
+            const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
-            if (dot(sample_dir, normal_ws) < 1e-3) {
+            if (dot(dir_to_sample_hit, normal_ws) < 1e-3) {
                 continue;
             }
             
-            const float4 prev_irrad = irradiance_history_tex[rpx];
-
-            // TODO: need the previous normal (last frame)
-            //const float4 prev_hit_normal_ws_dot = hit_normal_tex[rpx];
+            const float4 prev_irrad = irradiance_history_tex[spx];
 
             // From the ReSTIR paper:
             // With temporal reuse, the number of candidates M contributing to the
@@ -286,12 +268,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
             #if !DIFFUSE_GI_BRDF_SAMPLING
-                p_q *= max(0, dot(sample_dir, normal_ws));
+                p_q *= max(0, dot(dir_to_sample_hit, normal_ws));
             #endif
 
             float visibility = 1;
-
-            const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[rpx];
 
             float jacobian = 1;
 
@@ -299,41 +279,70 @@ void main(uint2 px : SV_DispatchThreadID) {
             //if (sample_i > 0)
             {
                 // Distance falloff. Needed to avoid leaks.
-                jacobian *= clamp(prev_dist, 1e-4, 1e4) / clamp(sample_dist, 1e-4, 1e4);
+                jacobian *= clamp(prev_dist, 1e-4, 1e4) / clamp(dist_to_sample_hit, 1e-4, 1e4);
                 jacobian *= jacobian;
 
                 // N of hit dot -L. Needed to avoid leaks.
-                jacobian *= max(0.0, -dot(prev_hit_normal_ws_dot.xyz, sample_dir)) / max(1e-4, prev_hit_normal_ws_dot.w);
+                jacobian *=
+                    max(0.0, -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit))
+                    / max(1e-5, sample_hit_normal_ws_dot.w);
+                    /// max(1e-5, -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws));
 
-                // Note: causes flicker due to normal differences between frames (TAA, half-res downsample jitter).
-                // Might be better to apply at the end, in spatial resolve. When used with the bias,
-                // causes severe darkening instead (on bumpy normal mapped surfaces).
-                //
-                // N dot L. Useful for normal maps, micro detail.
-                // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
-                // when we don't use a harsh normal cutoff to exchange reservoirs with.
-                //jacobian *= min(1, max(0.0, prev_irrad.a) / dot(sample_dir, normal_ws));
-                //jacobian *= max(0.0, prev_irrad.a) / dot(sample_dir, normal_ws);
-                // TODO: find best pixel to reproject to
+                #if DIFFUSE_GI_BRDF_SAMPLING
+                    // N dot L. Useful for normal maps, micro detail.
+                    // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
+                    // when we don't use a harsh normal cutoff to exchange reservoirs with.
+                    //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
+                    //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
+                #endif
             }
+
+            // Raymarch to check occlusion
+            if (sample_i > 0) {
+                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+                const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
+        		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
+
+                // TODO: finish the derivations, don't perspective-project for every sample.
+
+                const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
+                const float3 raymarch_end_ws =
+                    view_ray_context.ray_hit_ws()
+                    // TODO: what's a good max distance to raymarch? Probably need to project some stuff
+                    + raymarch_dir_unnorm_ws * min(1.0, length(surface_offset_vs) / length(raymarch_dir_unnorm_ws));
+
+                const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
+                const float2 raymarch_len_px = (raymarch_end_uv - uv) * gbuffer_tex_size.xy;
+
+                const uint MIN_PX_PER_STEP = 1;
+                const uint MAX_TAPS = 2;
+
+                const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
+
+                // Depth values only have the front; assume a certain thickness.
+                const float Z_LAYER_THICKNESS = 0.05;
+
+                for (int k = 0; k < k_count; ++k) {
+                    const float t = (k + 0.5) / k_count;
+                    const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
+                    const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
+                    const float depth_at_interp = depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
+                    if (depth_at_interp > interp_pos_cs.z) {
+                        visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
+                    }
+                }
+    		}
 
             M_sum += r.M;
             if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {
-                outgoing_dir = sample_dir;
+                outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
-                jacobian = jacobian;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
-                ray_orig_sel = ray_orig_history_tex[rpx];
-                ray_hit_sel = prev_hit_ws;
-                hit_normal_sel = prev_hit_normal_ws_dot.xyz;
+                ray_orig_sel = ray_orig_history_tex[spx];
+                ray_hit_sel = sample_hit_ws;
+                hit_normal_sel = sample_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
-            }
-
-            // Terminate as soon as we have a good sample
-            //if (sample_i == 0)
-            {
-                //break;
             }
         }
 
@@ -357,8 +366,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     /*if (any(src_px_sel != px)) {
         const uint2 spx = src_px_sel;
-        const float4 prev_hit_normal_ws_dot = hit_normal_history_tex[spx];
-        jacobian *= max(0.0, hit_normal_ws_dot.w) / max(1e-4, prev_hit_normal_ws_dot.w);
+        const float4 hit_normal_ws_dot = hit_normal_history_tex[spx];
+        jacobian *= max(0.0, hit_normal_ws_dot.w) / max(1e-4, hit_normal_ws_dot.w);
     }*/
 
 #if 1
@@ -377,7 +386,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
     ray_orig_output_tex[px] = ray_orig_sel;
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
-    hit_normal_tex[px] = hit_normal_ws_dot;
+    hit_normal_output_tex[px] = hit_normal_ws_dot;
     ray_output_tex[px] = float4(ray_hit_sel/* - get_eye_position()*/, length(ray_hit_sel - refl_ray_origin));
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif

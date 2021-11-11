@@ -84,6 +84,8 @@ struct ViewRayContext {
         return normalize(ray_dir_ws_h.xyz);
     }
 
+    // TODO: might need previous frame versions of those
+
     float3 ray_origin_vs() {
         return ray_origin_vs_h.xyz / ray_origin_vs_h.w;
     }

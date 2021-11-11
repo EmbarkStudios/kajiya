@@ -50,7 +50,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         return;
     }
 
-    const float ang_off = (frame_constants.frame_index * 11) % 32 * M_PI * 2;
+    const float ang_off = (frame_constants.frame_index * 13) % 32 * M_TAU;
 
     const uint MAX_SAMPLE_COUNT = 8;
     const float MAX_RADIUS_PX = 16.0;
@@ -60,7 +60,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     // Must be constants, so the `pow` can be const-folded.
     const float KERNEL_SHARPNESS = 0.666;
 
-    const uint sample_count = min(uint(exp2(4.0 * square(1.0 - center_validity))), MAX_SAMPLE_COUNT);
+    const uint sample_count = clamp(uint(exp2(4.0 * square(1.0 - center_validity))), 2, MAX_SAMPLE_COUNT);
 
     {
         sum += float4(crunch(center_value), 1);
@@ -84,7 +84,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 wt *= exp2(-100.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
                 #if USE_SSAO_STEERING
-                    wt *= exp2(-5.0 * abs(sample_ssao - center_ssao));
+                    wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
                 #endif
 
                 sum += float4(crunch(sample_val), 1.0) * wt;

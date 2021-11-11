@@ -2,6 +2,7 @@
 #include "../inc/hash.hlsl"
 #include "../inc/quasi_random.hlsl"
 #include "../inc/math.hlsl"
+#include "restir_settings.hlsl"
 
 #define USE_SSAO_STEERING 1
 #define USE_DYNAMIC_KERNEL_RADIUS 0
@@ -20,11 +21,15 @@
 [numthreads(8, 8, 1)]
 void main(in uint2 px : SV_DispatchThreadID) {
     float2 invalid_blurred = 0;
-    {
+
+    const float center_depth = half_depth_tex[px];
+    const float4 reproj = reprojection_tex[px * 2];
+
+    if (RESTIR_USE_PATH_VALIDATION) {
     	{const int k = 2;
         for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
-                const int2 offset = int2(x, y) * 2;
+                const int2 offset = int2(x, y);
                 //float w = 1;
                 float w = exp2(-0.1 * dot(offset, offset));
                 invalid_blurred += float2(input_tex[px + offset], 1) * w;
@@ -33,16 +38,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
         invalid_blurred /= invalid_blurred.y;
         invalid_blurred.x = lerp(invalid_blurred.x, WaveReadLaneAt(invalid_blurred.x, WaveGetLaneIndex() ^ 2), 0.5);
         invalid_blurred.x = lerp(invalid_blurred.x, WaveReadLaneAt(invalid_blurred.x, WaveGetLaneIndex() ^ 16), 0.5);
-        invalid_blurred.x = lerp(invalid_blurred.x, WaveActiveSum(invalid_blurred.x) / 64.0, 0.25);
+        //invalid_blurred.x = lerp(invalid_blurred.x, WaveActiveSum(invalid_blurred.x) / 64.0, 0.25);
+
+        const float2 reproj_rand_offset = 0.0;
+
+        invalid_blurred.x = smoothstep(0.1, 1.0, invalid_blurred.x);
     }
-
-    const float4 reproj = reprojection_tex[px * 2];
-    const float2 reproj_rand_offset = 0.0;
-
-    const float center_depth = half_depth_tex[px];
-
-    //invalid_blurred = invalid_blurred * 10;
-    invalid_blurred.x = 0;
     
     /*if (reproj.z == 0) {
         invalid_blurred.x += 1;
@@ -72,7 +73,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     edge = max(edge, WaveReadLaneAt(edge, WaveGetLaneIndex() ^ 8));
     /*edge = max(edge, WaveReadLaneAt(edge, WaveGetLaneIndex() ^ 4));
     edge = max(edge, WaveReadLaneAt(edge, WaveGetLaneIndex() ^ 32));*/
-    invalid_blurred.x = edge;
+    invalid_blurred.x += edge;
 
     invalid_blurred = saturate(invalid_blurred);
 
