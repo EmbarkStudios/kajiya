@@ -35,6 +35,12 @@ void main(uint2 px: SV_DispatchThreadID) {
     float2 prev_uv = uv + reproj.xy;
 
     uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
+
+    // For the sharpening (4x4) kernel, we need to know whether our neighbors are valid too,
+    // as otherwise we end up over-sharpening with fake history (moving edges rather than scene features).
+    const uint4 reproj_valid_neigh =
+        uint4(reprojection_tex.GatherBlue(sampler_nnc, uv + 0.5 * sign(prev_uv) * output_tex_size.zw) * 15.0 + 0.5);
+
     float4 history = 0.0.xxxx;
 
     /*if (length(uv - 0.5.xx) < 0.1) {
@@ -46,10 +52,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     if (0 == quad_reproj_valid_packed) {
         // Everything invalid
     } else if (15 == quad_reproj_valid_packed) {
-        if (USE_SHARPENING_HISTORY_FETCH) {
-            // Since this uses a 4x4 kernel footprint, it's not quite correct. The validity mask
-            // we have is only for the bilinear (2x2) footprint, so the samples used for the
-            // tail of the kernel might be misprojected.
+        if (USE_SHARPENING_HISTORY_FETCH && all(reproj_valid_neigh == 15)) {
             history = max(0.0.xxxx, image_sample_catmull_rom(
                 TextureImage::from_parts(input_tex, output_tex_size.xy),
                 prev_uv,

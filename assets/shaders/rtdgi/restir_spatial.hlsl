@@ -324,7 +324,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     // reservoir.W = min(reservoir.W, 5);
 
     // TODO: find out if we can get away with this:
-    reservoir.W = min(reservoir.W, 2);
+    reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
 
     reservoir_output_tex[px] = reservoir.as_raw();
 }

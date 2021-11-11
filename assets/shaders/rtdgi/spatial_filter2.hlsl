@@ -19,15 +19,14 @@
 float square(float x) { return x * x; }
 float max3(float x, float y, float z) { return max(x, max(y, z)); }
 
+// Bias towards dimmer input -- we don't care about energy loss here
+// since this does not feed into subsequent passes, but want to minimize noise.
+//
+// https://gpuopen.com/learn/optimized-reversible-tonemapper-for-resolve/
 float3 crunch(float3 v) {
-    //return sqrt(v);
-    //return v;
     return v * rcp(max3(v.r, v.g, v.b) + 1.0);
 }
-
 float3 uncrunch(float3 v) {
-    //return v * v;
-    //return v;
     return v * rcp(1.0 - max3(v.r, v.g, v.b));
 }
 

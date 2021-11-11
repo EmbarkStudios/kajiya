@@ -184,7 +184,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float ang_offset = uint_to_u01_float(hash1_mut(rng)) * M_PI * 2;
 
         // TODO: permutation sampling
-        for (uint sample_i = 0; sample_i < 5; ++sample_i) {
+        for (uint sample_i = 0; sample_i < 2 && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
             const int2 rpx_offset =
                 sample_i == 0
                 ? 0
@@ -194,12 +194,28 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
 
+            /*const int2 prev_rpx_offset =
+                sample_i == 0
+                ? 0
+                : sample_offsets[((sample_i - 1) + (frame_constants.frame_index - 1)) & 3]
+                ;*/
+
             // Can't use linear interpolation, but we can interpolate stochastically instead
             //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
             // Or not at all.
             const float2 reproj_rand_offset = 0.0;
-            //int2 reproj_px = floor((sample_i == 0 ? px : (px ^ 3)) + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
-            int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
+            int2 reproj_px = floor((
+                sample_i == 0
+                ? px
+                // My poor approximation of permutation sampling.
+                // https://twitter.com/more_fps/status/1457749362025459715
+                //
+                // When applied everywhere, it does nicely reduce noise, but also makes the GI less reactive
+                // since we're effectively increasing the lifetime of the most attractive samples.
+                // Where it does come in handy though is for boosting convergence rate for newly revealed
+                // locations.
+                : ((px + /*prev_*/rpx_offset) ^ 3)) + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
+            //int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
 
             const int2 rpx = reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
@@ -317,7 +333,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Terminate as soon as we have a good sample
             //if (sample_i == 0)
             {
-                break;
+                //break;
             }
         }
 
@@ -325,6 +341,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         reservoir.M = M_sum;
         reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
+
+        // TODO: find out if we can get away with this:
+        reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
     }
 
     RayDesc outgoing_ray;
