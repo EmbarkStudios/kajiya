@@ -8,6 +8,7 @@
 
 pub mod atmosphere;
 pub mod bilinear;
+pub mod blur;
 pub mod calculate_reprojection_map;
 pub mod color;
 pub mod constants;
