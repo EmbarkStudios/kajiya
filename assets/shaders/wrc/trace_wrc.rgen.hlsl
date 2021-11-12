@@ -216,7 +216,7 @@ void main() {
         float4 blended_value = lerp(prev_value, new_value, 1.0 / TARGET_SAMPLE_COUNT);
 
         if (USE_FLICKER_SUPPRESSION) {
-            blended_value.rgb = min(blended_value.rgb, prev_value.rgb * 2 + 1);
+            blended_value.rgb = min(blended_value.rgb, prev_value.rgb * 2 + normalize(blended_value.rgb));
         }
 
         radiance_atlas_out_tex[atlas_px] = blended_value;

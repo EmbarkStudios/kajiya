@@ -8,6 +8,7 @@
 #include "../inc/layered_brdf.hlsl"
 #include "../inc/rt.hlsl"
 #include "../inc/hash.hlsl"
+#include "../inc/quasi_random.hlsl"
 #include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/mesh.hlsl"
@@ -44,6 +45,8 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
+static const bool USE_FLICKER_SUPPRESSION = true;
+static const uint TARGET_SAMPLE_COUNT = 32;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -70,7 +73,7 @@ void main() {
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
-    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], 32);
+    float4 prev_total_radiance_packed = min(surfel_irradiance_buf[surfel_idx], TARGET_SAMPLE_COUNT);
 
     DiffuseBrdf brdf;
     const float3x3 tangent_to_world = build_orthonormal_basis(surfel.normal);
@@ -87,10 +90,16 @@ void main() {
 
         RayDesc outgoing_ray;
         {
-            float2 urand = float2(
-                uint_to_u01_float(hash1_mut(rng)),
-                uint_to_u01_float(hash1_mut(rng))
-            );
+            #if 0
+                float2 urand = float2(
+                    uint_to_u01_float(hash1_mut(rng)),
+                    uint_to_u01_float(hash1_mut(rng))
+                );
+            #else
+                float2 urand = r2_sequence(
+                    (frame_constants.frame_index * sample_count + sample_idx + hash1(surfel_idx)
+                ) % (TARGET_SAMPLE_COUNT * 64));
+            #endif
 
             /*float3 dir = uniform_sample_sphere(urand);
 
@@ -291,9 +300,19 @@ void main() {
 
     const float value_mult = HEMISPHERE_ONLY ? 1 : 2;
 
+    float3 prev_value = prev_total_radiance_packed.rgb;
+    float3 new_value = irradiance_sum;
+
+    if (USE_FLICKER_SUPPRESSION) {
+        //prev_value = clamp(prev_value, new_value * 0.1, new_value * 3.0 + normalize(prev_value.rgb));
+        //blended_value.rgb = clamp(blended_value.rgb, prev_value.rgb * 0.5, prev_value.rgb * 10 + 0.01 * normalize(blended_value.rgb));
+    }
+
+    float3 blended_value = lerp(prev_value, new_value, blend_factor_new);
+
     //surfel_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
     surfel_irradiance_buf[surfel_idx] = max(0.0, float4(
-        lerp(prev_total_radiance_packed.rgb, irradiance_sum, blend_factor_new),
+        blended_value,
         total_sample_count
     ));
     //surfel_sh_buf[surfel_idx * 3 + 0] = lerp(surfel_sh_buf[surfel_idx * 3 + 0], r_values, blend_factor_new);

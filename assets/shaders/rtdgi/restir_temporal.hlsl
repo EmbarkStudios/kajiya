@@ -173,7 +173,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
                 float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
-            ) * clamp(10 - M_sum, 1, 7);
+            ) * clamp(8 - M_sum, 1, 7); // TODO: keep high in noisy situations
+            //) * 7;
             const float2 reservoir_px_offset_base = float2(
                 cos(ang), sin(ang)
             ) * rpx_offset_radius;

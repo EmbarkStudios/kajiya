@@ -179,7 +179,7 @@ void main() {
         }
     } else {
         if (far_field.is_hit()) {
-            total_radiance += far_field.radiance;
+            total_radiance += far_field.radiance * far_field.inv_pdf;
         } else {
             total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
         }

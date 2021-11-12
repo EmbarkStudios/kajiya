@@ -9,7 +9,9 @@ float4 lookup_wrc(int3 probe_coord, float3 dir) {
     const uint2 tile = wrc_probe_idx_to_atlas_tile(probe_idx);
     const float2 tile_uv = octa_encode(dir);
     const uint2 atlas_px = uint2((tile + tile_uv) * WRC_PROBE_DIMS);
-    return wrc_radiance_atlas_tex[atlas_px];
+    //return wrc_radiance_atlas_tex[atlas_px];
+    const float2 atlas_uv = float2(tile + clamp(tile_uv, 0.5 / WRC_PROBE_DIMS, 1.0 - 0.5 / WRC_PROBE_DIMS)) / WRC_ATLAS_PROBE_COUNT;
+    return wrc_radiance_atlas_tex.SampleLevel(sampler_llc, atlas_uv, 0);
 }
 
 struct WrcFarField;
@@ -93,15 +95,17 @@ WrcFarField WrcFarFieldQuery::query() {
             // does that, some texels of the probe will shrink, and others expand.
             // Here we adjust for this expansion, making sure energy does not get
             // biased towards the texels we're moving towards.
+            const float distance_to_box = length(origin_in_box - ray_origin);
             const float3 parallax_pos = ray_origin + ray_direction * parallax.t;
-            const float3 offset_from_query_pt = parallax_pos - origin_in_box;
+            const float3 offset_from_query_pt = parallax_pos - ray_origin;
             const float3 offset_from_probe_center = parallax_pos - probe_center;
             const float parallax_dist2 = dot(offset_from_query_pt, offset_from_query_pt);
 
+            // TODO: check all this
             float jacobian = 1;
             if (all(query_normal) != 0) {
                 jacobian *=
-                    parallax_dist2 / (WRC_MIN_TRACE_DIST * WRC_MIN_TRACE_DIST)
+                    parallax_dist2 / pow(distance_to_box + WRC_MIN_TRACE_DIST, 2)
                     / dot(ray_direction, normalize(offset_from_probe_center));
 
                 // Also account for the change in the PDF being used in lighting.

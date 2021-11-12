@@ -283,7 +283,7 @@ void main() {
     outgoing_ray.TMin = 0;
     outgoing_ray.TMax = SKY_DIST;
 
-    uint rng = hash3(uint3(px, frame_constants.frame_index));
+    uint rng = hash3(uint3(px, frame_constants.frame_index & 31));
     TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
 
     const float4 reproj = reprojection_tex[hi_px];

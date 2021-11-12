@@ -158,6 +158,10 @@ struct Aabb {
         // return t_min <= t_max && t_min < t && t_max >= 0.0;
         return res;
     }
+
+    bool contains_point(float3 p) {
+        return all(p >= pmin) && all(p <= pmax);
+    }
 };
 
 #endif

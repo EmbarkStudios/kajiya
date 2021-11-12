@@ -176,7 +176,9 @@ void main() {
             outgoing_ray.TMax = far_field.probe_t;
         }
 
-        const float reflected_cone_spread_angle = 0.2;
+        // See note in `assets/shaders/rtr/resolve.hlsl`
+        const float reflected_cone_spread_angle = sqrt(gbuffer.roughness) * 0.1;
+
         const RayCone ray_cone =
             pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
             .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
