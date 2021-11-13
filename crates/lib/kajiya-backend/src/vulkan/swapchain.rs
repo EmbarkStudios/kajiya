@@ -203,6 +203,8 @@ impl Swapchain {
     pub fn acquire_next_image(
         &mut self,
     ) -> std::result::Result<SwapchainImage, SwapchainAcquireImageErr> {
+        puffin::profile_function!();
+
         let acquire_semaphore = self.semaphores[self.next_semaphore];
         let present_index = unsafe {
             self.fns.acquire_next_image(
@@ -236,6 +238,8 @@ impl Swapchain {
     }
 
     pub fn present_image(&self, image: SwapchainImage, wait_semaphores: &[vk::Semaphore]) {
+        puffin::profile_scope!("present_image");
+
         let present_info = vk::PresentInfoKHR::builder()
             .wait_semaphores(wait_semaphores)
             .swapchains(std::slice::from_ref(&self.raw))

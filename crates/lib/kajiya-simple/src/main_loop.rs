@@ -147,6 +147,8 @@ pub struct SimpleMainLoop {
     render_backend: RenderBackend,
     rg_renderer: kajiya::rg::renderer::Renderer,
     render_extent: [u32; 2],
+
+    puffin_server: puffin_http::Server,
 }
 
 impl SimpleMainLoop {
@@ -229,6 +231,12 @@ impl SimpleMainLoop {
             imgui,
         };
 
+        let server_addr = format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT);
+        log::info!("Serving profile data on {}", server_addr);
+
+        let puffin_server = puffin_http::Server::new(&server_addr).unwrap();
+        puffin::set_scopes_on(true);
+
         Ok(Self {
             window,
             world_renderer,
@@ -238,6 +246,7 @@ impl SimpleMainLoop {
             render_backend,
             rg_renderer,
             render_extent,
+            puffin_server,
         })
     }
 
@@ -259,6 +268,7 @@ impl SimpleMainLoop {
             mut render_backend,
             mut rg_renderer,
             render_extent,
+            puffin_server,
         } = self;
 
         let mut events = Vec::new();
@@ -266,118 +276,129 @@ impl SimpleMainLoop {
         let mut last_frame_instant = std::time::Instant::now();
         let mut last_error_text = None;
 
-        event_loop.run_return(move |event, _, control_flow| {
-            let _ = &render_backend;
-            #[cfg(feature = "dear-imgui")]
-            optional
-                .imgui_backend
-                .handle_event(&window, &mut optional.imgui, &event);
+        let mut running = true;
+        while running {
+            puffin::profile_scope!("main loop");
+            puffin::GlobalProfiler::lock().new_frame();
 
-            #[cfg(feature = "dear-imgui")]
-            let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
+            event_loop.run_return(|event, _, control_flow| {
+                puffin::profile_scope!("event handler");
 
-            #[cfg(not(feature = "dear-imgui"))]
-            let ui_wants_mouse = false;
+                let _ = &render_backend;
+                #[cfg(feature = "dear-imgui")]
+                optional
+                    .imgui_backend
+                    .handle_event(&window, &mut optional.imgui, &event);
 
-            // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-            // dispatched any events. This is ideal for games and similar applications.
-            *control_flow = ControlFlow::Poll;
+                #[cfg(feature = "dear-imgui")]
+                let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
 
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
-                        if ui_wants_mouse => {}
-                    _ => events.extend(event.to_static()),
-                },
-                Event::MainEventsCleared => {
-                    // Application update code.
+                #[cfg(not(feature = "dear-imgui"))]
+                let ui_wants_mouse = false;
 
-                    window.request_redraw();
+                *control_flow = ControlFlow::Poll;
+
+                match event {
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::CloseRequested => {
+                            *control_flow = ControlFlow::Exit;
+                            running = false;
+                        }
+                        WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
+                            if ui_wants_mouse => {}
+                        _ => events.extend(event.to_static()),
+                    },
+                    Event::MainEventsCleared => {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    _ => (),
                 }
-                Event::RedrawRequested(_) => {
-                    let now = std::time::Instant::now();
-                    let dt_duration = now - last_frame_instant;
-                    let dt = dt_duration.as_secs_f32();
-                    last_frame_instant = now;
+            });
 
-                    let frame_desc = frame_fn(FrameContext {
-                        dt,
-                        render_extent,
-                        events: &events,
-                        world_renderer: &mut world_renderer,
+            puffin::profile_scope!("MainEventsCleared");
 
-                        #[cfg(feature = "dear-imgui")]
-                        imgui: Some(ImguiContext {
-                            imgui: &mut optional.imgui,
-                            imgui_backend: &mut optional.imgui_backend,
-                            ui_renderer: &mut ui_renderer,
-                            dt,
-                            window: &window,
-                        }),
-                    });
+            // Application update code.
+            let now = std::time::Instant::now();
+            //let dt_duration = now - last_frame_instant;
+            let dt = 1.0 / 60.0; //dt_duration.as_secs_f32();
+            last_frame_instant = now;
 
-                    events.clear();
+            let frame_desc = frame_fn(FrameContext {
+                dt,
+                render_extent,
+                events: &events,
+                world_renderer: &mut world_renderer,
 
-                    // Physical window extent in pixels
-                    let swapchain_extent = [window.inner_size().width, window.inner_size().height];
+                #[cfg(feature = "dear-imgui")]
+                imgui: Some(ImguiContext {
+                    imgui: &mut optional.imgui,
+                    imgui_backend: &mut optional.imgui_backend,
+                    ui_renderer: &mut ui_renderer,
+                    dt,
+                    window: &window,
+                }),
+            });
 
-                    let prepared_frame = rg_renderer.prepare_frame(|rg| {
-                        rg.debug_hook = world_renderer.rg_debug_hook.take();
-                        let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
-                        let ui_img = ui_renderer.prepare_render_graph(rg);
+            events.clear();
 
-                        let mut swap_chain = rg.get_swap_chain();
-                        rg::SimpleRenderPass::new_compute(
-                            rg.add_pass("final blit"),
-                            "/shaders/final_blit.hlsl",
-                        )
-                        .read(&main_img)
-                        .read(&ui_img)
-                        .write(&mut swap_chain)
-                        .constants((
-                            main_img.desc().extent_inv_extent_2d(),
-                            [
-                                swapchain_extent[0] as f32,
-                                swapchain_extent[1] as f32,
-                                1.0 / swapchain_extent[0] as f32,
-                                1.0 / swapchain_extent[1] as f32,
-                            ],
-                        ))
-                        .dispatch([
-                            swapchain_extent[0],
-                            swapchain_extent[1],
-                            1,
-                        ]);
-                    });
+            // Physical window extent in pixels
+            let swapchain_extent = [window.inner_size().width, window.inner_size().height];
 
-                    match prepared_frame {
-                        Ok(()) => {
-                            rg_renderer.draw_frame(
-                                |dynamic_constants| {
-                                    world_renderer.prepare_frame_constants(
-                                        dynamic_constants,
-                                        &frame_desc,
-                                        dt,
-                                    )
-                                },
-                                &mut render_backend.swapchain,
-                            );
-                            world_renderer.retire_frame();
-                            last_error_text = None;
-                        }
-                        Err(e) => {
-                            let error_text = Some(format!("{:?}", e));
-                            if error_text != last_error_text {
-                                println!("{}", error_text.as_ref().unwrap());
-                                last_error_text = error_text;
-                            }
-                        }
+            let prepared_frame = {
+                puffin::profile_scope!("prepare_frame");
+                rg_renderer.prepare_frame(|rg| {
+                    rg.debug_hook = world_renderer.rg_debug_hook.take();
+                    let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
+                    let ui_img = ui_renderer.prepare_render_graph(rg);
+
+                    let mut swap_chain = rg.get_swap_chain();
+                    rg::SimpleRenderPass::new_compute(
+                        rg.add_pass("final blit"),
+                        "/shaders/final_blit.hlsl",
+                    )
+                    .read(&main_img)
+                    .read(&ui_img)
+                    .write(&mut swap_chain)
+                    .constants((
+                        main_img.desc().extent_inv_extent_2d(),
+                        [
+                            swapchain_extent[0] as f32,
+                            swapchain_extent[1] as f32,
+                            1.0 / swapchain_extent[0] as f32,
+                            1.0 / swapchain_extent[1] as f32,
+                        ],
+                    ))
+                    .dispatch([swapchain_extent[0], swapchain_extent[1], 1]);
+                })
+            };
+
+            match prepared_frame {
+                Ok(()) => {
+                    puffin::profile_scope!("draw_frame");
+                    rg_renderer.draw_frame(
+                        |dynamic_constants| {
+                            world_renderer.prepare_frame_constants(
+                                dynamic_constants,
+                                &frame_desc,
+                                dt,
+                            )
+                        },
+                        &mut render_backend.swapchain,
+                    );
+                    world_renderer.retire_frame();
+                    last_error_text = None;
+                }
+                Err(e) => {
+                    let error_text = Some(format!("{:?}", e));
+                    if error_text != last_error_text {
+                        println!("{}", error_text.as_ref().unwrap());
+                        last_error_text = error_text;
                     }
                 }
-                _ => (),
             }
-        });
+        }
+
+        drop(puffin_server);
 
         Ok(())
     }

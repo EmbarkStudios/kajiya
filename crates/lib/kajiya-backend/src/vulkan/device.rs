@@ -505,6 +505,8 @@ impl Device {
         // Wait for the the GPU to be done with the previously submitted frame,
         // so that we can access its data again
         unsafe {
+            puffin::profile_scope!("wait submit done");
+
             self.raw
                 .wait_for_fences(
                     std::slice::from_ref(&frame0.command_buffer.submit_done_fence),

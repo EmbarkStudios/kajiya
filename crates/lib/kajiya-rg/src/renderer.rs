@@ -217,7 +217,7 @@ impl Renderer {
                 .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
                 .expect("reset_fences");
 
-            //println!("queue_submit");
+            puffin::profile_scope!("queue_submit");
             raw_device
                 .queue_submit(
                     self.device.universal_queue.raw,

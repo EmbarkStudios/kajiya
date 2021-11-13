@@ -82,6 +82,16 @@ struct HistoryRemap {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
+    if (px.y < 50) {
+        float4 val = 0;
+        if (px.x < frame_constants.frame_index * 10 % uint(output_tex_size.x)) {
+            val = 1;
+        }
+        output_tex[px] = val;
+        debug_output_tex[px] = val;
+        return;
+    }
+
     const float2 input_resolution_scale = input_tex_size.xy / output_tex_size.xy;
     const uint2 reproj_px = uint2((px + 0.5) * input_resolution_scale);
 
