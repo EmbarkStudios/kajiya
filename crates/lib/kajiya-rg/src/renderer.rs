@@ -134,33 +134,14 @@ impl Renderer {
         let device = &*self.device;
         let raw_device = &device.raw;
 
-        // Wait for the the GPU to be done with the previously submitted frame,
-        // so that we can access its data again.
-        //
-        // We can't use device.frame[0] before this, or we race with the GPU.
-        //
-        // TODO: the wait here protects more than the command buffers (such as dynamic constants),
-        // but the fence belongs to command buffers, creating a confusing relationship.
-        unsafe {
-            let current_frame = self.device.current_frame();
-            puffin::profile_scope!("wait submit done");
+        let current_frame = self.device.begin_frame();
 
-            raw_device
-                .wait_for_fences(
-                    &[
-                        current_frame.main_command_buffer.submit_done_fence,
-                        current_frame.presentation_command_buffer.submit_done_fence,
-                    ],
-                    true,
-                    std::u64::MAX,
-                )
-                .expect("Wait for fence failed.");
-
-            // Both command buffers are accessible now, so begin recording.
-            for cb in [
-                &current_frame.main_command_buffer,
-                &current_frame.presentation_command_buffer,
-            ] {
+        // Both command buffers are accessible now, so begin recording.
+        for cb in [
+            &current_frame.main_command_buffer,
+            &current_frame.presentation_command_buffer,
+        ] {
+            unsafe {
                 raw_device
                     .reset_command_buffer(cb.raw, vk::CommandBufferResetFlags::default())
                     .unwrap();
@@ -175,12 +156,9 @@ impl Renderer {
             }
         }
 
-        self.device.begin_frame();
-
         // Now that we can write to GPU data, prepare global frame constants.
         let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
 
-        let current_frame = self.device.current_frame();
         let mut executing_rg: ExecutingRenderGraph;
 
         // Record and submit the main command buffer
@@ -205,6 +183,7 @@ impl Renderer {
                 )
             };
 
+            // Record and submit the main command buffer
             unsafe {
                 puffin::profile_scope!("main cb");
 
@@ -280,6 +259,7 @@ impl Renderer {
                 .profiler_data
                 .finish_frame(device, presentation_cb.raw);
 
+            // Record and submit the presentation command buffer
             unsafe {
                 raw_device.end_command_buffer(presentation_cb.raw).unwrap();
 
@@ -304,6 +284,7 @@ impl Renderer {
             }
 
             swapchain.present_image(swapchain_image);
+
             retired_rg
         };
 
