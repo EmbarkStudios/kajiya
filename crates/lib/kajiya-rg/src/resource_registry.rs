@@ -1,3 +1,5 @@
+use crate::{GraphResourceInfo, RenderGraphPipelines};
+
 use super::{
     graph::RenderGraphExecutionParams, resource::*, RgComputePipelineHandle,
     RgRasterPipelineHandle, RgRtPipelineHandle,
@@ -5,7 +7,6 @@ use super::{
 use kajiya_backend::{
     ash::vk,
     dynamic_constants::DynamicConstants,
-    pipeline_cache::{ComputePipelineHandle, RasterPipelineHandle, RtPipelineHandle},
     vk_sync,
     vulkan::{
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
@@ -14,15 +15,23 @@ use kajiya_backend::{
 };
 use std::sync::Arc;
 
+pub struct PendingRenderResourceInfo {
+    pub(crate) resource: GraphResourceInfo,
+}
+
 pub enum AnyRenderResource {
     OwnedImage(Image),
     ImportedImage(Arc<Image>),
     OwnedBuffer(Buffer),
     ImportedBuffer(Arc<Buffer>),
     ImportedRayTracingAcceleration(Arc<RayTracingAcceleration>),
+
+    // Must be replaced before access. Used to late-update swapchain resources.
+    Pending(PendingRenderResourceInfo),
 }
 
 impl AnyRenderResource {
+    #[track_caller]
     pub fn borrow(&self) -> AnyRenderResourceRef {
         match self {
             AnyRenderResource::OwnedImage(inner) => AnyRenderResourceRef::Image(inner),
@@ -31,6 +40,9 @@ impl AnyRenderResource {
             AnyRenderResource::ImportedBuffer(inner) => AnyRenderResourceRef::Buffer(&*inner),
             AnyRenderResource::ImportedRayTracingAcceleration(inner) => {
                 AnyRenderResourceRef::RayTracingAcceleration(&*inner)
+            }
+            AnyRenderResource::Pending { .. } => {
+                panic!("AnyRenderResource::borrow called while the resource was in Pending state")
             }
         }
     }
@@ -48,12 +60,10 @@ pub(crate) struct RegistryResource {
 }
 
 pub struct ResourceRegistry<'exec_params, 'constants> {
-    pub execution_params: &'exec_params RenderGraphExecutionParams<'exec_params>,
+    pub execution_params: RenderGraphExecutionParams<'exec_params>,
     pub(crate) resources: Vec<RegistryResource>,
     pub dynamic_constants: &'constants mut DynamicConstants,
-    pub compute_pipelines: Vec<ComputePipelineHandle>,
-    pub raster_pipelines: Vec<RasterPipelineHandle>,
-    pub rt_pipelines: Vec<RtPipelineHandle>,
+    pub pipelines: RenderGraphPipelines,
 }
 
 impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
@@ -122,17 +132,17 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
     }
 
     pub fn compute_pipeline(&self, pipeline: RgComputePipelineHandle) -> Arc<ComputePipeline> {
-        let handle = self.compute_pipelines[pipeline.id];
+        let handle = self.pipelines.compute[pipeline.id];
         self.execution_params.pipeline_cache.get_compute(handle)
     }
 
     pub fn raster_pipeline(&self, pipeline: RgRasterPipelineHandle) -> Arc<RasterPipeline> {
-        let handle = self.raster_pipelines[pipeline.id];
+        let handle = self.pipelines.raster[pipeline.id];
         self.execution_params.pipeline_cache.get_raster(handle)
     }
 
     pub fn ray_tracing_pipeline(&self, pipeline: RgRtPipelineHandle) -> Arc<RayTracingPipeline> {
-        let handle = self.rt_pipelines[pipeline.id];
+        let handle = self.pipelines.rt[pipeline.id];
         self.execution_params.pipeline_cache.get_ray_tracing(handle)
     }
 }

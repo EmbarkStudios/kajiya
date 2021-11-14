@@ -1,7 +1,7 @@
 use crate::{
-    CompiledRenderGraph, ExportedTemporalRenderGraphState, PredefinedDescriptorSet,
-    RenderGraphExecutionParams, TemporalRenderGraph, TemporalRenderGraphState,
-    TemporalResourceState,
+    CompiledRenderGraph, ExecutingRenderGraph, ExportedTemporalRenderGraphState,
+    PredefinedDescriptorSet, RenderGraphExecutionParams, TemporalRenderGraph,
+    TemporalRenderGraphState, TemporalResourceState,
 };
 use kajiya_backend::{
     ash::vk,
@@ -91,7 +91,7 @@ impl Renderer {
                 .device
                 .create_buffer_impl(
                     BufferDesc {
-                        size: DYNAMIC_CONSTANTS_SIZE_BYTES * 2,
+                        size: DYNAMIC_CONSTANTS_SIZE_BYTES * DYNAMIC_CONSTANTS_BUFFER_COUNT,
                         usage: vk::BufferUsageFlags::UNIFORM_BUFFER
                             | vk::BufferUsageFlags::STORAGE_BUFFER
                             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -125,47 +125,52 @@ impl Renderer {
     ) where
         PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants) -> FrameConstantsLayout,
     {
-        let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
+        let rg = if let Some(rg) = self.compiled_rg.take() {
+            rg
+        } else {
+            return;
+        };
 
-        // Note: this can be done at the end of the frame, not at the start.
-        // The image can be acquired just in time for a blit into it,
-        // after all the other rendering commands have been recorded.
-        let swapchain_image = swapchain
-            .acquire_next_image()
-            .ok()
-            .expect("swapchain image");
-
-        let current_frame = self.device.current_frame();
-        let cb = &current_frame.command_buffer;
         let device = &*self.device;
         let raw_device = &device.raw;
 
-        unsafe {
-            raw_device
-                .begin_command_buffer(
-                    cb.raw,
-                    &vk::CommandBufferBeginInfo::builder()
-                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
-                )
-                .unwrap();
+        let current_frame = self.device.begin_frame();
 
-            // Transition the swapchain to CS write
-            vulkan::barrier::record_image_barrier(
-                device,
-                cb.raw,
-                vulkan::barrier::ImageBarrier::new(
-                    swapchain_image.image.raw,
-                    vk_sync::AccessType::Present,
-                    vk_sync::AccessType::ComputeShaderWrite,
-                    vk::ImageAspectFlags::COLOR,
-                )
-                .with_discard(true),
-            );
+        // Both command buffers are accessible now, so begin recording.
+        for cb in [
+            &current_frame.main_command_buffer,
+            &current_frame.presentation_command_buffer,
+        ] {
+            unsafe {
+                raw_device
+                    .reset_command_buffer(cb.raw, vk::CommandBufferResetFlags::default())
+                    .unwrap();
 
-            current_frame.profiler_data.begin_frame(device, cb.raw);
+                raw_device
+                    .begin_command_buffer(
+                        cb.raw,
+                        &vk::CommandBufferBeginInfo::builder()
+                            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                    )
+                    .unwrap();
+            }
+        }
 
-            if let Some(rg) = self.compiled_rg.take() {
-                let retired_rg = rg.execute(
+        // Now that we can write to GPU data, prepare global frame constants.
+        let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
+
+        let mut executing_rg: ExecutingRenderGraph;
+
+        // Record and submit the main command buffer
+        {
+            let main_cb = &current_frame.main_command_buffer;
+
+            current_frame.profiler_data.begin_frame(device, main_cb.raw);
+
+            executing_rg = {
+                puffin::profile_scope!("rg begin_execute");
+
+                rg.begin_execute(
                     RenderGraphExecutionParams {
                         device: &self.device,
                         pipeline_cache: &mut self.pipeline_cache,
@@ -175,59 +180,124 @@ impl Renderer {
                     },
                     &mut self.transient_resource_cache,
                     &mut self.dynamic_constants,
-                    cb,
-                    swapchain_image.image.clone(),
-                );
+                )
+            };
 
-                self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
-                    TemporalRg::Inert(_) => {
-                        panic!("Trying to retire the render graph, but it's inert. Was prepare_frame not caled?");
-                    }
-                    TemporalRg::Exported(rg) => TemporalRg::Inert(rg.retire_temporal(&retired_rg)),
-                };
+            // Record and submit the main command buffer
+            unsafe {
+                puffin::profile_scope!("main cb");
 
-                // Transition the swapchain to present
-                vulkan::barrier::record_image_barrier(
-                    device,
-                    cb.raw,
-                    vulkan::barrier::ImageBarrier::new(
-                        swapchain_image.image.raw,
-                        vk_sync::AccessType::ComputeShaderWrite,
-                        vk_sync::AccessType::Present,
-                        vk::ImageAspectFlags::COLOR,
-                    ),
-                );
+                {
+                    puffin::profile_scope!("rg::record_main_cb");
+                    executing_rg.record_main_cb(main_cb);
+                }
 
-                retired_rg.release_resources(&mut self.transient_resource_cache);
+                raw_device.end_command_buffer(main_cb.raw).unwrap();
+
+                let submit_info = [vk::SubmitInfo::builder()
+                    .command_buffers(std::slice::from_ref(&main_cb.raw))
+                    .build()];
+
+                raw_device
+                    .reset_fences(std::slice::from_ref(&main_cb.submit_done_fence))
+                    .expect("reset_fences");
+
+                puffin::profile_scope!("queue_submit");
+                raw_device
+                    .queue_submit(
+                        self.device.universal_queue.raw,
+                        &submit_info,
+                        main_cb.submit_done_fence,
+                    )
+                    .expect("queue submit failed.");
+            };
+        }
+
+        // Now that we've done the main submission and the GPU is busy, acquire the presentation image.
+        // This can block, so we're doing it as late as possible.
+
+        let swapchain_image = swapchain
+            .acquire_next_image()
+            .ok()
+            .expect("swapchain image");
+
+        // Execute the rest of the render graph, and submit the presentation command buffer.
+        let retired_rg = {
+            puffin::profile_scope!("presentation cb");
+
+            let presentation_cb = &current_frame.presentation_command_buffer;
+
+            // Transition the swapchain to CS write
+            vulkan::barrier::record_image_barrier(
+                device,
+                presentation_cb.raw,
+                vulkan::barrier::ImageBarrier::new(
+                    swapchain_image.image.raw,
+                    vk_sync::AccessType::Present,
+                    vk_sync::AccessType::ComputeShaderWrite,
+                    vk::ImageAspectFlags::COLOR,
+                )
+                .with_discard(true),
+            );
+
+            let retired_rg =
+                executing_rg.record_presentation_cb(presentation_cb, swapchain_image.image.clone());
+
+            // Transition the swapchain to present
+            vulkan::barrier::record_image_barrier(
+                device,
+                presentation_cb.raw,
+                vulkan::barrier::ImageBarrier::new(
+                    swapchain_image.image.raw,
+                    vk_sync::AccessType::ComputeShaderWrite,
+                    vk_sync::AccessType::Present,
+                    vk::ImageAspectFlags::COLOR,
+                ),
+            );
+
+            current_frame
+                .profiler_data
+                .finish_frame(device, presentation_cb.raw);
+
+            // Record and submit the presentation command buffer
+            unsafe {
+                raw_device.end_command_buffer(presentation_cb.raw).unwrap();
+
+                let submit_info = [vk::SubmitInfo::builder()
+                    .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
+                    .signal_semaphores(std::slice::from_ref(
+                        &swapchain_image.rendering_finished_semaphore,
+                    ))
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
+                    .command_buffers(std::slice::from_ref(&presentation_cb.raw))
+                    .build()];
+                raw_device
+                    .reset_fences(std::slice::from_ref(&presentation_cb.submit_done_fence))
+                    .expect("reset_fences");
+                raw_device
+                    .queue_submit(
+                        self.device.universal_queue.raw,
+                        &submit_info,
+                        presentation_cb.submit_done_fence,
+                    )
+                    .expect("queue submit failed.");
             }
 
-            current_frame.profiler_data.finish_frame(device, cb.raw);
-            raw_device.end_command_buffer(cb.raw).unwrap();
-        }
+            swapchain.present_image(swapchain_image);
+
+            retired_rg
+        };
+
+        self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
+            TemporalRg::Inert(_) => {
+                panic!("Trying to retire the render graph, but it's inert. Was prepare_frame not caled?");
+            }
+            TemporalRg::Exported(rg) => TemporalRg::Inert(rg.retire_temporal(&retired_rg)),
+        };
+
+        retired_rg.release_resources(&mut self.transient_resource_cache);
 
         self.dynamic_constants.advance_frame();
-
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
-            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
-            .command_buffers(std::slice::from_ref(&cb.raw));
-
-        unsafe {
-            raw_device
-                .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
-                .expect("reset_fences");
-
-            //println!("queue_submit");
-            raw_device
-                .queue_submit(
-                    self.device.universal_queue.raw,
-                    &[submit_info.build()],
-                    cb.submit_done_fence,
-                )
-                .expect("queue submit failed.");
-        }
-
-        swapchain.present_image(swapchain_image, &[]);
         self.device.finish_frame(current_frame);
     }
 

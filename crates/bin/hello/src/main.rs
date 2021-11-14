@@ -29,7 +29,7 @@ fn main() -> anyhow::Result<()> {
     let mut car_rot = 0.0f32;
 
     kajiya.run(move |ctx| {
-        car_rot += 0.5 * ctx.dt;
+        car_rot += 0.5 * ctx.dt_filtered;
         ctx.world_renderer.set_instance_transform(
             car_inst,
             Vec3::ZERO,

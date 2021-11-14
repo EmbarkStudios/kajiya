@@ -15,11 +15,11 @@ use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
-    window::WindowBuilder,
+    window::{Fullscreen, WindowBuilder},
 };
 
 pub struct FrameContext<'a> {
-    pub dt: f32,
+    pub dt_filtered: f32,
     pub render_extent: [u32; 2],
     pub events: &'a [WindowEvent<'static>],
     pub world_renderer: &'a mut WorldRenderer,
@@ -40,7 +40,7 @@ pub struct ImguiContext<'a> {
     imgui_backend: &'a mut ImGuiBackend,
     ui_renderer: &'a mut UiRenderer,
     window: &'a winit::window::Window,
-    dt: f32,
+    dt_filtered: f32,
 }
 
 #[cfg(feature = "dear-imgui")]
@@ -48,7 +48,7 @@ impl<'a> ImguiContext<'a> {
     pub fn frame(mut self, callback: impl FnOnce(&imgui::Ui<'_>)) {
         let ui = self
             .imgui_backend
-            .prepare_frame(self.window, &mut self.imgui, self.dt);
+            .prepare_frame(self.window, &mut self.imgui, self.dt_filtered);
         callback(&ui);
         self.imgui_backend
             .finish_frame(ui, self.window, &mut self.ui_renderer);
@@ -61,6 +61,9 @@ struct MainLoopOptional {
 
     #[cfg(feature = "dear-imgui")]
     imgui: imgui::Context,
+
+    #[cfg(feature = "puffin-server")]
+    puffin_server: puffin_http::Server,
 }
 
 pub enum WindowScale {
@@ -70,9 +73,17 @@ pub enum WindowScale {
     SystemNative,
 }
 
+pub enum FullscreenMode {
+    Borderless,
+
+    /// Seems to be the only way for stutter-free rendering on Nvidia + Win10.
+    Exclusive,
+}
+
 pub struct SimpleMainLoopBuilder {
     resolution: [u32; 2],
     vsync: bool,
+    fullscreen: Option<FullscreenMode>,
     graphics_debugging: bool,
     default_log_level: log::LevelFilter,
     window_scale: WindowScale,
@@ -90,6 +101,7 @@ impl SimpleMainLoopBuilder {
         SimpleMainLoopBuilder {
             resolution: [1280, 720],
             vsync: true,
+            fullscreen: None,
             graphics_debugging: false,
             default_log_level: log::LevelFilter::Warn,
             window_scale: WindowScale::SystemNative,
@@ -114,6 +126,11 @@ impl SimpleMainLoopBuilder {
 
     pub fn default_log_level(mut self, default_log_level: log::LevelFilter) -> Self {
         self.default_log_level = default_log_level;
+        self
+    }
+
+    pub fn fullscreen(mut self, fullscreen: Option<FullscreenMode>) -> Self {
+        self.fullscreen = fullscreen;
         self
     }
 
@@ -167,6 +184,22 @@ impl SimpleMainLoop {
         ));
 
         let event_loop = EventLoop::new();
+
+        if let Some(fullscreen) = builder.fullscreen {
+            window_builder = window_builder.with_fullscreen(match fullscreen {
+                FullscreenMode::Borderless => Some(Fullscreen::Borderless(None)),
+                FullscreenMode::Exclusive => Some(Fullscreen::Exclusive(
+                    event_loop
+                        .available_monitors()
+                        .next()
+                        .expect("at least one monitor")
+                        .video_modes()
+                        .next()
+                        .expect("at least one video mode"),
+                )),
+            });
+        }
+
         let window = window_builder.build(&event_loop).expect("window");
 
         // Physical window extent in pixels
@@ -222,11 +255,22 @@ impl SimpleMainLoop {
         #[cfg(feature = "dear-imgui")]
         imgui_backend.create_graphics_resources(swapchain_extent);
 
+        #[cfg(feature = "puffin-server")]
+        let puffin_server = {
+            let server_addr = format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT);
+            log::info!("Serving profile data on {}", server_addr);
+
+            puffin::set_scopes_on(true);
+            puffin_http::Server::new(&server_addr).unwrap()
+        };
+
         let optional = MainLoopOptional {
             #[cfg(feature = "dear-imgui")]
             imgui_backend,
             #[cfg(feature = "dear-imgui")]
             imgui,
+            #[cfg(feature = "puffin-server")]
+            puffin_server,
         };
 
         Ok(Self {
@@ -266,119 +310,176 @@ impl SimpleMainLoop {
         let mut last_frame_instant = std::time::Instant::now();
         let mut last_error_text = None;
 
-        event_loop.run_return(move |event, _, control_flow| {
-            let _ = &render_backend;
-            #[cfg(feature = "dear-imgui")]
-            optional
-                .imgui_backend
-                .handle_event(&window, &mut optional.imgui, &event);
+        let mut dt_filtered: f32 = 0.0;
 
-            #[cfg(feature = "dear-imgui")]
-            let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
+        let mut running = true;
+        while running {
+            let gpu_frame_start_ns = puffin::now_ns();
+            puffin::profile_scope!("main loop");
+            puffin::GlobalProfiler::lock().new_frame();
 
-            #[cfg(not(feature = "dear-imgui"))]
-            let ui_wants_mouse = false;
+            event_loop.run_return(|event, _, control_flow| {
+                puffin::profile_scope!("event handler");
 
-            // ControlFlow::Poll continuously runs the event loop, even if the OS hasn't
-            // dispatched any events. This is ideal for games and similar applications.
-            *control_flow = ControlFlow::Poll;
+                let _ = &render_backend;
+                #[cfg(feature = "dear-imgui")]
+                optional
+                    .imgui_backend
+                    .handle_event(&window, &mut optional.imgui, &event);
 
-            match event {
-                Event::WindowEvent { event, .. } => match event {
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
-                        if ui_wants_mouse => {}
-                    _ => events.extend(event.to_static()),
-                },
-                Event::MainEventsCleared => {
-                    // Application update code.
+                #[cfg(feature = "dear-imgui")]
+                let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
 
-                    window.request_redraw();
+                #[cfg(not(feature = "dear-imgui"))]
+                let ui_wants_mouse = false;
+
+                *control_flow = ControlFlow::Poll;
+
+                match event {
+                    Event::WindowEvent { event, .. } => match event {
+                        WindowEvent::CloseRequested => {
+                            *control_flow = ControlFlow::Exit;
+                            running = false;
+                        }
+                        WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
+                            if ui_wants_mouse => {}
+                        _ => events.extend(event.to_static()),
+                    },
+                    Event::MainEventsCleared => {
+                        *control_flow = ControlFlow::Exit;
+                    }
+                    _ => (),
                 }
-                Event::RedrawRequested(_) => {
-                    let now = std::time::Instant::now();
-                    let dt_duration = now - last_frame_instant;
-                    let dt = dt_duration.as_secs_f32();
-                    last_frame_instant = now;
+            });
 
-                    let frame_desc = frame_fn(FrameContext {
-                        dt,
-                        render_extent,
-                        events: &events,
-                        world_renderer: &mut world_renderer,
+            puffin::profile_scope!("MainEventsCleared");
 
-                        #[cfg(feature = "dear-imgui")]
-                        imgui: Some(ImguiContext {
-                            imgui: &mut optional.imgui,
-                            imgui_backend: &mut optional.imgui_backend,
-                            ui_renderer: &mut ui_renderer,
-                            dt,
-                            window: &window,
-                        }),
-                    });
+            // Filter the frame time before passing it to the application and renderer.
+            // Fluctuations in frame rendering times cause stutter in animations,
+            // and time-dependent effects (such as motion blur).
+            //
+            // Should applications need unfiltered delta time, they can calculate
+            // it themselves, but it's good to pass the filtered time so users
+            // don't need to worry about it.
+            {
+                let now = std::time::Instant::now();
+                let dt_duration = now - last_frame_instant;
+                last_frame_instant = now;
 
-                    events.clear();
+                let dt_raw = dt_duration.as_secs_f32();
+                dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
+            };
 
-                    // Physical window extent in pixels
-                    let swapchain_extent = [window.inner_size().width, window.inner_size().height];
+            let frame_desc = frame_fn(FrameContext {
+                dt_filtered,
+                render_extent,
+                events: &events,
+                world_renderer: &mut world_renderer,
 
-                    let prepared_frame = rg_renderer.prepare_frame(|rg| {
-                        rg.debug_hook = world_renderer.rg_debug_hook.take();
-                        let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
-                        let ui_img = ui_renderer.prepare_render_graph(rg);
+                #[cfg(feature = "dear-imgui")]
+                imgui: Some(ImguiContext {
+                    imgui: &mut optional.imgui,
+                    imgui_backend: &mut optional.imgui_backend,
+                    ui_renderer: &mut ui_renderer,
+                    dt_filtered,
+                    window: &window,
+                }),
+            });
 
-                        let mut swap_chain = rg.get_swap_chain();
-                        rg::SimpleRenderPass::new_compute(
-                            rg.add_pass("final blit"),
-                            "/shaders/final_blit.hlsl",
-                        )
-                        .read(&main_img)
-                        .read(&ui_img)
-                        .write(&mut swap_chain)
-                        .constants((
-                            main_img.desc().extent_inv_extent_2d(),
-                            [
-                                swapchain_extent[0] as f32,
-                                swapchain_extent[1] as f32,
-                                1.0 / swapchain_extent[0] as f32,
-                                1.0 / swapchain_extent[1] as f32,
-                            ],
-                        ))
-                        .dispatch([
-                            swapchain_extent[0],
-                            swapchain_extent[1],
-                            1,
-                        ]);
-                    });
+            events.clear();
 
-                    match prepared_frame {
-                        Ok(()) => {
-                            rg_renderer.draw_frame(
-                                |dynamic_constants| {
-                                    world_renderer.prepare_frame_constants(
-                                        dynamic_constants,
-                                        &frame_desc,
-                                        dt,
-                                    )
-                                },
-                                &mut render_backend.swapchain,
-                            );
-                            world_renderer.retire_frame();
-                            last_error_text = None;
-                        }
-                        Err(e) => {
-                            let error_text = Some(format!("{:?}", e));
-                            if error_text != last_error_text {
-                                println!("{}", error_text.as_ref().unwrap());
-                                last_error_text = error_text;
-                            }
-                        }
+            // Physical window extent in pixels
+            let swapchain_extent = [window.inner_size().width, window.inner_size().height];
+
+            let prepared_frame = {
+                puffin::profile_scope!("prepare_frame");
+                rg_renderer.prepare_frame(|rg| {
+                    rg.debug_hook = world_renderer.rg_debug_hook.take();
+                    let main_img = world_renderer.prepare_render_graph(rg, &frame_desc);
+                    let ui_img = ui_renderer.prepare_render_graph(rg);
+
+                    let mut swap_chain = rg.get_swap_chain();
+                    rg::SimpleRenderPass::new_compute(
+                        rg.add_pass("final blit"),
+                        "/shaders/final_blit.hlsl",
+                    )
+                    .read(&main_img)
+                    .read(&ui_img)
+                    .write(&mut swap_chain)
+                    .constants((
+                        main_img.desc().extent_inv_extent_2d(),
+                        [
+                            swapchain_extent[0] as f32,
+                            swapchain_extent[1] as f32,
+                            1.0 / swapchain_extent[0] as f32,
+                            1.0 / swapchain_extent[1] as f32,
+                        ],
+                    ))
+                    .dispatch([swapchain_extent[0], swapchain_extent[1], 1]);
+                })
+            };
+
+            match prepared_frame {
+                Ok(()) => {
+                    puffin::profile_scope!("draw_frame");
+                    rg_renderer.draw_frame(
+                        |dynamic_constants| {
+                            world_renderer.prepare_frame_constants(
+                                dynamic_constants,
+                                &frame_desc,
+                                dt_filtered,
+                            )
+                        },
+                        &mut render_backend.swapchain,
+                    );
+                    world_renderer.retire_frame();
+                    last_error_text = None;
+                }
+                Err(e) => {
+                    let error_text = Some(format!("{:?}", e));
+                    if error_text != last_error_text {
+                        println!("{}", error_text.as_ref().unwrap());
+                        last_error_text = error_text;
                     }
                 }
-                _ => (),
             }
-        });
+
+            report_gpu_stats_to_puffin(&gpu_profiler::get_stats(), gpu_frame_start_ns);
+        }
 
         Ok(())
     }
+}
+
+fn report_gpu_stats_to_puffin(
+    gpu_stats: &gpu_profiler::GpuProfilerStats,
+    gpu_frame_start_ns: puffin::NanoSecond,
+) {
+    let mut stream = puffin::Stream::default();
+    let gpu_scopes = gpu_stats.get_ordered();
+    let mut gpu_time_accum: puffin::NanoSecond = 0;
+    let mut puffin_scope_count = 0;
+    let main_gpu_scope_offset = stream.begin_scope(gpu_frame_start_ns, "frame", "", "");
+    puffin_scope_count += 1;
+    puffin_scope_count += gpu_scopes.len();
+    for (scope, ms) in gpu_scopes {
+        let ns = (ms * 1_000_000.0) as puffin::NanoSecond;
+        let offset = stream.begin_scope(gpu_frame_start_ns + gpu_time_accum, &scope.name, "", "");
+        gpu_time_accum += ns;
+        stream.end_scope(offset, gpu_frame_start_ns + gpu_time_accum);
+    }
+    stream.end_scope(main_gpu_scope_offset, gpu_frame_start_ns + gpu_time_accum);
+    puffin::global_reporter(
+        puffin::ThreadInfo {
+            start_time_ns: None,
+            name: "gpu".to_owned(),
+        },
+        &puffin::StreamInfo {
+            num_scopes: puffin_scope_count,
+            stream,
+            depth: 1,
+            range_ns: (gpu_frame_start_ns, gpu_frame_start_ns + gpu_time_accum),
+        }
+        .as_stream_into_ref(),
+    );
 }

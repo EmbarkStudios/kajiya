@@ -34,6 +34,9 @@
 #define TARGET_SAMPLE_COUNT 4
 #define SHORT_CIRCUIT 0
 
+// Draw a rectangle indicating the current frame index. Useful for debugging frame drops.
+#define USE_FRAME_INDEX_INDICATOR_BAR 0
+
 
 struct InputRemap {
     static InputRemap create() {
@@ -82,6 +85,18 @@ struct HistoryRemap {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
+    #if USE_FRAME_INDEX_INDICATOR_BAR
+        if (px.y < 50) {
+            float4 val = 0;
+            if (px.x < frame_constants.frame_index * 10 % uint(output_tex_size.x)) {
+                val = 1;
+            }
+            output_tex[px] = val;
+            debug_output_tex[px] = val;
+            return;
+        }
+    #endif
+
     const float2 input_resolution_scale = input_tex_size.xy / output_tex_size.xy;
     const uint2 reproj_px = uint2((px + 0.5) * input_resolution_scale);
 
