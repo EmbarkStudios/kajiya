@@ -61,6 +61,9 @@ struct MainLoopOptional {
 
     #[cfg(feature = "dear-imgui")]
     imgui: imgui::Context,
+
+    #[cfg(feature = "puffin-server")]
+    puffin_server: puffin_http::Server,
 }
 
 pub enum WindowScale {
@@ -161,8 +164,6 @@ pub struct SimpleMainLoop {
     render_backend: RenderBackend,
     rg_renderer: kajiya::rg::renderer::Renderer,
     render_extent: [u32; 2],
-
-    puffin_server: puffin_http::Server,
 }
 
 impl SimpleMainLoop {
@@ -254,18 +255,23 @@ impl SimpleMainLoop {
         #[cfg(feature = "dear-imgui")]
         imgui_backend.create_graphics_resources(swapchain_extent);
 
+        #[cfg(feature = "puffin-server")]
+        let puffin_server = {
+            let server_addr = format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT);
+            log::info!("Serving profile data on {}", server_addr);
+
+            puffin::set_scopes_on(true);
+            puffin_http::Server::new(&server_addr).unwrap()
+        };
+
         let optional = MainLoopOptional {
             #[cfg(feature = "dear-imgui")]
             imgui_backend,
             #[cfg(feature = "dear-imgui")]
             imgui,
+            #[cfg(feature = "puffin-server")]
+            puffin_server,
         };
-
-        let server_addr = format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT);
-        log::info!("Serving profile data on {}", server_addr);
-
-        let puffin_server = puffin_http::Server::new(&server_addr).unwrap();
-        puffin::set_scopes_on(true);
 
         Ok(Self {
             window,
@@ -276,7 +282,6 @@ impl SimpleMainLoop {
             render_backend,
             rg_renderer,
             render_extent,
-            puffin_server,
         })
     }
 
@@ -298,7 +303,6 @@ impl SimpleMainLoop {
             mut render_backend,
             mut rg_renderer,
             render_extent,
-            puffin_server,
         } = self;
 
         let mut events = Vec::new();
@@ -440,42 +444,42 @@ impl SimpleMainLoop {
                 }
             }
 
-            let mut stream = puffin::Stream::default();
-            let gpu_scopes = gpu_profiler::get_stats().get_ordered();
-            let mut gpu_time_accum: puffin::NanoSecond = 0;
-            let mut puffin_scope_count = 0;
-
-            let main_gpu_scope_offset = stream.begin_scope(gpu_frame_start_ns, "frame", "", "");
-            puffin_scope_count += 1;
-
-            puffin_scope_count += gpu_scopes.len();
-            for (scope, ms) in gpu_scopes {
-                let ns = (ms * 1_000_000.0) as puffin::NanoSecond;
-                let offset =
-                    stream.begin_scope(gpu_frame_start_ns + gpu_time_accum, &scope.name, "", "");
-                gpu_time_accum += ns;
-                stream.end_scope(offset, gpu_frame_start_ns + gpu_time_accum);
-            }
-
-            stream.end_scope(main_gpu_scope_offset, gpu_frame_start_ns + gpu_time_accum);
-
-            puffin::global_reporter(
-                puffin::ThreadInfo {
-                    start_time_ns: None,
-                    name: "gpu".to_owned(),
-                },
-                &puffin::StreamInfo {
-                    num_scopes: puffin_scope_count,
-                    stream,
-                    depth: 1,
-                    range_ns: (gpu_frame_start_ns, gpu_frame_start_ns + gpu_time_accum),
-                }
-                .as_stream_into_ref(),
-            );
+            report_gpu_stats_to_puffin(&gpu_profiler::get_stats(), gpu_frame_start_ns);
         }
-
-        drop(puffin_server);
 
         Ok(())
     }
+}
+
+fn report_gpu_stats_to_puffin(
+    gpu_stats: &gpu_profiler::GpuProfilerStats,
+    gpu_frame_start_ns: puffin::NanoSecond,
+) {
+    let mut stream = puffin::Stream::default();
+    let gpu_scopes = gpu_stats.get_ordered();
+    let mut gpu_time_accum: puffin::NanoSecond = 0;
+    let mut puffin_scope_count = 0;
+    let main_gpu_scope_offset = stream.begin_scope(gpu_frame_start_ns, "frame", "", "");
+    puffin_scope_count += 1;
+    puffin_scope_count += gpu_scopes.len();
+    for (scope, ms) in gpu_scopes {
+        let ns = (ms * 1_000_000.0) as puffin::NanoSecond;
+        let offset = stream.begin_scope(gpu_frame_start_ns + gpu_time_accum, &scope.name, "", "");
+        gpu_time_accum += ns;
+        stream.end_scope(offset, gpu_frame_start_ns + gpu_time_accum);
+    }
+    stream.end_scope(main_gpu_scope_offset, gpu_frame_start_ns + gpu_time_accum);
+    puffin::global_reporter(
+        puffin::ThreadInfo {
+            start_time_ns: None,
+            name: "gpu".to_owned(),
+        },
+        &puffin::StreamInfo {
+            num_scopes: puffin_scope_count,
+            stream,
+            depth: 1,
+            range_ns: (gpu_frame_start_ns, gpu_frame_start_ns + gpu_time_accum),
+        }
+        .as_stream_into_ref(),
+    );
 }

@@ -16,8 +16,8 @@ glam = "0.18"
 lazy_static = "1.4"
 log = "0.4"
 parking_lot = "0.11"
-turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 puffin = "0.11.0"
+turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 
 [features]
 default = ["ray-tracing"]
