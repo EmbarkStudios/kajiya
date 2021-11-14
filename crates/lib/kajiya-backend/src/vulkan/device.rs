@@ -471,6 +471,7 @@ impl Device {
             );
         }
 
+        puffin::profile_scope!("release pending resources");
         frame0
             .pending_resource_releases
             .get_mut()
