@@ -5,6 +5,8 @@ use std::{collections::HashMap, default::Default};
 
 use parking_lot::Mutex;
 
+// TODO: this used to filter the gpu profiler stats here, but it doesn't make sense
+// for the `puffin` output. Better to filter near where the stats are being displayed instead.
 const FILTER_KERNEL_SIZE: usize = 1; //8
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]

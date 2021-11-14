@@ -261,21 +261,6 @@ impl Swapchain {
         }
     }
 
-    pub fn peek_next_image(&mut self) -> SwapchainImage {
-        puffin::profile_function!();
-
-        let acquire_semaphore = self.acquire_semaphores[self.next_semaphore];
-        let rendering_finished_semaphore = self.rendering_finished_semaphores[self.next_semaphore];
-        let present_index = self.next_semaphore;
-
-        SwapchainImage {
-            image: self.images[present_index].clone(),
-            image_index: present_index as u32,
-            acquire_semaphore,
-            rendering_finished_semaphore,
-        }
-    }
-
     pub fn present_image(&self, image: SwapchainImage) {
         puffin::profile_function!();
 

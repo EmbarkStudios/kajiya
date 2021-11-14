@@ -7,7 +7,6 @@ use super::{
 use kajiya_backend::{
     ash::vk,
     dynamic_constants::DynamicConstants,
-    pipeline_cache::{ComputePipelineHandle, RasterPipelineHandle, RtPipelineHandle},
     vk_sync,
     vulkan::{
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
@@ -17,7 +16,6 @@ use kajiya_backend::{
 use std::sync::Arc;
 
 pub struct PendingRenderResourceInfo {
-    pub(crate) resource_idx: usize,
     pub(crate) resource: GraphResourceInfo,
 }
 

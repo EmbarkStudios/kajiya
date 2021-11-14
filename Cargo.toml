@@ -26,9 +26,6 @@ exclude = [
 rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 spirv_headers = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 
-# 0.25
-winit = { path = "../../ext/winit" }
-
 [profile.release]
 debug = true
 

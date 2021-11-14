@@ -765,7 +765,6 @@ impl CompiledRenderGraph {
                     },
                     GraphResourceImportInfo::SwapchainImage => RegistryResource {
                         resource: AnyRenderResource::Pending(PendingRenderResourceInfo {
-                            resource_idx,
                             resource: resource.clone(),
                         }),
                         access_type: vk_sync::AccessType::ComputeShaderWrite,
@@ -905,7 +904,7 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         }
 
         let mut api = RenderPassApi {
-            cb: cb,
+            cb,
             resources: resource_registry,
         };
 
