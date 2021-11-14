@@ -115,15 +115,12 @@ fn main() -> anyhow::Result<()> {
         .graphics_debugging(!opt.no_debug)
         .temporal_upsampling(opt.temporal_upsampling)
         .default_log_level(log::LevelFilter::Info)
+        .fullscreen(opt.fullscreen.then(|| FullscreenMode::Exclusive))
         .build(
             WindowBuilder::new()
                 .with_title("kajiya")
                 .with_resizable(false)
-                .with_decorations(!opt.no_window_decorations)
-                .with_fullscreen(
-                    opt.fullscreen
-                        .then(|| winit::window::Fullscreen::Borderless(None)),
-                ),
+                .with_decorations(!opt.no_window_decorations),
         )?;
 
     kajiya.world_renderer.world_gi_scale = opt.gi_volume_scale;
@@ -233,7 +230,7 @@ fn main() -> anyhow::Result<()> {
             keyboard.update(ctx.events);
             mouse.update(ctx.events);
 
-            let input = keymap.map(&keyboard, ctx.dt);
+            let input = keymap.map(&keyboard, ctx.dt_filtered);
             let move_vec = camera.final_transform.rotation
                 * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
                     .clamp_length_max(1.0)
@@ -246,8 +243,8 @@ fn main() -> anyhow::Result<()> {
             }
             camera
                 .driver_mut::<Position>()
-                .translate(move_vec * ctx.dt * 2.5);
-            camera.update(ctx.dt);
+                .translate(move_vec * ctx.dt_filtered * 2.5);
+            camera.update(ctx.dt_filtered);
 
             state.camera_position = camera.final_transform.position;
             state.camera_rotation = camera.final_transform.rotation;
@@ -529,7 +526,7 @@ fn main() -> anyhow::Result<()> {
                         .build(ui)
                     {
                         let gpu_stats = gpu_profiler::get_stats();
-                        ui.text(format!("CPU frame time: {:.3}ms", ctx.dt * 1000.0));
+                        ui.text(format!("CPU frame time: {:.3}ms", ctx.dt_filtered * 1000.0));
 
                         let ordered_scopes = gpu_stats.get_ordered();
                         let gpu_time_ms: f64 = ordered_scopes.iter().map(|(_, ms)| ms).sum();

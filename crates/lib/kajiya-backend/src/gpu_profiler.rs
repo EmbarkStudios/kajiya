@@ -5,6 +5,8 @@ use std::{collections::HashMap, default::Default};
 
 use parking_lot::Mutex;
 
+const FILTER_KERNEL_SIZE: usize = 1; //8
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct GpuProfilerQueryId(u64);
 
@@ -66,7 +68,7 @@ pub struct GpuProfilerScope {
 impl GpuProfilerScope {
     fn new(scope: RenderScopeDesc) -> GpuProfilerScope {
         GpuProfilerScope {
-            hits: vec![0u64; 8],
+            hits: vec![0u64; FILTER_KERNEL_SIZE],
             write_head: 0,
             scope,
         }

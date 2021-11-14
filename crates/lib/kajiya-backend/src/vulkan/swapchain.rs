@@ -17,7 +17,10 @@ pub struct Swapchain {
     pub(crate) raw: vk::SwapchainKHR,
     pub desc: SwapchainDesc,
     pub images: Vec<Arc<crate::Image>>,
-    pub semaphores: Vec<vk::Semaphore>,
+    pub acquire_semaphores: Vec<vk::Semaphore>,
+
+    // TODO: move out of swapchain, make a single semaphore
+    pub rendering_finished_semaphores: Vec<vk::Semaphore>,
     pub next_semaphore: usize,
 
     // Keep a reference in order not to drop after the device
@@ -33,6 +36,7 @@ pub struct SwapchainImage {
     pub image: Arc<crate::Image>,
     pub image_index: u32,
     pub acquire_semaphore: vk::Semaphore,
+    pub rendering_finished_semaphore: vk::Semaphore,
 }
 
 pub enum SwapchainAcquireImageErr {
@@ -58,12 +62,15 @@ impl Swapchain {
                 .get_physical_device_surface_capabilities(device.pdevice.raw, surface.raw)
         }?;
 
-        let mut desired_image_count = surface_capabilities.min_image_count + 1;
-        if surface_capabilities.max_image_count > 0
-            && desired_image_count > surface_capabilities.max_image_count
-        {
-            desired_image_count = surface_capabilities.max_image_count;
+        // Triple-buffer so that acquiring an image doesn't stall for >16.6ms at 60Hz on AMD
+        // when frames take >16.6ms to render. Also allows MAILBOX to work.
+        let mut desired_image_count = 3.max(surface_capabilities.min_image_count);
+
+        if surface_capabilities.max_image_count != 0 {
+            desired_image_count = desired_image_count.min(surface_capabilities.max_image_count);
         }
+
+        log::info!("Swapchain image count: {}", desired_image_count);
 
         //dbg!(&surface_capabilities);
         let surface_resolution = match surface_capabilities.current_extent.width {
@@ -75,23 +82,23 @@ impl Swapchain {
             anyhow::bail!("Swapchain resolution cannot be zero");
         }
 
+        let present_mode_preference = if desc.vsync {
+            vec![vk::PresentModeKHR::FIFO_RELAXED, vk::PresentModeKHR::FIFO]
+        } else {
+            vec![vk::PresentModeKHR::MAILBOX, vk::PresentModeKHR::IMMEDIATE]
+        };
+
         let present_modes = unsafe {
             surface
                 .fns
                 .get_physical_device_surface_present_modes(device.pdevice.raw, surface.raw)
         }?;
 
-        let desired_present_mode = if desc.vsync {
-            vk::PresentModeKHR::FIFO
-        } else {
-            vk::PresentModeKHR::MAILBOX
-        };
-
-        let present_mode = present_modes
-            .iter()
-            .cloned()
-            .find(|&mode| mode == desired_present_mode)
+        let present_mode = present_mode_preference
+            .into_iter()
+            .find(|mode| present_modes.contains(mode))
             .unwrap_or(vk::PresentModeKHR::FIFO);
+        log::info!("Presentation mode: {:?}", present_mode);
 
         let pre_transform = if surface_capabilities
             .supported_transforms
@@ -173,7 +180,18 @@ impl Swapchain {
 
         assert_eq!(desired_image_count, images.len() as u32);
 
-        let semaphores = (0..images.len())
+        let acquire_semaphores = (0..images.len())
+            .map(|_| {
+                unsafe {
+                    device
+                        .raw
+                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+                }
+                .unwrap()
+            })
+            .collect();
+
+        let rendering_finished_semaphores = (0..images.len())
             .map(|_| {
                 unsafe {
                     device
@@ -189,7 +207,8 @@ impl Swapchain {
             raw: swapchain,
             desc,
             images,
-            semaphores,
+            acquire_semaphores,
+            rendering_finished_semaphores,
             next_semaphore: 0,
             device: device.clone(),
             surface: surface.clone(),
@@ -205,7 +224,9 @@ impl Swapchain {
     ) -> std::result::Result<SwapchainImage, SwapchainAcquireImageErr> {
         puffin::profile_function!();
 
-        let acquire_semaphore = self.semaphores[self.next_semaphore];
+        let acquire_semaphore = self.acquire_semaphores[self.next_semaphore];
+        let rendering_finished_semaphore = self.rendering_finished_semaphores[self.next_semaphore];
+
         let present_index = unsafe {
             self.fns.acquire_next_image(
                 self.raw,
@@ -218,11 +239,14 @@ impl Swapchain {
 
         match present_index {
             Ok(present_index) => {
+                assert_eq!(present_index, self.next_semaphore);
+
                 self.next_semaphore = (self.next_semaphore + 1) % self.images.len();
                 Ok(SwapchainImage {
                     image: self.images[present_index].clone(),
                     image_index: present_index as u32,
                     acquire_semaphore,
+                    rendering_finished_semaphore,
                 })
             }
             Err(err)
@@ -237,11 +261,26 @@ impl Swapchain {
         }
     }
 
-    pub fn present_image(&self, image: SwapchainImage, wait_semaphores: &[vk::Semaphore]) {
-        puffin::profile_scope!("present_image");
+    pub fn peek_next_image(&mut self) -> SwapchainImage {
+        puffin::profile_function!();
+
+        let acquire_semaphore = self.acquire_semaphores[self.next_semaphore];
+        let rendering_finished_semaphore = self.rendering_finished_semaphores[self.next_semaphore];
+        let present_index = self.next_semaphore;
+
+        SwapchainImage {
+            image: self.images[present_index].clone(),
+            image_index: present_index as u32,
+            acquire_semaphore,
+            rendering_finished_semaphore,
+        }
+    }
+
+    pub fn present_image(&self, image: SwapchainImage) {
+        puffin::profile_function!();
 
         let present_info = vk::PresentInfoKHR::builder()
-            .wait_semaphores(wait_semaphores)
+            .wait_semaphores(std::slice::from_ref(&image.rendering_finished_semaphore))
             .swapchains(std::slice::from_ref(&self.raw))
             .image_indices(std::slice::from_ref(&image.image_index));
 
@@ -258,7 +297,7 @@ impl Swapchain {
                     // Handled in the next frame
                 }
                 err => {
-                    panic!("Could not acquire swapchain image: {:?}", err);
+                    panic!("Could not present image: {:?}", err);
                 }
             }
         }

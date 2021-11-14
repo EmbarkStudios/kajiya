@@ -693,7 +693,8 @@ impl CompiledRenderGraph {
         params: RenderGraphExecutionParams<'_>,
         transient_resource_cache: &mut TransientResourceCache,
         dynamic_constants: &mut DynamicConstants,
-        cb: &CommandBuffer,
+        main_cb: &CommandBuffer,
+        presentation_cb: &CommandBuffer,
         swapchain_image: Arc<Image>,
     ) -> RetiredRenderGraph {
         let device = params.device;
@@ -773,7 +774,15 @@ impl CompiledRenderGraph {
             rt_pipelines: self.rt_pipelines,
         };
 
+        let pass_count = self.rg.passes.len();
+
         for (pass_idx, pass) in self.rg.passes.into_iter().enumerate() {
+            let cb = if pass_idx + 1 == pass_count {
+                presentation_cb
+            } else {
+                main_cb
+            };
+
             let vk_query_idx = {
                 let query_id = gpu_profiler::create_gpu_query(
                     gpu_profiler::RenderScopeDesc {
@@ -811,7 +820,7 @@ impl CompiledRenderGraph {
             }
 
             let mut api = RenderPassApi {
-                cb,
+                cb: cb,
                 resources: &mut resource_registry,
             };
 
@@ -833,7 +842,7 @@ impl CompiledRenderGraph {
         for (resource_idx, access_type) in self.rg.exported_resources {
             if access_type != vk_sync::AccessType::Nothing {
                 let resource = &mut resource_registry.resources[resource_idx.raw().id as usize];
-                Self::transition_resource(params.device, cb, resource, access_type);
+                Self::transition_resource(params.device, presentation_cb, resource, access_type);
             }
         }
 

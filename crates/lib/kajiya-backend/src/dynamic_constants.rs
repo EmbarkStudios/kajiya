@@ -6,6 +6,7 @@ use std::mem::{align_of, size_of};
 use vulkan::buffer::Buffer;
 
 pub const DYNAMIC_CONSTANTS_SIZE_BYTES: usize = 1024 * 1024 * 16;
+pub const DYNAMIC_CONSTANTS_BUFFER_COUNT: usize = 2;
 
 // Generally supported minimum uniform buffer size across vendors (maxUniformBufferRange)
 // Could be bumped to 65536 if needed.
@@ -35,7 +36,7 @@ impl DynamicConstants {
     }
 
     pub fn advance_frame(&mut self) {
-        self.frame_parity = 1 - self.frame_parity;
+        self.frame_parity = (self.frame_parity + 1) % DYNAMIC_CONSTANTS_BUFFER_COUNT;
         self.frame_offset_bytes = 0;
     }
 

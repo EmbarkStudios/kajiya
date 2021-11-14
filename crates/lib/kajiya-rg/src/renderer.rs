@@ -91,7 +91,7 @@ impl Renderer {
                 .device
                 .create_buffer_impl(
                     BufferDesc {
-                        size: DYNAMIC_CONSTANTS_SIZE_BYTES * 2,
+                        size: DYNAMIC_CONSTANTS_SIZE_BYTES * DYNAMIC_CONSTANTS_BUFFER_COUNT,
                         usage: vk::BufferUsageFlags::UNIFORM_BUFFER
                             | vk::BufferUsageFlags::STORAGE_BUFFER
                             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
@@ -125,34 +125,64 @@ impl Renderer {
     ) where
         PrepareFrameConstantsFn: FnOnce(&mut DynamicConstants) -> FrameConstantsLayout,
     {
-        let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
-
-        // Note: this can be done at the end of the frame, not at the start.
-        // The image can be acquired just in time for a blit into it,
-        // after all the other rendering commands have been recorded.
-        let swapchain_image = swapchain
-            .acquire_next_image()
-            .ok()
-            .expect("swapchain image");
-
-        let current_frame = self.device.current_frame();
-        let cb = &current_frame.command_buffer;
         let device = &*self.device;
         let raw_device = &device.raw;
 
+        // Wait for the the GPU to be done with the previously submitted frame,
+        // so that we can access its data again
         unsafe {
+            let current_frame = self.device.current_frame();
+            puffin::profile_scope!("wait submit done");
+
             raw_device
-                .begin_command_buffer(
-                    cb.raw,
-                    &vk::CommandBufferBeginInfo::builder()
-                        .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                .wait_for_fences(
+                    &[
+                        current_frame.main_command_buffer.submit_done_fence,
+                        current_frame.presentation_command_buffer.submit_done_fence,
+                    ],
+                    true,
+                    std::u64::MAX,
                 )
-                .unwrap();
+                .expect("Wait for fence failed.");
+
+            for cb in [
+                &current_frame.main_command_buffer,
+                &current_frame.presentation_command_buffer,
+            ] {
+                raw_device
+                    .reset_command_buffer(cb.raw, vk::CommandBufferResetFlags::default())
+                    .unwrap();
+            }
+        }
+
+        let frame_constants_layout = prepare_frame_constants(&mut self.dynamic_constants);
+
+        let swapchain_image = swapchain.peek_next_image();
+        self.device.begin_frame();
+
+        let current_frame = self.device.current_frame();
+        let main_cb = &current_frame.main_command_buffer;
+        let presentation_cb = &current_frame.presentation_command_buffer;
+
+        unsafe {
+            {
+                puffin::profile_scope!("begin_command_buffer");
+
+                for cb in [main_cb, presentation_cb] {
+                    raw_device
+                        .begin_command_buffer(
+                            cb.raw,
+                            &vk::CommandBufferBeginInfo::builder()
+                                .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT),
+                        )
+                        .unwrap();
+                }
+            }
 
             // Transition the swapchain to CS write
             vulkan::barrier::record_image_barrier(
                 device,
-                cb.raw,
+                presentation_cb.raw,
                 vulkan::barrier::ImageBarrier::new(
                     swapchain_image.image.raw,
                     vk_sync::AccessType::Present,
@@ -162,22 +192,26 @@ impl Renderer {
                 .with_discard(true),
             );
 
-            current_frame.profiler_data.begin_frame(device, cb.raw);
+            current_frame.profiler_data.begin_frame(device, main_cb.raw);
 
             if let Some(rg) = self.compiled_rg.take() {
-                let retired_rg = rg.execute(
-                    RenderGraphExecutionParams {
-                        device: &self.device,
-                        pipeline_cache: &mut self.pipeline_cache,
-                        frame_descriptor_set: self.frame_descriptor_set,
-                        frame_constants_layout,
-                        profiler_data: &current_frame.profiler_data,
-                    },
-                    &mut self.transient_resource_cache,
-                    &mut self.dynamic_constants,
-                    cb,
-                    swapchain_image.image.clone(),
-                );
+                let retired_rg = {
+                    puffin::profile_scope!("rg execute");
+                    rg.execute(
+                        RenderGraphExecutionParams {
+                            device: &self.device,
+                            pipeline_cache: &mut self.pipeline_cache,
+                            frame_descriptor_set: self.frame_descriptor_set,
+                            frame_constants_layout,
+                            profiler_data: &current_frame.profiler_data,
+                        },
+                        &mut self.transient_resource_cache,
+                        &mut self.dynamic_constants,
+                        main_cb,
+                        presentation_cb,
+                        swapchain_image.image.clone(),
+                    )
+                };
 
                 self.temporal_rg_state = match std::mem::take(&mut self.temporal_rg_state) {
                     TemporalRg::Inert(_) => {
@@ -189,7 +223,7 @@ impl Renderer {
                 // Transition the swapchain to present
                 vulkan::barrier::record_image_barrier(
                     device,
-                    cb.raw,
+                    presentation_cb.raw,
                     vulkan::barrier::ImageBarrier::new(
                         swapchain_image.image.raw,
                         vk_sync::AccessType::ComputeShaderWrite,
@@ -201,33 +235,61 @@ impl Renderer {
                 retired_rg.release_resources(&mut self.transient_resource_cache);
             }
 
-            current_frame.profiler_data.finish_frame(device, cb.raw);
-            raw_device.end_command_buffer(cb.raw).unwrap();
+            current_frame
+                .profiler_data
+                .finish_frame(device, presentation_cb.raw);
+
+            raw_device.end_command_buffer(main_cb.raw).unwrap();
+            raw_device.end_command_buffer(presentation_cb.raw).unwrap();
         }
 
         self.dynamic_constants.advance_frame();
 
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
-            .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
-            .command_buffers(std::slice::from_ref(&cb.raw));
-
         unsafe {
+            let submit_info = [vk::SubmitInfo::builder()
+                .command_buffers(std::slice::from_ref(&main_cb.raw))
+                .build()];
+
             raw_device
-                .reset_fences(std::slice::from_ref(&cb.submit_done_fence))
+                .reset_fences(std::slice::from_ref(&main_cb.submit_done_fence))
                 .expect("reset_fences");
 
             puffin::profile_scope!("queue_submit");
             raw_device
                 .queue_submit(
                     self.device.universal_queue.raw,
-                    &[submit_info.build()],
-                    cb.submit_done_fence,
+                    &submit_info,
+                    main_cb.submit_done_fence,
+                )
+                .expect("queue submit failed.");
+
+            let _swapchain_image = swapchain
+                .acquire_next_image()
+                .ok()
+                .expect("swapchain image");
+            assert_eq!(swapchain_image.image_index, _swapchain_image.image_index);
+
+            let submit_info = [vk::SubmitInfo::builder()
+                .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
+                .signal_semaphores(std::slice::from_ref(
+                    &swapchain_image.rendering_finished_semaphore,
+                ))
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
+                .command_buffers(std::slice::from_ref(&presentation_cb.raw))
+                .build()];
+            raw_device
+                .reset_fences(std::slice::from_ref(&presentation_cb.submit_done_fence))
+                .expect("reset_fences");
+            raw_device
+                .queue_submit(
+                    self.device.universal_queue.raw,
+                    &submit_info,
+                    presentation_cb.submit_done_fence,
                 )
                 .expect("queue submit failed.");
         }
 
-        swapchain.present_image(swapchain_image, &[]);
+        swapchain.present_image(swapchain_image);
         self.device.finish_frame(current_frame);
     }
 
