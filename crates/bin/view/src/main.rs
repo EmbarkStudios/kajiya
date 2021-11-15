@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use dolly::prelude::*;
 use imgui::im_str;
-use kajiya::world_renderer::AddMeshOptions;
+use kajiya::{rg::GraphDebugHook, world_renderer::AddMeshOptions};
 use kajiya_simple::*;
 
 use std::fs::File;
@@ -221,6 +221,8 @@ fn main() -> anyhow::Result<()> {
         let mut max_fps = MAX_FPS_LIMIT;
         let mut debug_gi_cascade_idx: u32 = 0;
 
+        let mut locked_rg_debug_hook: Option<GraphDebugHook> = None;
+
         kajiya.run(move |mut ctx| {
             // Limit framerate. Not particularly precise.
             if max_fps != MAX_FPS_LIMIT {
@@ -388,6 +390,8 @@ fn main() -> anyhow::Result<()> {
                 );
             }
 
+            ctx.world_renderer.rg_debug_hook = locked_rg_debug_hook.clone();
+
             if show_gui {
                 ctx.imgui.take().unwrap().frame(|ui| {
                     if imgui::CollapsingHeader::new(im_str!("Tweaks"))
@@ -538,14 +542,37 @@ fn main() -> anyhow::Result<()> {
                                 continue;
                             }
 
+                            let style = locked_rg_debug_hook.as_ref().and_then(|hook| {
+                                if hook.render_scope == scope {
+                                    Some(ui.push_style_color(
+                                        imgui::StyleColor::Text,
+                                        [1.0, 1.0, 0.1, 1.0],
+                                    ))
+                                } else {
+                                    None
+                                }
+                            });
+
                             ui.text(format!("{}: {:.3}ms", scope.name, ms));
 
-                            let hit = ui.is_item_hovered();
-                            if hit {
+                            if let Some(style) = style {
+                                style.pop(ui);
+                            }
+
+                            if ui.is_item_hovered() {
                                 ctx.world_renderer.rg_debug_hook =
                                     Some(kajiya::rg::GraphDebugHook {
                                         render_scope: scope.clone(),
                                     });
+
+                                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                                    if locked_rg_debug_hook == ctx.world_renderer.rg_debug_hook {
+                                        locked_rg_debug_hook = None;
+                                    } else {
+                                        locked_rg_debug_hook =
+                                            ctx.world_renderer.rg_debug_hook.clone();
+                                    }
+                                }
                             }
                         }
                     }

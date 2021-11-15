@@ -118,6 +118,7 @@ pub struct PredefinedDescriptorSet {
     pub bindings: HashMap<u32, rspirv_reflect::DescriptorInfo>,
 }
 
+#[derive(Clone, PartialEq, Eq)]
 pub struct GraphDebugHook {
     pub render_scope: gpu_profiler::RenderScopeDesc,
 }
