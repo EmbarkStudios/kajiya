@@ -504,7 +504,6 @@ pub fn ssgi_cs(
             let mut sample_cs = (ray_hit_cs.xy() - cs_slice_dir * t).extend(0.0).extend(1.0);
             let sample_px = (constants.output_tex_size.xy() * cs_to_uv(sample_cs.xy())).as_uvec2();
 
-            // TODO: check if this is beneficial, or needs to be flattened
             if sample_px != prev_sample_coord0 {
                 prev_sample_coord0 = sample_px;
                 let half_depth: Vec4 = half_depth_tex.fetch(sample_px);
@@ -536,7 +535,6 @@ pub fn ssgi_cs(
             let mut sample_cs = (ray_hit_cs.xy() + cs_slice_dir * t).extend(0.0).extend(1.0);
             let sample_px = (constants.output_tex_size.xy() * cs_to_uv(sample_cs.xy())).as_uvec2();
 
-            // TODO: check if this is beneficial, or needs to be flattened
             if sample_px != prev_sample_coord1 {
                 prev_sample_coord1 = sample_px;
                 let half_depth: Vec4 = half_depth_tex.fetch(sample_px);
