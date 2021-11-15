@@ -133,6 +133,10 @@ pub fn post_combine_cs(
 
     if USE_TONEMAP {
         col = neutral_tonemap(col);
+
+        // Boost saturation and contrast to compensate for the loss from glare
+        col = lerp(Vec3::splat(lin_srgb_to_luminance(col))..=col, 1.05).min(Vec3::ONE);
+        col = col.powf(1.03);
     }
 
     if USE_DITHER {
