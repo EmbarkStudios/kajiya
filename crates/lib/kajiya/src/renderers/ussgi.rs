@@ -3,7 +3,7 @@ use kajiya_backend::{
     ash::vk::{self, ImageAspectFlags},
     vulkan::image::*,
 };
-use kajiya_rg::{self as rg, SimpleRenderPass, TemporalRenderGraph};
+use kajiya_rg::{self as rg, SimpleRenderPass};
 
 pub struct UssgiRenderer {
     ussgi_tex: PingPongTemporalResource,
@@ -30,7 +30,6 @@ impl UssgiRenderer {
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
-        let half_depth_tex = gbuffer_depth.half_depth(rg);
 
         let mut ussgi_tex = rg.create(
             gbuffer_desc

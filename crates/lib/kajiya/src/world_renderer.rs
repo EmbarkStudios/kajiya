@@ -1,15 +1,12 @@
 use crate::{
     bindless_descriptor_set::{create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT},
     buffer_builder::BufferBuilder,
-    camera::CameraMatrices,
-    frame_constants::FrameConstants,
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
         lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
         shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
-    viewport::ViewConstants,
 };
 use glam::{Mat3, Quat, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
@@ -24,6 +21,9 @@ use kajiya_rg::{self as rg};
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use rg::renderer::FrameConstantsLayout;
+use rust_shaders_shared::{
+    camera::CameraMatrices, frame_constants::FrameConstants, view_constants::ViewConstants,
+};
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 
@@ -850,7 +850,7 @@ impl WorldRenderer {
 
         view_constants.set_pixel_offset(
             self.taa.current_supersample_offset,
-            frame_desc.render_extent,
+            frame_desc.render_extent.into(),
         );
 
         let triangle_lights: Vec<TriangleLight> = self
@@ -877,33 +877,18 @@ impl WorldRenderer {
 
         let globals_offset = dynamic_constants.push(&FrameConstants {
             view_constants,
-            sun_direction: [
-                frame_desc.sun_direction.x,
-                frame_desc.sun_direction.y,
-                frame_desc.sun_direction.z,
-                0.0,
-            ],
-            frame_idx: self.frame_idx,
+            sun_direction: frame_desc.sun_direction.extend(0.0),
+            frame_index: self.frame_idx,
             delta_time_seconds,
             sun_angular_radius_cos: (self.sun_size_multiplier * real_sun_angular_radius).cos(),
             global_fog_thickness: self.global_fog_thickness,
 
-            sun_color_multiplier: [
-                self.sun_color_multiplier.x,
-                self.sun_color_multiplier.y,
-                self.sun_color_multiplier.z,
-                0.0,
-            ],
-            sky_ambient: [
-                self.sky_ambient.x,
-                self.sky_ambient.y,
-                self.sky_ambient.z,
-                0.0,
-            ],
-
+            sun_color_multiplier: self.sun_color_multiplier.extend(0.0),
+            sky_ambient: self.sky_ambient.extend(0.0),
             triangle_light_count: triangle_lights.len() as _,
             world_gi_scale: self.world_gi_scale,
-            pad: [0u32; 2],
+            pad0: 0,
+            pad1: 0,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

@@ -9,14 +9,12 @@ pub mod math;
 pub mod mmap;
 pub mod renderers;
 pub mod ui_renderer;
-pub mod viewport;
 pub mod world_render_passes;
 pub mod world_renderer;
 pub mod world_renderer_mmap_adapter;
 
 mod bindless_descriptor_set;
 mod buffer_builder;
-mod frame_constants;
 
 pub use kajiya_asset as asset;
 pub use kajiya_backend as backend;

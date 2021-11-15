@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use crate::renderer::FrameConstantsLayout;
+use crate::{renderer::FrameConstantsLayout, resource_registry::PendingRenderResourceInfo};
 
 use super::{
     pass_builder::PassBuilder,
@@ -12,7 +12,7 @@ use super::{
 };
 
 use kajiya_backend::{
-    ash::vk,
+    ash::{extensions::khr::Swapchain, vk},
     dynamic_constants::DynamicConstants,
     gpu_profiler,
     pipeline_cache::{
@@ -35,17 +35,19 @@ use kajiya_backend::{
 };
 use parking_lot::Mutex;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     hash::Hash,
     marker::PhantomData,
     path::{Path, PathBuf},
     sync::{Arc, Weak},
 };
 
+#[derive(Clone)]
 pub(crate) struct GraphResourceCreateInfo {
     pub desc: GraphResourceDesc,
 }
 
+#[derive(Clone)]
 pub(crate) enum GraphResourceImportInfo {
     Image {
         resource: Arc<Image>,
@@ -62,6 +64,7 @@ pub(crate) enum GraphResourceImportInfo {
     SwapchainImage,
 }
 
+#[derive(Clone)]
 pub(crate) enum GraphResourceInfo {
     Created(GraphResourceCreateInfo),
     Imported(GraphResourceImportInfo),
@@ -389,12 +392,16 @@ pub struct RenderGraphExecutionParams<'a> {
     pub profiler_data: &'a VkProfilerData,
 }
 
+pub struct RenderGraphPipelines {
+    pub(crate) compute: Vec<ComputePipelineHandle>,
+    pub(crate) raster: Vec<RasterPipelineHandle>,
+    pub(crate) rt: Vec<RtPipelineHandle>,
+}
+
 pub struct CompiledRenderGraph {
     rg: RenderGraph,
     resource_info: ResourceInfo,
-    compute_pipelines: Vec<ComputePipelineHandle>,
-    raster_pipelines: Vec<RasterPipelineHandle>,
-    rt_pipelines: Vec<RtPipelineHandle>,
+    pipelines: RenderGraphPipelines,
 }
 
 struct PendingDebugPass {
@@ -566,9 +573,11 @@ impl RenderGraph {
         CompiledRenderGraph {
             rg: self,
             resource_info,
-            compute_pipelines,
-            raster_pipelines,
-            rt_pipelines,
+            pipelines: RenderGraphPipelines {
+                compute: compute_pipelines,
+                raster: raster_pipelines,
+                rt: rt_pipelines,
+            },
         }
     }
 
@@ -688,15 +697,13 @@ fn buffer_access_mask_to_usage_flags(access_mask: vk::AccessFlags) -> vk::Buffer
 }
 
 impl CompiledRenderGraph {
-    #[must_use = "Call release_resources on the result"]
-    pub fn execute(
+    #[must_use]
+    pub fn begin_execute<'exec_params, 'constants>(
         self,
-        params: RenderGraphExecutionParams<'_>,
+        params: RenderGraphExecutionParams<'exec_params>,
         transient_resource_cache: &mut TransientResourceCache,
-        dynamic_constants: &mut DynamicConstants,
-        cb: &CommandBuffer,
-        swapchain_image: Arc<Image>,
-    ) -> RetiredRenderGraph {
+        dynamic_constants: &'constants mut DynamicConstants,
+    ) -> ExecutingRenderGraph<'exec_params, 'constants> {
         let device = params.device;
         let resources: Vec<RegistryResource> = self
             .rg
@@ -704,7 +711,7 @@ impl CompiledRenderGraph {
             .iter()
             .enumerate()
             .map(|(resource_idx, resource)| match resource {
-                GraphResourceInfo::Created(resource) => match resource.desc {
+                GraphResourceInfo::Created(create_info) => match create_info.desc {
                     GraphResourceDesc::Image(mut desc) => {
                         desc.usage = self.resource_info.image_usage_flags[resource_idx];
 
@@ -733,7 +740,7 @@ impl CompiledRenderGraph {
                         unimplemented!();
                     }
                 },
-                GraphResourceInfo::Imported(resource) => match resource {
+                GraphResourceInfo::Imported(import_info) => match import_info {
                     GraphResourceImportInfo::Image {
                         resource,
                         access_type,
@@ -758,88 +765,163 @@ impl CompiledRenderGraph {
                         access_type: *access_type,
                     },
                     GraphResourceImportInfo::SwapchainImage => RegistryResource {
-                        resource: AnyRenderResource::ImportedImage(swapchain_image.clone()),
+                        resource: AnyRenderResource::Pending(PendingRenderResourceInfo {
+                            resource: resource.clone(),
+                        }),
                         access_type: vk_sync::AccessType::ComputeShaderWrite,
                     },
                 },
             })
             .collect();
 
-        let mut resource_registry = ResourceRegistry {
-            execution_params: &params,
+        let resource_registry = ResourceRegistry {
+            execution_params: params,
             resources,
             dynamic_constants,
-            compute_pipelines: self.compute_pipelines,
-            raster_pipelines: self.raster_pipelines,
-            rt_pipelines: self.rt_pipelines,
+            pipelines: self.pipelines,
         };
 
-        for (pass_idx, pass) in self.rg.passes.into_iter().enumerate() {
-            let vk_query_idx = {
-                let query_id = gpu_profiler::create_gpu_query(
-                    gpu_profiler::RenderScopeDesc {
-                        name: pass.name.clone(),
-                        id: pass_idx as _,
-                    },
-                    pass_idx,
-                );
-                let vk_query_idx = params.profiler_data.get_query_id(query_id);
+        ExecutingRenderGraph {
+            resource_registry,
+            passes: self.rg.passes.into(),
+            resources: self.rg.resources,
+            exported_resources: self.rg.exported_resources,
+        }
+    }
+}
 
-                unsafe {
-                    params.device.raw.cmd_write_timestamp(
-                        cb.raw,
-                        vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                        params.profiler_data.query_pool,
-                        vk_query_idx * 2,
-                    );
-                }
+pub struct ExecutingRenderGraph<'exec_params, 'constants> {
+    passes: VecDeque<RecordedPass>,
+    resources: Vec<GraphResourceInfo>,
+    exported_resources: Vec<(ExportableGraphResource, vk_sync::AccessType)>,
+    resource_registry: ResourceRegistry<'exec_params, 'constants>,
+}
 
-                vk_query_idx
-            };
+impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
+    pub fn record_main_cb(&mut self, cb: &CommandBuffer) {
+        let mut first_presentation_pass: usize = self.passes.len();
 
-            {
-                let mut transitions: Vec<(usize, PassResourceAccessType)> = Vec::new();
-                for resource_ref in pass.read.iter().chain(pass.write.iter()) {
-                    transitions.push((resource_ref.handle.id as usize, resource_ref.access));
-                }
-
-                // TODO: optimize the barriers
-
-                for (resource_idx, access) in transitions {
-                    let resource = &mut resource_registry.resources[resource_idx];
-                    Self::transition_resource(params.device, cb, resource, access.access_type);
+        for (pass_idx, pass) in self.passes.iter().enumerate() {
+            for res in &pass.write {
+                let res = &self.resources[res.handle.id as usize];
+                if matches!(
+                    res,
+                    GraphResourceInfo::Imported(GraphResourceImportInfo::SwapchainImage)
+                ) {
+                    first_presentation_pass = pass_idx;
+                    break;
                 }
             }
+        }
 
-            let mut api = RenderPassApi {
-                cb,
-                resources: &mut resource_registry,
-            };
+        let mut passes = std::mem::take(&mut self.passes);
+        for pass in passes.drain(..first_presentation_pass) {
+            Self::record_pass_cb(pass, &mut self.resource_registry, cb);
+        }
+        self.passes = passes;
+    }
 
-            if let Some(render_fn) = pass.render_fn {
-                render_fn(&mut api);
+    #[must_use]
+    pub fn record_presentation_cb(
+        mut self,
+        cb: &CommandBuffer,
+        swapchain_image: Arc<Image>,
+    ) -> RetiredRenderGraph {
+        let params = &self.resource_registry.execution_params;
+
+        // Transition exported images to the requested access types
+        for (resource_idx, access_type) in self.exported_resources {
+            if access_type != vk_sync::AccessType::Nothing {
+                let resource =
+                    &mut self.resource_registry.resources[resource_idx.raw().id as usize];
+                Self::transition_resource(params.device, cb, resource, access_type);
             }
+        }
+
+        for res in &mut self.resource_registry.resources {
+            if let AnyRenderResource::Pending(pending) = &mut res.resource {
+                match pending.resource {
+                    GraphResourceInfo::Imported(GraphResourceImportInfo::SwapchainImage) => {
+                        res.resource = AnyRenderResource::ImportedImage(swapchain_image.clone());
+                    }
+                    _ => panic!("Only swapchain can be currently pending"),
+                }
+            }
+        }
+
+        let passes = self.passes;
+        for pass in passes {
+            Self::record_pass_cb(pass, &mut self.resource_registry, cb);
+        }
+
+        RetiredRenderGraph {
+            resources: self.resource_registry.resources,
+        }
+    }
+
+    fn record_pass_cb(
+        pass: RecordedPass,
+        resource_registry: &mut ResourceRegistry,
+        cb: &CommandBuffer,
+    ) {
+        let vk_query_idx = {
+            let params = &resource_registry.execution_params;
+
+            let query_id = gpu_profiler::create_gpu_query(
+                gpu_profiler::RenderScopeDesc {
+                    name: pass.name.clone(),
+                    id: pass.idx as _,
+                },
+                pass.idx,
+            );
+            let vk_query_idx = params.profiler_data.get_query_id(query_id);
 
             unsafe {
                 params.device.raw.cmd_write_timestamp(
                     cb.raw,
                     vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                     params.profiler_data.query_pool,
-                    vk_query_idx * 2 + 1,
+                    vk_query_idx * 2,
                 );
             }
-        }
 
-        // Transition exported images to the requested access types
-        for (resource_idx, access_type) in self.rg.exported_resources {
-            if access_type != vk_sync::AccessType::Nothing {
-                let resource = &mut resource_registry.resources[resource_idx.raw().id as usize];
-                Self::transition_resource(params.device, cb, resource, access_type);
+            vk_query_idx
+        };
+
+        {
+            let params = &resource_registry.execution_params;
+
+            let mut transitions: Vec<(usize, PassResourceAccessType)> = Vec::new();
+            for resource_ref in pass.read.iter().chain(pass.write.iter()) {
+                transitions.push((resource_ref.handle.id as usize, resource_ref.access));
+            }
+
+            // TODO: optimize the barriers
+
+            for (resource_idx, access) in transitions {
+                let resource = &mut resource_registry.resources[resource_idx];
+                Self::transition_resource(params.device, cb, resource, access.access_type);
             }
         }
 
-        RetiredRenderGraph {
-            resources: resource_registry.resources,
+        let mut api = RenderPassApi {
+            cb,
+            resources: resource_registry,
+        };
+
+        if let Some(render_fn) = pass.render_fn {
+            render_fn(&mut api);
+        }
+
+        unsafe {
+            let params = &resource_registry.execution_params;
+
+            params.device.raw.cmd_write_timestamp(
+                cb.raw,
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                params.profiler_data.query_pool,
+                vk_query_idx * 2 + 1,
+            );
         }
     }
 
@@ -935,7 +1017,8 @@ impl RetiredRenderGraph {
                 }
                 AnyRenderResource::ImportedImage(_)
                 | AnyRenderResource::ImportedBuffer(_)
-                | AnyRenderResource::ImportedRayTracingAcceleration(_) => {}
+                | AnyRenderResource::ImportedRayTracingAcceleration(_) => {},
+                AnyRenderResource::Pending { .. } => panic!("RetiredRenderGraph::release_resources called while a resource was in Pending state"),
             }
         }
     }

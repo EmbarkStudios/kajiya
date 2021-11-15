@@ -12,7 +12,6 @@
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 [[vk::binding(4)]] cbuffer _ {
     float4 output_tex_size;
-    uint blur_pyramid_mip_count;
     float ev_shift;
 };
 
