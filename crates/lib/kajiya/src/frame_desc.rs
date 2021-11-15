@@ -1,6 +1,6 @@
 use glam::Vec3;
 
-use crate::camera::CameraMatrices;
+use rust_shaders_shared::camera::CameraMatrices;
 
 pub struct WorldFrameDesc {
     pub camera_matrices: CameraMatrices,

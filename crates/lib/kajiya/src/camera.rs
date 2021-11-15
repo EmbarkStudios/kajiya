@@ -1,4 +1,5 @@
 use crate::math::*;
+use rust_shaders_shared::camera::CameraMatrices;
 
 pub trait IntoCameraBodyMatrices {
     fn into_camera_body_matrices(self) -> CameraBodyMatrices;
@@ -64,14 +65,6 @@ pub struct CameraBodyMatrices {
     pub view_to_world: Mat4,
 }
 
-#[derive(PartialEq, Clone, Copy)]
-pub struct CameraMatrices {
-    pub view_to_clip: Mat4,
-    pub clip_to_view: Mat4,
-    pub world_to_view: Mat4,
-    pub view_to_world: Mat4,
-}
-
 impl CameraBodyMatrices {
     pub fn from_position_rotation(position: Vec3, rotation: Quat) -> Self {
         let view_to_world = {
@@ -88,22 +81,6 @@ impl CameraBodyMatrices {
             world_to_view,
             view_to_world,
         }
-    }
-}
-
-impl CameraMatrices {
-    pub fn eye_position(&self) -> Vec3 {
-        (self.view_to_world * Vec4::new(0.0, 0.0, 0.0, 1.0)).truncate()
-    }
-
-    pub fn eye_direction(&self) -> Vec3 {
-        (self.view_to_world * Vec4::new(0.0, 0.0, -1.0, 0.0))
-            .truncate()
-            .normalize()
-    }
-
-    pub fn aspect_ratio(&self) -> f32 {
-        self.view_to_clip.y_axis.y / self.view_to_clip.x_axis.x
     }
 }
 

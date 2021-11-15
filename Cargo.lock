@@ -1420,6 +1420,7 @@ dependencies = [
  "raw-window-handle",
  "relative-path",
  "ron",
+ "rust-shaders-shared",
  "smol",
  "structopt",
  "thiserror",
@@ -1614,9 +1615,9 @@ dependencies = [
 
 [[package]]
 name = "macaw"
-version = "0.14.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2cee8421c24a2a53624e44b1c8fdbf75863121cb94f58a5a75fc51673f3e5054"
+checksum = "96ea524ece39c817dc5478897fceec1fb389eaaed9516813f1e51b21cb272239"
 dependencies = [
  "glam",
  "num-traits",
@@ -2340,6 +2341,16 @@ name = "rust-shaders"
 version = "0.1.0"
 dependencies = [
  "macaw",
+ "rust-shaders-shared",
+ "spirv-std",
+]
+
+[[package]]
+name = "rust-shaders-shared"
+version = "0.1.0"
+dependencies = [
+ "macaw",
+ "num-traits",
  "spirv-std",
 ]
 

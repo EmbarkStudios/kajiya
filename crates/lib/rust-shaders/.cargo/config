@@ -1,0 +1,5 @@
+[profile.release]
+# Make sure we don't inherit `debug = true` from the top-level `Cargo.toml`
+# for any of the crates used by `rust-shaders`. We don't need `debug`,
+# and it's very slow with Rust GPU.
+debug = false

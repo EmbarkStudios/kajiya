@@ -9,6 +9,7 @@ edition = "2021"
 kajiya-asset = { path = "../kajiya-asset" }
 kajiya-backend = { path = "../kajiya-backend" }
 kajiya-rg = { path = "../kajiya-rg" }
+rust-shaders-shared = { path = "../rust-shaders-shared" }
 
 anyhow = "1.0"
 array-init = "2.0.0"

@@ -18,7 +18,7 @@ impl LazyWorker for CompileRustShader {
     async fn run(self, ctx: RunContext) -> Self::Output {
         CompileRustShaderCrate.into_lazy().eval(&ctx).await?;
 
-        let compile_result = LoadFile::new("/rust-shaders/compiled/shaders.json")?
+        let compile_result = LoadFile::new("/rust-shaders-compiled/shaders.json")?
             .into_lazy()
             .eval(&ctx)
             .await?;
@@ -40,7 +40,7 @@ impl LazyWorker for CompileRustShader {
                 anyhow::anyhow!("No Rust-GPU module found for entry point {}", self.entry)
             })?;
 
-        let spirv_blob = LoadFile::new(format!("/rust-shaders/compiled/{}", shader_file))?
+        let spirv_blob = LoadFile::new(format!("/rust-shaders-compiled/{}", shader_file))?
             .into_lazy()
             .eval(&ctx)
             .await?;
@@ -102,16 +102,24 @@ impl LazyWorker for CompileRustShaderCrate {
         });
 
         // And finally register a watcher on the source directory for Rust shaders.
-        let invalidation_trigger = ctx.get_invalidation_trigger();
-        let src_dir = normalized_path_from_vfs("/rust-shaders/src")?;
-        crate::file::FILE_WATCHER
-            .lock()
-            .watch(src_dir.clone(), move |event| {
-                if matches!(event, hotwatch::Event::Write(_)) {
-                    invalidation_trigger();
-                }
-            })
-            .with_context(|| format!("CompileRustShaderCrate: trying to watch {:?}", src_dir))?;
+        let src_dirs = [
+            normalized_path_from_vfs("/kajiya/crates/lib/rust-shaders/src")?,
+            normalized_path_from_vfs("/kajiya/crates/lib/rust-shaders-shared/src")?,
+        ];
+
+        for src_dir in src_dirs {
+            let invalidation_trigger = ctx.get_invalidation_trigger();
+            crate::file::FILE_WATCHER
+                .lock()
+                .watch(src_dir.clone(), move |event| {
+                    if matches!(event, hotwatch::Event::Write(_)) {
+                        invalidation_trigger();
+                    }
+                })
+                .with_context(|| {
+                    format!("CompileRustShaderCrate: trying to watch {:?}", src_dir)
+                })?;
+        }
 
         Ok(())
     }
@@ -121,7 +129,7 @@ impl LazyWorker for CompileRustShaderCrate {
 fn compile_rust_shader_crate_thread(
     cancel_rx: std::sync::mpsc::Receiver<()>,
 ) -> anyhow::Result<()> {
-    let builder_dir = normalized_path_from_vfs("/rust-shaders/builder")?;
+    let builder_dir = normalized_path_from_vfs("/kajiya/crates/bin/rust-shader-builder")?;
 
     let mut child = Command::new("cargo")
         .env_remove("RUSTUP_TOOLCHAIN")

@@ -18,8 +18,8 @@ lazy_static! {
             ("/kajiya".to_owned(), PathBuf::from(".")),
             ("/shaders".to_owned(), PathBuf::from("assets/shaders")),
             (
-                "/rust-shaders".to_owned(),
-                PathBuf::from("assets/rust-shaders")
+                "/rust-shaders-compiled".to_owned(),
+                PathBuf::from("assets/rust-shaders-compiled")
             ),
             ("/images".to_owned(), PathBuf::from("assets/images")),
             ("/baked".to_owned(), PathBuf::from("baked"))
