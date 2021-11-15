@@ -3,6 +3,9 @@ use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, SimpleRenderPass, TemporalRenderGraph};
 use rust_shaders_shared::ssgi::SsgiConstants;
 
+// The Rust shaders currently suffer a perfomance penalty. Tracking: https://github.com/EmbarkStudios/kajiya/issues/24
+const USE_RUST_SHADERS: bool = false;
+
 pub struct SsgiRenderer {
     ssgi_tex: PingPongTemporalResource,
 }
@@ -34,18 +37,33 @@ impl SsgiRenderer {
                 .format(vk::Format::R16_SFLOAT),
         );
 
-        SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi"), "ssgi::ssgi_cs")
-            .read(&gbuffer_depth.gbuffer)
-            .read(&*half_depth_tex)
-            .read(&*half_view_normal_tex)
-            .read(prev_radiance)
-            .read(reprojection_map)
-            .write(&mut ssgi_tex)
-            .constants(SsgiConstants::default_with_size(
-                gbuffer_desc.extent_inv_extent_2d().into(),
-                ssgi_tex.desc().extent_inv_extent_2d().into(),
-            ))
-            .dispatch(ssgi_tex.desc().extent);
+        if USE_RUST_SHADERS {
+            SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi"), "ssgi::ssgi_cs")
+                .read(&gbuffer_depth.gbuffer)
+                .read(&*half_depth_tex)
+                .read(&*half_view_normal_tex)
+                .read(prev_radiance)
+                .read(reprojection_map)
+                .write(&mut ssgi_tex)
+                .constants(SsgiConstants::default_with_size(
+                    gbuffer_desc.extent_inv_extent_2d().into(),
+                    ssgi_tex.desc().extent_inv_extent_2d().into(),
+                ))
+                .dispatch(ssgi_tex.desc().extent);
+        } else {
+            SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/shaders/ssgi/ssgi.hlsl")
+                .read(&gbuffer_depth.gbuffer)
+                .read(&*half_depth_tex)
+                .read(&*half_view_normal_tex)
+                .read(prev_radiance)
+                .read(reprojection_map)
+                .write(&mut ssgi_tex)
+                .constants((
+                    gbuffer_desc.extent_inv_extent_2d(),
+                    ssgi_tex.desc().extent_inv_extent_2d(),
+                ))
+                .dispatch(ssgi_tex.desc().extent);
+        }
 
         Self::filter_ssgi(
             rg,
@@ -75,10 +93,17 @@ impl SsgiRenderer {
                     .format(vk::Format::R16_SFLOAT),
             );
 
-            SimpleRenderPass::new_compute_rust(
-                rg.add_pass("ssgi spatial"),
-                "ssgi::spatial_filter_cs",
-            )
+            if USE_RUST_SHADERS {
+                SimpleRenderPass::new_compute_rust(
+                    rg.add_pass("ssgi spatial"),
+                    "ssgi::spatial_filter_cs",
+                )
+            } else {
+                SimpleRenderPass::new_compute(
+                    rg.add_pass("ssgi spatial"),
+                    "/shaders/ssgi/spatial_filter.hlsl",
+                )
+            }
             .read(input)
             .read(&half_depth_tex)
             .read(&half_view_normal_tex)
@@ -96,10 +121,17 @@ impl SsgiRenderer {
         let (mut filtered_output_tex, history_tex) = temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
-        SimpleRenderPass::new_compute_rust(
-            rg.add_pass("ssgi temporal"),
-            "ssgi::temporal_filter_cs",
-        )
+        if USE_RUST_SHADERS {
+            SimpleRenderPass::new_compute_rust(
+                rg.add_pass("ssgi temporal"),
+                "ssgi::temporal_filter_cs",
+            )
+        } else {
+            SimpleRenderPass::new_compute(
+                rg.add_pass("ssgi temporal"),
+                "/shaders/ssgi/temporal_filter.hlsl",
+            )
+        }
         .read(&upsampled_tex)
         .read(&history_tex)
         .read(reprojection_map)
@@ -123,12 +155,19 @@ impl SsgiRenderer {
     ) -> rg::Handle<Image> {
         let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16_SFLOAT));
 
-        SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi upsample"), "ssgi::upsample_cs")
-            .read(ssgi)
-            .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
-            .read(gbuffer)
-            .write(&mut output_tex)
-            .dispatch(output_tex.desc().extent);
+        if USE_RUST_SHADERS {
+            SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi upsample"), "ssgi::upsample_cs")
+        } else {
+            SimpleRenderPass::new_compute(
+                rg.add_pass("ssgi upsample"),
+                "/shaders/ssgi/upsample.hlsl",
+            )
+        }
+        .read(ssgi)
+        .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
+        .read(gbuffer)
+        .write(&mut output_tex)
+        .dispatch(output_tex.desc().extent);
         output_tex
     }
 }
