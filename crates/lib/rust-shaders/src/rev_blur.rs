@@ -56,7 +56,7 @@ pub fn rev_blur_cs(
         self_col = input_tex.sample_by_lod(*sampler_lnc, uv, 0.0);
     }
 
-    let exponential_falloff = 0.5;
+    let exponential_falloff = 0.6;
 
     // BUG: when `self_weight` is 1.0, the `w` here should be 1.0, not `exponential_falloff`
     unsafe {
