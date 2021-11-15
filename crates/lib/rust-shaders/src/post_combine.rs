@@ -18,6 +18,7 @@ use spirv_std::num_traits::Float;
 #[derive(Copy, Clone)]
 pub struct Constants {
     output_tex_size: Vec4,
+    ev_shift: f32,
 }
 
 const USE_TONEMAP: bool = true;
@@ -130,6 +131,8 @@ pub fn post_combine_cs(
     }
 
     col = lerp(col..=glare, GLARE_AMOUNT);
+    col = col.max(Vec3::ZERO);
+    col *= constants.ev_shift.exp2();
 
     if USE_TONEMAP {
         col = neutral_tonemap(col);
