@@ -63,7 +63,7 @@ struct MainLoopOptional {
     imgui: imgui::Context,
 
     #[cfg(feature = "puffin-server")]
-    puffin_server: puffin_http::Server,
+    _puffin_server: puffin_http::Server,
 }
 
 pub enum WindowScale {
@@ -270,7 +270,7 @@ impl SimpleMainLoop {
             #[cfg(feature = "dear-imgui")]
             imgui,
             #[cfg(feature = "puffin-server")]
-            puffin_server,
+            _puffin_server: puffin_server,
         };
 
         Ok(Self {
