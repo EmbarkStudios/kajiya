@@ -24,7 +24,7 @@ const USE_TONEMAP: bool = true;
 const USE_DITHER: bool = true;
 const USE_SHARPEN: bool = true;
 
-const GLARE_AMOUNT: f32 = 0.07;
+const GLARE_AMOUNT: f32 = 0.05;
 
 fn rsqrt(f: f32) -> f32 {
     1.0 / f.sqrt()
@@ -97,7 +97,7 @@ pub fn post_combine_cs(
 
     // TODO: move to its own pass
     if USE_SHARPEN {
-        let sharpen_amount = 0.3;
+        let sharpen_amount = 0.2;
 
         let mut neighbors = 0.0;
         let mut wt_sum = 0.0;
