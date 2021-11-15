@@ -48,7 +48,8 @@ pub struct DeviceFrame {
     //pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
     pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
     pub rendering_complete_semaphore: Option<vk::Semaphore>,
-    pub command_buffer: CommandBuffer,
+    pub main_command_buffer: CommandBuffer,
+    pub presentation_command_buffer: CommandBuffer,
     pub pending_resource_releases: Mutex<PendingResourceReleases>,
     pub profiler_data: VkProfilerData,
 }
@@ -111,7 +112,8 @@ impl DeviceFrame {
             .expect("linear allocator"),*/
             swapchain_acquired_semaphore: None,
             rendering_complete_semaphore: None,
-            command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
+            main_command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
+            presentation_command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
             pending_resource_releases: Default::default(),
             profiler_data: VkProfilerData::new(device, global_allocator),
         }
@@ -441,12 +443,67 @@ impl Device {
             .unwrap_or_else(|| panic!("Sampler not found: {:?}", desc))
     }
 
-    pub fn current_frame(&self) -> Arc<DeviceFrame> {
-        self.frames[0].lock().clone()
+    pub fn begin_frame(&self) -> Arc<DeviceFrame> {
+        let mut frame0 = self.frames[0].lock();
+        {
+            let frame0: &mut DeviceFrame = Arc::get_mut(&mut frame0).unwrap_or_else(|| {
+                panic!("Unable to begin frame: frame data is being held by user code")
+            });
+
+            // Wait for the the GPU to be done with the previously submitted frame,
+            // so that we can access its data again.
+            //
+            // We can't use device.frame[0] before this, or we race with the GPU.
+            //
+            // TODO: the wait here protects more than the command buffers (such as dynamic constants),
+            // but the fence belongs to command buffers, creating a confusing relationship.
+            unsafe {
+                puffin::profile_scope!("wait submit done");
+
+                self.raw
+                    .wait_for_fences(
+                        // Note: need to wait for both command buffers so that the GPU won't
+                        // be accessing frame[0] any more after this.
+                        &[
+                            frame0.main_command_buffer.submit_done_fence,
+                            frame0.presentation_command_buffer.submit_done_fence,
+                        ],
+                        true,
+                        std::u64::MAX,
+                    )
+                    .expect("Wait for fence failed.");
+            }
+
+            // Report GPU timings
+            {
+                puffin::profile_scope!("retrieve GPU timers");
+
+                let (query_ids, timing_pairs) = frame0.profiler_data.retrieve_previous_result();
+
+                let ns_per_tick = self.pdevice.properties.limits.timestamp_period;
+
+                crate::gpu_profiler::report_durations_ticks(
+                    ns_per_tick,
+                    timing_pairs.chunks_exact(2).enumerate().map(
+                        |(pair_idx, chunk)| -> (crate::gpu_profiler::GpuProfilerQueryId, u64) {
+                            (query_ids[pair_idx], chunk[1] - chunk[0])
+                        },
+                    ),
+                );
+            }
+
+            puffin::profile_scope!("release pending resources");
+            frame0
+                .pending_resource_releases
+                .get_mut()
+                .release_all(&self.raw);
+        }
+
+        frame0.clone()
     }
 
     pub fn defer_release(&self, resource: impl DeferredRelease) {
-        resource.enqueue_release(&mut *self.current_frame().pending_resource_releases.lock());
+        resource.enqueue_release(&mut self.frames[0].lock().pending_resource_releases.lock());
     }
 
     pub fn with_setup_cb(&self, callback: impl FnOnce(vk::CommandBuffer)) {
@@ -478,7 +535,7 @@ impl Device {
                 )
                 .expect("queue submit failed.");
 
-            log::info!("device_wait_idle");
+            log::trace!("device_wait_idle");
             self.raw.device_wait_idle().unwrap();
         }
     }
@@ -501,46 +558,6 @@ impl Device {
             std::mem::swap(frame0, frame1);
             //std::mem::swap(frame1, frame2);
         }
-
-        // Wait for the the GPU to be done with the previously submitted frame,
-        // so that we can access its data again
-        unsafe {
-            self.raw
-                .wait_for_fences(
-                    std::slice::from_ref(&frame0.command_buffer.submit_done_fence),
-                    true,
-                    std::u64::MAX,
-                )
-                .expect("Wait for fence failed.");
-
-            self.raw
-                .reset_command_buffer(
-                    frame0.command_buffer.raw,
-                    vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-                )
-                .unwrap();
-        }
-
-        // Report GPU timings
-        {
-            let (query_ids, timing_pairs) = frame0.profiler_data.retrieve_previous_result();
-
-            let ns_per_tick = self.pdevice.properties.limits.timestamp_period;
-
-            crate::gpu_profiler::report_durations_ticks(
-                ns_per_tick,
-                timing_pairs.chunks_exact(2).enumerate().map(
-                    |(pair_idx, chunk)| -> (crate::gpu_profiler::GpuProfilerQueryId, u64) {
-                        (query_ids[pair_idx], chunk[1] - chunk[0])
-                    },
-                ),
-            );
-        }
-
-        frame0
-            .pending_resource_releases
-            .get_mut()
-            .release_all(&self.raw);
     }
 
     pub fn physical_device(&self) -> &PhysicalDevice {
@@ -551,7 +568,7 @@ impl Device {
 impl Drop for Device {
     fn drop(&mut self) {
         unsafe {
-            log::info!("device_wait_idle");
+            log::trace!("device_wait_idle");
             let _ = self.raw.device_wait_idle();
         }
     }
