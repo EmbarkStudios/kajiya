@@ -17,7 +17,7 @@ members = [
 ]
 
 exclude = [
-    "crates/bin/rust-shasder-builder",
+    "crates/bin/rust-shader-builder",
     "crates/lib/ngx_dlss"
 ]
 
