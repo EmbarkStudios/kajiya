@@ -300,7 +300,7 @@ fn process_ssgi_sample(
     center_vs: Vec3,
     normal_vs: Vec3,
     v_vs: Vec3,
-    kernel_radius: f32,
+    kernel_radius_vs: f32,
     theta_cos_max: f32,
     color_accum: &mut Vec4,
 ) -> f32 {
@@ -314,7 +314,7 @@ fn process_ssgi_sample(
         let sample_vs_offset_len = sample_vs_offset.length();
 
         let sample_theta_cos = sample_vs_offset.dot(v_vs) / sample_vs_offset_len;
-        let sample_distance_normalized = sample_vs_offset_len / kernel_radius;
+        let sample_distance_normalized = sample_vs_offset_len / kernel_radius_vs;
 
         if sample_distance_normalized < 1.0 {
             let sample_influence = 1.0 - sample_distance_normalized * sample_distance_normalized;
@@ -420,7 +420,7 @@ pub fn ssgi_cs(
         .xyz()
         .normalize();
 
-    let mut kernel_radius = ssgi_kernel_radius(constants);
+    let kernel_radius_cs = ssgi_kernel_radius(constants);
 
     let view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth, frame_constants);
     let v_vs = -view_ray_context.ray_dir_vs().normalize();
@@ -451,14 +451,14 @@ pub fn ssgi_cs(
     let kernel_radius_shrinkage = {
         // Convert AO radius into world scale
         let cs_kernel_radius_scaled = if constants.use_kernel_distance_scaling {
-            kernel_radius
+            kernel_radius_cs
                 * frame_constants
                     .view_constants
                     .view_to_clip
                     .to_cols_array_2d()[1][1]
                 / -ray_hit_vs.z
         } else {
-            kernel_radius
+            kernel_radius_cs
         };
 
         cs_slice_dir *= cs_kernel_radius_scaled;
@@ -470,7 +470,7 @@ pub fn ssgi_cs(
 
     // Shrink the AO radius
     cs_slice_dir *= kernel_radius_shrinkage;
-    kernel_radius *= kernel_radius_shrinkage;
+    let kernel_radius_vs = kernel_radius_cs * kernel_radius_shrinkage * -ray_hit_vs.z;
 
     let center_vs = ray_hit_vs.xyz();
 
@@ -524,7 +524,7 @@ pub fn ssgi_cs(
                     center_vs,
                     normal_vs,
                     v_vs,
-                    kernel_radius,
+                    kernel_radius_vs,
                     theta_cos_max1,
                     &mut color_accum,
                 );
@@ -556,7 +556,7 @@ pub fn ssgi_cs(
                     center_vs,
                     normal_vs,
                     v_vs,
-                    kernel_radius,
+                    kernel_radius_vs,
                     theta_cos_max2,
                     &mut color_accum,
                 );
