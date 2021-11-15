@@ -20,6 +20,8 @@
 #define USE_HEAVY_BIAS 0
 
 #define USE_WORLD_RADIANCE_CACHE 1
+#define LOWEST_ROUGHNESS_FOR_RADIANCE_CACHE 0.7
+
 #define USE_SURFEL_GI 1
 
 // Note: should be off when using dedicated specular lighting passes in addition to RTR
@@ -160,7 +162,8 @@ void main() {
         outgoing_ray.TMax = SKY_DIST;
 
         WrcFarField far_field = WrcFarField::create_miss();
-        if (USE_WORLD_RADIANCE_CACHE && gbuffer.roughness + uint_to_u01_float(hash1_mut(rng)) * 0.1 > 0.7) {
+        if (USE_WORLD_RADIANCE_CACHE &&
+            gbuffer.roughness * (1.0 + 0.15 * uint_to_u01_float(hash1_mut(rng))) > LOWEST_ROUGHNESS_FOR_RADIANCE_CACHE) {
             far_field =
                 WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
                     .with_interpolation_urand(float3(
