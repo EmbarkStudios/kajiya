@@ -3,7 +3,10 @@ use super::{
     profiler::VkProfilerData,
 };
 use anyhow::Result;
-use ash::{extensions::khr, vk};
+use ash::{
+    extensions::{ext::DebugUtils, khr},
+    vk,
+};
 use gpu_allocator::{AllocatorDebugSettings, VulkanAllocator, VulkanAllocatorCreateDesc};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -562,6 +565,10 @@ impl Device {
 
     pub fn physical_device(&self) -> &PhysicalDevice {
         self.pdevice.as_ref()
+    }
+
+    pub fn debug_utils(&self) -> Option<&DebugUtils> {
+        self.instance.debug_utils.as_ref()
     }
 }
 

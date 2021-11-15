@@ -12,7 +12,10 @@ use super::{
 };
 
 use kajiya_backend::{
-    ash::{extensions::khr::Swapchain, vk},
+    ash::{
+        extensions::khr::Swapchain,
+        vk::{self, DebugUtilsLabelEXT},
+    },
     dynamic_constants::DynamicConstants,
     gpu_profiler,
     pipeline_cache::{
@@ -36,6 +39,7 @@ use kajiya_backend::{
 use parking_lot::Mutex;
 use std::{
     collections::{HashMap, VecDeque},
+    ffi::CString,
     hash::Hash,
     marker::PhantomData,
     path::{Path, PathBuf},
@@ -864,9 +868,17 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         resource_registry: &mut ResourceRegistry,
         cb: &CommandBuffer,
     ) {
-        let vk_query_idx = {
-            let params = &resource_registry.execution_params;
+        let params = &resource_registry.execution_params;
 
+        if let Some(debug_utils) = params.device.debug_utils() {
+            unsafe {
+                let label: CString = CString::new(pass.name.as_str()).unwrap();
+                let label = DebugUtilsLabelEXT::builder().label_name(&label).build();
+                debug_utils.cmd_begin_debug_utils_label(cb.raw, &label);
+            }
+        }
+
+        let vk_query_idx = {
             let query_id = gpu_profiler::create_gpu_query(
                 gpu_profiler::RenderScopeDesc {
                     name: pass.name.clone(),
@@ -913,15 +925,21 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
             render_fn(&mut api);
         }
 
-        unsafe {
-            let params = &resource_registry.execution_params;
+        let params = &resource_registry.execution_params;
 
+        unsafe {
             params.device.raw.cmd_write_timestamp(
                 cb.raw,
                 vk::PipelineStageFlags::BOTTOM_OF_PIPE,
                 params.profiler_data.query_pool,
                 vk_query_idx * 2 + 1,
             );
+        }
+
+        if let Some(debug_utils) = params.device.debug_utils() {
+            unsafe {
+                debug_utils.cmd_end_debug_utils_label(cb.raw);
+            }
         }
     }
 
