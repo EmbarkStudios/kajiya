@@ -10,9 +10,6 @@ kajiya-backend = { path = "../kajiya-backend" }
 
 anyhow = "1.0"
 arrayvec = "0.5"
-derive_builder = { version = "0.9", default-features = false }
-futures = "0.3"
-glam = "0.18"
 lazy_static = "1.4"
 log = "0.4"
 parking_lot = "0.11"

@@ -266,7 +266,6 @@ dependencies = [
  "futures",
  "glam",
  "kajiya-asset",
- "kajiya-backend",
  "num_cpus",
  "smol",
  "structopt",
@@ -1393,21 +1392,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "array-init",
- "arrayvec",
- "async-channel",
- "async-executor",
  "blue-noise-sampler",
- "byte-slice-cast",
- "byteorder",
  "chrono",
- "derive_builder",
  "easy-parallel",
- "failure",
  "fern",
- "futures",
  "glam",
- "hassle-rs",
- "hotwatch",
  "image",
  "kajiya-asset",
  "kajiya-backend",
@@ -1417,13 +1406,8 @@ dependencies = [
  "memmap2 0.2.3",
  "ngx_dlss",
  "parking_lot",
- "raw-window-handle",
- "relative-path",
- "ron",
  "rust-shaders-shared",
  "smol",
- "structopt",
- "thiserror",
  "turbosloth",
  "wchar",
 ]
@@ -1441,7 +1425,6 @@ dependencies = [
  "image",
  "kajiya-backend",
  "log",
- "serde",
  "turbosloth",
  "urlencoding",
 ]
@@ -1483,15 +1466,12 @@ dependencies = [
 name = "kajiya-imgui"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "ash-imgui",
- "glam",
  "imgui",
  "imgui-winit-support",
  "kajiya",
  "log",
  "parking_lot",
- "turbosloth",
  "winit",
 ]
 
@@ -1501,9 +1481,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arrayvec",
- "derive_builder",
- "futures",
- "glam",
  "kajiya-backend",
  "lazy_static",
  "log",
@@ -1517,17 +1494,13 @@ name = "kajiya-simple"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ash-imgui",
  "glam",
  "imgui",
- "imgui-winit-support",
  "kajiya",
  "kajiya-imgui",
  "log",
- "parking_lot",
  "puffin",
  "puffin_http",
- "serde",
  "turbosloth",
  "winit",
 ]
@@ -2811,20 +2784,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "dolly",
- "futures",
- "glam",
  "imgui",
  "kajiya",
  "kajiya-simple",
- "lazy_static",
  "log",
- "parking_lot",
  "ron",
  "serde",
- "smol",
  "structopt",
- "turbosloth",
- "winit",
 ]
 
 [[package]]

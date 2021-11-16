@@ -7,7 +7,6 @@ edition = "2021"
 
 [dependencies]
 kajiya-asset = { path = "../../lib/kajiya-asset" }
-kajiya-backend = { path = "../../lib/kajiya-backend" }
 
 anyhow = "1.0"
 async-channel = "1.6"
