@@ -423,11 +423,6 @@ fn main() -> anyhow::Result<()> {
                             .speed(0.02)
                             .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
 
-                        ui.checkbox(
-                            im_str!("Reflection reservoir resampling"),
-                            &mut ctx.world_renderer.rtr.reservoir_resampling,
-                        );
-
                         if ui.radio_button_bool(
                             im_str!("Move sun"),
                             left_click_edit_mode == LeftClickEditMode::MoveSun,
