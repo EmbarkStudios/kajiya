@@ -322,6 +322,11 @@ impl PipelineCache {
                 match compiled {
                     CompileTaskOutput::Compute { handle, compiled } => {
                         let entry = self.compute_entries.get_mut(&handle).unwrap();
+                        log::trace!(
+                            "Creating compute pipeline {:?}:{:?}",
+                            compiled.name,
+                            entry.desc.compute_source.entry
+                        );
                         entry.pipeline = Some(Arc::new(create_compute_pipeline(
                             &*device,
                             &compiled.spirv,
@@ -330,6 +335,18 @@ impl PipelineCache {
                     }
                     CompileTaskOutput::Raster { handle, compiled } => {
                         let entry = self.raster_entries.get_mut(&handle).unwrap();
+                        log::trace!(
+                            "Creating raster pipeline {}",
+                            compiled
+                                .shaders
+                                .iter()
+                                .map(|shader| format!(
+                                    "{:?}:{:?}",
+                                    shader.desc.stage, shader.desc.entry_name
+                                ))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
 
                         let compiled_shaders = compiled
                             .shaders
@@ -348,6 +365,18 @@ impl PipelineCache {
                     }
                     CompileTaskOutput::Rt { handle, compiled } => {
                         let entry = self.rt_entries.get_mut(&handle).unwrap();
+                        log::trace!(
+                            "Creating rt pipeline {}",
+                            compiled
+                                .shaders
+                                .iter()
+                                .map(|shader| format!(
+                                    "{:?}:{:?}",
+                                    shader.desc.stage, shader.desc.entry_name
+                                ))
+                                .collect::<Vec<_>>()
+                                .join(", ")
+                        );
 
                         let compiled_shaders = compiled
                             .shaders

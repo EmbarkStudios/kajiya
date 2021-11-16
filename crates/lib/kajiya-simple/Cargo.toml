@@ -12,22 +12,16 @@ kajiya-imgui = { path = "../kajiya-imgui", optional = true }
 anyhow = "1.0"
 glam = { version = "0.18", features = ["serde"] }
 log = "0.4"
-parking_lot = "0.11"
 puffin = { version = "0.11.0" }
-serde = { version = "1.0", features = ["derive"] }
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 winit = "0.25"
 
 puffin_http = { version = "0.8.0", optional = true }
-ash-imgui = { path = "../ash-imgui", optional = true }
 imgui = { version = "0.7", optional = true }
-imgui-winit-support = { version = "0.7", default-features = false, features = ["winit-25"], optional = true }
 
 [features]
 dear-imgui = [
-    "ash-imgui",
     "imgui",
-    "imgui-winit-support",
     "kajiya-imgui",
 ]
 puffin-server = [

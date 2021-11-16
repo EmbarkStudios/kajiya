@@ -38,6 +38,7 @@ pub struct Instance {
     #[allow(dead_code)]
     #[allow(deprecated)]
     pub(crate) debug_loader: Option<ext::DebugReport>,
+    pub(crate) debug_utils: Option<ash::extensions::ext::DebugUtils>,
 }
 
 impl Instance {
@@ -51,6 +52,7 @@ impl Instance {
         if builder.graphics_debugging {
             #[allow(deprecated)]
             names.push(ext::DebugReport::name().as_ptr());
+            names.push(vk::ExtDebugUtilsFn::name().as_ptr());
         }
 
         names
@@ -89,7 +91,7 @@ impl Instance {
         let instance = unsafe { entry.create_instance(&instance_desc, None)? };
         info!("Created a Vulkan instance");
 
-        let (debug_loader, debug_callback) = if builder.graphics_debugging {
+        let (debug_loader, debug_callback, debug_utils) = if builder.graphics_debugging {
             let debug_info = ash::vk::DebugReportCallbackCreateInfoEXT {
                 flags: ash::vk::DebugReportFlagsEXT::ERROR
                     | ash::vk::DebugReportFlagsEXT::WARNING
@@ -108,9 +110,11 @@ impl Instance {
                     .unwrap()
             };
 
-            (Some(debug_loader), Some(debug_callback))
+            let debug_utils = ash::extensions::ext::DebugUtils::new(&entry, &instance);
+
+            (Some(debug_loader), Some(debug_callback), Some(debug_utils))
         } else {
-            (None, None)
+            (None, None, None)
         };
 
         Ok(Self {
@@ -118,6 +122,7 @@ impl Instance {
             raw: instance,
             debug_callback,
             debug_loader,
+            debug_utils,
         })
     }
 }
