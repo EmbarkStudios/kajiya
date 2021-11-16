@@ -6,15 +6,11 @@ use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{rtr::SPATIAL_RESOLVE_OFFSETS, GbufferDepth};
 
-pub struct LightingRenderer {
-    pub reservoir_resampling: bool,
-}
+pub struct LightingRenderer {}
 
 impl LightingRenderer {
     pub fn new() -> Self {
-        Self {
-            reservoir_resampling: false,
-        }
+        Self {}
     }
 }
 

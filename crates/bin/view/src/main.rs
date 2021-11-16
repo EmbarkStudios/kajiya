@@ -423,11 +423,6 @@ fn main() -> anyhow::Result<()> {
                             .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
 
                         ui.checkbox(
-                            im_str!("Reflection reservoir resampling"),
-                            &mut ctx.world_renderer.rtr.reservoir_resampling,
-                        );
-
-                        ui.checkbox(
                             im_str!("Show world radiance cache"),
                             &mut ctx.world_renderer.debug_show_wrc,
                         );

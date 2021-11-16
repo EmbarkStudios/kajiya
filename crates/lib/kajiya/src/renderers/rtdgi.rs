@@ -82,6 +82,7 @@ impl RtdgiRenderer {
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn temporal(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
@@ -479,7 +480,7 @@ impl RtdgiRenderer {
         let filtered_tex = Self::spatial2(
             rg,
             &filtered_tex,
-            &gbuffer_depth,
+            gbuffer_depth,
             ssao_img,
             bindless_descriptor_set,
         );

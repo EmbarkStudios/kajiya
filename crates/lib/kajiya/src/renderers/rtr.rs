@@ -22,8 +22,6 @@ pub struct RtrRenderer {
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
     sobol_buf: Arc<Buffer>,
-
-    pub reservoir_resampling: bool,
 }
 
 fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
@@ -55,7 +53,6 @@ impl RtrRenderer {
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
-            reservoir_resampling: false,
         }
     }
 }
@@ -155,39 +152,6 @@ impl RtrRenderer {
         let (temporal_output_tex, history_tex) = self
             .temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
-
-        if self.reservoir_resampling {
-            let mut refl0_exchanged_tex = rg.create(*refl0_tex.desc());
-            let mut refl1_exchanged_tex = rg.create(*refl1_tex.desc());
-            let mut refl2_exchanged_tex = rg.create(*refl2_tex.desc());
-
-            SimpleRenderPass::new_compute(
-                rg.add_pass("reflection exchange"),
-                "/shaders/rtr/exchange.hlsl",
-            )
-            .read(&gbuffer_depth.gbuffer)
-            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(&refl0_tex)
-            .read(&refl1_tex)
-            .read(&refl2_tex)
-            .read(&history_tex)
-            .read(reprojection_map)
-            .read(&*half_view_normal_tex)
-            .read(&*half_depth_tex)
-            .write(&mut refl0_exchanged_tex)
-            .write(&mut refl1_exchanged_tex)
-            .write(&mut refl2_exchanged_tex)
-            .raw_descriptor_set(1, bindless_descriptor_set)
-            .constants((
-                refl0_exchanged_tex.desc().extent_inv_extent_2d(),
-                SPATIAL_RESOLVE_OFFSETS,
-            ))
-            .dispatch(refl0_exchanged_tex.desc().extent);
-
-            refl0_tex = refl0_exchanged_tex;
-            refl1_tex = refl1_exchanged_tex;
-            refl2_tex = refl2_exchanged_tex;
-        }
 
         let (mut ray_len_output_tex, ray_len_history_tex) =
             self.ray_len_tex.get_output_and_history(
