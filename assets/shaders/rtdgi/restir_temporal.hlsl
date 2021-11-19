@@ -18,22 +18,21 @@
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> candidate_irradiance_tex;
 [[vk::binding(3)]] Texture2D<float4> candidate_hit_tex;
-DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
-[[vk::binding(7)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(8)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(9)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(10)]] Texture2D<float4> reservoir_history_tex;
-[[vk::binding(11)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(12)]] Texture2D<float4> hit_normal_history_tex;
-[[vk::binding(13)]] Texture2D<float4> candidate_history_tex;
-[[vk::binding(14)]] Texture2D<float> rt_invalidity_tex;
-[[vk::binding(15)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(16)]] RWTexture2D<float3> ray_orig_output_tex;
-[[vk::binding(17)]] RWTexture2D<float4> ray_output_tex;
-[[vk::binding(18)]] RWTexture2D<float4> hit_normal_output_tex;
-[[vk::binding(19)]] RWTexture2D<float4> reservoir_out_tex;
-[[vk::binding(20)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(21)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(5)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(6)]] Texture2D<float4> ray_history_tex;
+[[vk::binding(7)]] Texture2D<float4> reservoir_history_tex;
+[[vk::binding(8)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(9)]] Texture2D<float4> hit_normal_history_tex;
+[[vk::binding(10)]] Texture2D<float4> candidate_history_tex;
+[[vk::binding(11)]] Texture2D<float> rt_invalidity_tex;
+[[vk::binding(12)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(13)]] RWTexture2D<float3> ray_orig_output_tex;
+[[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
+[[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
+[[vk::binding(16)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
+[[vk::binding(18)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 

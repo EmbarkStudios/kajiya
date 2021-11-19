@@ -12,8 +12,6 @@ use super::{
     surfel_gi::SurfelGiRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
 };
 
-use blue_noise_sampler::spp64::*;
-
 pub struct RtdgiRenderer {
     temporal_irradiance_tex: PingPongTemporalResource,
     temporal_ray_orig_tex: PingPongTemporalResource,
@@ -26,10 +24,6 @@ pub struct RtdgiRenderer {
     temporal2_tex: PingPongTemporalResource,
     temporal2_variance_tex: PingPongTemporalResource,
     temporal_hit_normal_tex: PingPongTemporalResource,
-
-    ranking_tile_buf: Arc<Buffer>,
-    scambling_tile_buf: Arc<Buffer>,
-    sobol_buf: Arc<Buffer>,
 
     pub spatial_reuse_pass_count: u32,
 }
@@ -68,9 +62,6 @@ impl RtdgiRenderer {
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
             temporal_hit_normal_tex: PingPongTemporalResource::new("rtdgi.hit_normal"),
-            ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
-            scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
-            sobol_buf: make_lut_buffer(device, SOBOL),
             spatial_reuse_pass_count: 2,
         }
     }
@@ -199,19 +190,6 @@ impl RtdgiRenderer {
                 ),
             );
 
-        let ranking_tile_buf = rg.import(
-            self.ranking_tile_buf.clone(),
-            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let scambling_tile_buf = rg.import(
-            self.scambling_tile_buf.clone(),
-            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let sobol_buf = rg.import(
-            self.sobol_buf.clone(),
-            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-
         let (mut candidate_output_tex, candidate_history_tex) =
             self.temporal_candidate_tex.get_output_and_history(
                 rg,
@@ -296,9 +274,6 @@ impl RtdgiRenderer {
             .read(&reprojected_history_tex)
             .read(&ray_history_tex)
             .read(ssao_img)
-            .read(&ranking_tile_buf)
-            .read(&scambling_tile_buf)
-            .read(&sobol_buf)
             .read(reprojection_map)
             .bind(surfel_gi)
             .bind(wrc)
@@ -335,9 +310,6 @@ impl RtdgiRenderer {
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&candidate_irradiance_tex)
             .read(&candidate_normal_tex)
-            .read(&ranking_tile_buf)
-            .read(&scambling_tile_buf)
-            .read(&sobol_buf)
             .read(&irradiance_history_tex)
             .read(&ray_orig_history_tex)
             .read(&ray_history_tex)
