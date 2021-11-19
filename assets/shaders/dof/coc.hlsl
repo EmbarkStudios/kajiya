@@ -8,7 +8,7 @@
 groupshared uint max_abs_coc_asuint;
 
 float coc_size(float depth, float focal_point, float focus_scale) {
-    //return 0;
+    return 0;
 	float coc = clamp((1.0 / focal_point - 1.0 / depth) * focus_scale, -0.3, 0.3);
 	return coc * 20.0;
 }

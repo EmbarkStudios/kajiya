@@ -212,6 +212,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
             rtr_radiance = rtr_tex[px].xyz;
         #endif
 
+        // TODO: find out how wrong this is
+        rtr_radiance = lerp(
+            rtr_radiance,
+            gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
+            smoothstep(0.7, 1.0, gbuffer.roughness));
+
         if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
             GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
             LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
@@ -249,6 +255,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
         #else
             output = rtr_tex[px].xyz;
         #endif
+
+        // TODO: find out how wrong this is
+        output = lerp(
+            output,
+            gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
+            smoothstep(0.7, 1.0, gbuffer.roughness));
 
         GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
         LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
