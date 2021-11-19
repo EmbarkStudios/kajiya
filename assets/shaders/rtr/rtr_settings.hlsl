@@ -16,7 +16,7 @@
 // but the nearby object is dark.
 #define RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS 0.5
 
-#define RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC 1
+#define RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC 0
 
 // If true, only uses distance^2 for conversion between projected solid angle and surface area.
 // Skipping the cosine terms is certainly not correct, but the effect is small considering

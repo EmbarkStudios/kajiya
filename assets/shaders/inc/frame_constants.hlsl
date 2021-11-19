@@ -168,6 +168,10 @@ float3 position_world_to_view(float3 v) {
     return mul(frame_constants.view_constants.world_to_view, float4(v, 1)).xyz;
 }
 
+float3 position_view_to_world(float3 v) {
+    return mul(frame_constants.view_constants.view_to_world, float4(v, 1)).xyz;
+}
+
 float3 position_world_to_clip(float3 v) {
     float4 p = mul(frame_constants.view_constants.world_to_view, float4(v, 1));
     p = mul(frame_constants.view_constants.view_to_clip, p);

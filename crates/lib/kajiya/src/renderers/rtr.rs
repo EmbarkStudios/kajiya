@@ -19,6 +19,12 @@ pub struct RtrRenderer {
     temporal2_tex: PingPongTemporalResource,
     ray_len_tex: PingPongTemporalResource,
 
+    temporal_irradiance_tex: PingPongTemporalResource,
+    temporal_ray_orig_tex: PingPongTemporalResource,
+    temporal_ray_tex: PingPongTemporalResource,
+    temporal_reservoir_tex: PingPongTemporalResource,
+    temporal_hit_normal_tex: PingPongTemporalResource,
+
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
     sobol_buf: Arc<Buffer>,
@@ -50,6 +56,13 @@ impl RtrRenderer {
             temporal_tex: PingPongTemporalResource::new("rtr.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtr.temporal2"),
             ray_len_tex: PingPongTemporalResource::new("rtr.ray_len"),
+
+            temporal_irradiance_tex: PingPongTemporalResource::new("rtr.irradiance"),
+            temporal_ray_orig_tex: PingPongTemporalResource::new("rtr.ray_orig"),
+            temporal_ray_tex: PingPongTemporalResource::new("rtr.ray"),
+            temporal_reservoir_tex: PingPongTemporalResource::new("rtr.reservoir"),
+            temporal_hit_normal_tex: PingPongTemporalResource::new("rtr.hit_normal"),
+
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
             sobol_buf: make_lut_buffer(device, SOBOL),
@@ -141,7 +154,19 @@ impl RtrRenderer {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
-        {
+        let (irradiance_tex, ray_tex, temporal_reservoir_tex) = {
+            let (mut hit_normal_output_tex, hit_normal_history_tex) =
+                self.temporal_hit_normal_tex.get_output_and_history(
+                    rg,
+                    Self::temporal_tex_desc(
+                        gbuffer_desc
+                            // TODO: should really be rgba8
+                            .format(vk::Format::R16G16B16A16_SFLOAT)
+                            .half_res()
+                            .extent_2d(),
+                    ),
+                );
+
             let (mut irradiance_output_tex, irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
                     rg,
@@ -190,17 +215,19 @@ impl RtrRenderer {
             .read(&reservoir_history_tex)
             .read(reprojection_map)
             .read(&hit_normal_history_tex)
-            .read(&candidate_history_tex)
+            //.read(&candidate_history_tex)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_orig_output_tex)
             .write(&mut ray_output_tex)
             .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
-            .write(&mut candidate_output_tex)
+            //.write(&mut candidate_output_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
             .dispatch(irradiance_output_tex.desc().extent);
-        }
+
+            (irradiance_output_tex, ray_output_tex, reservoir_output_tex)
+        };
 
         let mut resolved_tex = rg.create(
             gbuffer_depth
@@ -235,6 +262,9 @@ impl RtrRenderer {
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
         .read(&ray_len_history_tex)
+        .read(&irradiance_tex)
+        .read(&ray_tex)
+        .read(&temporal_reservoir_tex)
         .write(&mut resolved_tex)
         .write(&mut ray_len_output_tex)
         .raw_descriptor_set(1, bindless_descriptor_set)

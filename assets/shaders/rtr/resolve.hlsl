@@ -8,6 +8,7 @@
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/blue_noise.hlsl"
+#include "../inc/reservoir.hlsl"
 #include "rtr_settings.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -20,9 +21,12 @@
 [[vk::binding(7)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(8)]] Texture2D<float> half_depth_tex;
 [[vk::binding(9)]] Texture2D<float2> ray_len_history_tex;
-[[vk::binding(10)]] RWTexture2D<float4> output_tex;
-[[vk::binding(11)]] RWTexture2D<float2> ray_len_output_tex;
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(10)]] Texture2D<float4> restir_irradiance_tex;
+[[vk::binding(11)]] Texture2D<float4> restir_ray_tex;
+[[vk::binding(12)]] Texture2D<float4> restir_reservoir_tex;
+[[vk::binding(13)]] RWTexture2D<float4> output_tex;
+[[vk::binding(14)]] RWTexture2D<float2> ray_len_output_tex;
+[[vk::binding(15)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
@@ -36,7 +40,7 @@
 // If false: Accumulate lighting only, without the BRDF term
 // TODO; true seems to have a better match with no borrowing
 // ... actually, false seems better with the latest code.
-#define ACCUM_FG_IN_RATIO_ESTIMATOR 0
+#define ACCUM_FG_IN_RATIO_ESTIMATOR 1
 
 #define USE_APPROXIMATE_SAMPLE_SHADOWING 1
 
@@ -44,6 +48,9 @@
 // in the negative hemisphere of the sample being calculated.
 // Adds quite a bit of ALU, but fixes some halos around corners.
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
+
+#define USE_RESTIR 1
+#define USE_RATIO_ESTIMATOR 0
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -56,6 +63,10 @@ float approx_fresnel(float3 wo, float3 wi) {
 
 bool is_wave_alive(uint mask, uint idx) {
     return (mask & (1u << idx)) != 0;
+}
+
+uint2 reservoir_payload_to_px(uint payload) {
+    return uint2(payload & 0xffff, payload >> 16);
 }
 
 // Get tangent vectors for the basis for specular filtering.
@@ -262,9 +273,18 @@ void main(const uint2 px : SV_DispatchThreadID) {
         int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
 
-        float4 packed0 = hit0_tex[sample_px];
+        #if !USE_RESTIR
+            float4 packed0 = hit0_tex[sample_px];
+        #endif
 
-        if (packed0.w > 0 && sample_depth != 0) {
+        const bool is_valid_sample =
+            #if USE_RESTIR
+                true;
+            #else
+                packed0.w > 0;
+            #endif
+
+        if (is_valid_sample && sample_depth != 0) {
             // Note: must match the raygen
             uint2 hi_px_subpixels[4] = {
                 uint2(0, 0),
@@ -279,17 +299,37 @@ void main(const uint2 px : SV_DispatchThreadID) {
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
-            float4 packed1 = hit1_tex[sample_px];
-            float neighbor_sampling_pdf = packed1.w;
-
             // Note: Not accurately normalized
             const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
 
-            #if RTR_RAY_HIT_STORED_AS_POSITION
-                const float3 center_to_hit_vs = packed1.xyz - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+            #if USE_RESTIR
+                uint2 rpx = sample_px;
+                Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
+                const uint2 spx = reservoir_payload_to_px(r.payload);
+                const float3 sample_hit_ws = restir_ray_tex[spx].xyz;
+                const float3 sample_offset = sample_hit_ws - view_ray_context.ray_hit_ws();
+                const float sample_dist = length(sample_offset);
+                const float3 sample_dir = sample_offset / sample_dist;
+                //const float3 sample_hit_normal = restir_hit_normal_tex[spx].xyz;
+                /*float geometric_term =
+                max(0.0, dot(center_normal_ws, sample_dir))
+                // TODO: wtf, why 2
+                * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);*/
+                const float3 sample_radiance = restir_irradiance_tex[spx].rgb;
+                float neighbor_sampling_pdf = 1.0 / r.W;
+                const float3 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 const float3 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
             #else
-                const float3 center_to_hit_vs = packed1.xyz;
+                const float4 packed1 = hit1_tex[sample_px];
+                float neighbor_sampling_pdf = packed1.w;
+                const float3 sample_radiance = packed0.xyz;
+
+                #if RTR_RAY_HIT_STORED_AS_POSITION
+                    const float3 center_to_hit_vs = packed1.xyz - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                    const float3 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
+                #else
+                    const float3 center_to_hit_vs = packed1.xyz;
+                #endif
             #endif
 
             {
@@ -337,7 +377,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                         neighbor_sampling_pdf /= center_to_hit_vis / sample_to_hit_vis;
                         //neighbor_sampling_pdf /=  max(1e-5, dot(normal_vs, normalize(center_to_hit_vs))) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
-                        neighbor_sampling_pdf /= max(1e-5, wi.z) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
+                        #if !RTR_APPROX_MEASURE_CONVERSION
+                            neighbor_sampling_pdf /= max(1e-5, wi.z) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
+                        #endif
                 #endif
 
         		float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
@@ -415,18 +457,27 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                 //spec_weight *= sample_hit_to_center_vis;
 
-                #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
-                    //contrib_wt = 1;
-                    contrib_accum += float4(
-                        packed0.rgb
-                        ,
-                        1
-                    ) * contrib_wt;
+                #if USE_RATIO_ESTIMATOR
+                    #if !ACCUM_FG_IN_RATIO_ESTIMATOR
+                        float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                        //contrib_wt = 1;
+                        contrib_accum += float4(
+                            sample_radiance
+                            ,
+                            1
+                        ) * contrib_wt;
+                    #else
+                        float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                        contrib_accum += float4(
+                            sample_radiance * spec.value_over_pdf
+                            ,
+                            1
+                        ) * contrib_wt;
+                    #endif
                 #else
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                    float contrib_wt = rejection_bias * step(0.0, wi.z) * mis_weight;
                     contrib_accum += float4(
-                        packed0.rgb * spec.value_over_pdf
+                        sample_radiance * spec.value / neighbor_sampling_pdf
                         ,
                         1
                     ) * contrib_wt;
@@ -434,7 +485,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                 brdf_weight_accum += spec.value_over_pdf * contrib_wt;
 
-                float luma = calculate_luma(packed0.rgb);
+                float luma = calculate_luma(sample_radiance);
                 ex += luma * contrib_wt;
                 ex2 += luma * luma * contrib_wt;
 
