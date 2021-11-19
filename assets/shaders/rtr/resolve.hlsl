@@ -453,6 +453,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // sampling in a given frame. Could also be tricky to temporally filter it.
 
     const float contrib_norm_factor = max(1e-8, contrib_accum.w);
+    //const float contrib_norm_factor = sample_count;
 
     contrib_accum.rgb /= contrib_norm_factor;
     ex /= contrib_norm_factor;
