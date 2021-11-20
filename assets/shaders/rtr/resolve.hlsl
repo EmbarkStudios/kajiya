@@ -49,6 +49,9 @@
 // Adds quite a bit of ALU, but fixes some halos around corners.
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
+static const bool USE_RESTIR = true;
+static const bool USE_RATIO_ESTIMATOR = !USE_RESTIR;
+
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
 }
@@ -237,9 +240,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     // Offset to avoid correlation with ray generation
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
-
-    const bool USE_RESTIR = true;//kernel_size_vs > 0.2 * (1.0 + 2 * uint_to_u01_float(hash1_mut(rng)));
-    const bool USE_RATIO_ESTIMATOR = !USE_RESTIR;
 
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
     //for (uint sample_i = 7; sample_i < 8; ++sample_i) {
