@@ -21,6 +21,10 @@
 #define USE_RTR 1
 #define USE_RTDGI 1
 
+// Loses rim lighting on rough surfaces, but can be cleaner, especially without reflection restir
+#define USE_DIFFUSE_GI_FOR_ROUGH_SPEC 0
+#define USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS 0.7
+
 #define SSGI_INTENSITY_BIAS 0.0
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -212,11 +216,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
             rtr_radiance = rtr_tex[px].xyz;
         #endif
 
-        // TODO: find out how wrong this is
-        rtr_radiance = lerp(
-            rtr_radiance,
-            gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
-            smoothstep(0.7, 1.0, gbuffer.roughness));
+        if (USE_DIFFUSE_GI_FOR_ROUGH_SPEC) {
+            rtr_radiance = lerp(
+                rtr_radiance,
+                gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
+                smoothstep(USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS, 1.0, gbuffer.roughness));
+        }
 
         if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
             GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
@@ -256,11 +261,12 @@ void main(in uint2 px : SV_DispatchThreadID) {
             output = rtr_tex[px].xyz;
         #endif
 
-        // TODO: find out how wrong this is
-        output = lerp(
-            output,
-            gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
-            smoothstep(0.7, 1.0, gbuffer.roughness));
+        if (USE_DIFFUSE_GI_FOR_ROUGH_SPEC) {
+            output = lerp(
+                output,
+                gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
+                smoothstep(USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS, 1.0, gbuffer.roughness));
+        }
 
         GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
         LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
