@@ -24,6 +24,7 @@ pub struct Constants {
 const USE_TONEMAP: bool = true;
 const USE_DITHER: bool = true;
 const USE_SHARPEN: bool = true;
+const USE_VIGNETTE: bool = true;
 
 const GLARE_AMOUNT: f32 = 0.05;
 
@@ -98,7 +99,7 @@ pub fn post_combine_cs(
 
     // TODO: move to its own pass
     if USE_SHARPEN {
-        let sharpen_amount = 0.2;
+        let sharpen_amount = 0.1;
 
         let mut neighbors = 0.0;
         let mut wt_sum = 0.0;
@@ -134,11 +135,15 @@ pub fn post_combine_cs(
     col = col.max(Vec3::ZERO);
     col *= constants.ev_shift.exp2();
 
+    if USE_VIGNETTE {
+        col *= (-2.0 * (uv - 0.5).length().powi(3)).exp();
+    }
+
     if USE_TONEMAP {
         col = neutral_tonemap(col);
 
         // Boost saturation and contrast to compensate for the loss from glare
-        col = lerp(Vec3::splat(lin_srgb_to_luminance(col))..=col, 1.05).min(Vec3::ONE);
+        //col = lerp(Vec3::splat(lin_srgb_to_luminance(col))..=col, 1.05).min(Vec3::ONE);
         col = col.powf(1.03);
     }
 
