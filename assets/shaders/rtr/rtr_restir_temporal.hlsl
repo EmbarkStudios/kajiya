@@ -15,29 +15,30 @@
 #include "rtr_settings.hlsl"
 
 #define RESTIR_TEMPORAL_M_CLAMP 8.0
-#define RESTIR_RESERVOIR_W_CLAMP 1e10
+#define RESTIR_RESERVOIR_W_CLAMP 1e20
 #define RESTIR_USE_PATH_VALIDATION !true
 #define RTR_RESTIR_BRDF_SAMPLING 1
 
-[[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
-[[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture2D<float4> candidate0_tex;
-[[vk::binding(3)]] Texture2D<float4> candidate1_tex;
-[[vk::binding(4)]] Texture2D<float4> candidate2_tex;
-[[vk::binding(5)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(6)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(7)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(8)]] Texture2D<float4> reservoir_history_tex;
-[[vk::binding(9)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(10)]] Texture2D<float4> hit_normal_history_tex;
+[[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(1)]] Texture2D<float3> half_view_normal_tex;
+[[vk::binding(2)]] Texture2D<float> depth_tex;
+[[vk::binding(3)]] Texture2D<float4> candidate0_tex;
+[[vk::binding(4)]] Texture2D<float4> candidate1_tex;
+[[vk::binding(5)]] Texture2D<float4> candidate2_tex;
+[[vk::binding(6)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(7)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(8)]] Texture2D<float4> ray_history_tex;
+[[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
+[[vk::binding(10)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(11)]] Texture2D<float4> hit_normal_history_tex;
 //[[vk::binding(11)]] Texture2D<float4> candidate_history_tex;
-[[vk::binding(11)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(12)]] RWTexture2D<float3> ray_orig_output_tex;
-[[vk::binding(13)]] RWTexture2D<float4> ray_output_tex;
-[[vk::binding(14)]] RWTexture2D<float4> hit_normal_output_tex;
-[[vk::binding(15)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(12)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(13)]] RWTexture2D<float3> ray_orig_output_tex;
+[[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
+[[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
+[[vk::binding(16)]] RWTexture2D<float4> reservoir_out_tex;
 //[[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(16)]] cbuffer _ {
+[[vk::binding(17)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -53,6 +54,7 @@ struct TraceResult {
     float3 hit_pos_vs;
     float hit_t;
     float inv_pdf;
+    float brdf_value;
     bool prev_sample_valid;
 };
 
@@ -64,6 +66,7 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
     TraceResult result;
     result.out_value = hit0.rgb;
     result.inv_pdf = hit1.a > 0.0 ? (1.0 / hit1.a) : 0.0;
+    result.brdf_value = hit0.a;
     #if !RTR_RAY_HIT_STORED_AS_POSITION
         todo
     #endif
@@ -105,10 +108,29 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
 
+    float3 wo = mul(-normalize(view_ray_context.ray_dir_ws()), tangent_to_world);
+
+    // Hack for shading normals facing away from the outgoing ray's direction:
+    // We flip the outgoing ray along the shading normal, so that the reflection's curvature
+    // continues, albeit at a lower rate.
+    if (wo.z < 0.0) {
+        wo.z *= -0.25;
+        wo = normalize(wo);
+    }
+
+    const float4 gbuffer_packed = gbuffer_tex[hi_px];
+    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
+    SpecularBrdf specular_brdf;
+    {
+        LayeredBrdf layered_brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+        specular_brdf = layered_brdf.specular_brdf;
+    }
+
     // TODO: use
     float3 light_radiance = 0.0.xxx;
 
     float p_q_sel = 0;
+    float inv_pdf_sel = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
     float3 ray_orig_sel = 0;
@@ -125,23 +147,27 @@ void main(uint2 px : SV_DispatchThreadID) {
     {
         TraceResult result = do_the_thing(px, normal_ws);
         outgoing_dir = normalize(position_view_to_world(result.hit_pos_vs) - refl_ray_origin);
+        float3 wi = normalize(mul(outgoing_dir, tangent_to_world));
 
-        const float p_q = p_q_sel =
-            max(1e-3, calculate_luma(result.out_value))
+        const float p_q = p_q_sel = 1
+            * max(1e-3, calculate_luma(result.out_value))
             #if !RTR_RESTIR_BRDF_SAMPLING
                 * max(0, dot(outgoing_dir, normal_ws))
             #endif
+            //* calculate_luma(specular_brdf.evaluate(wo, wi).value)
+            * result.brdf_value
             ;
 
         const float inv_pdf_q = result.inv_pdf;
 
+        inv_pdf_sel = result.brdf_value;//clamp(result.inv_pdf, 1e-5, 1e5);
         irradiance_sel = result.out_value;
         ray_orig_sel = refl_ray_origin;
         ray_hit_sel = position_view_to_world(result.hit_pos_vs);
         hit_normal_sel = result.hit_normal_ws;
         prev_sample_valid = result.prev_sample_valid;
 
-        if (inv_pdf_q > 0) {
+        if (p_q * inv_pdf_q > 0) {
             reservoir.payload = reservoir_payload;
             reservoir.w_sum = p_q * inv_pdf_q;
             reservoir.M = 1;
@@ -173,9 +199,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         uint valid_sample_count = 0;
         const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
-        // could be due to lack of bias compensation (the `Z` term)
-        for (uint sample_i = 0; sample_i < 1 && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
+        //for (uint sample_i = 0; sample_i < 1 && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
+        for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
                 float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
@@ -265,7 +290,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
             
-            const float4 prev_irrad = irradiance_history_tex[spx];
+            const float4 prev_irrad_inv_pdf = irradiance_history_tex[spx];
+            const float3 prev_irrad = prev_irrad_inv_pdf.rgb;
 
             // From the ReSTIR paper:
             // With temporal reuse, the number of candidates M contributing to the
@@ -278,11 +304,17 @@ void main(uint2 px : SV_DispatchThreadID) {
             r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
             //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
 
+            const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
+
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
             #if !RTR_RESTIR_BRDF_SAMPLING
                 p_q *= max(0, dot(dir_to_sample_hit, normal_ws));
+            #else
+                p_q *= step(0, dot(dir_to_sample_hit, normal_ws));
             #endif
+            p_q *= prev_irrad_inv_pdf.w;
+            //p_q *= calculate_luma(specular_brdf.evaluate(wo, wi).value);
 
             float visibility = 1;
             float jacobian = 1;
@@ -306,6 +338,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                     // when we don't use a harsh normal cutoff to exchange reservoirs with.
                     //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
                     //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
+
+                    //jacobian /= clamp(specular_brdf.evaluate(wo, wi).pdf, 1e-5, 1e5) * prev_irrad_inv_pdf.w;
                 #endif
             }
 
@@ -349,6 +383,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
+                inv_pdf_sel = prev_irrad_inv_pdf.w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
                 ray_orig_sel = ray_orig_history_tex[spx];
@@ -361,7 +396,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         valid_sample_count = max(valid_sample_count, 1);
 
         reservoir.M = M_sum;
-        reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
+        reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / max(1e-5, reservoir.M));
 
         // TODO: find out if we can get away with this:
         reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
@@ -395,7 +430,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     }*/
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
-    irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
+    irradiance_out_tex[px] = float4(irradiance_sel, inv_pdf_sel);
     ray_orig_output_tex[px] = ray_orig_sel;
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = hit_normal_ws_dot;

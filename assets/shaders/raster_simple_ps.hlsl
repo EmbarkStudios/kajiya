@@ -99,9 +99,15 @@ PsOut main(PsIn ps) {
         * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    //metalness = 0;
+    //albedo = float3(0.966653, 0.4, 0.001);    // just testing
+    //metalness = 1;
     //roughness = 0.1;
-    //albedo = 0.0;
+
+    /*if (ps.vs_pos.x > 0) {
+        roughness = 0.1;
+    } else {
+        roughness = 0.001;
+    }*/
 
     //albedo = pow(albedo, 2);
     //albedo /= max(albedo.r, max(albedo.g, albedo.b)) * 1.2;

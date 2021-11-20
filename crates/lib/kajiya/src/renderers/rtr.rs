@@ -103,7 +103,8 @@ impl RtrRenderer {
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
+                // TODO: slim down
+                .format(vk::Format::R32G32B32A32_SFLOAT),
         );
 
         // When using PDFs stored wrt to the surface area metric, their values can be tiny or giant,
@@ -170,7 +171,8 @@ impl RtrRenderer {
             let (mut irradiance_output_tex, irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
                     rg,
-                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
+                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
+                        .format(vk::Format::R32G32B32A32_SFLOAT),
                 );
 
             let (mut ray_orig_output_tex, ray_orig_history_tex) =
@@ -204,6 +206,7 @@ impl RtrRenderer {
                 rg.add_pass("rtr restir temporal"),
                 "/shaders/rtr/rtr_restir_temporal.hlsl",
             )
+            .read(&gbuffer_depth.gbuffer)
             .read(&*half_view_normal_tex)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&refl0_tex)

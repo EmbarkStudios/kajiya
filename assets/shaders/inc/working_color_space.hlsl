@@ -36,6 +36,13 @@ float4 linear_luma_chroma_to_linear_rgb(float4 v) {
 }
 
 // ----
+// Identity transform
+
+float4 linear_rgb_to_linear_rgb(float4 v) {
+    return v;
+}
+
+// ----
 
 /*
 TODO: consider this.

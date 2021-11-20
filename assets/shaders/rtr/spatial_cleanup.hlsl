@@ -17,7 +17,7 @@ void main(int2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
     const float center_sample_count = center.w;
 
-    if (center_sample_count >= 16 || center_depth == 0.0) {
+    if (true || center_sample_count >= 16 || center_depth == 0.0) {
         output_tex[px] = center;
         return;
     }

@@ -27,7 +27,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         output_tex[px] = float4(ray_len_tex[px].xxx * 0.01, 1);
         //output_tex[px] = float4(ray_len_tex[px].yyy * 0.01, 1);
         return;
-    #elif !RTR_USE_TEMPORAL_FILTERS
+    #elif true || !RTR_USE_TEMPORAL_FILTERS
         output_tex[px] = input_tex[px];
         return;
     #endif

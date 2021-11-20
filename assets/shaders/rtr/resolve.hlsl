@@ -49,9 +49,6 @@
 // Adds quite a bit of ALU, but fixes some halos around corners.
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
-#define USE_RESTIR 1
-#define USE_RATIO_ESTIMATOR 0
-
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
 }
@@ -236,8 +233,13 @@ void main(const uint2 px : SV_DispatchThreadID) {
         kernel_size_ws,
         kernel_t1, kernel_t2);
 
+    uint rng = hash3(uint3(px, frame_constants.frame_index));
+
     // Offset to avoid correlation with ray generation
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
+
+    const bool USE_RESTIR = true;//kernel_size_vs > 0.2 * (1.0 + 2 * uint_to_u01_float(hash1_mut(rng)));
+    const bool USE_RATIO_ESTIMATOR = !USE_RESTIR;
 
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
     //for (uint sample_i = 7; sample_i < 8; ++sample_i) {
@@ -272,17 +274,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
         
         int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
+        float4 packed0 = hit0_tex[sample_px];
 
-        #if !USE_RESTIR
-            float4 packed0 = hit0_tex[sample_px];
-        #endif
-
-        const bool is_valid_sample =
-            #if USE_RESTIR
-                true;
-            #else
-                packed0.w > 0;
-            #endif
+        const bool is_valid_sample = USE_RESTIR || packed0.w > 0;
 
         if (is_valid_sample && sample_depth != 0) {
             // Note: must match the raygen
@@ -302,7 +296,13 @@ void main(const uint2 px : SV_DispatchThreadID) {
             // Note: Not accurately normalized
             const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
 
-            #if USE_RESTIR
+            float3 sample_radiance;
+            float neighbor_sampling_pdf;
+            float3 center_to_hit_vs;
+            float sample_ray_inv_pdf;
+            float3 sample_hit_vs;
+
+            if (USE_RESTIR) {
                 uint2 rpx = sample_px;
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
@@ -315,22 +315,31 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 max(0.0, dot(center_normal_ws, sample_dir))
                 // TODO: wtf, why 2
                 * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);*/
-                const float3 sample_radiance = restir_irradiance_tex[spx].rgb;
-                float neighbor_sampling_pdf = 1.0 / r.W;
-                const float3 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
-                const float3 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
-            #else
+                sample_radiance = restir_irradiance_tex[spx].rgb;
+                neighbor_sampling_pdf = 1.0 / r.W;
+                center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
+                sample_ray_inv_pdf = max(1e-8, restir_irradiance_tex[spx].a);
+            } else {
                 const float4 packed1 = hit1_tex[sample_px];
-                float neighbor_sampling_pdf = packed1.w;
-                const float3 sample_radiance = packed0.xyz;
+                neighbor_sampling_pdf = packed1.w;
+                sample_radiance = packed0.xyz;
+                sample_ray_inv_pdf = 1;
 
                 #if RTR_RAY_HIT_STORED_AS_POSITION
-                    const float3 center_to_hit_vs = packed1.xyz - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
-                    const float3 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
+                    center_to_hit_vs = packed1.xyz - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                    sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
                 #else
-                    const float3 center_to_hit_vs = packed1.xyz;
+                    center_to_hit_vs = packed1.xyz;
+
+                    // TODO
+                    sample_hit_vs = 10000000000000000000;
                 #endif
-            #endif
+            }
+
+            //sample_radiance /= neighbor_sampling_pdf;
+            //neighbor_sampling_pdf = 1.0;
+            //sample_ray_inv_pdf = 1;
 
             {
                 //output_tex[px] = float4(normalize(direction_view_to_world(sample_hit_normal_vs)) * 0.5 + 0.5, 1);
@@ -457,9 +466,10 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                 //spec_weight *= sample_hit_to_center_vis;
 
-                #if USE_RATIO_ESTIMATOR
+                float contrib_wt = 0;
+                if (USE_RATIO_ESTIMATOR) {
                     #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                        float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                        contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
                         //contrib_wt = 1;
                         contrib_accum += float4(
                             sample_radiance
@@ -467,21 +477,39 @@ void main(const uint2 px : SV_DispatchThreadID) {
                             1
                         ) * contrib_wt;
                     #else
-                        float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                        contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
                         contrib_accum += float4(
                             sample_radiance * spec.value_over_pdf
                             ,
                             1
                         ) * contrib_wt;
                     #endif
-                #else
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * mis_weight;
-                    contrib_accum += float4(
-                        sample_radiance * spec.value / neighbor_sampling_pdf
-                        ,
-                        1
-                    ) * contrib_wt;
-                #endif
+                } else {
+                    #if 1
+                        const float restir_falloff = (neighbor_sampling_pdf / sample_ray_inv_pdf);
+                        contrib_wt = rejection_bias * step(0.0, wi.z) * mis_weight * spec_weight / sample_ray_inv_pdf;
+
+                        contrib_accum += float4(
+                            sample_radiance / max(1e-8, restir_falloff.x) * spec.value_over_pdf
+                            ,
+                            1
+                        ) * contrib_wt;
+                    #elif 0
+                        contrib_wt = rejection_bias * step(0.0, wi.z) * mis_weight;
+                        contrib_accum += float4(
+                            sample_radiance / neighbor_sampling_pdf / sample_ray_inv_pdf
+                            ,
+                            1
+                        ) * contrib_wt;
+                    #else
+                        contrib_wt = rejection_bias * step(0.0, wi.z) * mis_weight;
+                        contrib_accum += float4(
+                            sample_radiance * spec.value / neighbor_sampling_pdf
+                            ,
+                            1
+                        ) * contrib_wt;
+                    #endif
+                }
 
                 brdf_weight_accum += spec.value_over_pdf * contrib_wt;
 
