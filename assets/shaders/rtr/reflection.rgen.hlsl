@@ -139,6 +139,8 @@ void main() {
     urand.x = lerp(urand.x, 0.0, sampling_bias);
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
+
+    // TODO: clean up
     const float brdf_value = brdf_sample.pdf;
     
 #if USE_TEMPORAL_JITTER && !USE_GGX_VNDF_SAMPLING
