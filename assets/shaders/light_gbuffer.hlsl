@@ -17,7 +17,6 @@
 #include "inc/hash.hlsl"
 #include "inc/color.hlsl"
 
-#define USE_SSGI 0
 #define USE_RTR 1
 #define USE_RTDGI 1
 
@@ -25,12 +24,10 @@
 #define USE_DIFFUSE_GI_FOR_ROUGH_SPEC 0
 #define USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS 0.7
 
-#define SSGI_INTENSITY_BIAS 0.0
-
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> shadow_mask_tex;
-[[vk::binding(3)]] Texture2D<float4> ssgi_tex;
+[[vk::binding(3)]] Texture2D<float4> ssgi_tex;  // TODO: nuke
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
@@ -184,22 +181,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
         gi_irradiance = rtdgi_tex[px].rgb;
     }
 
-    const float4 ssgi = ssgi_tex[px].gbar;
-    #if USE_SSGI
-        // HACK: need directionality in GI so that it can be properly masked.
-        // If simply masking with the AO term, it tends to over-darken.
-        // Reduce some of the occlusion, but for energy conservation, also reduce
-        // the light added.
-        const float4 biased_ssgi = lerp(ssgi, float4(0, 0, 0, 1), SSGI_INTENSITY_BIAS);
-        //gi_irradiance *= biased_ssgi.a;
-        //gi_irradiance += biased_ssgi.rgb;
-        #if USE_SSGI_NEAR_FIELD
-            gi_irradiance += biased_ssgi.rgb;
-        #endif
-    #endif
-
-    //gi_irradiance = ssgi.a;
-
     total_radiance += gi_irradiance
         * brdf.diffuse_brdf.albedo
         #if !LAYERED_BRDF_FORCE_DIFFUSE_ONLY
@@ -231,8 +212,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
         
         total_radiance += rtr_radiance;
     }
-
-    //total_radiance = gbuffer.albedo * (ssgi.a + ssgi.rgb);
 
     temporal_output_tex[px] = float4(total_radiance, 1.0);
 
@@ -272,11 +251,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
         LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
         output /= true_brdf.energy_preservation.preintegrated_reflection;
     }
-
-    //const float3 bent_normal_dir = mul(frame_constants.view_constants.view_to_world, float4(ssgi.xyz, 0)).xyz;
-    //output = pow((bent_normal_dir) * 0.5 + 0.5, 2);
-    //output = bent_normal_dir * 0.5 + 0.5;
-    //output = pow(gbuffer.normal.xyz * 0.5 + 0.5, 2);
 
     if (debug_shading_mode == SHADING_MODE_DIFFUSE_GI) {
         output = gi_irradiance;
@@ -344,7 +318,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //output = gbuffer.roughness;
     //output = gbuffer.albedo;
     //output = gbuffer.normal * 0.5 + 0.5;
-    //output = ssgi.rgb;
 
     //output = shadow_mask;
     //output = shadow_mask_tex[px].x;

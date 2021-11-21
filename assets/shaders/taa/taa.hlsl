@@ -204,11 +204,14 @@ void main(uint2 px: SV_DispatchThreadID) {
         smooth_var = var.x;
     }*/
 
-    #if 1
-        float3 dev = sqrt(var * smooth_var / max(1e-20, var.x));
-    #else
-        float3 dev = sqrt(var);
-    #endif
+    float3 dev;
+    // TODO: should always use the first branch
+    if (any(input_resolution_scale != 1.0)) {
+        // TODO: causes ghosting on moving sun shafts
+        dev = sqrt(var * smooth_var / max(1e-20, var.x));
+    } else {
+        dev = sqrt(var);
+    }
 
     float local_contrast = dev.x / (ex.x + 1e-5);
     float box_size = 1.0;
