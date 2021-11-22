@@ -161,10 +161,6 @@ void main() {
 
     //const float origin_cascade_idx = csgi_blended_cascade_idx_for_pos(refl_ray_origin);
     const float origin_cascade_idx = csgi_cascade_idx_for_pos(refl_ray_origin);
-    /*if (origin_cascade_idx > 0) {
-        out0_tex[px] = float4(0.0.xxx, -SKY_DIST);
-        return;
-    }*/
 
     if (brdf_sample.is_valid()) {
         RayDesc outgoing_ray;
@@ -329,7 +325,6 @@ void main() {
                     CsgiLookupParams lookup_params =
                         CsgiLookupParams::make_default()
                             .with_bent_normal(pseudo_bent_normal)
-                            //.with_linear_fetch(false)
                             ;
 
                     // doesn't seem to change much from using origin_cascade_idx
@@ -355,7 +350,6 @@ void main() {
                         lookup_params
                     );
 
-                    //if (primary_hit.ray_t > csgi_voxel_size(origin_cascade_idx).x)
                     total_radiance += csgi * gbuffer.albedo;
                 }
             }
@@ -379,7 +373,6 @@ void main() {
 	                    0.0.xxx,    // don't offset by any normal
     	                CsgiLookupParams::make_default()
         	                .with_sample_directional_radiance(outgoing_ray.Direction)
-                            //.with_directional_radiance_phong_exponent(8)
                 );
                 #endif
             #else
@@ -394,8 +387,6 @@ void main() {
 
             CsgiLookupParams lookup_params = CsgiLookupParams::make_default()
                 .with_bent_normal(pseudo_bent_normal)
-                // Linear fetch is usually a better fit, but can leak, causing high-frequency artifacts in the CV
-                //.with_linear_fetch(false)
                 ;
 
             if (control_variate_sample_directional) {

@@ -53,8 +53,6 @@ static const float SKY_DIST = 1e5;
 float3 vx_to_pos(int3 vx) {
     vx = csgi_dispatch_vx_to_global_vx(vx, cascade_idx);
     return (vx + 0.5) * csgi_voxel_size(cascade_idx) + CSGI_VOLUME_ORIGIN;
-    //const float3 volume_center = CSGI_VOLUME_ORIGIN;
-    //return (vx - (CSGI_VOLUME_DIMS - 1.0) / 2.0) * csgi_voxel_size(cascade_idx);
 }
 
 
@@ -134,7 +132,6 @@ void main() {
             float4 total_radiance = 0.0.xxxx;
             {
                 GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-                //gbuffer.roughness = lerp(gbuffer.roughness, 1.0, 0.2);
                 gbuffer.roughness = 1;
 
                 const float3 gbuffer_normal = primary_hit.gbuffer_packed.unpack_normal();
@@ -143,7 +140,6 @@ void main() {
                 // Especially important for dark dielectrics which don't bounce light in a diffuse way,
                 // but can reflect quite a lot through the specular path.
                 // TODO: don't lose saturation.
-                //const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.08);
                 const float3 bounce_albedo = lerp(primary_hit.gbuffer_packed.unpack_albedo(), 1.0.xxx, 0.04);
                 //const float3 bounce_albedo = primary_hit.gbuffer_packed.unpack_albedo();
                 

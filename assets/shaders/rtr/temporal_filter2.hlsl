@@ -159,9 +159,7 @@ void main(uint2 px: SV_DispatchThreadID) {
             const float sample_depth = depth_tex[sample_px];
 
             float4 neigh = linear_to_working(input_tex[sample_px]);
-			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
-
-            w *= exp2(-200.0 * abs(/*center_normal_vs.z **/ (center_depth / sample_depth - 1.0)));
+			const float w = exp2(-200.0 * abs(/*center_normal_vs.z **/ (center_depth / sample_depth - 1.0)));
 
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
@@ -171,35 +169,15 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 	float4 ex = vsum / wsum;
 	float4 ex2 = vsum2 / wsum;
-	//float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
-    //float4 dev = sqrt(max(0.1 * ex, ex2 - ex * ex));
     float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
-    //dev = max(dev, 0.1);
 
-    float reproj_validity_dilated = reproj.z;
-    /*#if 1
-        {
-         	const int k = 2;
-            for (int y = -k; y <= k; ++y) {
-                for (int x = -k; x <= k; ++x) {
-                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[px + 2 * int2(x, y)].z);
-                }
-            }
-        }
-    #else
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 1));
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
-    #endif*/
+    const float reproj_validity = reproj.z;
 
     float box_size = 1;
-    const float n_deviations = 2.5 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity_dilated;
-    //const float n_deviations = 5 * reproj_validity_dilated;
+    const float n_deviations = 2.5 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity;
 
-	//float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
-	//float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
 	float4 nmin = center - dev * box_size * n_deviations;
 	float4 nmax = center + dev * box_size * n_deviations;
-
     
     float h0diff = length(history0.xyz - ex.xyz);
     float h1diff = length(history1.xyz - ex.xyz);
@@ -233,21 +211,11 @@ void main(uint2 px: SV_DispatchThreadID) {
     clamped_history1.rgb = soft_color_clamp(center.rgb, history1.rgb, ex.rgb, dev.rgb);
 #endif
 
-    //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
     float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
 
     #if !USE_NEIGHBORHOOD_CLAMP
         clamped_history = history0 * h0_score + history1 * h1_score;
     #endif
-
-    //float sample_count = history0.w * h0_score + history1.w * h1_score;
-    //sample_count *= reproj.z;
-
-    //clamped_history = lerp(center, clamped_history, reproj.z);
-    //clamped_history = center;
-
-    //clamped_history = history0;
-    //clamped_history.w = history0.w;
 
     float max_sample_count = 16;
     float current_sample_count = clamped_history.a;
@@ -255,13 +223,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 filtered_center = center;
     float4 res = lerp(clamped_history, filtered_center, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     res.w = min(current_sample_count, max_sample_count) + 1;
-    //res.w = sample_count + 1;
-    //res.w = refl_ray_length * 20;
-    //res.w = (dev / ex).x * 16;
-    //res.w = 2 * exp2(-20 * (dev / ex).x);
-    //res.w = refl_ray_length;
 
-    //res.rgb = working_to_linear(dev).rgb / max(1e-8, working_to_linear(ex).rgb);
     res = working_to_linear(res);
     
     output_tex[px] = max(0.0.xxxx, res);

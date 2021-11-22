@@ -318,7 +318,6 @@ void main() {
                                 lookup_params
                         );
 
-                        //if (primary_hit.ray_t > csgi_voxel_size(cascade_idx).x)
                         total_radiance += csgi * gbuffer.albedo;
                     }
                }
@@ -351,8 +350,6 @@ void main() {
             );
             out2_tex[px] = float4(reflected_normal_vs, 0);
         } else {
-            //out0_tex[px] = float4(atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION), SKY_DIST);
-
             float3 far_gi;
             if (use_short_ray) {
                 far_gi = lookup_csgi(

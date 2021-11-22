@@ -34,8 +34,6 @@
 
 // If true: Accumulate the full reflection * BRDF term, including FG
 // If false: Accumulate lighting only, without the BRDF term
-// TODO; true seems to have a better match with no borrowing
-// ... actually, false seems better with the latest code.
 #define ACCUM_FG_IN_RATIO_ESTIMATOR 0
 
 #define USE_APPROXIMATE_SAMPLE_SHADOWING 1
@@ -157,33 +155,14 @@ void main(const uint2 px : SV_DispatchThreadID) {
         squish_ray_len(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_strength),
         squish_ray_len(surf_to_hit_dist, ray_squish_strength),
         0.1),ray_squish_strength);
-    //const float ray_len_avg = unsquish_ray_len(ray_len_avg_squished);
-
-    //history_error = lerp(2.0, history_error, reprojection_params.z);
-
-    /*const uint wave_mask = WaveActiveBallot(true).x;
-    if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 2)) {
-        filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 2));
-    }
-    if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 16)) {
-        filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
-    }*/
 
     // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
     const float error_adjusted_filter_size = min(filter_size * 4, filter_size + history_error * 0.5);
 
-    //const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
-    //sample_count = WaveActiveMax(sample_count);
     const uint sample_count = BORROW_SAMPLES ? 8 : 1;
-    //const uint sample_count = BORROW_SAMPLES ? clamp(error_adjusted_filter_size * 128, 6, 16) : 1;
 
     // Choose one of a few pre-baked sample sets based on the footprint
     const uint filter_idx = uint(clamp(error_adjusted_filter_size * 8, 0, 7));
-    //const uint filter_idx = 3;
-    //output_tex[px] = float4((filter_idx / 7.0).xxx, 0);
-    //return;
-
-    //SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
 
     float4 contrib_accum = 0.0;
     float ray_len_accum = 0;
@@ -212,7 +191,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
     
     const float kernel_size_vs = ray_len_avg / (ray_len_avg + eye_to_surf_dist);
     float kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
-    //kernel_size_ws += 0.05 * history_error;
     kernel_size_ws *= tan_theta;
 
     // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
@@ -231,35 +209,18 @@ void main(const uint2 px : SV_DispatchThreadID) {
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
 
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-    //for (uint sample_i = 7; sample_i < 8; ++sample_i) {
-    //for (uint sample_i_ = 0; sample_i_ < 8; ++sample_i_) { uint sample_i = sample_i_ == 0 ? 0 : sample_i_ + 8;
+        int2 sample_offset; {
+            float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+            float radius = (float(sample_i) + 0.5) * 0.5;
 
-        #if 0
-            // TODO: precalculate temporal variants
-            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
-        #elif 0
-            int2 sample_offset; {
-                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-                float radius_inc = lerp(0.333, 1.0, saturate(error_adjusted_filter_size / 8));
-                float radius = 1.5 + float(sample_i) * radius_inc;
-                sample_offset = float2(cos(ang), sin(ang)) * radius;
-            }
-        #else
-            int2 sample_offset; {
-                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-                //float radius_inc = lerp(0.333, 1.0, saturate(error_adjusted_filter_size / 8));
-                float radius = (float(sample_i) + 0.5) * 0.5;
+            float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
+            float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
+            float3 sample_cs = position_world_to_clip(sample_ws);
+            float2 sample_uv = cs_to_uv(sample_cs.xy);
 
-                float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
-                float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
-                float3 sample_cs = position_world_to_clip(sample_ws);
-                float2 sample_uv = cs_to_uv(sample_cs.xy);
-                // ad-hoc elongation fix based on stochastic ssr slides
-                //sample_uv = (sample_uv - uv) * float2(lerp(saturate(wo.z * 2), 1.0, sqrt(gbuffer.roughness)), 1.0) + uv;
-                int2 sample_px = sample_uv * output_tex_size.xy / 2;
-                sample_offset = sample_px - half_px;
-            }
-        #endif
+            int2 sample_px = sample_uv * output_tex_size.xy / 2;
+            sample_offset = sample_px - half_px;
+        }
         
         int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
@@ -294,20 +255,11 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 const float3 center_to_hit_vs = packed1.xyz;
             #endif
 
-            {
-                //output_tex[px] = float4(normalize(direction_view_to_world(sample_hit_normal_vs)) * 0.5 + 0.5, 1);
-                //output_tex[px] = float4(normalize(direction_view_to_world(center_to_hit_vs)) * 0.5 + 0.5, 1);
-                //return;
-            }
-
             float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
 
             float sample_hit_to_center_vis = 1;
 
             if (wi.z > 1e-5) {
-            #if 0
-                float rejection_bias = 1;
-            #else
                 float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
                 // TODO: brdf-driven blend
                 float rejection_bias =
@@ -317,9 +269,8 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
 
                 sample_hit_to_center_vis = saturate(dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)));
-            #endif
 
-            float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
+                float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
 
             #if RTR_RAY_HIT_STORED_AS_POSITION
                 // Compensate for change in visibility term. Automatic if storing with the surface area metric.
@@ -338,7 +289,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
                         }
 
                         neighbor_sampling_pdf /= center_to_hit_vis / sample_to_hit_vis;
-                        //neighbor_sampling_pdf /=  max(1e-5, dot(normal_vs, normalize(center_to_hit_vs))) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
                         neighbor_sampling_pdf /= max(1e-5, wi.z) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
                 #endif
 
@@ -361,25 +311,20 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 // Note: looks closer to reference when comparing against metalness=1 albedo=1 PT reference.
                 // As soon as the regular image is compared though. This term just happens to look
                 // similar to the lack of Fresnel in the metalness=1 albedo=1 case.
-                // float spec_weight = spec.value.x * max(0.0, wi.z);
+                // const float spec_weight = spec.value.x * max(0.0, wi.z);
 
                 #if ACCUM_FG_IN_RATIO_ESTIMATOR
                     // Note: could be spec.pdf too, though then fresnel isn't accounted for in the weights
-                    float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
+                    const float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
                 #else
-                    float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
+                    const float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
                 #endif
     #else
-                float spec_weight;
-                //{
-                    const float3 m = normalize(wo + wi);
-                    const float cos_theta = m.z;
-                    const float pdf_h_over_cos_theta = SpecularBrdf::ggx_ndf(a2, cos_theta);
-                    //const float f = lerp(f0_grey, 1.0, approx_fresnel(wo, wi));
-                    const float3 f = eval_fresnel_schlick(specular_brdf.albedo, 1.0, dot(m, wi)).x;
-
-                    spec_weight = calculate_luma(f) * pdf_h_over_cos_theta * step(0.0, wi.z) / max(1e-5, wo.z + wi.z);
-                //}
+                const float3 m = normalize(wo + wi);
+                const float cos_theta = m.z;
+                const float pdf_h_over_cos_theta = SpecularBrdf::ggx_ndf(a2, cos_theta);
+                const float3 f = eval_fresnel_schlick(specular_brdf.albedo, 1.0, dot(m, wi)).x;
+                const float spec_weight = calculate_luma(f) * pdf_h_over_cos_theta * step(0.0, wi.z) / max(1e-5, wo.z + wi.z);
     #endif
 
                 float to_psa_metric = 1;
@@ -396,37 +341,15 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     neighbor_sampling_pdf /= to_psa_metric;
                 #endif
 
-                float mis_weight = 1;
-
-                // TODO: this is all a lie, and pretends that we always have the central sample to use.
-                // especially with reservoir exchange, sample0 might not even be close to the central sample.
-                //
-                // The aim here is to address the issue of a low-prob sample landing in a high-prob area
-                // of the center pixel, and blowing it up.
-                //
-                // TODO: actually seems to distort the lobe, so maybe nuke it.
-                //if (sample_i > 0)
-                {
-                    // TODO: this borks things when using reservoir exchange because
-                    // the PDFs in neighbor_sampling_pdf are reservoir PDFs and not BRDF PDFs
-                    //mis_weight = neighbor_sampling_pdf / (spec.pdf + neighbor_sampling_pdf);
-
-                    // YOLO fix; only valid when using exhange
-                    //mis_weight = packed0.w / (spec.pdf * to_psa_metric + packed0.w);
-                }
-
-                //spec_weight *= sample_hit_to_center_vis;
-
                 #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
-                    //contrib_wt = 1;
+                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
                     contrib_accum += float4(
                         packed0.rgb
                         ,
                         1
                     ) * contrib_wt;
                 #else
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf * mis_weight;
+                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
                     contrib_accum += float4(
                         packed0.rgb * spec.value_over_pdf
                         ,
@@ -476,20 +399,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
     
     float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);
-    //float relative_error = max(0.0, ex2 - ex * ex);
 
-    //out_color /= brdf_lut.preintegrated_reflection;
-
-    //relative_error = relative_error * 0.5 + 0.5 * WaveActiveMax(relative_error);
-    //relative_error = WaveActiveMax(relative_error);
-
-    //out_color = sample_count / 16.0;
-    //out_color = saturate(filter_idx / 7.0);
-    //out_color = relative_error;
-    //out_color = abs(ex2 - ex*ex) / max(1e-5, ex);
-    //out_color = history.w;
-
-    //out_color = half_view_normal_tex[half_px].xyz * 0.5 + 0.5;
     output_tex[px] = float4(out_color, ex2);
     ray_len_output_tex[px] = float2(ray_len_accum, ray_len_avg);
 }

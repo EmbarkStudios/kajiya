@@ -79,7 +79,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 glare = rev_blur_pyramid_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
     float3 col = input_tex[px].rgb;
 
-    // TODO: move to its own pass
 #if USE_SHARPEN
 	float neighbors = 0;
 	float wt_sum = 0;
@@ -116,52 +115,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     col *= exp2(ev_shift);
     
 #if USE_TONEMAP
-
-    /*float filtered_luminance = exp(filtered_luminance_tex[px].x);
-    float filtered_luminance_high = filtered_luminance_tex[px].y;
-
-    float avg_luminance = 0;
-    for (float y = 0.05; y < 1.0; y += 0.1) {
-        for (float x = 0.05; x < 1.0; x += 0.1) {
-            avg_luminance += filtered_luminance_tex[int2(output_tex_size.xy * float2(x, y))].x;
-        }
-    }
-    avg_luminance = exp(avg_luminance / (10 * 10));
-
-    const float lum_scale = 0.4;*/
-    #if 0
-        float avg_mult = lum_scale * 0.333 / avg_luminance;
-        float mult = lum_scale * 0.333 / filtered_luminance;
-        float relative_mult = mult / avg_mult;
-        float max_compression = 0.5;
-        float relative_shift = 1.1;
-        relative_mult = local_tmo_constrain(relative_mult / relative_shift, max_compression);
-        float remapped_mult = relative_mult * avg_mult * relative_shift;
-        remapped_mult = lerp(remapped_mult, avg_mult, 0.1);
-        col *= remapped_mult;
-
-        float lin_part = clamp(remapped_mult * (0.8 * filtered_luminance - 0.2 * filtered_luminance_high), 0.0, 0.5);
-        col.rgb = neutral_tonemap(col.rgb, lin_part);
-    #else
-        //float filtered_luminance = filtered_luminance_tex[px].g;
-        //col *= 0.333 / filtered_luminance;
-        //col *= lum_scale * 0.333 / avg_luminance;
-
-        //col /= 2;
-        //col *= 2;
-        //col *= 4;
-        //col *= 16;
-
-        col = neutral_tonemap(col);
-        //col = 1-exp(-col);
-    #endif
+    col = neutral_tonemap(col);
 
     // Boost saturation and contrast to compensate for the loss from glare
     col = saturate(lerp(calculate_luma(col), col, 1.05));
     col = pow(col, 1.03);
 #endif
 
-    // Dither
 #if USE_DITHER
     const uint urand_idx = frame_constants.frame_index;
     // 256x256 blue noise
@@ -171,8 +131,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     col += dither / 256.0;
 #endif
-
-    //col = filtered_luminance;
 
     output_tex[px] = float4(col, 1);
 }

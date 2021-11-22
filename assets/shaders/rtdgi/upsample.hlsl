@@ -78,7 +78,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     if (center_depth != 0.0) {
         float3 center_normal_vs = mul(frame_constants.view_constants.world_to_view, float4(unpack_normal_11_10_11(gbuffer_tex[px].y), 0)).xyz;
         const float center_ssao = ssao_tex[px].r;
-        //const float rel_std_dev = ssgi_tex[half_px].a;
 
         const float2 uv = get_uv(px, output_tex_size);
         const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
@@ -102,16 +101,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
 
-            #if 0
-                // Swizzle as .yx to avoid using the same samples as the previous filter
-                int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].yx;
-                //int2 sample_offset = int2(hi_px_subpixels[px_idx_in_quad]) - int2(hi_px_subpixels[sample_i]) * 2;
-            #else
-                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-                //float radius = 1.5 + float(sample_i) * lerp(0.333, 0.8, center_ssao);
-                float radius = 1.5 + float(sample_i) * 0.333;
-                int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
-            #endif
+            float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+            //float radius = 1.5 + float(sample_i) * lerp(0.333, 0.8, center_ssao);
+            float radius = 1.5 + float(sample_i) * 0.333;
+            int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
     
             int2 sample_px = half_px + sample_offset;
 
@@ -123,7 +116,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
             if (sample_depth != 0) {
                 float wt = 1;
 
-                //wt *= exp2(-2 * sqrt(float(dot(sample_offset, sample_offset))));
                 wt *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
                 wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
@@ -134,33 +126,16 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 result += sample_val * wt;
                 w_sum += wt;
 
-                /*wt = 1;
-                //wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 30);
-                wt *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
-                wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));*/
-
                 const float luma = calculate_luma(sample_val.rgb);
                 ex += luma * wt;
                 ex2 += luma * luma * wt;
                 w_sum2 += wt;
             }
         }
-
-        #if 0
-            // Output normal for debug purposes
-            result = float4(saturate(normalize(center_normal_vs) * 0.5 + 0.5), 1);
-            result *= result;
-            w_sum = 1;
-        #endif
     } else {
         output_tex[px] = 0;
         return;
     }
-
-#if 0
-    result = saturate(1 - 1e-2 / (center_depth + 1e-5));
-    w_sum = 1;
-#endif
 
     float dev = 1;
     if (w_sum2 > 1e-200) {
@@ -170,11 +145,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     if (w_sum > 1e-200) {
-        //output_tex[px] = result / w_sum;
-
         output_tex[px] = float4(result.rgb / w_sum, dev);
     } else {
-        //output_tex[px] = ssgi_tex[px / 2];
         output_tex[px] = float4(ssgi_tex[px / 2].rgb, dev);
     }
 }

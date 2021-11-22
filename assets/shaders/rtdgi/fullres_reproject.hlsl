@@ -23,14 +23,12 @@ void main(uint2 px: SV_DispatchThreadID) {
     uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
     float4 history = 0.0.xxxx;
 
-    //if (quad_reproj_valid_packed < 15) {
     if (0 == quad_reproj_valid_packed) {
         // Everything invalid
     } else if (15 == quad_reproj_valid_packed) {
         history = input_tex.SampleLevel(sampler_lnc, prev_uv, 0);
     } else {
         float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
-        //quad_reproj_valid.xyzw = 0;
 
         const Bilinear bilinear = get_bilinear_filter(prev_uv, output_tex_size.xy);
         float4 s00 = input_tex[int2(bilinear.origin) + int2(0, 0)];

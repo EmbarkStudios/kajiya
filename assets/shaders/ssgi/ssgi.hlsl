@@ -42,17 +42,15 @@
 static const float temporal_rotations[] = { 60.0, 300.0, 180.0, 240.0, 120.0, 0.0 };
 static const float temporal_offsets[] = { 0.0, 0.5, 0.25, 0.75 };
 
+// [Drobot2014a] Low Level Optimizations for GCN
 float fast_sqrt(float x) {
     return asfloat(0x1fbd1df5 + (asuint(x) >> 1u));
 }
 
-// max absolute error 9.0x10^-3
-// Eberly's polynomial degree 1 - respect bounds
-// 4 VGPR, 12 FR (8 FR, 1 QR), 1 scalar
-// input [-1, 1] and output [0, M_PI]
+// [Eberly2014] GPGPU Programming for Games and Science
 float fast_acos(float inX) { 
     float x = abs(inX); 
-    float res = -0.156583f * x + (M_FRAC_PI_2); 
+    float res = -0.156583f * x + M_FRAC_PI_2; 
     res *= fast_sqrt(1.0f - x); 
     return (inX >= 0) ? res : M_PI - res;
 }
@@ -65,7 +63,6 @@ struct Ray {
 float3 fetch_lighting(float2 uv) {
     //return 0.0.xxx;
     int2 px = int2(input_tex_size.xy * uv);
-    //return prev_radiance_tex[px].xyz;
     float4 reproj = reprojection_tex[px];
     return lerp(0.0, prev_radiance_tex[int2(input_tex_size.xy * (uv + reproj.xy))].xyz, reproj.z);
 }

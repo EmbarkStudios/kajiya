@@ -28,10 +28,17 @@
 // Apply at Mitchell-Netravali filter to the current frame, "un-jittering" it,
 // and sharpening the content.
 #define FILTER_CURRENT_FRAME 1
+
+// Debug only, to inspect what happens with a single frame of input
 #define USE_ACCUMULATION 1
 #define RESET_ACCUMULATION 0
+
+// Debug only, to see how super-resolution looks without any color bbox clamping
 #define USE_NEIGHBORHOOD_CLAMPING 1
+
 #define TARGET_SAMPLE_COUNT 4
+
+// Set to 1 to disable TAA. Higher integer values will accumulate input without any processing.
 #define SHORT_CIRCUIT 0
 
 // Draw a rectangle indicating the current frame index. Useful for debugging frame drops.
@@ -103,12 +110,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     #if SHORT_CIRCUIT
         output_tex[px] = lerp(input_tex[reproj_px], float4(encode_rgb(history_tex[px].rgb), 1), 1.0 - 1.0 / SHORT_CIRCUIT);
         debug_output_tex[px] = output_tex[px];
-        //output_tex[px] = reprojection_tex[reproj_px].zzzz * 0.1;
         return;
     #endif
 
     float3 debug_out = 0;
-
     //debug_output_tex[px] = 0;
 
     float2 uv = get_uv(px, output_tex_size);
@@ -177,15 +182,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float2 vel_now = closest_velocity_tex[px] / frame_constants.delta_time_seconds;
     const float2 vel_prev = velocity_history_tex.SampleLevel(sampler_llc, uv + closest_velocity_tex[px], 0);
     float vel_diff = length((vel_now - vel_prev) / max(1, abs(vel_now + vel_prev))) > 0.2;
-    /*vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 1));
-    vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 2));
-    vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 8));
-    vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 16));
-    vel_diff = max(vel_diff, WaveReadLaneAt(vel_diff, WaveGetLaneIndex() ^ 32));*/
 
     const float var_blend = saturate(0.3 + 0.7 * (1 - reproj.z) + vel_diff);
-    //const float var_blend = 0.3;
-    //const float var_blend = saturate(0.3 + 0.7 * smoothstep(3, 0, history_coverage) + 0.7 * (1 - reproj.z));
 
     float smooth_var = max(var.x, lerp(prev_var, var.x, var_blend));
     float smooth_ex = max(ex.x, lerp(prev_ex, ex.x, var_blend));
@@ -200,11 +198,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     smooth_ex = lerp(ex.x, smooth_ex, var_prob_blend);
     smooth_ex2 = lerp(ex2.x, smooth_ex2, var_prob_blend);
     
-    /*if (input_prob < 0.9) {
-        dev = sqrt(var);
-        smooth_var = var.x;
-    }*/
-
     #if 1
         float3 dev = sqrt(var * smooth_var / max(1e-20, var.x));
     #else
@@ -213,8 +206,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float local_contrast = dev.x / (ex.x + 1e-5);
     float box_size = 1.0;
-    //box_size *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
-    //box_size *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
 
     const float n_deviations = lerp(4.0, 1.5, sqrt(input_resolution_scale.x));
 
@@ -237,14 +228,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
         float outlier = max(outlier3.x, max(outlier3.y, outlier3.z));
         float boutlier = max(boutlier3.x, max(boutlier3.y, boutlier3.z));
-
-        //float soutlier = saturate(coverage * outlier + boutlier - coverage * saturate(outlier) * saturate(boutlier));
-        //float soutlier = saturate(boutlier);
         float soutlier = saturate(lerp(boutlier, outlier, coverage));
 
         const bool history_valid = all(uv + reproj_xy == saturate(uv + reproj_xy));
 
-#if 1
         if (history_valid) {
             const float bclamp_amount = length((clamped_history - bhistory) / max(1e-5, abs(ex)));
             const float edge_outliers = abs(boutlier - outlier) * 10;
@@ -290,30 +277,14 @@ void main(uint2 px: SV_DispatchThreadID) {
             center = bcenter;
             history_coverage = 0;
         }
-#elif 0
-        if (soutlier > 0.0) {
-            float3 diff = history - bhistory;
-            diff *= saturate(1.0 - soutlier * 0.8);
-            clamped_history = lerp(bhistory, ex, soutlier) + diff;
-            //clamped_history = lerp(history, ex, soutlier);
-            history_coverage *= saturate(soutlier + 0.75);
-            //debug_output_tex[px] = float4(saturate(outlier), saturate(boutlier), soutlier, 1);
-        } else {
-            //debug_output_tex[px] = float4(0, 0, 0, 1);
-        }
-#else
-        clamped_history = history;
-#endif
 
     #if RESET_ACCUMULATION
         history_coverage = 0;
     #endif
 
         float total_coverage = max(1e-5, history_coverage + coverage);
-		//float3 result = lerp(clamped_history, center / max(1e-5, coverage), blend_factor);
         float3 result = (clamped_history * history_coverage + center) / total_coverage;
 
-        //const float max_coverage = lerp(2 * TARGET_SAMPLE_COUNT / 3, TARGET_SAMPLE_COUNT, smooth_clamping_event);
         const float max_coverage = TARGET_SAMPLE_COUNT;
 
         total_coverage = min(max_coverage, total_coverage);
@@ -323,7 +294,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 		float3 result = center / coverage;
 	#endif
 
-    //float4 meta_out = float4(smooth_var, trend_accum, bcenter.x, smooth_ex2);
     float4 meta_out = float4(smooth_var, smooth_clamping_event, smooth_ex, smooth_ex2);
     meta_output_tex[px] = meta_out;
 
@@ -350,7 +320,6 @@ void main(uint2 px: SV_DispatchThreadID) {
         //debug_out = saturate(10 * smooth_clamping_event);
     }
 
-    //result = float3(abs(reprojection_tex[reproj_px].xy) * 100, 0);
     output_tex[px] = float4(result, coverage);
     debug_output_tex[px] = float4(debug_out, 1);
 

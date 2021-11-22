@@ -55,5 +55,4 @@ void main(uint2 px: SV_DispatchThreadID) {
     #endif
     
     output_tex[px] = LINEAR_TO_WORKING(res);
-    //output_tex[px] = reproj.w;
 }
