@@ -1,7 +1,4 @@
-use kajiya_backend::{
-    ash::vk,
-    vulkan::{image::*, ray_tracing::RayTracingAcceleration},
-};
+use kajiya_backend::{ash::vk, vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource}};
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 
@@ -17,13 +14,13 @@ pub fn trace_sun_shadow_mask(
 
     SimpleRenderPass::new_rt(
         rg.add_pass("trace shadow mask"),
-        "/shaders/rt/trace_sun_shadow_mask.rgen.hlsl",
-        &[
+        ShaderSource::hlsl("/shaders/rt/trace_sun_shadow_mask.rgen.hlsl"),
+        [
             // Duplicated because `rt.hlsl` hardcodes miss index to 1
-            "/shaders/rt/shadow.rmiss.hlsl",
-            "/shaders/rt/shadow.rmiss.hlsl",
+            ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+            ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
         ],
-        &[],
+        std::iter::empty(),
     )
     .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
     .read(&gbuffer_depth.geometric_normal)

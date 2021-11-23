@@ -45,9 +45,9 @@ impl LazyWorker for CompilePipelineShaders {
     async fn run(self, ctx: RunContext) -> Self::Output {
         let shaders = futures::future::try_join_all(self.shader_descs.iter().map(|desc| {
             match &desc.source {
-                ShaderSource::Rust => {
+                ShaderSource::Rust { entry } => {
                     CompileRustShader {
-                        entry: desc.entry.clone(),
+                        entry: entry.clone(),
                     }
                     .into_lazy()
                     .eval(&ctx)
@@ -95,12 +95,6 @@ struct RtPipelineCacheEntry {
     pipeline: Option<Arc<RayTracingPipeline>>,
 }
 
-#[derive(PartialEq, Eq, Hash)]
-struct ComputePipelineKey {
-    source: ShaderSource,
-    entry: String,
-}
-
 pub struct PipelineCache {
     lazy_cache: Arc<LazyCache>,
 
@@ -108,7 +102,7 @@ pub struct PipelineCache {
     raster_entries: HashMap<RasterPipelineHandle, RasterPipelineCacheEntry>,
     rt_entries: HashMap<RtPipelineHandle, RtPipelineCacheEntry>,
 
-    compute_shader_to_handle: HashMap<ComputePipelineKey, ComputePipelineHandle>,
+    compute_shader_to_handle: HashMap<ShaderSource, ComputePipelineHandle>,
     raster_shaders_to_handle: HashMap<Vec<PipelineShaderDesc>, RasterPipelineHandle>,
     rt_shaders_to_handle: HashMap<Vec<PipelineShaderDesc>, RtPipelineHandle>,
 }
@@ -134,16 +128,13 @@ impl PipelineCache {
         &mut self,
         desc: &ComputePipelineDesc,
     ) -> ComputePipelineHandle {
-        match self.compute_shader_to_handle.entry(ComputePipelineKey {
-            source: desc.source.clone(),
-            entry: desc.entry.clone(),
-        }) {
+        match self.compute_shader_to_handle.entry(desc.source.clone()) {
             std::collections::hash_map::Entry::Occupied(occupied) => *occupied.get(),
             std::collections::hash_map::Entry::Vacant(vacant) => {
                 let handle = ComputePipelineHandle(self.compute_entries.len());
                 let compile_task = match &desc.source {
-                    ShaderSource::Rust => CompileRustShader {
-                        entry: desc.entry.clone(),
+                    ShaderSource::Rust { entry } => CompileRustShader {
+                        entry: entry.clone(),
                     }
                     .into_lazy(),
                     ShaderSource::Hlsl { path } => CompileShader {
@@ -321,7 +312,7 @@ impl PipelineCache {
                         log::trace!(
                             "Creating compute pipeline {:?}:{:?}",
                             compiled.name,
-                            entry.desc.entry
+                            entry.desc.source.entry(),
                         );
                         entry.pipeline = Some(Arc::new(create_compute_pipeline(
                             &*device,

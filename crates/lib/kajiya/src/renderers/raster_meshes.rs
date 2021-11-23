@@ -37,7 +37,8 @@ pub fn raster_meshes(
     let pipeline = pass.register_raster_pipeline(
         &[
             PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
-                .rust_source("raster_simple::raster_simple_vs")
+                // .rust_source("raster_simple::raster_simple_vs")
+                .hlsl_source("/shaders/raster_simple_vs.hlsl")
                 .build()
                 .unwrap(),
             PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)

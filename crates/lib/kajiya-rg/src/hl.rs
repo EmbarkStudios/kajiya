@@ -150,31 +150,34 @@ impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
 impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
     pub fn new_rt(
         mut pass: PassBuilder<'rg>,
-        rgen: &'static str,
-        miss: &[&'static str],
-        hit: &[&'static str],
+        rgen: ShaderSource,
+        miss: impl IntoIterator<Item=ShaderSource>,
+        hit: impl IntoIterator<Item=ShaderSource>,
     ) -> Self {
-        let mut shaders = Vec::with_capacity(1 + miss.len() + hit.len());
+        let miss = miss.into_iter();
+        let hit = hit.into_iter();
+
+        let mut shaders = Vec::with_capacity(1 + miss.size_hint().0 + hit.size_hint().0);
 
         shaders.push(
             PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
-                .source(ShaderSource::Hlsl { path: rgen.into() })
+                .source(rgen)
                 .build()
                 .unwrap()
         );
-        for &shader in miss {
+        for source in miss {
             shaders.push(
                 PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
-                    .source(ShaderSource::Hlsl { path: shader.into() })
+                    .source(source)
                     .build()
                     .unwrap()
             );
         }
 
-        for &shader in hit {
+        for source in hit {
             shaders.push(
                 PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
-                    .source(ShaderSource::Hlsl { path: shader.into() })
+                    .source(source)
                     .build()
                     .unwrap(),
             );

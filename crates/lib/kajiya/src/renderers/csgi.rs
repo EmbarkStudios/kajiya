@@ -3,17 +3,7 @@
 use std::sync::Arc;
 
 use glam::{IVec4, Vec3};
-use kajiya_backend::{
-    ash::vk,
-    vk_sync::AccessType,
-    vulkan::{
-        image::*,
-        ray_tracing::RayTracingAcceleration,
-        shader::{
-            PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage,
-        },
-    },
-};
+use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::{PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage, ShaderSource}}};
 use kajiya_rg::{
     self as rg, BindRgRef, GetOrCreateTemporal, IntoRenderPassPipelineBinding, SimpleRenderPass,
 };
@@ -282,12 +272,12 @@ impl CsgiRenderer {
 
             SimpleRenderPass::new_rt(
                 rg.add_pass("csgi trace"),
-                "/shaders/csgi/trace_volume.rgen.hlsl",
-                &[
-                    "/shaders/rt/gbuffer.rmiss.hlsl",
-                    "/shaders/rt/shadow.rmiss.hlsl",
+                ShaderSource::hlsl("/shaders/csgi/trace_volume.rgen.hlsl"),
+                [
+                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
                 ],
-                &["/shaders/rt/gbuffer.rchit.hlsl"],
+                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
             )
             .read_array(&indirect_combined_cascades)
             .read(sky_cube)

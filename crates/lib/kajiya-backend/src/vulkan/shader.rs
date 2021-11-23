@@ -322,9 +322,28 @@ impl DescriptorSetLayoutOpts {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ShaderSource {
-    Rust,
+    Rust {
+        entry: String,
+    },
     Hlsl {
         path: PathBuf,
+    }
+}
+
+impl ShaderSource {
+    pub fn rust(entry: impl Into<String>) -> Self {
+        ShaderSource::Rust { entry: entry.into() }
+    }
+
+    pub fn hlsl(path: impl Into<PathBuf>) -> Self {
+        ShaderSource::Hlsl { path: path.into() }
+    }
+
+    pub fn entry(&self) -> &str {
+        match self {
+            ShaderSource::Rust { entry } => &entry,
+            ShaderSource::Hlsl { .. } => "main",
+        }
     }
 }
 
@@ -335,8 +354,6 @@ pub struct ComputePipelineDesc {
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
-    #[builder(default = "\"main\".to_owned()")]
-    pub entry: String,
     pub source: ShaderSource,
 }
 
@@ -353,14 +370,12 @@ impl ComputePipelineDescBuilder {
     }
 
     pub fn compute_rust(mut self, entry: impl Into<String>) -> Self {
-        self.source = Some(ShaderSource::Rust);
-        self.entry = Some(entry.into());
+        self.source = Some(ShaderSource::rust(entry));
         self
     }
 
-    pub fn compute_hlsl(mut self, entry: impl Into<String>, path: PathBuf) -> Self {
-        self.entry = Some(entry.into());
-        self.source = Some(ShaderSource::Hlsl { path });
+    pub fn compute_hlsl(mut self, path: impl Into<PathBuf>) -> Self {
+        self.source = Some(ShaderSource::hlsl(path));
         self
     }
 }
@@ -411,7 +426,7 @@ pub fn create_compute_pipeline(
             )
             .unwrap();
 
-        let entry_name = CString::new(desc.entry.as_str()).unwrap();
+        let entry_name = CString::new(desc.source.entry()).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
@@ -491,16 +506,13 @@ impl PipelineShaderDesc {
 
 impl PipelineShaderDescBuilder {
     pub fn hlsl_source(mut self, path: impl Into<PathBuf>) -> Self {
-        self.source = Some(ShaderSource::Hlsl {
-            path: path.into(),
-        });
+        self.source = Some(ShaderSource::hlsl(path));
 
         self
     }
 
     pub fn rust_source(mut self, entry: impl Into<String>) -> Self {
-        self.source = Some(ShaderSource::Rust);
-        self.entry = Some(entry.into());
+        self.source = Some(ShaderSource::rust(entry));
 
         self
     }

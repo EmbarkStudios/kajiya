@@ -180,7 +180,7 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn register_compute_pipeline(&mut self, path: impl AsRef<Path>) -> RgComputePipelineHandle {
         let desc = ComputePipelineDesc::builder()
-            .compute_hlsl("main", path.as_ref().to_owned())
+            .compute_hlsl(path.as_ref().to_owned())
             .build()
             .unwrap();
         self.register_compute_pipeline_with_desc(desc)
