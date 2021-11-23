@@ -1,5 +1,4 @@
 use crate::frame_constants::FrameConstants;
-use crate::mesh::MaterialDescriptor;
 use macaw::{
     const_mat3, FloatExt, Mat3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
 };

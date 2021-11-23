@@ -180,15 +180,14 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn register_compute_pipeline(&mut self, path: impl AsRef<Path>) -> RgComputePipelineHandle {
         let desc = ComputePipelineDesc::builder()
-            .compute_entry_hlsl("main")
+            .compute_hlsl("main", path.as_ref().to_owned())
             .build()
             .unwrap();
-        self.register_compute_pipeline_with_desc(path, desc)
+        self.register_compute_pipeline_with_desc(desc)
     }
 
     pub fn register_compute_pipeline_with_desc(
         &mut self,
-        path: impl AsRef<Path>,
         mut desc: ComputePipelineDesc,
     ) -> RgComputePipelineHandle {
         let id = self.rg.compute_pipelines.len();
@@ -203,17 +202,14 @@ impl<'rg> PassBuilder<'rg> {
             ));
         }
 
-        self.rg.compute_pipelines.push(RgComputePipeline {
-            shader_path: path.as_ref().to_owned(),
-            desc,
-        });
+        self.rg.compute_pipelines.push(RgComputePipeline { desc });
 
         RgComputePipelineHandle { id }
     }
 
     pub fn register_raster_pipeline(
         &mut self,
-        shaders: &[PipelineShader<&'static str>],
+        shaders: &[PipelineShaderDesc],
         desc: RasterPipelineDescBuilder,
     ) -> RgRasterPipelineHandle {
         let id = self.rg.raster_pipelines.len();
@@ -230,17 +226,7 @@ impl<'rg> PassBuilder<'rg> {
         }
 
         self.rg.raster_pipelines.push(RgRasterPipeline {
-            shaders: shaders
-                .iter()
-                .map(|shader| {
-                    let desc = shader.desc.clone();
-
-                    PipelineShader {
-                        code: shader.code,
-                        desc,
-                    }
-                })
-                .collect(),
+            shaders: shaders.to_vec(),
             desc,
         });
 
@@ -249,7 +235,7 @@ impl<'rg> PassBuilder<'rg> {
 
     pub fn register_ray_tracing_pipeline(
         &mut self,
-        shaders: &[PipelineShader<&'static str>],
+        shaders: &[PipelineShaderDesc],
         mut desc: RayTracingPipelineDesc,
     ) -> RgRtPipelineHandle {
         let id = self.rg.rt_pipelines.len();
@@ -265,17 +251,7 @@ impl<'rg> PassBuilder<'rg> {
         }
 
         self.rg.rt_pipelines.push(RgRtPipeline {
-            shaders: shaders
-                .iter()
-                .map(|shader| {
-                    let desc = shader.desc.clone();
-
-                    PipelineShader {
-                        code: shader.code,
-                        desc,
-                    }
-                })
-                .collect(),
+            shaders: shaders.to_vec(),
             desc,
         });
 

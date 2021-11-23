@@ -22,6 +22,12 @@ pub struct InstanceTransform {
     pub prev_transform: Mat4,
 }
 
+#[repr(C, align(16))]
+#[derive(Copy, Clone)]
+pub struct InstanceDynamicConstants {
+    pub emissive_multiplier: f32,
+}
+
 #[derive(Clone, Copy)]
 #[repr(C)]
 #[cfg_attr(not(target_arch = "spirv"), derive(Debug))]

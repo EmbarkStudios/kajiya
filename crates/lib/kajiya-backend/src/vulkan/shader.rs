@@ -11,11 +11,7 @@ use byte_slice_cast::AsSliceOf as _;
 use bytes::Bytes;
 use derive_builder::Builder;
 use parking_lot::Mutex;
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    ffi::CString,
-    sync::Arc,
-};
+use std::{collections::{hash_map::Entry, HashMap}, ffi::CString, path::PathBuf, sync::Arc};
 
 pub const MAX_DESCRIPTOR_SETS: usize = 4;
 pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 512 * 1024;
@@ -324,16 +320,12 @@ impl DescriptorSetLayoutOpts {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub enum ShaderSourceType {
-    Rust,
-    Hlsl,
-}
-
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct ShaderSource {
-    pub entry: String,
-    pub ty: ShaderSourceType,
+pub enum ShaderSource {
+    Rust,
+    Hlsl {
+        path: PathBuf,
+    }
 }
 
 #[derive(Builder, Clone)]
@@ -343,8 +335,9 @@ pub struct ComputePipelineDesc {
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
-    #[builder(setter(custom))]
-    pub compute_source: ShaderSource,
+    #[builder(default = "\"main\".to_owned()")]
+    pub entry: String,
+    pub source: ShaderSource,
 }
 
 impl ComputePipelineDescBuilder {
@@ -359,19 +352,15 @@ impl ComputePipelineDescBuilder {
         self
     }
 
-    pub fn compute_entry_rust(mut self, entry: impl Into<String>) -> Self {
-        self.compute_source = Some(ShaderSource {
-            entry: entry.into(),
-            ty: ShaderSourceType::Rust,
-        });
+    pub fn compute_rust(mut self, entry: impl Into<String>) -> Self {
+        self.source = Some(ShaderSource::Rust);
+        self.entry = Some(entry.into());
         self
     }
 
-    pub fn compute_entry_hlsl(mut self, entry: impl Into<String>) -> Self {
-        self.compute_source = Some(ShaderSource {
-            entry: entry.into(),
-            ty: ShaderSourceType::Hlsl,
-        });
+    pub fn compute_hlsl(mut self, entry: impl Into<String>, path: PathBuf) -> Self {
+        self.entry = Some(entry.into());
+        self.source = Some(ShaderSource::Hlsl { path });
         self
     }
 }
@@ -422,7 +411,7 @@ pub fn create_compute_pipeline(
             )
             .unwrap();
 
-        let entry_name = CString::new(desc.compute_source.entry.as_str()).unwrap();
+        let entry_name = CString::new(desc.entry.as_str()).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
@@ -490,12 +479,30 @@ pub struct PipelineShaderDesc {
     #[builder(default)]
     pub push_constants_bytes: usize,
     #[builder(default = "\"main\".to_owned()")]
-    pub entry_name: String,
+    pub entry: String,
+    pub source: ShaderSource,
 }
 
 impl PipelineShaderDesc {
     pub fn builder(stage: ShaderPipelineStage) -> PipelineShaderDescBuilder {
         PipelineShaderDescBuilder::default().stage(stage)
+    }
+}
+
+impl PipelineShaderDescBuilder {
+    pub fn hlsl_source(mut self, path: impl Into<PathBuf>) -> Self {
+        self.source = Some(ShaderSource::Hlsl {
+            path: path.into(),
+        });
+
+        self
+    }
+
+    pub fn rust_source(mut self, entry: impl Into<String>) -> Self {
+        self.source = Some(ShaderSource::Rust);
+        self.entry = Some(entry.into());
+
+        self
     }
 }
 
@@ -811,8 +818,8 @@ pub fn create_raster_pipeline(
 ) -> anyhow::Result<RasterPipeline> {
     let stage_layouts = shaders
         .iter()
-        .map(|desc| {
-            rspirv_reflect::Reflection::new_from_spirv(&desc.code)
+        .map(|shader| {
+            rspirv_reflect::Reflection::new_from_spirv(&shader.code)
                 .unwrap()
                 .get_descriptor_sets()
                 .unwrap()
@@ -867,7 +874,7 @@ pub fn create_raster_pipeline(
 
                 vk::PipelineShaderStageCreateInfo::builder()
                     .module(shader_module)
-                    .name(entry_names.add(CString::new(desc.desc.entry_name.as_str()).unwrap()))
+                    .name(entry_names.add(CString::new(desc.desc.entry.as_str()).unwrap()))
                     .stage(stage)
                     .build()
             })

@@ -11,31 +11,15 @@ use super::{
     RenderPassApi,
 };
 
-use kajiya_backend::{
-    ash::{
+use kajiya_backend::{ash::{
         extensions::khr::Swapchain,
         vk::{self, DebugUtilsLabelEXT},
-    },
-    dynamic_constants::DynamicConstants,
-    gpu_profiler,
-    pipeline_cache::{
+    }, dynamic_constants::DynamicConstants, gpu_profiler, pipeline_cache::{
         ComputePipelineHandle, PipelineCache, RasterPipelineHandle, RtPipelineHandle,
-    },
-    rspirv_reflect,
-    transient_resource_cache::TransientResourceCache,
-    vk_sync,
-    vulkan::{
-        barrier::{
+    }, rspirv_reflect, transient_resource_cache::TransientResourceCache, vk_sync, vulkan::{barrier::{
             get_access_info, image_aspect_mask_from_access_type_and_format, record_image_barrier,
             ImageBarrier,
-        },
-        device::{CommandBuffer, Device},
-        image::ImageViewDesc,
-        profiler::VkProfilerData,
-        ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::{ComputePipelineDesc, PipelineShader, RasterPipelineDesc},
-    },
-};
+        }, device::{CommandBuffer, Device}, image::ImageViewDesc, profiler::VkProfilerData, ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc}, shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, RasterPipelineDesc}}};
 use parking_lot::Mutex;
 use std::{
     collections::{HashMap, VecDeque},
@@ -94,7 +78,6 @@ pub struct RgComputePipelineHandle {
 }
 
 pub(crate) struct RgComputePipeline {
-    pub(crate) shader_path: PathBuf,
     pub(crate) desc: ComputePipelineDesc,
 }
 
@@ -104,7 +87,7 @@ pub struct RgRasterPipelineHandle {
 }
 
 pub(crate) struct RgRasterPipeline {
-    pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) shaders: Vec<PipelineShaderDesc>,
     pub(crate) desc: RasterPipelineDesc,
 }
 
@@ -114,7 +97,7 @@ pub struct RgRtPipelineHandle {
 }
 
 pub(crate) struct RgRtPipeline {
-    pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) shaders: Vec<PipelineShaderDesc>,
     pub(crate) desc: RayTracingPipelineDesc,
 }
 
@@ -559,7 +542,7 @@ impl RenderGraph {
         let compute_pipelines = self
             .compute_pipelines
             .iter()
-            .map(|pipeline| pipeline_cache.register_compute(&pipeline.shader_path, &pipeline.desc))
+            .map(|pipeline| pipeline_cache.register_compute(&pipeline.desc))
             .collect::<Vec<_>>();
 
         let raster_pipelines = self

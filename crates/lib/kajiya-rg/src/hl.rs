@@ -1,13 +1,4 @@
-use kajiya_backend::{
-    ash::vk,
-    dynamic_constants,
-    vk_sync::AccessType,
-    vulkan::{
-        image::*,
-        ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
-    },
-};
+use kajiya_backend::{ash::vk, dynamic_constants, vk_sync::AccessType, vulkan::{image::*, ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc}, shader::{ComputePipelineDesc, PipelineShaderDesc, ShaderPipelineStage, ShaderSource}}};
 
 use crate::Image;
 
@@ -118,10 +109,8 @@ impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
 
     pub fn new_compute_rust(mut pass: PassBuilder<'rg>, entry_name: &str) -> Self {
         let pipeline = pass.register_compute_pipeline_with_desc(
-            // TODO
-            "assets/rust-shaders/target/spirv-unknown-vulkan1.1/release/deps/rust_shaders.spv.dir/module",
             ComputePipelineDesc::builder()
-                .compute_entry_rust(entry_name)
+                .compute_rust(entry_name)
                 .build()
                 .unwrap(),
         );
@@ -167,28 +156,28 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
     ) -> Self {
         let mut shaders = Vec::with_capacity(1 + miss.len() + hit.len());
 
-        shaders.push(PipelineShader {
-            code: rgen,
-            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+        shaders.push(
+            PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                .source(ShaderSource::Hlsl { path: rgen.into() })
                 .build()
-                .unwrap(),
-        });
+                .unwrap()
+        );
         for &shader in miss {
-            shaders.push(PipelineShader {
-                code: shader,
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+            shaders.push(
+                PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .source(ShaderSource::Hlsl { path: shader.into() })
                     .build()
-                    .unwrap(),
-            });
+                    .unwrap()
+            );
         }
 
         for &shader in hit {
-            shaders.push(PipelineShader {
-                code: shader,
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+            shaders.push(
+                PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+                    .source(ShaderSource::Hlsl { path: shader.into() })
                     .build()
                     .unwrap(),
-            });
+            );
         }
 
         let pipeline = pass.register_ray_tracing_pipeline(

@@ -10,7 +10,6 @@ use crate::{
 use log::{debug, error, info, trace, warn};
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
     sync::Arc,
 };
 use turbosloth::*;
@@ -36,7 +35,7 @@ pub struct CompiledPipelineShaders {
 
 #[derive(Clone, Hash)]
 pub struct CompilePipelineShaders {
-    shaders: Vec<PipelineShader<PathBuf>>,
+    shader_descs: Vec<PipelineShaderDesc>,
 }
 
 #[async_trait]
@@ -44,28 +43,39 @@ impl LazyWorker for CompilePipelineShaders {
     type Output = anyhow::Result<CompiledPipelineShaders>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
-        let shaders = futures::future::try_join_all(self.shaders.iter().map(|shader| {
-            CompileShader {
-                path: shader.code.clone(),
-                profile: match shader.desc.stage {
-                    ShaderPipelineStage::Vertex => "vs".to_owned(),
-                    ShaderPipelineStage::Pixel => "ps".to_owned(),
-                    ShaderPipelineStage::RayGen
-                    | ShaderPipelineStage::RayMiss
-                    | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
+        let shaders = futures::future::try_join_all(self.shader_descs.iter().map(|desc| {
+            match &desc.source {
+                ShaderSource::Rust => {
+                    CompileRustShader {
+                        entry: desc.entry.clone(),
+                    }
+                    .into_lazy()
+                    .eval(&ctx)
                 },
+                ShaderSource::Hlsl { path } => {
+                    CompileShader {
+                        path: path.clone(),
+                        profile: match desc.stage {
+                            ShaderPipelineStage::Vertex => "vs".to_owned(),
+                            ShaderPipelineStage::Pixel => "ps".to_owned(),
+                            ShaderPipelineStage::RayGen
+                            | ShaderPipelineStage::RayMiss
+                            | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
+                        },
+                    }
+                    .into_lazy()
+                    .eval(&ctx)
+                }
             }
-            .into_lazy()
-            .eval(&ctx)
         }))
         .await?;
 
         let shaders = shaders
             .into_iter()
-            .zip(self.shaders.iter())
-            .map(|(shader, src_shader)| PipelineShader {
+            .zip(self.shader_descs.iter())
+            .map(|(shader, desc)| PipelineShader {
                 code: shader,
-                desc: src_shader.desc.clone(),
+                desc: desc.clone(),
             })
             .collect();
 
@@ -87,7 +97,7 @@ struct RtPipelineCacheEntry {
 
 #[derive(PartialEq, Eq, Hash)]
 struct ComputePipelineKey {
-    path: PathBuf,
+    source: ShaderSource,
     entry: String,
 }
 
@@ -99,8 +109,8 @@ pub struct PipelineCache {
     rt_entries: HashMap<RtPipelineHandle, RtPipelineCacheEntry>,
 
     compute_shader_to_handle: HashMap<ComputePipelineKey, ComputePipelineHandle>,
-    raster_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RasterPipelineHandle>,
-    rt_shaders_to_handle: HashMap<Vec<PipelineShader<&'static str>>, RtPipelineHandle>,
+    raster_shaders_to_handle: HashMap<Vec<PipelineShaderDesc>, RasterPipelineHandle>,
+    rt_shaders_to_handle: HashMap<Vec<PipelineShaderDesc>, RtPipelineHandle>,
 }
 
 impl PipelineCache {
@@ -122,24 +132,22 @@ impl PipelineCache {
     // TODO: should probably use the `desc` as key as well
     pub fn register_compute(
         &mut self,
-        path: impl AsRef<Path>,
         desc: &ComputePipelineDesc,
     ) -> ComputePipelineHandle {
         match self.compute_shader_to_handle.entry(ComputePipelineKey {
-            path: path.as_ref().to_owned(),
-            entry: desc.compute_source.entry.clone(),
+            source: desc.source.clone(),
+            entry: desc.entry.clone(),
         }) {
             std::collections::hash_map::Entry::Occupied(occupied) => *occupied.get(),
             std::collections::hash_map::Entry::Vacant(vacant) => {
                 let handle = ComputePipelineHandle(self.compute_entries.len());
-                let compile_task = match desc.compute_source.ty {
-                    ShaderSourceType::Rust => CompileRustShader {
-                        profile: "cs".to_owned(),
-                        entry: desc.compute_source.entry.clone(),
+                let compile_task = match &desc.source {
+                    ShaderSource::Rust => CompileRustShader {
+                        entry: desc.entry.clone(),
                     }
                     .into_lazy(),
-                    ShaderSourceType::Hlsl => CompileShader {
-                        path: path.as_ref().to_owned(),
+                    ShaderSource::Hlsl { path } => CompileShader {
+                        path: path.clone(),
                         profile: "cs".to_owned(),
                     }
                     .into_lazy(),
@@ -170,7 +178,7 @@ impl PipelineCache {
 
     pub fn register_raster(
         &mut self,
-        shaders: &[PipelineShader<&'static str>],
+        shaders: &[PipelineShaderDesc],
         desc: &RasterPipelineDesc,
     ) -> RasterPipelineHandle {
         if let Some(handle) = self.raster_shaders_to_handle.get(shaders) {
@@ -184,13 +192,7 @@ impl PipelineCache {
             handle,
             RasterPipelineCacheEntry {
                 lazy_handle: CompilePipelineShaders {
-                    shaders: shaders
-                        .iter()
-                        .map(|shader| PipelineShader {
-                            code: PathBuf::from(shader.code),
-                            desc: shader.desc.clone(),
-                        })
-                        .collect(),
+                    shader_descs: shaders.to_vec(),
                 }
                 .into_lazy(),
                 desc: desc.clone(),
@@ -211,7 +213,7 @@ impl PipelineCache {
 
     pub fn register_ray_tracing(
         &mut self,
-        shaders: &[PipelineShader<&'static str>],
+        shaders: &[PipelineShaderDesc],
         desc: &RayTracingPipelineDesc,
     ) -> RtPipelineHandle {
         if let Some(handle) = self.rt_shaders_to_handle.get(shaders) {
@@ -224,13 +226,7 @@ impl PipelineCache {
             handle,
             RtPipelineCacheEntry {
                 lazy_handle: CompilePipelineShaders {
-                    shaders: shaders
-                        .iter()
-                        .map(|shader| PipelineShader {
-                            code: PathBuf::from(shader.code),
-                            desc: shader.desc.clone(),
-                        })
-                        .collect(),
+                    shader_descs: shaders.to_vec(),
                 }
                 .into_lazy(),
                 desc: desc.clone(),
@@ -325,7 +321,7 @@ impl PipelineCache {
                         log::trace!(
                             "Creating compute pipeline {:?}:{:?}",
                             compiled.name,
-                            entry.desc.compute_source.entry
+                            entry.desc.entry
                         );
                         entry.pipeline = Some(Arc::new(create_compute_pipeline(
                             &*device,
@@ -342,7 +338,7 @@ impl PipelineCache {
                                 .iter()
                                 .map(|shader| format!(
                                     "{:?}:{:?}",
-                                    shader.desc.stage, shader.desc.entry_name
+                                    shader.desc.stage, shader.desc.entry
                                 ))
                                 .collect::<Vec<_>>()
                                 .join(", ")
@@ -372,7 +368,7 @@ impl PipelineCache {
                                 .iter()
                                 .map(|shader| format!(
                                     "{:?}:{:?}",
-                                    shader.desc.stage, shader.desc.entry_name
+                                    shader.desc.stage, shader.desc.entry
                                 ))
                                 .collect::<Vec<_>>()
                                 .join(", ")

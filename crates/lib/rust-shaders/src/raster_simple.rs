@@ -1,4 +1,6 @@
-use macaw::{Vec2, Vec3, Vec4, Mat3, Vec4Swizzles};
+use crate::gbuffer::GBufferData;
+
+use macaw::{Vec2, Vec3, Vec4, UVec4, Mat3, Vec4Swizzles};
 
 use core::mem::size_of;
 
@@ -12,7 +14,7 @@ use spirv_std::{
 
 use rust_shaders_shared::{
     frame_constants::FrameConstants,
-    mesh::{InstanceTransform, MeshDescriptor, MaterialDescriptor},
+    mesh::{InstanceTransform, InstanceDynamicConstants, MeshDescriptor, MaterialDescriptor},
     raster_simple::*,
     util::*,
 };
@@ -28,7 +30,7 @@ pub fn raster_simple_vs(
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] meshes: &[MeshDescriptor],
     #[spirv(uniform, descriptor_set = 0, binding = 2)] frame_constants: &FrameConstants,
     #[spirv(storage_buffer, descriptor_set = 1, binding = 1)] vertices: &[u32], // ByteAddressableBuffer
-    #[spirv(push_constants)] push_constants: &RasterConstants,
+    #[spirv(push_constant)] push_constants: &RasterConstants,
 
     // Pipeline outputs
     out_color: &mut Vec4,
@@ -97,21 +99,21 @@ pub fn raster_simple_vs(
     *out_prev_vs_pos = prev_vs_pos;
 }
 
-#[spirv(vertex)]
-pub fn raster_simple_ps(
+#[spirv(fragment)]
+pub fn raster_simple_fs(
     // Pipeline inputs
 
     // Descriptors
     #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] instance_transforms_dyn: &[InstanceTransform],
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] instance_dynamic_parameters_dyn: &[InstanceTransform],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] meshes: &[MeshDescriptor],
     #[spirv(uniform, descriptor_set = 0, binding = 2)] frame_constants: &FrameConstants,
     #[spirv(storage_buffer, descriptor_set = 1, binding = 1)] vertices: &[u32], // ByteAddressableBuffer
+    #[spirv(storage_buffer, descriptor_set = 1, binding = 2)] instance_dynamic_parameters_dyn: &[InstanceDynamicConstants],
     #[spirv(descriptor_set = 1, binding = 3)] bindless_textures: &RuntimeArray<
         Image!(2D, type=f32, sampled=true),
     >,
     #[spirv(descriptor_set = 0, binding = 33)] sampler_llr: &Sampler,
-    #[spirv(push_constants)] push_constants: &RasterConstants,
+    #[spirv(push_constant)] push_constants: &RasterConstants,
 
     // Pipeline inputs
     in_color: Vec4,
@@ -125,7 +127,7 @@ pub fn raster_simple_ps(
 
     // Pipeline outputs
     out_geometric_normal: &mut Vec3,
-    out_gbuffer: &mut Vec4,
+    out_gbuffer: &mut UVec4,
     out_velocity: &mut Vec4,
 ) {
     let mesh: &MeshDescriptor = &meshes[push_constants.mesh_index as usize];
@@ -150,7 +152,7 @@ pub fn raster_simple_ps(
 
     let instance_transform = &instance_transforms_dyn[push_constants.draw_index as usize];
 
-    let normal_ws = {
+    let mut normal_ws = {
         let normal_os = if in_bitangent.dot(in_bitangent) > 0.0 {
             let tbn = Mat3::from_cols(in_tangent, in_bitangent, in_normal);
             tbn * ts_normal
@@ -177,7 +179,19 @@ pub fn raster_simple_ps(
     let emissive_uv = material.transform_uv(in_uv, 3);
     let emissive_tex = unsafe { bindless_textures.index(material.maps.emissive()) };
     let emissive_texel: Vec4 = emissive_tex.sample_bias(*sampler_llr, emissive_uv, -0.5);
-    let emissive = emissive_texel.xyz() * material.emissive.xyz() * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
+    let emissive = emissive_texel.xyz() * material.emissive.xyz() * instance_dynamic_parameters_dyn[push_constants.draw_index as usize].emissive_multiplier;
 
+    *out_velocity = (in_prev_vs_pos - in_vs_pos).extend(0.0);
+    *out_geometric_normal = geometric_normal_vs * 0.5 + 0.5;
+
+    let gbuffer = GBufferData {
+        albedo,
+        roughness,
+        metalness,
+        emissive,
+        normal: normal_ws,
+    };
+
+    *out_gbuffer = gbuffer.pack();
 
 }

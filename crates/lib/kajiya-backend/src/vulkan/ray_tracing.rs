@@ -750,7 +750,7 @@ pub fn create_ray_tracing_pipeline(
                     .create_shader_module(&shader_info, None)
                     .expect("Shader module error");
 
-                (shader_module, desc.desc.entry_name.clone())
+                (shader_module, desc.desc.entry.clone())
             };
 
         let mut prev_stage: Option<ShaderPipelineStage> = None;

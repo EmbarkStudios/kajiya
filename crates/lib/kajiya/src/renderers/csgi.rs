@@ -10,7 +10,7 @@ use kajiya_backend::{
         image::*,
         ray_tracing::RayTracingAcceleration,
         shader::{
-            PipelineShader, PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage,
+            PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage,
         },
     },
 };
@@ -397,18 +397,14 @@ impl CsgiVolume {
 
         let pipeline = pass.register_raster_pipeline(
             &[
-                PipelineShader {
-                    code: "/shaders/csgi/raster_voxels_vs.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
-                        .build()
-                        .unwrap(),
-                },
-                PipelineShader {
-                    code: "/shaders/csgi/raster_voxels_ps.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
-                        .build()
-                        .unwrap(),
-                },
+                PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
+                    .hlsl_source("/shaders/csgi/raster_voxels_vs.hlsl")
+                    .build()
+                    .unwrap(),
+                PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
+                    .hlsl_source("/shaders/csgi/raster_voxels_ps.hlsl")
+                    .build()
+                    .unwrap(),
             ],
             RasterPipelineDesc::builder()
                 .render_pass(render_pass.clone())
