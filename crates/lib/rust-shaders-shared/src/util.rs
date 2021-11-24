@@ -44,6 +44,15 @@ pub fn fast_sqrt_vec3(v: Vec3) -> Vec3 {
     Vec3::new(fast_sqrt(v.x), fast_sqrt(v.y), fast_sqrt(v.z))
 }
 
+pub fn fast_sqrt_vec4(v: Vec4) -> Vec4 {
+    Vec4::new(
+        fast_sqrt(v.x),
+        fast_sqrt(v.y),
+        fast_sqrt(v.z),
+        fast_sqrt(v.w),
+    )
+}
+
 // From Eberly 2014
 pub fn fast_acos(x: f32) -> f32 {
     let abs_x = abs_f32(x);

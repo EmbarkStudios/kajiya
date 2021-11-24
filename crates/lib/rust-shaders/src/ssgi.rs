@@ -1,12 +1,14 @@
 use macaw::{
-    ivec2, uvec3, vec2, vec4, FloatExt, IVec3, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Ext,
+    ivec2, vec2, vec4, FloatExt, IVec3, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Ext,
     Vec4Swizzles,
 };
-use rust_shaders_shared::frame_constants::FrameConstants;
 use rust_shaders_shared::gbuffer::*;
-use rust_shaders_shared::ssgi::SsgiConstants;
+use rust_shaders_shared::ssgi::{
+    SsgiConstants, MAX_KERNEL_RADIUS_CS, USE_KERNEL_DISTANCE_SCALING, USE_RANDOM_JITTER,
+};
 use rust_shaders_shared::util::*;
 use rust_shaders_shared::view_ray::ViewRayContext;
+use rust_shaders_shared::{frame_constants::FrameConstants, ssgi::SSGI_HALF_SAMPLE_COUNT};
 use spirv_std::{Image, Sampler};
 
 #[cfg(not(target_arch = "spirv"))]
@@ -15,13 +17,7 @@ use spirv_std::macros::spirv;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
 
-fn ssgi_kernel_radius(constants: &SsgiConstants) -> f32 {
-    if constants.use_ao_only {
-        constants.kernel_radius * constants.output_tex_size.w
-    } else {
-        constants.kernel_radius
-    }
-}
+const USE_AO_ONLY: bool = true;
 
 fn process_upsample_sample(
     soffset: Vec2,
@@ -32,25 +28,21 @@ fn process_upsample_sample(
     center_normal: Vec3,
     w_sum: &mut f32,
 ) -> Vec4 {
-    if depth != 0.0 {
-        let depth_diff = 1.0 - (center_depth / depth);
-        let depth_factor = (-200.0 * depth_diff.abs()).exp2();
+    let depth_diff = 1.0 - (center_depth / depth);
+    let depth_factor = (-200.0 * depth_diff.abs()).exp2();
 
-        let mut normal_factor = 0.0f32.max(normal.dot(center_normal));
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
+    let mut normal_factor = 0.0f32.max(normal.dot(center_normal));
+    normal_factor *= normal_factor;
+    normal_factor *= normal_factor;
+    normal_factor *= normal_factor;
 
-        let mut w = 1.0;
-        w *= depth_factor; // TODO: differentials
-        w *= normal_factor;
-        w *= (-soffset.dot(soffset)).exp();
+    let mut w = 1.0;
+    w *= depth_factor; // TODO: differentials
+    w *= normal_factor;
+    w *= (-soffset.dot(soffset)).exp();
 
-        *w_sum += w;
-        ssgi * w
-    } else {
-        Vec4::ZERO
-    }
+    *w_sum += w;
+    ssgi * w
 }
 
 fn process_spatial_filter_sample(
@@ -61,23 +53,19 @@ fn process_spatial_filter_sample(
     center_normal: Vec3,
     w_sum: &mut f32,
 ) -> Vec4 {
-    if depth != 0.0 {
-        let depth_diff = 1.0 - (center_depth / depth);
-        let depth_factor = (-200.0 * depth_diff.abs()).exp2();
+    let depth_diff = 1.0 - (center_depth / depth);
+    let depth_factor = (-200.0 * depth_diff.abs()).exp2();
 
-        let mut normal_factor = 0.0f32.max(normal.dot(center_normal));
-        normal_factor *= normal_factor;
-        normal_factor *= normal_factor;
+    let mut normal_factor = 0.0f32.max(normal.dot(center_normal));
+    normal_factor *= normal_factor;
+    normal_factor *= normal_factor;
 
-        let mut w = 1.0;
-        w *= depth_factor; // TODO: differentials
-        w *= normal_factor;
+    let mut w = 1.0;
+    w *= depth_factor; // TODO: differentials
+    w *= normal_factor;
 
-        *w_sum += w;
-        ssgi * w
-    } else {
-        Vec4::ZERO
-    }
+    *w_sum += w;
+    ssgi * w
 }
 
 #[spirv(compute(threads(8, 8)))]
@@ -102,25 +90,32 @@ pub fn upsample_cs(
         w_sum = 0.0f32;
         result = center_ssgi;
 
-        let kernel_half_size = 1i32;
-        for y in -kernel_half_size..=kernel_half_size {
-            for x in -kernel_half_size..=kernel_half_size {
+        let half_kernel_size = 1i32;
+        let mut y = -half_kernel_size;
+        while y < half_kernel_size {
+            let mut x = -half_kernel_size;
+            while x < half_kernel_size {
                 let sample_pix = px.xy() / 2 + ivec2(x, y);
                 let depth: Vec4 = depth_tex.fetch(sample_pix * 2);
                 let depth = depth.x;
                 let ssgi: Vec4 = ssgi_tex.fetch(sample_pix);
                 let normal: Vec4 = gbuffer_tex.fetch(sample_pix * 2);
                 let normal = unpack_normal_11_10_11(normal.y);
-                result += process_upsample_sample(
-                    vec2(x as f32, y as f32),
-                    ssgi,
-                    depth,
-                    normal,
-                    center_depth,
-                    center_normal,
-                    &mut w_sum,
-                );
+
+                if depth != 0.0 {
+                    result += process_upsample_sample(
+                        vec2(x as f32, y as f32),
+                        ssgi,
+                        depth,
+                        normal,
+                        center_depth,
+                        center_normal,
+                        &mut w_sum,
+                    );
+                }
+                x += 1;
             }
+            y += 1;
         }
     } else {
         result = Vec4::ZERO;
@@ -158,9 +153,11 @@ pub fn spatial_filter_cs(
         w_sum = 1.0f32;
         result = center_ssgi;
 
-        let kernel_half_size = 1i32;
-        for y in -kernel_half_size..=kernel_half_size {
-            for x in -kernel_half_size..=kernel_half_size {
+        let half_kernel_size = 1i32;
+        let mut y = -half_kernel_size;
+        while y < half_kernel_size {
+            let mut x = -half_kernel_size;
+            while x < half_kernel_size {
                 if x != 0 || y != 0 {
                     let sample_px = px.xy() + ivec2(x, y);
                     let depth: Vec4 = depth_tex.fetch(sample_px);
@@ -168,16 +165,21 @@ pub fn spatial_filter_cs(
                     let ssgi: Vec4 = ssgi_tex.fetch(sample_px);
                     let normal: Vec4 = normal_tex.fetch(sample_px);
                     let normal = normal.xyz();
-                    result += process_spatial_filter_sample(
-                        ssgi,
-                        depth,
-                        normal,
-                        center_depth,
-                        center_normal,
-                        &mut w_sum,
-                    );
+
+                    if depth != 0.0 {
+                        result += process_spatial_filter_sample(
+                            ssgi,
+                            depth,
+                            normal,
+                            center_depth,
+                            center_normal,
+                            &mut w_sum,
+                        );
+                    }
                 }
+                x += 1;
             }
+            y += 1;
         }
     } else {
         result = Vec4::ZERO;
@@ -209,14 +211,18 @@ pub fn temporal_filter_cs(
     let mut wsum = 0.0;
 
     let k = 2i32;
-    for y in -k..=k {
-        for x in -k..=k {
+    let mut y = -k;
+    while y < k {
+        let mut x = -k;
+        while x < k {
             let neigh: Vec4 = input_tex.fetch(px.xy().as_ivec2() + ivec2(x, y) * 2);
-            let w = (-3.0 * (x * x + y * y) as f32 / ((k + 1) * (k + 1)) as f32).exp();
+            let w = (-3.0 * (x * x + y * y) as f32 / ((k + 2) * (k + 1)) as f32).exp();
             vsum += neigh * w;
             vsum2 += neigh * neigh * w;
             wsum += w;
+            x += 1;
         }
+        y += 1;
     }
 
     let ex = vsum / wsum;
@@ -229,7 +235,7 @@ pub fn temporal_filter_cs(
     let nmin = center.lerp(ex, box_size * box_size) - dev * box_size * n_deviations;
     let nmax = center.lerp(ex, box_size * box_size) + dev * box_size * n_deviations;
 
-    let clamped_history = history.clamp(nmin, nmax);
+    let clamped_history = history.max(nmin).min(nmax);
     let res = clamped_history.lerp(center, 1.0.lerp(1.0 / 12.0, reproj.z));
 
     unsafe {
@@ -237,6 +243,7 @@ pub fn temporal_filter_cs(
     }
 }
 
+#[inline(always)]
 fn fetch_lighting(
     uv: Vec2,
     input_tex_size: Vec2,
@@ -250,6 +257,7 @@ fn fetch_lighting(
     Vec3::ZERO.lerp(prev_rad.xyz(), reproj.z)
 }
 
+#[inline(always)]
 fn fetch_normal_vs(
     uv: Vec2,
     output_tex_size: Vec2,
@@ -261,17 +269,20 @@ fn fetch_normal_vs(
     //normal_vs.xyz()
 }
 
+#[inline(always)]
 fn integrate_half_arc(h1: f32, n: f32) -> f32 {
     let a = -(2.0 * h1 - n).cos() + n.cos() + 2.0 * h1 * n.sin();
     0.25 * a
 }
 
+#[inline(always)]
 fn integrate_arc(h1: f32, h2: f32, n: f32) -> f32 {
     let a = -(2.0 * h1 - n).cos() + n.cos() + 2.0 * h1 * n.sin();
     let b = -(2.0 * h2 - n).cos() + n.cos() + 2.0 * h2 * n.sin();
     0.25 * (a + b)
 }
 
+#[inline(always)]
 fn update_horizion_angle(prev: f32, cur: f32, blend: f32) -> f32 {
     if cur > prev {
         FloatExt::lerp(prev, cur, blend)
@@ -280,6 +291,7 @@ fn update_horizion_angle(prev: f32, cur: f32, blend: f32) -> f32 {
     }
 }
 
+#[inline(always)]
 fn intersect_dir_plane_onesided(dir: Vec3, normal: Vec3, pt: Vec3) -> f32 {
     let d = -pt.dot(normal);
     d / 1e-5f32.max(-dir.dot(normal))
@@ -389,6 +401,15 @@ fn process_ssgi_sample(
 const TEMPORAL_ROTATIONS: [f32; 6] = [60.0, 300.0, 180.0, 240.0, 120.0, 0.0];
 const TEMPORAL_OFFSETS: [f32; 4] = [0.0, 0.5, 0.25, 0.75];
 
+#[inline(always)]
+fn ssgi_kernel_radius(constants: &SsgiConstants) -> f32 {
+    if USE_AO_ONLY {
+        50.0 * constants.output_tex_size.w
+    } else {
+        5.0
+    }
+}
+
 #[spirv(compute(threads(8, 8)))]
 pub fn ssgi_cs(
     #[spirv(descriptor_set = 0, binding = 0)] gbuffer_tex: &Image!(2D, type=f32, sampled=true),
@@ -434,8 +455,8 @@ pub fn ssgi_cs(
     let spatial_offset_noise = (1.0 / 4.0) * ((px.y - px.x) & 3) as f32;
     let temporal_offset_noise = TEMPORAL_OFFSETS[(frame_constants.frame_index / 6 % 4) as usize];
 
-    if constants.use_random_jitter {
-        let seed0 = hash3(uvec3(frame_constants.frame_index, px.x, px.y));
+    if USE_RANDOM_JITTER {
+        let seed0 = hash3(UVec3::new(frame_constants.frame_index, px.x, px.y));
         spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
     }
 
@@ -450,7 +471,7 @@ pub fn ssgi_cs(
 
     let kernel_radius_shrinkage = {
         // Convert AO radius into world scale
-        let cs_kernel_radius_scaled = if constants.use_kernel_distance_scaling {
+        let cs_kernel_radius_scaled = if USE_KERNEL_DISTANCE_SCALING {
             kernel_radius_cs
                 * frame_constants
                     .view_constants
@@ -464,7 +485,7 @@ pub fn ssgi_cs(
         cs_slice_dir *= cs_kernel_radius_scaled;
 
         // Calculate AO radius shrinkage (if camera is too close to a surface)
-        let max_kernel_radius_cs = constants.max_kernel_radius_cs;
+        let max_kernel_radius_cs = MAX_KERNEL_RADIUS_CS;
         1.0f32.min(max_kernel_radius_cs / cs_kernel_radius_scaled)
     };
 
@@ -474,7 +495,7 @@ pub fn ssgi_cs(
 
     let center_vs = ray_hit_vs.xyz();
 
-    cs_slice_dir *= 1.0 / constants.ssgi_half_sample_count as f32;
+    cs_slice_dir *= 1.0 / SSGI_HALF_SAMPLE_COUNT as f32;
     let vs_slice_dir =
         (frame_constants.view_constants.sample_to_view * cs_slice_dir.extend(0.0).extend(0.0)).xy();
     let slice_normal_vs = v_vs.cross(vs_slice_dir.extend(0.0)).normalize();
@@ -497,7 +518,7 @@ pub fn ssgi_cs(
     let mut prev_sample_coord0 = px.xy();
     let mut prev_sample_coord1 = px.xy();
 
-    for i in 0..constants.ssgi_half_sample_count {
+    for i in 0..SSGI_HALF_SAMPLE_COUNT {
         {
             let t = i as f32 + rand_offset;
 
@@ -570,7 +591,7 @@ pub fn ssgi_cs(
 
     let inv_ao = integrate_arc(h1p, h2p, n_angle);
 
-    let mut col = if constants.use_ao_only {
+    let mut col = if USE_AO_ONLY {
         Vec4::splat(0.0f32.max(inv_ao))
     } else {
         color_accum.xyz().extend(0.0f32.max(inv_ao))
