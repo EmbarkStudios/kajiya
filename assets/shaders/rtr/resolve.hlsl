@@ -90,6 +90,11 @@ float unsquish_ray_len(float len, float squish_strength) {
     return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
 }
 
+static float ggx_ndf_unnorm(float a2, float cos_theta) {
+	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
+	return a2 / (denom_sqrt * denom_sqrt);
+}
+
 [numthreads(8, 8, 1)]
 void main(const uint2 px : SV_DispatchThreadID) {
     const uint2 half_px = px / 2;
@@ -138,7 +143,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // Offsetting by frame index reduces small structured artifacts
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
     
-    const float a2 = gbuffer.roughness * gbuffer.roughness;
+    const float a2 = max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness) * max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness);
 
     // Project lobe footprint onto the reflector, and find the desired convolution size
     #if RTR_RAY_HIT_STORED_AS_POSITION
@@ -300,7 +305,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
             float3 sample_radiance;
             float neighbor_sampling_pdf;
             float3 center_to_hit_vs;
-            float sample_ray_pdf;
+            float sample_cos_theta;
             float3 sample_hit_vs;
 
             if (USE_RESTIR) {
@@ -320,12 +325,12 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 neighbor_sampling_pdf = 1.0 / r.W;
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
-                sample_ray_pdf = max(1e-8, restir_irradiance_tex[spx].a);
+                sample_cos_theta = restir_ray_tex[spx].a;
             } else {
                 const float4 packed1 = hit1_tex[sample_px];
                 neighbor_sampling_pdf = packed1.w;
                 sample_radiance = packed0.xyz;
-                sample_ray_pdf = 1;
+                sample_cos_theta = 1;
 
                 #if RTR_RAY_HIT_STORED_AS_POSITION
                     center_to_hit_vs = packed1.xyz - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
@@ -337,10 +342,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     sample_hit_vs = 10000000000000000000;
                 #endif
             }
-
-            //sample_radiance /= neighbor_sampling_pdf;
-            //neighbor_sampling_pdf = 1.0;
-            //sample_ray_pdf = 1;
 
             {
                 //output_tex[px] = float4(normalize(direction_view_to_world(sample_hit_normal_vs)) * 0.5 + 0.5, 1);
@@ -357,9 +358,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 float rejection_bias = 1;
             #else
                 float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
-                // TODO: brdf-driven blend
-                float rejection_bias =
-                    0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
+                float rejection_bias = 1;
+                //rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
+                rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
                 //rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
                 rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
                 rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
@@ -468,47 +469,19 @@ void main(const uint2 px : SV_DispatchThreadID) {
                         ) * contrib_wt;
                     #endif
                 } else {
-                    const float W_without_ray_pdf = min(1e8, sample_ray_pdf / neighbor_sampling_pdf);
+                    const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
+                    const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
 
-#if 0
-                    const float ROUGHNESS_CUTOFF = 0.005;
+                    float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
+                    bent_sample_pdf = lerp(bent_sample_pdf, spec.pdf, smoothstep(0.0, 0.5, sqrt(gbuffer.roughness)));
+                    bent_sample_pdf = min(bent_sample_pdf, RTR_MAX_PDF_CLAMP);
 
-                    //if (0&&kernel_size_vs * tan_theta < 0.01) {
-                    if (0&& sample_i <= 3) {
-                        const float3 spec_value_blurry =
-                            spec.value_over_pdf * sample_ray_pdf;
-                        const float3 spec_value_noisy = spec.value;
-
-                        contrib_wt = rejection_bias * step(0.0, wi.z) * clamp(spec.pdf, 1e-5, 1e5);
-
-                        contrib_accum += float4(
-                            sample_radiance * spec_value_blurry / neighbor_sampling_pdf
-                            ,
-                            1
-                        ) * contrib_wt;
-                    } else {
-                        contrib_wt = rejection_bias * step(0.0, wi.z);
-                        contrib_accum += float4(
-                            sample_radiance * min(spec.value, 1e5) / neighbor_sampling_pdf
-                            ,
-                            1
-                        ) * contrib_wt;
-                    }
-#else
-                        float derp = lerp(spec.pdf, sample_ray_pdf, 1.0 - saturate(10 * spec.pdf / sample_ray_pdf));
-                        derp = clamp(derp, 1e-8, 1e8);
-                        derp = lerp(sample_ray_pdf, derp, smoothstep(0.0, 0.5, sqrt(gbuffer.roughness)));
-                        //const float derp = max(spec.pdf, sample_ray_pdf);
-                        //const float derp = max(1e-5, spec.pdf);
-                        //derp = spec.pdf;
-                        //derp = sample_ray_pdf;
-                        contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / derp;
-                        contrib_accum += float4(
-                            sample_radiance * derp / neighbor_sampling_pdf * spec.value_over_pdf
-                            ,
-                            1
-                        ) * contrib_wt;
-#endif
+                    contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / bent_sample_pdf;
+                    contrib_accum += float4(
+                        sample_radiance * bent_sample_pdf * spec.value_over_pdf / neighbor_sampling_pdf
+                        ,
+                        1
+                    ) * contrib_wt;
                 }
 
                 const float bw = rejection_bias * step(0.0, wi.z);// * spec.pdf * calculate_luma(sample_radiance);

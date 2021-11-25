@@ -26,14 +26,14 @@
 [[vk::binding(4)]] Texture2D<float4> candidate1_tex;
 [[vk::binding(5)]] Texture2D<float4> candidate2_tex;
 [[vk::binding(6)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(7)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(7)]] Texture2D<float4> ray_orig_history_tex;
 [[vk::binding(8)]] Texture2D<float4> ray_history_tex;
 [[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
 [[vk::binding(10)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(11)]] Texture2D<float4> hit_normal_history_tex;
 //[[vk::binding(11)]] Texture2D<float4> candidate_history_tex;
 [[vk::binding(12)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(13)]] RWTexture2D<float3> ray_orig_output_tex;
+[[vk::binding(13)]] RWTexture2D<float4> ray_orig_output_tex;
 [[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
 [[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
 [[vk::binding(16)]] RWTexture2D<float4> reservoir_out_tex;
@@ -53,8 +53,8 @@ struct TraceResult {
     float3 hit_normal_ws;
     float3 hit_pos_vs;
     float hit_t;
-    float inv_pdf;
-    float brdf_value;
+    float pdf;
+    float ratio_estimator_factor;
     bool prev_sample_valid;
 };
 
@@ -65,8 +65,8 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
 
     TraceResult result;
     result.out_value = hit0.rgb;
-    result.inv_pdf = hit1.a > 0.0 ? (1.0 / hit1.a) : 0.0;
-    result.brdf_value = hit0.a;
+    result.pdf = min(hit1.a, RTR_MAX_PDF_CLAMP);
+    result.ratio_estimator_factor = hit0.a;
     #if !RTR_RAY_HIT_STORED_AS_POSITION
         todo
     #endif
@@ -130,7 +130,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 light_radiance = 0.0.xxx;
 
     float p_q_sel = 0;
-    float inv_pdf_sel = 0;
+    float pdf_sel = 0;
+    float ratio_estimator_factor = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
     float3 ray_orig_sel = 0;
@@ -155,12 +156,13 @@ void main(uint2 px : SV_DispatchThreadID) {
                 * max(0, dot(outgoing_dir, normal_ws))
             #endif
             //* calculate_luma(specular_brdf.evaluate(wo, wi).value)
-            * result.brdf_value
+            * result.pdf
             ;
 
-        const float inv_pdf_q = result.inv_pdf;
+        const float inv_pdf_q = 1.0 / result.pdf;
 
-        inv_pdf_sel = result.brdf_value;//clamp(result.inv_pdf, 1e-5, 1e5);
+        pdf_sel = result.pdf;
+        ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
         irradiance_sel = result.out_value;
         ray_orig_sel = refl_ray_origin;
         ray_hit_sel = position_view_to_world(result.hit_pos_vs);
@@ -270,7 +272,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-            const float prev_dist = sample_hit_ws_and_dist.w;
+            const float prev_dist = ray_orig_history_tex[spx].w;
             //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
@@ -290,8 +292,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
             
-            const float4 prev_irrad_inv_pdf = irradiance_history_tex[spx];
-            const float3 prev_irrad = prev_irrad_inv_pdf.rgb;
+            const float4 prev_irrad_pdf = irradiance_history_tex[spx];
+            const float3 prev_irrad = prev_irrad_pdf.rgb;
 
             // From the ReSTIR paper:
             // With temporal reuse, the number of candidates M contributing to the
@@ -313,7 +315,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             #else
                 p_q *= step(0, dot(dir_to_sample_hit, normal_ws));
             #endif
-            p_q *= prev_irrad_inv_pdf.w;
+            p_q *= prev_irrad_pdf.w;
             //p_q *= calculate_luma(specular_brdf.evaluate(wo, wi).value);
 
             float visibility = 1;
@@ -339,7 +341,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
                     //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
 
-                    //jacobian /= clamp(specular_brdf.evaluate(wo, wi).pdf, 1e-5, 1e5) * prev_irrad_inv_pdf.w;
+                    //jacobian /= clamp(specular_brdf.evaluate(wo, wi).pdf, 1e-5, 1e5) * prev_irrad_pdf.w;
                 #endif
             }
 
@@ -383,10 +385,11 @@ void main(uint2 px : SV_DispatchThreadID) {
             if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
-                inv_pdf_sel = prev_irrad_inv_pdf.w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
+                pdf_sel = prev_irrad_pdf.w;
+                ratio_estimator_factor = ray_history_tex[spx].w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
-                ray_orig_sel = ray_orig_history_tex[spx];
+                ray_orig_sel = ray_orig_history_tex[spx].xyz;
                 ray_hit_sel = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
@@ -430,11 +433,11 @@ void main(uint2 px : SV_DispatchThreadID) {
     }*/
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
-    irradiance_out_tex[px] = float4(irradiance_sel, inv_pdf_sel);
-    ray_orig_output_tex[px] = ray_orig_sel;
+    irradiance_out_tex[px] = float4(irradiance_sel, pdf_sel);
+    ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel - refl_ray_origin));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = hit_normal_ws_dot;
-    ray_output_tex[px] = float4(ray_hit_sel/* - get_eye_position()*/, length(ray_hit_sel - refl_ray_origin));
+    ray_output_tex[px] = float4(ray_hit_sel/* - get_eye_position()*/, ratio_estimator_factor);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

@@ -140,8 +140,8 @@ void main() {
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
 
-    // TODO: clean up
-    const float brdf_value = brdf_sample.pdf;
+    const float ratio_estimator_factor = normalize(wo + brdf_sample.wi).z;
+    //const float ratio_estimator_factor = brdf_sample.pdf;
     
 #if USE_TEMPORAL_JITTER && !USE_GGX_VNDF_SAMPLING
     [loop] for (uint retry_i = 0; retry_i < 4 && !brdf_sample.is_valid(); ++retry_i) {
@@ -319,9 +319,9 @@ void main() {
                 / max(1e-10, primary_hit.ray_t * primary_hit.ray_t);
 
             #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
-                out0_tex[px] = float4(0.0.xxx, brdf_value);
+                out0_tex[px] = float4(0.0.xxx, ratio_estimator_factor);
             #else
-                out0_tex[px] = float4(total_radiance, brdf_value);
+                out0_tex[px] = float4(total_radiance, ratio_estimator_factor);
             #endif
 
             out1_tex[px] = float4(
@@ -358,9 +358,9 @@ void main() {
                 / (hit_t * hit_t);
 
             #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
-                out0_tex[px] = float4(2.0.xxx, brdf_value);
+                out0_tex[px] = float4(2.0.xxx, ratio_estimator_factor);
             #else
-                out0_tex[px] = float4(far_gi, brdf_value);
+                out0_tex[px] = float4(far_gi, ratio_estimator_factor);
             #endif
 
             out1_tex[px] = float4(

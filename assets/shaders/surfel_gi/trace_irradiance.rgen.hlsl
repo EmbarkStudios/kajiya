@@ -66,7 +66,6 @@ float unpack_dist(float x) {
 
 [shader("raygeneration")]
 void main() {
-    return;
     const uint surfel_idx = DispatchRaysIndex().x;
     uint rng = hash_combine2(hash1(surfel_idx), frame_constants.frame_index);
 
