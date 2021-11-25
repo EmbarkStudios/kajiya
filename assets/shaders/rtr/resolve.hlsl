@@ -360,8 +360,8 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
                 float rejection_bias = 1;
                 rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
-                //rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
-                //rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
+                // overly aggressive: //rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
+                // TODO: reject if roughness is vastly different
                 rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
                 rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
 
