@@ -16,8 +16,7 @@
 #include "../inc/lights/triangle.hlsl"
 #include "../wrc/bindings.hlsl"
 
-#define HEMISPHERE_ONLY 1
-#define USE_WORLD_RADIANCE_CACHE 1
+#define USE_WORLD_RADIANCE_CACHE 0
 
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
@@ -45,7 +44,6 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
-static const bool USE_FLICKER_SUPPRESSION = true;
 static const uint TARGET_SAMPLE_COUNT = 32;
 
 float3 sample_environment_light(float3 dir) {
@@ -68,6 +66,7 @@ float unpack_dist(float x) {
 
 [shader("raygeneration")]
 void main() {
+    return;
     const uint surfel_idx = DispatchRaysIndex().x;
     uint rng = hash_combine2(hash1(surfel_idx), frame_constants.frame_index);
 
@@ -100,16 +99,6 @@ void main() {
                     (frame_constants.frame_index * sample_count + sample_idx + hash1(surfel_idx)
                 ) % (TARGET_SAMPLE_COUNT * 64));
             #endif
-
-            /*float3 dir = uniform_sample_sphere(urand);
-
-            #if HEMISPHERE_ONLY
-                if (dot(dir, surfel.normal) < 0) {
-                    dir = reflect(dir, surfel.normal);
-                }
-            #endif
-            //float3 dir = normalize(surfel.normal + uniform_sample_sphere(urand));
-            */
 
             BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
 
@@ -298,15 +287,8 @@ void main() {
             0.5 / MAX_SAMPLE_COUNT), MAX_SAMPLE_COUNT);
     }*/
 
-    const float value_mult = HEMISPHERE_ONLY ? 1 : 2;
-
     float3 prev_value = prev_total_radiance_packed.rgb;
     float3 new_value = irradiance_sum;
-
-    if (USE_FLICKER_SUPPRESSION) {
-        //prev_value = clamp(prev_value, new_value * 0.1, new_value * 3.0 + normalize(prev_value.rgb));
-        //blended_value.rgb = clamp(blended_value.rgb, prev_value.rgb * 0.5, prev_value.rgb * 10 + 0.01 * normalize(blended_value.rgb));
-    }
 
     float3 blended_value = lerp(prev_value, new_value, blend_factor_new);
 

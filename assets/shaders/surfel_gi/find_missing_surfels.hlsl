@@ -9,7 +9,7 @@
 #include "directional_basis.hlsl"
 
 #define VISUALIZE_SURFELS 1
-#define VISUALIZE_SURFELS_AS_NORMALS 1
+#define VISUALIZE_SURFELS_AS_NORMALS 0
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define USE_DIRECTIONAL_IRRADIANCE 0
 #define USE_GEOMETRIC_NORMALS 1
@@ -231,7 +231,7 @@ void main(
                 surfel_color = surfel.normal * 0.5 + 0.5;
             #endif
 
-            surfel_color = geometric_normal_ws * 0.5 + 0.5;
+            //surfel_color = geometric_normal_ws * 0.5 + 0.5;
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
             const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));

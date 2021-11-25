@@ -89,7 +89,7 @@ PsOut main(PsIn ps) {
         normal_ws *= -1;
         //normal_ws = geometric_normal_ws;
     }
-    //normal_ws = geometric_normal_ws;
+    normal_ws = geometric_normal_ws;
 
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
@@ -101,7 +101,7 @@ PsOut main(PsIn ps) {
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //albedo = float3(0.966653, 0.4, 0.001);    // just testing
     //metalness = 0;
-    //roughness = 0.1;
+    //roughness *= 0.1;
 
     /*if (ps.vs_pos.x > 0) {
         roughness = 0.1;
