@@ -299,6 +299,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
+            const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
+            GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
+
             // Note: Not accurately normalized
             const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
 
@@ -364,6 +367,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 // TODO: reject if roughness is vastly different
                 rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
                 rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
+                //rejection_bias *= exp2(-10.0 * max(0.0, gbuffer.roughness - sample_gbuffer.roughness));
 
                 sample_hit_to_center_vis = saturate(dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)));
             #endif
@@ -474,9 +478,26 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                     float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
                     bent_sample_pdf = lerp(bent_sample_pdf, spec.pdf, smoothstep(0.0, 0.5, sqrt(gbuffer.roughness)));
+                    //bent_sample_pdf = spec.pdf;
                     bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
 
-                    contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / bent_sample_pdf;
+                    // Pseudo MIS. Weigh down samples which claim to be high pdf
+                    // if we could have sampled them with a lower pdf. This helps rough reflections
+                    // surrounded by almost-mirrors. The rays sampled from the mirrors will have
+                    // high pdf values, and skew the integration, creating halos around themselves
+                    // on the rough objects.
+                    // This is similar in formulation to actual MIS; where we're lying is in claiming
+                    // that the central pixel generates samples, while it does not.
+                    // TODO: what artifacts does this cause?
+
+                    // TODO: use the actual PDF with which the ray was sampled;
+                    // this confuses the reservoir W into it, and causes bias wherever ReSTIR
+                    // is being effective.
+
+                    float mis_weight = spec.pdf / (neighbor_sampling_pdf + spec.pdf);
+                    //float mis_weight = 1;
+
+                    contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / bent_sample_pdf * mis_weight;
                     contrib_accum += float4(
                         sample_radiance * bent_sample_pdf * spec.value_over_pdf / neighbor_sampling_pdf
                         ,
