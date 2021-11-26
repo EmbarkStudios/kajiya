@@ -104,7 +104,7 @@ void main() {
             outgoing_ray = new_ray(
                 surfel.position,
                 mul(tangent_to_world, brdf_sample.wi),
-                1e-3,
+                0.0,
                 FLT_MAX
             );
         }
