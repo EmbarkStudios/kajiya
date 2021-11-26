@@ -474,7 +474,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                     float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
                     bent_sample_pdf = lerp(bent_sample_pdf, spec.pdf, smoothstep(0.0, 0.5, sqrt(gbuffer.roughness)));
-                    bent_sample_pdf = min(bent_sample_pdf, RTR_MAX_PDF_CLAMP);
+                    bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
 
                     contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / bent_sample_pdf;
                     contrib_accum += float4(

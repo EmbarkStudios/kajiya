@@ -65,7 +65,7 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
 
     TraceResult result;
     result.out_value = hit0.rgb;
-    result.pdf = min(hit1.a, RTR_MAX_PDF_CLAMP);
+    result.pdf = min(hit1.a, RTR_RESTIR_MAX_PDF_CLAMP);
     result.ratio_estimator_factor = hit0.a;
     #if !RTR_RAY_HIT_STORED_AS_POSITION
         todo

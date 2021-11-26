@@ -28,6 +28,11 @@
 #define RTR_APPROX_MEASURE_CONVERSION 1
 
 #define RTR_ROUGHNESS_CLAMP 3e-4
-#define RTR_MAX_PDF_CLAMP 1e4
+
+// Lower values clean up dark splotches in presence of high frequency
+// roughness variation, but they also dim down spec highlights therein.
+// TODO: roughness-based rejection in spec resolve should be able
+// to remove most of the splotches (test: kitchen interior scene).
+#define RTR_RESTIR_MAX_PDF_CLAMP 50
 
 #define RTR_USE_TEMPORAL_FILTERS 1
