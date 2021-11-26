@@ -50,7 +50,6 @@
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
 static const bool USE_RESTIR = true;
-static const bool USE_RATIO_ESTIMATOR = !USE_RESTIR;
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -299,13 +298,14 @@ void main(const uint2 px : SV_DispatchThreadID) {
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
-            const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
-            GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
+            //const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
+            //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
             // Note: Not accurately normalized
             const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
 
             float3 sample_radiance;
+            float sample_ray_pdf = 1;
             float neighbor_sampling_pdf;
             float3 center_to_hit_vs;
             float sample_cos_theta;
@@ -325,6 +325,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 // TODO: wtf, why 2
                 * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);*/
                 sample_radiance = restir_irradiance_tex[spx].rgb;
+                sample_ray_pdf = restir_irradiance_tex[spx].a;
                 neighbor_sampling_pdf = 1.0 / r.W;
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
@@ -455,7 +456,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 //spec_weight *= sample_hit_to_center_vis;
 
                 float contrib_wt = 0;
-                if (USE_RATIO_ESTIMATOR) {
+                if (!USE_RESTIR) {
                     #if !ACCUM_FG_IN_RATIO_ESTIMATOR
                         contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
                         //contrib_wt = 1;
@@ -477,8 +478,11 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
 
                     float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
+
+                    // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
+                    // estimator combined with bent sample rays results in too much brightness in corners/cracks.
                     bent_sample_pdf = lerp(bent_sample_pdf, spec.pdf, smoothstep(0.0, 0.5, sqrt(gbuffer.roughness)));
-                    //bent_sample_pdf = spec.pdf;
+
                     bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
 
                     // Pseudo MIS. Weigh down samples which claim to be high pdf
@@ -488,14 +492,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     // on the rough objects.
                     // This is similar in formulation to actual MIS; where we're lying is in claiming
                     // that the central pixel generates samples, while it does not.
-                    // TODO: what artifacts does this cause?
-
-                    // TODO: use the actual PDF with which the ray was sampled;
-                    // this confuses the reservoir W into it, and causes bias wherever ReSTIR
-                    // is being effective.
-
-                    float mis_weight = spec.pdf / (neighbor_sampling_pdf + spec.pdf);
-                    //float mis_weight = 1;
+                    float mis_weight = max(1e-5, spec.pdf / (sample_ray_pdf + spec.pdf));
 
                     contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / bent_sample_pdf * mis_weight;
                     contrib_accum += float4(
@@ -527,7 +524,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // but then the latter needs to be stored as well, and renormalized before
     // sampling in a given frame. Could also be tricky to temporally filter it.
 
-    const float contrib_norm_factor = max(1e-8, contrib_accum.w);
+    const float contrib_norm_factor = max(1e-12, contrib_accum.w);
     //const float contrib_norm_factor = sample_count;
 
     contrib_accum.rgb /= contrib_norm_factor;
