@@ -222,9 +222,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
 
             // Can't use linear interpolation, but we can interpolate stochastically instead
-            //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
+            // Note: more important for spec than diffuse, so might go with this here.
+            const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
             // Or not at all.
-            const float2 reproj_rand_offset = 0.0;
+            //const float2 reproj_rand_offset = 0.0;
 
             int2 reproj_px = floor((
                 sample_i == 0
@@ -309,8 +310,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             // ReSTIR tends to produce firflies near contacts.
             // This is a hack to reduce the effect while I figure out a better solution.
             // HACK: reduce M close to surfaces.
+            //
+            // Note: This causes ReSTIR to be less effective, and can manifest
+            // as darkening in corners. Since it's mostly useful for smoother surfaces,
+            // fade it out when they're rough.
             const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
-            r.M *= saturate(20.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
+            r.M *= lerp(saturate(50.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled), 1.0, gbuffer.roughness);
 
             // Don't allow old reservoirs for moving pixels with low roughness,
             // as that causes reuse of wrong directions.
