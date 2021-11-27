@@ -17,6 +17,9 @@
 
 #define USE_SOFT_SHADOWS 1
 #define USE_TEMPORAL_JITTER 1
+
+// Should be off then iterating on reflections,
+// but might be a good idea to enable for shipping anything.
 #define USE_HEAVY_BIAS 0
 
 #define USE_WORLD_RADIANCE_CACHE 0

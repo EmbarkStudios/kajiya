@@ -102,6 +102,7 @@ PsOut main(PsIn ps) {
     //albedo = float3(0.966653, 0.4, 0.001);    // just testing
     //metalness = 0;
     //roughness *= 0.5;
+    //albedo = 0;
 
     /*if (ps.vs_pos.x > 0) {
         roughness = 0.1;

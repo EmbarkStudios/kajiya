@@ -306,6 +306,19 @@ void main(uint2 px : SV_DispatchThreadID) {
             r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
             //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
 
+            // ReSTIR tends to produce firflies near contacts.
+            // This is a hack to reduce the effect while I figure out a better solution.
+            // HACK: reduce M close to surfaces.
+            const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
+            r.M *= saturate(20.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
+
+            // Don't allow old reservoirs for moving pixels with low roughness,
+            // as that causes reuse of wrong directions.
+            // This is especially visible if not re-normalizing spec PDFs in the
+            // resolve kernel, as that will cause surfaces to darken upon movement.
+            // Could do more fancy reprojection, but this is better than ghosting for now.
+            r.M *= 1.0 - smoothstep(0.0, 0.1 * gbuffer.roughness, length(reproj.xy));
+
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
             float p_q = 1;
@@ -323,7 +336,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // Note: needed for sample 0 due to temporal jitter.
             //if (sample_i > 0)
-            {
+            if (true) {
                 // Distance falloff. Needed to avoid leaks.
                 jacobian *= clamp(prev_dist, 1e-4, 1e4) / clamp(dist_to_sample_hit, 1e-4, 1e4);
                 jacobian *= jacobian;

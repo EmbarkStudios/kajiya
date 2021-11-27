@@ -31,15 +31,12 @@
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
-#define USE_APPROX_BRDF 0
 #define SHUFFLE_SUBPIXELS 1
 #define BORROW_SAMPLES 1
 #define SHORT_CIRCUIT_NO_BORROW_SAMPLES 0
 
 // If true: Accumulate the full reflection * BRDF term, including FG
 // If false: Accumulate lighting only, without the BRDF term
-// TODO; true seems to have a better match with no borrowing
-// ... actually, false seems better with the latest code.
 #define ACCUM_FG_IN_RATIO_ESTIMATOR 1
 
 #define USE_APPROXIMATE_SAMPLE_SHADOWING 1
@@ -364,7 +361,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
                 float rejection_bias = 1;
                 rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
-                // overly aggressive: //rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
+                // overly aggressive: rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
                 // TODO: reject if roughness is vastly different
                 rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
                 rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
@@ -411,32 +408,17 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 #endif
             #endif
 
-    #if !USE_APPROX_BRDF
-                BrdfValue spec = specular_brdf.evaluate(wo, wi);
+            BrdfValue spec = specular_brdf.evaluate(wo, wi);
 
-                // Note: looks closer to reference when comparing against metalness=1 albedo=1 PT reference.
-                // As soon as the regular image is compared though. This term just happens to look
-                // similar to the lack of Fresnel in the metalness=1 albedo=1 case.
-                // float spec_weight = spec.value.x * max(0.0, wi.z);
-
-                #if ACCUM_FG_IN_RATIO_ESTIMATOR
-                    // Note: could be spec.pdf too, though then fresnel isn't accounted for in the weights
-                    float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
-                #else
-                    float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
-                #endif
-    #else
-                float spec_weight;
-                //{
-                    const float3 m = normalize(wo + wi);
-                    const float cos_theta = m.z;
-                    const float pdf_h_over_cos_theta = SpecularBrdf::ggx_ndf(a2, cos_theta);
-                    //const float f = lerp(f0_grey, 1.0, approx_fresnel(wo, wi));
-                    const float3 f = eval_fresnel_schlick(specular_brdf.albedo, 1.0, dot(m, wi)).x;
-
-                    spec_weight = calculate_luma(f) * pdf_h_over_cos_theta * step(0.0, wi.z) / max(1e-5, wo.z + wi.z);
-                //}
-    #endif
+            #if ACCUM_FG_IN_RATIO_ESTIMATOR
+                // The FG weight is included in the radiance accumulator,
+                // so should not be in the ratio estimator weight.
+                float spec_weight = spec.pdf * step(0.0, wi.z);
+            #else
+                // The FG weight is _not_ included in the radiance accumulator,
+                // so we need it here.
+                float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
+            #endif
 
                 float to_psa_metric = 1;
                 #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
@@ -458,7 +440,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 float contrib_wt = 0;
                 if (!USE_RESTIR) {
                     #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                        contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
+                        contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
                         //contrib_wt = 1;
                         contrib_accum += float4(
                             sample_radiance
@@ -466,7 +448,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                             1
                         ) * contrib_wt;
                     #else
-                        contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
+                        contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
                         contrib_accum += float4(
                             sample_radiance * spec.value_over_pdf
                             ,
@@ -481,7 +463,13 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                     // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
                     // estimator combined with bent sample rays results in too much brightness in corners/cracks.
-                    bent_sample_pdf = lerp(bent_sample_pdf, spec.pdf, smoothstep(0.0, 0.5, sqrt(gbuffer.roughness)));
+                    // At low roughness this can result in noise in the FG estimate, causing darkening.
+                    bent_sample_pdf = lerp(
+                        bent_sample_pdf,
+                        spec.pdf,
+                        smoothstep(0.25, 0.75, sqrt(gbuffer.roughness))
+                    );
+                    //bent_sample_pdf = spec.pdf;
 
                     bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
 
@@ -494,9 +482,13 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     // that the central pixel generates samples, while it does not.
                     float mis_weight = max(1e-5, spec.pdf / (sample_ray_pdf + spec.pdf));
 
-                    contrib_wt = rejection_bias * step(0.0, wi.z) * spec.pdf / bent_sample_pdf * mis_weight;
+                    contrib_wt = rejection_bias * spec_weight / bent_sample_pdf * mis_weight;
                     contrib_accum += float4(
-                        sample_radiance * bent_sample_pdf * spec.value_over_pdf / neighbor_sampling_pdf
+                        sample_radiance * bent_sample_pdf
+                            #if ACCUM_FG_IN_RATIO_ESTIMATOR
+                                * spec.value_over_pdf
+                            #endif
+                            / neighbor_sampling_pdf
                         ,
                         1
                     ) * contrib_wt;

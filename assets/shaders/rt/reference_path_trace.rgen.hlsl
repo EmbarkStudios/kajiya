@@ -30,6 +30,7 @@ static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;
 static const bool INDIRECT_ONLY = !true;
 static const bool GREY_ALBEDO_FIRST_BOUNCE = !true;
+static const bool BLACK_ALBEDO_FIRST_BOUNCE = !true;
 static const bool ONLY_SPECULAR_FIRST_BOUNCE = !true;
 static const bool USE_SOFT_SHADOWS = true;
 static const bool SHOW_ALBEDO = !true;
@@ -200,6 +201,10 @@ void main() {
                     gbuffer.albedo = 0.5;
                 }
                 
+                if (BLACK_ALBEDO_FIRST_BOUNCE && path_length == 0) {
+                    gbuffer.albedo = 0.0;
+                }
+
                 //gbuffer.roughness = lerp(gbuffer.roughness, 0.0, 0.8);
                 //gbuffer.metalness = 1.0;
                 //gbuffer.albedo = max(gbuffer.albedo, 1e-3);
