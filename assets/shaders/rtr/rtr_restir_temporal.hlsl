@@ -182,17 +182,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     //const bool use_resampling = false;
     const bool use_resampling = prev_sample_valid && true;
-
-    // 1 (center) plus offset samples
-    const uint MAX_RESOLVE_SAMPLE_COUNT = 5;
-
-    int2 sample_offsets[4] = {
-        int2(1, 0),
-        int2(0, 1),
-        int2(-1, 0),
-        int2(0, -1),
-    };
-
     const float rt_invalidity = 0;//sqrt(rt_invalidity_tex[px]);
 
     if (use_resampling) {

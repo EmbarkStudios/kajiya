@@ -152,45 +152,13 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     const float4 reprojection_params = reprojection_tex[px];
 
-    float history_error;
-    {
-        float4 history = history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).w;
-        float ex = calculate_luma(history.xyz);
-        float ex2 = history.w;
-        history_error = abs(ex * ex - ex2) / max(1e-8, ex);
-    }
-
-    const float ray_squish_strength = 4;
-
+    const float RAY_SQUISH_STRENGTH = 4;
     const float ray_len_avg = unsquish_ray_len(lerp(
-        squish_ray_len(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_strength),
-        squish_ray_len(surf_to_hit_dist, ray_squish_strength),
-        0.1),ray_squish_strength);
-    //const float ray_len_avg = unsquish_ray_len(ray_len_avg_squished);
+        squish_ray_len(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, RAY_SQUISH_STRENGTH),
+        squish_ray_len(surf_to_hit_dist, RAY_SQUISH_STRENGTH),
+        0.1), RAY_SQUISH_STRENGTH);
 
-    //history_error = lerp(2.0, history_error, reprojection_params.z);
-
-    /*const uint wave_mask = WaveActiveBallot(true).x;
-    if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 2)) {
-        filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 2));
-    }
-    if (is_wave_alive(wave_mask, WaveGetLaneIndex() ^ 16)) {
-        filter_size = min(filter_size, WaveReadLaneAt(filter_size, WaveGetLaneIndex() ^ 16));
-    }*/
-
-    // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
-    const float error_adjusted_filter_size = min(filter_size * 4, filter_size + history_error * 0.5);
-
-    //const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
-    //sample_count = WaveActiveMax(sample_count);
     const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
-    //const uint sample_count = BORROW_SAMPLES ? clamp(error_adjusted_filter_size * 128, 6, 16) : 1;
-
-    // Choose one of a few pre-baked sample sets based on the footprint
-    const uint filter_idx = uint(clamp(error_adjusted_filter_size * 8, 0, 7));
-    //const uint filter_idx = 3;
-    //output_tex[px] = float4((filter_idx / 7.0).xxx, 0);
-    //return;
 
     float4 contrib_accum = 0.0;
     float ray_len_accum = 0;
@@ -328,135 +296,131 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 #endif
             }
 
-            {
-                //output_tex[px] = float4(normalize(direction_view_to_world(sample_hit_normal_vs)) * 0.5 + 0.5, 1);
-                //output_tex[px] = float4(normalize(direction_view_to_world(center_to_hit_vs)) * 0.5 + 0.5, 1);
-                //return;
+            float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
+            if (wi.z < 1e-5) {
+                continue;
             }
 
-            float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
+            const float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
 
-            if (wi.z > 1e-5) {
-                float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
-                
-            #if 0
-                float rejection_bias = 1;
-            #else
-                float rejection_bias = 1;
-                rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
-                // overly aggressive: rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
-                // TODO: reject if roughness is vastly different
-                rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
-                rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
-            #endif
+            if (dot(normal_vs, sample_normal_vs) <= 0) {
+                continue;
+            }
+            
+        #if 0
+            float rejection_bias = 1;
+        #else
+            float rejection_bias = 1;
+            rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
+            // overly aggressive: rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
+            // TODO: reject if roughness is vastly different
+            rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
+            rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
+        #endif
 
-            float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
+        float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
 
-            #if RTR_RAY_HIT_STORED_AS_POSITION
-                // Compensate for change in visibility term. Automatic if storing with the surface area metric.
-                #if !RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
-                    const float3 sample_to_hit_vs = sample_hit_vs - sample_origin_vs;
-                    float sample_to_hit_dist2 = dot(sample_to_hit_vs, sample_to_hit_vs);
+        #if RTR_RAY_HIT_STORED_AS_POSITION
+            // Compensate for change in visibility term. Automatic if storing with the surface area metric.
+            #if !RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
+                const float3 sample_to_hit_vs = sample_hit_vs - sample_origin_vs;
+                float sample_to_hit_dist2 = dot(sample_to_hit_vs, sample_to_hit_vs);
 
-                    if (dot(sample_normal_vs, sample_to_hit_vs) <= 0) {
-                        continue;
-                    }
-
-                    neighbor_sampling_pdf /=
-                        (1.0 / max(1e-20, center_to_hit_dist2))
-                        / (1.0 / max(1e-20, sample_to_hit_dist2));
-
-                        float center_to_hit_vis = saturate(dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)));
-                        float sample_to_hit_vis = saturate(dot(sample_hit_normal_vs, -normalize(sample_to_hit_vs)));
-                        if (center_to_hit_vis <= 1e-5 || sample_to_hit_vis <= 1e-5) {
-                            continue;
-                        }
-
-                        neighbor_sampling_pdf /= center_to_hit_vis / sample_to_hit_vis;
-                        //neighbor_sampling_pdf /=  max(1e-5, dot(normal_vs, normalize(center_to_hit_vs))) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
-                        #if !RTR_APPROX_MEASURE_CONVERSION
-                            neighbor_sampling_pdf /= max(1e-5, wi.z) / max(1e-5, dot(sample_normal_vs, normalize(sample_to_hit_vs)));
-                        #endif
-                #endif
-
-        		float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
-                #if USE_APPROXIMATE_SAMPLE_SHADOWING
-            		if (dot(center_to_hit_vs, normal_vs) * 0.2 / length(center_to_hit_vs) < dot(surface_offset, normal_vs) / length(surface_offset)) {
-            			rejection_bias *= sample_i == 0 ? 1 : 0;
-            		}
-                #endif
-            #else
-                #if REJECT_NEGATIVE_HEMISPHERE_REUSE
-                    const float3 sample_hit_vs = sample_origin_vs + center_to_hit_vs;
-                    rejection_bias *= dot(sample_hit_vs - view_ray_context.ray_hit_vs(), normal_vs) > 0.0;
-                #endif
-            #endif
-
-                BrdfValue spec = specular_brdf.evaluate(wo, wi);
-
-                // The FG weight is included in the radiance accumulator,
-                // so should not be in the ratio estimator weight.
-                float spec_weight = spec.pdf * step(0.0, wi.z);
-
-                float to_psa_metric = 1;
-                #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
-                    // Convert to projected solid angle
-                    to_psa_metric =
-                        #if RTR_APPROX_MEASURE_CONVERSION
-                            1
-                        #else
-                            abs(wi.z * dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)))
-                        #endif
-                        / center_to_hit_dist2;
-
-                    neighbor_sampling_pdf /= to_psa_metric;
-                #endif
-
-                float contrib_wt = 0;
-                if (!USE_RESTIR) {
-                    contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
-                    contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
-                } else {
-                    const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
-                    const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
-
-                    float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
-
-                    // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
-                    // estimator combined with bent sample rays results in too much brightness in corners/cracks.
-                    // At low roughness this can result in noise in the FG estimate, causing darkening.
-                    bent_sample_pdf = lerp(
-                        bent_sample_pdf,
-                        spec.pdf,
-                        smoothstep(0.25, 0.75, sqrt(gbuffer.roughness))
-                    );
-                    //bent_sample_pdf = spec.pdf;
-
-                    bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
-
-                    // Pseudo MIS. Weigh down samples which claim to be high pdf
-                    // if we could have sampled them with a lower pdf. This helps rough reflections
-                    // surrounded by almost-mirrors. The rays sampled from the mirrors will have
-                    // high pdf values, and skew the integration, creating halos around themselves
-                    // on the rough objects.
-                    // This is similar in formulation to actual MIS; where we're lying is in claiming
-                    // that the central pixel generates samples, while it does not.
-                    float mis_weight = max(1e-5, spec.pdf / (sample_ray_pdf + spec.pdf));
-
-                    contrib_wt = rejection_bias * spec_weight / bent_sample_pdf * mis_weight;
-                    contrib_accum += float4(
-                        sample_radiance * bent_sample_pdf * spec.value_over_pdf / neighbor_sampling_pdf,
-                        1
-                    ) * contrib_wt;
+                if (dot(sample_normal_vs, sample_to_hit_vs) <= 0) {
+                    continue;
                 }
 
-                float luma = calculate_luma(sample_radiance);
-                ex += luma * contrib_wt;
-                ex2 += luma * luma * contrib_wt;
+                float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
+                float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_to_hit_vs));
+                if (center_to_hit_vis <= 1e-5 || sample_to_hit_vis <= 1e-5) {
+                    continue;
+                }
 
-                // Aggressively bias towards closer hits
-                ray_len_accum += squish_ray_len(surf_to_hit_dist, ray_squish_strength) * contrib_wt;
+                #if !RTR_APPROX_MEASURE_CONVERSION
+                    neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 0.25, 4.0);
+                #endif
+            #endif
+
+    		float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
+            #if USE_APPROXIMATE_SAMPLE_SHADOWING
+        		if (dot(center_to_hit_vs, normal_vs) * 0.2 / length(center_to_hit_vs) < dot(surface_offset, normal_vs) / length(surface_offset)) {
+        			rejection_bias *= sample_i == 0 ? 1 : 0;
+        		}
+            #endif
+        #else
+            #if REJECT_NEGATIVE_HEMISPHERE_REUSE
+                const float3 sample_hit_vs = sample_origin_vs + center_to_hit_vs;
+                rejection_bias *= dot(sample_hit_vs - view_ray_context.ray_hit_vs(), normal_vs) > 0.0;
+            #endif
+        #endif
+
+            BrdfValue spec = specular_brdf.evaluate(wo, wi);
+
+            // The FG weight is included in the radiance accumulator,
+            // so should not be in the ratio estimator weight.
+            float spec_weight = spec.pdf * step(0.0, wi.z);
+
+            float to_psa_metric = 1;
+            #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
+                // Convert to projected solid angle
+                to_psa_metric =
+                    #if RTR_APPROX_MEASURE_CONVERSION
+                        1
+                    #else
+                        abs(wi.z * dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)))
+                    #endif
+                    / center_to_hit_dist2;
+
+                neighbor_sampling_pdf /= to_psa_metric;
+            #endif
+
+            float contrib_wt = 0;
+            if (!USE_RESTIR) {
+                contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
+                contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
+            } else {
+                const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
+                const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
+
+                float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
+
+                // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
+                // estimator combined with bent sample rays results in too much brightness in corners/cracks.
+                // At low roughness this can result in noise in the FG estimate, causing darkening.
+                bent_sample_pdf = lerp(
+                    bent_sample_pdf,
+                    spec.pdf,
+                    smoothstep(0.25, 0.75, sqrt(gbuffer.roughness))
+                );
+
+                bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
+
+                // Pseudo MIS. Weigh down samples which claim to be high pdf
+                // if we could have sampled them with a lower pdf. This helps rough reflections
+                // surrounded by almost-mirrors. The rays sampled from the mirrors will have
+                // high pdf values, and skew the integration, creating halos around themselves
+                // on the rough objects.
+                // This is similar in formulation to actual MIS; where we're lying is in claiming
+                // that the central pixel generates samples, while it does not.
+                //
+                // The error from this seems to be making detail in roughness map hotter,
+                // which is not a terrible thing given that it's also usually dimmed down
+                // by temporal filters.
+                float mis_weight = max(1e-5, spec.pdf / (sample_ray_pdf + spec.pdf));
+
+                contrib_wt = rejection_bias * mis_weight * spec_weight / bent_sample_pdf;
+                contrib_accum += float4(
+                    sample_radiance * bent_sample_pdf / neighbor_sampling_pdf * spec.value_over_pdf,
+                    1
+                ) * contrib_wt;
             }
+
+            float luma = calculate_luma(sample_radiance);
+            ex += luma * contrib_wt;
+            ex2 += luma * luma * contrib_wt;
+
+            // Aggressively bias towards closer hits
+            ray_len_accum += squish_ray_len(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;
         }
     }
 
@@ -477,7 +441,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
         contrib_accum.rgb /= brdf_lut.preintegrated_reflection;
     #endif
 
-    ray_len_accum = unsquish_ray_len(ray_len_accum, ray_squish_strength);
+    ray_len_accum = unsquish_ray_len(ray_len_accum, RAY_SQUISH_STRENGTH);
     
     float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);

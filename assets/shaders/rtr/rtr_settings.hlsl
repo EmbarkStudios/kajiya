@@ -31,6 +31,6 @@
 
 // Lower values clean up dark splotches in presence of high frequency
 // roughness variation, but they also dim down spec highlights therein.
-#define RTR_RESTIR_MAX_PDF_CLAMP 100
+#define RTR_RESTIR_MAX_PDF_CLAMP 200
 
 #define RTR_USE_TEMPORAL_FILTERS 1
