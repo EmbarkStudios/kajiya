@@ -15,6 +15,7 @@
     float ev_shift;
 };
 
+#define USE_GRADE 1
 #define USE_TONEMAP 1
 #define USE_TIGHT_BLUR 0
 #define USE_DITHER 1
@@ -67,6 +68,22 @@ float local_tmo_constrain(float x, float max_compression) {
     #endif
 }
 
+// (Very) reduced version of:
+// Uchimura 2017, "HDR theory and practice"
+// Math: https://www.desmos.com/calculator/gslcdxvipg
+// Source: https://www.slideshare.net/nikuque/hdr-theory-and-practicce-jp
+//  m: linear section start
+//  c: black
+float3 push_down_black_point(float3 x, float m, float c) {
+    float3 w0 = 1.0 - smoothstep(0.0, m, x);
+    float3 w1 = 1.0 - w0;
+
+    float3 T = m * pow(x / m, c);
+    float3 L = x;
+
+    return T * w0 + L * w1;
+}
+
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
     float2 uv = get_uv(px, output_tex_size);
@@ -114,54 +131,24 @@ void main(uint2 px: SV_DispatchThreadID) {
     //col = col * (1.0 - debug_input_tex[px].a) + debug_input_tex[px].rgb;
 
     col *= exp2(ev_shift);
-    
+
+#if USE_VIGNETTE
+    col *= exp(-2 * pow(length(uv - 0.5), 3));
+#endif
+
+#if USE_GRADE
+    // Lift mids
+    col = pow(col, 0.9);
+
+    // Push down lows
+    col = push_down_black_point(col, 0.2, 1.25);
+#endif
+
 #if USE_TONEMAP
+    // Apply perceptually neutral shoulder
+    col = neutral_tonemap(col);
 
-    /*float filtered_luminance = exp(filtered_luminance_tex[px].x);
-    float filtered_luminance_high = filtered_luminance_tex[px].y;
-
-    float avg_luminance = 0;
-    for (float y = 0.05; y < 1.0; y += 0.1) {
-        for (float x = 0.05; x < 1.0; x += 0.1) {
-            avg_luminance += filtered_luminance_tex[int2(output_tex_size.xy * float2(x, y))].x;
-        }
-    }
-    avg_luminance = exp(avg_luminance / (10 * 10));
-
-    const float lum_scale = 0.4;*/
-    #if 0
-        float avg_mult = lum_scale * 0.333 / avg_luminance;
-        float mult = lum_scale * 0.333 / filtered_luminance;
-        float relative_mult = mult / avg_mult;
-        float max_compression = 0.5;
-        float relative_shift = 1.1;
-        relative_mult = local_tmo_constrain(relative_mult / relative_shift, max_compression);
-        float remapped_mult = relative_mult * avg_mult * relative_shift;
-        remapped_mult = lerp(remapped_mult, avg_mult, 0.1);
-        col *= remapped_mult;
-
-        float lin_part = clamp(remapped_mult * (0.8 * filtered_luminance - 0.2 * filtered_luminance_high), 0.0, 0.5);
-        col.rgb = neutral_tonemap(col.rgb, lin_part);
-    #else
-        //float filtered_luminance = filtered_luminance_tex[px].g;
-        //col *= 0.333 / filtered_luminance;
-        //col *= lum_scale * 0.333 / avg_luminance;
-
-        //col /= 2;
-        //col *= 2;
-        //col *= 4;
-        //col *= 16;
-
-        #if USE_VIGNETTE
-            col *= exp(-2 * pow(length(uv - 0.5), 3));
-        #endif
-
-        col = neutral_tonemap(col);
-    #endif
-
-    // Boost saturation and contrast to compensate for the loss from glare
     //col = saturate(lerp(calculate_luma(col), col, 1.05));
-    col = pow(col, 1.03);
 #endif
 
     // Dither

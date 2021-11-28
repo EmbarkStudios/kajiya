@@ -1,8 +1,13 @@
 #include "color.hlsl"
 
 float tonemap_curve(float v) {
-    float c = v + v*v + 0.5*v*v*v;
-    return c / (1.0 + c);
+    #if 0
+        // Large linear part in the lows, but compresses highs.
+        float c = v + v*v + 0.5*v*v*v;
+        return c / (1.0 + c);
+    #else
+        return 1.0 - exp(-v);
+    #endif
 }
 
 float3 tonemap_curve(float3 v) {
