@@ -210,7 +210,7 @@ void main() {
             const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
             const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
             const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
-            const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)));
+            const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
             const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
             const bool is_on_screen =
                 all(abs(primary_hit_cs.xy) < 1.0) &&
