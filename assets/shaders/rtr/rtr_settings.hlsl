@@ -4,7 +4,7 @@
 // and those are amplified in motion.
 //
 // HACK: must be 1 if jointly filtering with specular lighting
-#define RTR_RENDER_SCALED_BY_FG 1
+#define RTR_RENDER_SCALED_BY_FG 0
 
 #define RTR_RAY_HIT_STORED_AS_POSITION 1
 
@@ -25,7 +25,7 @@
 // surface, beind the plane of a surface receiving light.
 //
 // Has slightly visible line artifacts when `RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS` is zero.
-#define RTR_APPROX_MEASURE_CONVERSION 1
+#define RTR_APPROX_MEASURE_CONVERSION 0
 
 #define RTR_ROUGHNESS_CLAMP 3e-4
 

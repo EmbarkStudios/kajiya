@@ -35,10 +35,6 @@
 #define BORROW_SAMPLES 1
 #define SHORT_CIRCUIT_NO_BORROW_SAMPLES 0
 
-// If true: Accumulate the full reflection * BRDF term, including FG
-// If false: Accumulate lighting only, without the BRDF term
-#define ACCUM_FG_IN_RATIO_ESTIMATOR 1
-
 #define USE_APPROXIMATE_SAMPLE_SHADOWING 1
 
 // Calculates hit points of neighboring samples, and rejects them if those land
@@ -47,6 +43,7 @@
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
 static const bool USE_RESTIR = true;
+static const uint MAX_SAMPLE_COUNT = 8;
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -186,7 +183,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     //const uint sample_count = BORROW_SAMPLES ? clamp(history_error * 0.5 * 16 * saturate(filter_size * 8), 4, 16) : 1;
     //sample_count = WaveActiveMax(sample_count);
-    const uint sample_count = BORROW_SAMPLES ? 8 : 1;
+    const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
     //const uint sample_count = BORROW_SAMPLES ? clamp(error_adjusted_filter_size * 128, 6, 16) : 1;
 
     // Choose one of a few pre-baked sample sets based on the footprint
@@ -195,12 +192,8 @@ void main(const uint2 px : SV_DispatchThreadID) {
     //output_tex[px] = float4((filter_idx / 7.0).xxx, 0);
     //return;
 
-    //SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
-
     float4 contrib_accum = 0.0;
     float ray_len_accum = 0;
-    float3 brdf_weight_accum = 0.0;
-    float brdf_weight_accum_wt = 0.0;
 
     float ex = 0.0;
     float ex2 = 0.0;
@@ -219,16 +212,15 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // for the NDF which exists in half-angle space?
     //
     // What does work however is a square root relationship (constants arbitrary):
-    const float tan_theta = sqrt(gbuffer.roughness) * 0.1;
+    const float tan_theta = sqrt(gbuffer.roughness) * 0.25;
     
     const float kernel_size_vs = ray_len_avg / (ray_len_avg + eye_to_surf_dist);
     float kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
-    //kernel_size_ws += 0.05 * history_error;
     kernel_size_ws *= tan_theta;
 
     // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
     // TODO: use pixels maybe
-    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, 0.001, 0.01) * eye_to_surf_dist;
+    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, 0.0025, 0.025) * eye_to_surf_dist;
     
     float3 kernel_t1, kernel_t2;
     get_specular_filter_kernel_basis(
@@ -243,36 +235,32 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // Offset to avoid correlation with ray generation
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
 
+    // Feeds into the `pow` to remap sample index to radius.
+    // At 0.5 (sqrt), it's proper circle sampling, with higher values becoming conical.
+    // Must be constants, so the `pow` can be const-folded.
+    const float KERNEL_SHARPNESS = 0.666;
+    const float RADIUS_SAMPLE_MULT = 1.0 / pow(float(MAX_SAMPLE_COUNT - 1), KERNEL_SHARPNESS);
+
+    // Bias away from the center sample to avoid half-res artifacts
+    const float KERNEL_SIZE_BIAS = 0.16;
+
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-    //for (uint sample_i = 7; sample_i < 8; ++sample_i) {
-    //for (uint sample_i_ = 0; sample_i_ < 8; ++sample_i_) { uint sample_i = sample_i_ == 0 ? 0 : sample_i_ + 8;
+        int2 sample_offset; {
+            float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+            const float radius = pow(float(sample_i), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT + KERNEL_SIZE_BIAS;
 
-        #if 0
-            // TODO: precalculate temporal variants
-            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
-        #elif 0
-            int2 sample_offset; {
-                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-                float radius_inc = lerp(0.333, 1.0, saturate(error_adjusted_filter_size / 8));
-                float radius = 1.5 + float(sample_i) * radius_inc;
-                sample_offset = float2(cos(ang), sin(ang)) * radius;
-            }
-        #else
-            int2 sample_offset; {
-                float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-                //float radius_inc = lerp(0.333, 1.0, saturate(error_adjusted_filter_size / 8));
-                float radius = (float(sample_i) + 0.5) * 0.5;
+            float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
+            float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
+            float3 sample_cs = position_world_to_clip(sample_ws);
+            float2 sample_uv = cs_to_uv(sample_cs.xy);
 
-                float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
-                float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
-                float3 sample_cs = position_world_to_clip(sample_ws);
-                float2 sample_uv = cs_to_uv(sample_cs.xy);
-                // ad-hoc elongation fix based on stochastic ssr slides
-                //sample_uv = (sample_uv - uv) * float2(lerp(saturate(wo.z * 2), 1.0, sqrt(gbuffer.roughness)), 1.0) + uv;
-                int2 sample_px = sample_uv * output_tex_size.xy / 2;
-                sample_offset = sample_px - half_px;
-            }
-        #endif
+            // Ad-hoc elongation fix based on stochastic SSR from Frostbite
+            sample_uv.x = (sample_uv.x - uv.x) * lerp(saturate(wo.z * 2), 1.0, sqrt(gbuffer.roughness)) + uv.x;
+
+            // TODO: pass in `input_tex_size`
+            int2 sample_px = sample_uv * output_tex_size.xy / 2;
+            sample_offset = sample_px - half_px;
+        }
         
         int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
@@ -316,11 +304,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 const float3 sample_offset = sample_hit_ws - view_ray_context.ray_hit_ws();
                 const float sample_dist = length(sample_offset);
                 const float3 sample_dir = sample_offset / sample_dist;
-                //const float3 sample_hit_normal = restir_hit_normal_tex[spx].xyz;
-                /*float geometric_term =
-                max(0.0, dot(center_normal_ws, sample_dir))
-                // TODO: wtf, why 2
-                * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);*/
+
                 sample_radiance = restir_irradiance_tex[spx].rgb;
                 sample_ray_pdf = restir_irradiance_tex[spx].a;
                 neighbor_sampling_pdf = 1.0 / r.W;
@@ -352,22 +336,18 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
             float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
 
-            float sample_hit_to_center_vis = 1;
-
             if (wi.z > 1e-5) {
+                float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
+                
             #if 0
                 float rejection_bias = 1;
             #else
-                float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
                 float rejection_bias = 1;
                 rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
                 // overly aggressive: rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
                 // TODO: reject if roughness is vastly different
                 rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
                 rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
-                //rejection_bias *= exp2(-10.0 * max(0.0, gbuffer.roughness - sample_gbuffer.roughness));
-
-                sample_hit_to_center_vis = saturate(dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)));
             #endif
 
             float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
@@ -377,6 +357,10 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 #if !RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
                     const float3 sample_to_hit_vs = sample_hit_vs - sample_origin_vs;
                     float sample_to_hit_dist2 = dot(sample_to_hit_vs, sample_to_hit_vs);
+
+                    if (dot(sample_normal_vs, sample_to_hit_vs) <= 0) {
+                        continue;
+                    }
 
                     neighbor_sampling_pdf /=
                         (1.0 / max(1e-20, center_to_hit_dist2))
@@ -408,17 +392,11 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 #endif
             #endif
 
-            BrdfValue spec = specular_brdf.evaluate(wo, wi);
+                BrdfValue spec = specular_brdf.evaluate(wo, wi);
 
-            #if ACCUM_FG_IN_RATIO_ESTIMATOR
                 // The FG weight is included in the radiance accumulator,
                 // so should not be in the ratio estimator weight.
                 float spec_weight = spec.pdf * step(0.0, wi.z);
-            #else
-                // The FG weight is _not_ included in the radiance accumulator,
-                // so we need it here.
-                float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
-            #endif
 
                 float to_psa_metric = 1;
                 #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
@@ -434,27 +412,10 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     neighbor_sampling_pdf /= to_psa_metric;
                 #endif
 
-
-                //spec_weight *= sample_hit_to_center_vis;
-
                 float contrib_wt = 0;
                 if (!USE_RESTIR) {
-                    #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                        contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
-                        //contrib_wt = 1;
-                        contrib_accum += float4(
-                            sample_radiance
-                            ,
-                            1
-                        ) * contrib_wt;
-                    #else
-                        contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
-                        contrib_accum += float4(
-                            sample_radiance * spec.value_over_pdf
-                            ,
-                            1
-                        ) * contrib_wt;
-                    #endif
+                    contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
+                    contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
                 } else {
                     const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
                     const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
@@ -484,19 +445,10 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
                     contrib_wt = rejection_bias * spec_weight / bent_sample_pdf * mis_weight;
                     contrib_accum += float4(
-                        sample_radiance * bent_sample_pdf
-                            #if ACCUM_FG_IN_RATIO_ESTIMATOR
-                                * spec.value_over_pdf
-                            #endif
-                            / neighbor_sampling_pdf
-                        ,
+                        sample_radiance * bent_sample_pdf * spec.value_over_pdf / neighbor_sampling_pdf,
                         1
                     ) * contrib_wt;
                 }
-
-                const float bw = rejection_bias * step(0.0, wi.z);// * spec.pdf * calculate_luma(sample_radiance);
-                brdf_weight_accum += spec.value_over_pdf * bw;
-                brdf_weight_accum_wt += bw;
 
                 float luma = calculate_luma(sample_radiance);
                 ex += luma * contrib_wt;
@@ -511,10 +463,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // TODO: when the borrow sample count is low (or 1), normalizing here
     // introduces a heavy bias, as it disregards the PDFs with which
     // samples have been taken. It should probably be temporally accumulated instead.
-    //
-    // Could temporally accumulate contributions scaled by brdf_weight_accum,
-    // but then the latter needs to be stored as well, and renormalized before
-    // sampling in a given frame. Could also be tricky to temporally filter it.
 
     const float contrib_norm_factor = max(1e-12, contrib_accum.w);
     //const float contrib_norm_factor = sample_count;
@@ -524,15 +472,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
     ex2 /= contrib_norm_factor;
     ray_len_accum /= contrib_norm_factor;
 
-    brdf_weight_accum /= max(1e-8, brdf_weight_accum_wt);
-
-    #if !RTR_RENDER_SCALED_BY_FG && ACCUM_FG_IN_RATIO_ESTIMATOR
-        // Un-scale by the FG term so we can denoise just the lighting,
-        // and the darkening effect of FG becomes temporally responsive.
-        contrib_accum.rgb /= max(1e-8, brdf_weight_accum);
-    #elif RTR_RENDER_SCALED_BY_FG && !ACCUM_FG_IN_RATIO_ESTIMATOR
-        // Edge case for debug only
-        contrib_accum.rgb *= max(1e-8, brdf_weight_accum);
+    #if !RTR_RENDER_SCALED_BY_FG
+        SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
+        contrib_accum.rgb /= brdf_lut.preintegrated_reflection;
     #endif
 
     ray_len_accum = unsquish_ray_len(ray_len_accum, ray_squish_strength);
@@ -548,9 +490,8 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     //out_color = sample_count / 16.0;
     //out_color = saturate(filter_idx / 7.0);
-    //out_color = relative_error;
+    //out_color = relative_error * 0.01;
     //out_color = abs(ex2 - ex*ex) / max(1e-5, ex);
-    //out_color = history.w;
 
     //out_color = half_view_normal_tex[half_px].xyz * 0.5 + 0.5;
     output_tex[px] = float4(out_color, ex2);

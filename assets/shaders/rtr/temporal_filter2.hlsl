@@ -162,8 +162,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
     float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
 #else
-    float h0_score = 1;
-    float h1_score = 0;
+    float h0_score = 0;
+    float h1_score = 1;
 #endif
 
     const float score_sum = h0_score + h1_score;

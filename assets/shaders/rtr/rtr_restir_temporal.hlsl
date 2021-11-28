@@ -103,7 +103,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
-    const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
     float3 outgoing_dir = float3(0, 0, 1);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
@@ -135,7 +135,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
     float3 ray_orig_sel = 0;
-    float3 ray_hit_sel = 1;
+    float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
     uint sel_valid_sample_idx = 0;
     bool prev_sample_valid = false;
@@ -147,7 +147,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     {
         TraceResult result = do_the_thing(px, normal_ws);
-        outgoing_dir = normalize(position_view_to_world(result.hit_pos_vs) - refl_ray_origin);
+        outgoing_dir = normalize(position_view_to_world(result.hit_pos_vs) - refl_ray_origin_ws);
         float3 wi = normalize(mul(outgoing_dir, tangent_to_world));
 
         const float p_q = p_q_sel = 1
@@ -164,8 +164,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         pdf_sel = result.pdf;
         ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
         irradiance_sel = result.out_value;
-        ray_orig_sel = refl_ray_origin;
-        ray_hit_sel = position_view_to_world(result.hit_pos_vs);
+        ray_orig_sel = refl_ray_origin_ws;
+        ray_hit_sel_ws = position_view_to_world(result.hit_pos_vs);
         hit_normal_sel = result.hit_normal_ws;
         prev_sample_valid = result.prev_sample_valid;
 
@@ -222,10 +222,11 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
 
             // Can't use linear interpolation, but we can interpolate stochastically instead
-            // Note: more important for spec than diffuse, so might go with this here.
-            const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
+            // Note: causes somewhat better reprojection, but also mixes reservoirs
+            // in an ugly way, resulting in noise qualty degradation.
+            //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
             // Or not at all.
-            //const float2 reproj_rand_offset = 0.0;
+            const float2 reproj_rand_offset = 0.0;
 
             int2 reproj_px = floor((
                 sample_i == 0
@@ -268,12 +269,19 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
+            const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx];
+            if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
+                // Reject disocclusions
+                continue;
+            }
+
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-            const float4 sample_hit_ws_and_dist = ray_history_tex[spx]/* + float4(get_prev_eye_position(), 0.0)*/;
+            const float4 sample_hit_ws_and_dist = ray_history_tex[spx];/* + float4(get_prev_eye_position(), 0.0)*/
+
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-            const float prev_dist = ray_orig_history_tex[spx].w;
+            const float prev_dist = prev_ray_orig_and_dist.w;
             //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
@@ -283,7 +291,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }*/
 
-            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin;
+            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_ws;
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
@@ -407,8 +415,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 ratio_estimator_factor = ray_history_tex[spx].w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
-                ray_orig_sel = ray_orig_history_tex[spx].xyz;
-                ray_hit_sel = sample_hit_ws;
+                ray_orig_sel = prev_ray_orig_and_dist.xyz;
+                ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
             }
@@ -425,7 +433,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     RayDesc outgoing_ray;
     outgoing_ray.Direction = outgoing_dir;
-    outgoing_ray.Origin = refl_ray_origin;
+    outgoing_ray.Origin = refl_ray_origin_ws;
     outgoing_ray.TMin = 0;
 
     //TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
@@ -452,10 +460,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, pdf_sel);
-    ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel - refl_ray_origin));
+    ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - refl_ray_origin_ws));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = hit_normal_ws_dot;
-    ray_output_tex[px] = float4(ray_hit_sel/* - get_eye_position()*/, ratio_estimator_factor);
+    ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, ratio_estimator_factor);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }
