@@ -49,8 +49,9 @@ void main(in int2 px : SV_DispatchThreadID) {
         }}
     }
     
-    // tired
-    //normal_ws = normal_ws_at_px(src_px);
+    // tired; TODO: the "wired" version upsets specular, which assumes
+    // that normals match up with hi-res ones at hi px locations
+    normal_ws = normal_ws_at_px(src_px);
 
     float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(normal_ws, 0)).xyz);
 	output_tex[px] = float4(normal_vs, 1);

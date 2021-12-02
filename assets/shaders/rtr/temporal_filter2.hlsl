@@ -147,7 +147,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     #endif*/
 
     float box_size = 1;
-    const float n_deviations = 2.5 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity_dilated;
+    const float n_deviations = 1 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity_dilated;
     //const float n_deviations = 5 * reproj_validity_dilated;
 
 	//float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;

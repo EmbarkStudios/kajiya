@@ -163,6 +163,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         pdf_sel = result.pdf;
         ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
+        
         irradiance_sel = result.out_value;
         ray_orig_sel = refl_ray_origin_ws;
         ray_hit_sel_ws = position_view_to_world(result.hit_pos_vs);
@@ -302,7 +303,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             // to at most 20× of the current frame’s reservoir’s M
 
             r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
-            //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
 
             // ReSTIR tends to produce firflies near contacts.
             // This is a hack to reduce the effect while I figure out a better solution.
@@ -312,7 +312,16 @@ void main(uint2 px : SV_DispatchThreadID) {
             // as darkening in corners. Since it's mostly useful for smoother surfaces,
             // fade it out when they're rough.
             const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
-            r.M *= lerp(saturate(50.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled), 1.0, gbuffer.roughness);
+            #if 0
+                //r.M *= lerp(saturate(50.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled), 1.0, gbuffer.roughness);
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled), 1.0, gbuffer.roughness));
+            #else
+                {
+                    float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
+                    dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
+                    r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
+                }
+            #endif
 
             // Don't allow old reservoirs for moving pixels with low roughness,
             // as that causes reuse of wrong directions.
@@ -340,7 +349,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             //if (sample_i > 0)
             if (true) {
                 // Distance falloff. Needed to avoid leaks.
-                jacobian *= clamp(prev_dist, 1e-4, 1e4) / clamp(dist_to_sample_hit, 1e-4, 1e4);
+                // Also important due to temporal jitter.
+                jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-8, 1e8);
                 jacobian *= jacobian;
 
                 // N of hit dot -L. Needed to avoid leaks.
@@ -355,8 +365,6 @@ void main(uint2 px : SV_DispatchThreadID) {
                     // when we don't use a harsh normal cutoff to exchange reservoirs with.
                     //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
                     //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
-
-                    //jacobian /= clamp(specular_brdf.evaluate(wo, wi).pdf, 1e-5, 1e5) * prev_irrad_pdf.w;
                 #endif
             }
 

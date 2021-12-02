@@ -14,7 +14,13 @@
 // In theory, this should be 0.0, but in practice that causes many hits to be consistencly rejected in corners,
 // biasing the average ray direction away from the corner, and causing apparent leaks when the surround is bright,
 // but the nearby object is dark.
+//
+// Note: if non-zero, RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION must be true for ReSTIR reflections.
 #define RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS 0.5
+
+// Technically should not be clamped, but clamping reduces some excessive hotness
+// in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
+#define RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION true
 
 #define RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC 0
 
@@ -25,9 +31,10 @@
 // surface, beind the plane of a surface receiving light.
 //
 // Has slightly visible line artifacts when `RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS` is zero.
+// Has visible artifacts on edges when used with ReSTIR
 #define RTR_APPROX_MEASURE_CONVERSION 0
 
-#define RTR_ROUGHNESS_CLAMP 3e-4
+#define RTR_ROUGHNESS_CLAMP 6e-4
 
 // Lower values clean up dark splotches in presence of high frequency
 // roughness variation, but they also dim down spec highlights therein.

@@ -42,8 +42,8 @@
 // Adds quite a bit of ALU, but fixes some halos around corners.
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
-static const bool USE_RESTIR = true;
 static const uint MAX_SAMPLE_COUNT = 8;
+static const bool USE_RESTIR = true;
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -83,13 +83,14 @@ float unsquish_ray_len(float len, float squish_strength) {
     return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
 }
 
-static float ggx_ndf_unnorm(float a2, float cos_theta) {
+// Like the GGX NDF, but scaled to peak at 1.0. Never _quite_ reaches zero.
+static float ggx_ndf_0_1(float a2, float cos_theta) {
 	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
-	return a2 / (denom_sqrt * denom_sqrt);
+	return a2 * a2 / (denom_sqrt * denom_sqrt);
 }
 
 [numthreads(8, 8, 1)]
-void main(const uint2 px : SV_DispatchThreadID) {
+void main(uint2 px : SV_DispatchThreadID) {
     const uint2 half_px = px / 2;
 
     const float2 uv = get_uv(px, output_tex_size);
@@ -187,8 +188,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
     kernel_size_ws *= tan_theta;
 
     // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
-    // TODO: use pixels maybe
-    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, 0.0025, 0.025) * eye_to_surf_dist;
+    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, output_tex_size.w * 0.5, 0.025) * eye_to_surf_dist;
     
     float3 kernel_t1, kernel_t2;
     get_specular_filter_kernel_basis(
@@ -207,15 +207,17 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // At 0.5 (sqrt), it's proper circle sampling, with higher values becoming conical.
     // Must be constants, so the `pow` can be const-folded.
     const float KERNEL_SHARPNESS = 0.666;
-    const float RADIUS_SAMPLE_MULT = 1.0 / pow(float(MAX_SAMPLE_COUNT - 1), KERNEL_SHARPNESS);
+    //const float KERNEL_SHARPNESS = 0.5;
+    const float RADIUS_SAMPLE_MULT = 1.0 / pow(float(MAX_SAMPLE_COUNT), KERNEL_SHARPNESS);
 
-    // Bias away from the center sample to avoid half-res artifacts
-    const float KERNEL_SIZE_BIAS = 0.16;
+    //const float ang_offset = blue.x;
+    // Way faster, seems to look the same.
+    const float ang_offset = (frame_constants.frame_index * 29 % 128) * M_PLASTIC;
 
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
         int2 sample_offset; {
-            float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-            const float radius = pow(float(sample_i), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT + KERNEL_SIZE_BIAS;
+            float ang = (sample_i + ang_offset) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+            const float radius = !BORROW_SAMPLES ? 0 : pow(float(sample_i + blue.y), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT;
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
             float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
@@ -254,8 +256,8 @@ void main(const uint2 px : SV_DispatchThreadID) {
             //const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
             //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
-            // Note: Not accurately normalized
             const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
+            const float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
 
             float3 sample_radiance;
             float sample_ray_pdf = 1;
@@ -279,6 +281,29 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
                 sample_cos_theta = restir_ray_tex[spx].a;
+
+                // Perform measure conversion based on real positions
+                const float center_to_hit_dist = length(sample_hit_ws - view_ray_context.ray_hit_ws());
+                const float sample_to_hit_dist = length(sample_hit_ws - sample_ray_ctx.ray_hit_ws());
+
+                // TODO: should not be clamped to 1.0, but clamping reduces some excessive hotness
+                // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
+                neighbor_sampling_pdf *= max(
+                    RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION ? 1.0 : 1e-5,
+                    pow(center_to_hit_dist / sample_to_hit_dist, 2)
+                );
+
+                // TODO: over-darkens corners
+                float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(position_world_to_view(sample_hit_ws) - view_ray_context.ray_hit_vs()));
+                float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(position_world_to_view(sample_hit_ws) - sample_origin_vs));
+                //neighbor_sampling_pdf *= sample_to_hit_vis / center_to_hit_vis;
+
+                float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
+                const float3 sample_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
+
+                #if !RTR_APPROX_MEASURE_CONVERSION
+                    neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 1e-1, 1e1);
+                #endif
             } else {
                 const float4 packed1 = hit1_tex[sample_px];
                 neighbor_sampling_pdf = packed1.w;
@@ -301,8 +326,6 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            const float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
-
             if (dot(normal_vs, sample_normal_vs) <= 0) {
                 continue;
             }
@@ -311,9 +334,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
             float rejection_bias = 1;
         #else
             float rejection_bias = 1;
-            rejection_bias *= 0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
-            // overly aggressive: rejection_bias *= 0.01 + 0.99 * saturate(ggx_ndf_unnorm(a2, dot(normal_vs, sample_normal_vs)));
-            // TODO: reject if roughness is vastly different
+            rejection_bias *= max(1e-2, ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)));
             rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
             rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
         #endif
@@ -336,9 +357,15 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     continue;
                 }
 
-                #if !RTR_APPROX_MEASURE_CONVERSION
-                    neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 0.25, 4.0);
-                #endif
+                // If ReSTIR is used, measure conversion is done when loading sample data
+                if (!USE_RESTIR) {
+                    neighbor_sampling_pdf *= max(1.0, center_to_hit_dist2 / sample_to_hit_dist2);
+                    neighbor_sampling_pdf /= center_to_hit_vis / sample_to_hit_vis;
+
+                    #if !RTR_APPROX_MEASURE_CONVERSION
+                        neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 1e-1, 1e1);
+                    #endif
+                }
             #endif
 
     		float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
@@ -390,8 +417,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 bent_sample_pdf = lerp(
                     bent_sample_pdf,
                     spec.pdf,
-                    smoothstep(0.25, 0.75, sqrt(gbuffer.roughness))
+                    smoothstep(0.4, 0.7, sqrt(gbuffer.roughness)) * smoothstep(0.0, 0.1, ray_len_avg / eye_to_surf_dist)
                 );
+                //bent_sample_pdf = spec.pdf;
 
                 bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
 
@@ -406,9 +434,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 // The error from this seems to be making detail in roughness map hotter,
                 // which is not a terrible thing given that it's also usually dimmed down
                 // by temporal filters.
-                float mis_weight = max(1e-5, spec.pdf / (sample_ray_pdf + spec.pdf));
+                float mis_weight = max(1e-4, spec.pdf / (sample_ray_pdf + spec.pdf));
 
-                contrib_wt = rejection_bias * mis_weight * spec_weight / bent_sample_pdf;
+                contrib_wt = rejection_bias * mis_weight * max(1e-10, spec_weight / bent_sample_pdf);
                 contrib_accum += float4(
                     sample_radiance * bent_sample_pdf / neighbor_sampling_pdf * spec.value_over_pdf,
                     1
@@ -428,7 +456,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // introduces a heavy bias, as it disregards the PDFs with which
     // samples have been taken. It should probably be temporally accumulated instead.
 
-    const float contrib_norm_factor = max(1e-12, contrib_accum.w);
+    // Note: do not include the clamp range from `rejection_bias`
+    const float contrib_norm_factor = max(1e-14, contrib_accum.w);
+    
     //const float contrib_norm_factor = sample_count;
 
     contrib_accum.rgb /= contrib_norm_factor;
