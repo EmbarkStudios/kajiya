@@ -348,8 +348,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 #endif
             }
 
-            const float JACOBIAN_REJECT_THRESHOLD = 1.1;
-
+            // Fixes boiling artifacts near edges. Unstable jacobians,
+            // but also effectively reduces reliance on reservoir exchange
+            // in tight corners, which is desirable since the well-distributed
+            // raw samples thrown at temporal filters will do better.
+            const float JACOBIAN_REJECT_THRESHOLD = lerp(1.1, 4.0, gbuffer.roughness * gbuffer.roughness);
             if (jacobian > JACOBIAN_REJECT_THRESHOLD || jacobian < 1.0 / JACOBIAN_REJECT_THRESHOLD) {
                 continue;
             }
