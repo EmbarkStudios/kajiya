@@ -155,6 +155,16 @@ impl RtrRenderer {
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
+        let (mut ray_orig_output_tex, ray_orig_history_tex) =
+            self.temporal_ray_orig_tex.get_output_and_history(
+                rg,
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    gbuffer_desc.half_res().extent_2d(),
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            );
+
         let (irradiance_tex, ray_tex, temporal_reservoir_tex) = {
             let (mut hit_normal_output_tex, hit_normal_history_tex) =
                 self.temporal_hit_normal_tex.get_output_and_history(
@@ -173,16 +183,6 @@ impl RtrRenderer {
                     rg,
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
                         .format(vk::Format::R32G32B32A32_SFLOAT),
-                );
-
-            let (mut ray_orig_output_tex, ray_orig_history_tex) =
-                self.temporal_ray_orig_tex.get_output_and_history(
-                    rg,
-                    ImageDesc::new_2d(
-                        vk::Format::R32G32B32A32_SFLOAT,
-                        gbuffer_desc.half_res().extent_2d(),
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
                 );
 
             let (mut reservoir_output_tex, reservoir_history_tex) =
@@ -268,6 +268,7 @@ impl RtrRenderer {
         .read(&irradiance_tex)
         .read(&ray_tex)
         .read(&temporal_reservoir_tex)
+        .read(&ray_orig_output_tex)
         .write(&mut resolved_tex)
         .write(&mut ray_len_output_tex)
         .raw_descriptor_set(1, bindless_descriptor_set)

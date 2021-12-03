@@ -24,9 +24,10 @@
 [[vk::binding(10)]] Texture2D<float4> restir_irradiance_tex;
 [[vk::binding(11)]] Texture2D<float4> restir_ray_tex;
 [[vk::binding(12)]] Texture2D<float4> restir_reservoir_tex;
-[[vk::binding(13)]] RWTexture2D<float4> output_tex;
-[[vk::binding(14)]] RWTexture2D<float2> ray_len_output_tex;
-[[vk::binding(15)]] cbuffer _ {
+[[vk::binding(13)]] Texture2D<float4> restir_ray_orig_tex;
+[[vk::binding(14)]] RWTexture2D<float4> output_tex;
+[[vk::binding(15)]] RWTexture2D<float2> ray_len_output_tex;
+[[vk::binding(16)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
@@ -81,12 +82,6 @@ float squish_ray_len(float len, float squish_strength) {
 // Ditto, decode.
 float unsquish_ray_len(float len, float squish_strength) {
     return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
-}
-
-// Like the GGX NDF, but scaled to peak at 1.0. Never _quite_ reaches zero.
-static float ggx_ndf_0_1(float a2, float cos_theta) {
-	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
-	return a2 * a2 / (denom_sqrt * denom_sqrt);
 }
 
 [numthreads(8, 8, 1)]
@@ -224,9 +219,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             float3 sample_cs = position_world_to_clip(sample_ws);
             float2 sample_uv = cs_to_uv(sample_cs.xy);
 
-            // Ad-hoc elongation fix based on stochastic SSR from Frostbite
-            sample_uv.x = (sample_uv.x - uv.x) * lerp(saturate(wo.z * 2), 1.0, sqrt(gbuffer.roughness)) + uv.x;
-
             // TODO: pass in `input_tex_size`
             int2 sample_px = sample_uv * output_tex_size.xy / 2;
             sample_offset = sample_px - half_px;
@@ -250,15 +242,13 @@ void main(uint2 px : SV_DispatchThreadID) {
                 sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
                 output_tex_size);
 
-            const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-            const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
-
             //const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
             //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
             const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
-            const float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
+            const float3 sample_normal_vs = normalize(half_view_normal_tex[sample_px].xyz);
 
+            float3 sample_origin_vs;
             float3 sample_radiance;
             float sample_ray_pdf = 1;
             float neighbor_sampling_pdf;
@@ -267,24 +257,31 @@ void main(uint2 px : SV_DispatchThreadID) {
             float3 sample_hit_vs;
 
             if (USE_RESTIR) {
+                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+
                 uint2 rpx = sample_px;
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
                 const float3 sample_hit_ws = restir_ray_tex[spx].xyz;
-                const float3 sample_offset = sample_hit_ws - view_ray_context.ray_hit_ws();
+                const float3 ray_origin_ws = restir_ray_orig_tex[spx].xyz;
+                sample_origin_vs = position_world_to_view(ray_origin_ws);
+
+                const float3 sample_offset = sample_hit_ws - ray_origin_ws;
                 const float sample_dist = length(sample_offset);
                 const float3 sample_dir = sample_offset / sample_dist;
 
                 sample_radiance = restir_irradiance_tex[spx].rgb;
                 sample_ray_pdf = restir_irradiance_tex[spx].a;
                 neighbor_sampling_pdf = 1.0 / r.W;
+                //center_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
-                sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
+                sample_hit_vs = center_to_hit_vs + position_world_to_view(ray_origin_ws);
                 sample_cos_theta = restir_ray_tex[spx].a;
 
                 // Perform measure conversion based on real positions
                 const float center_to_hit_dist = length(sample_hit_ws - view_ray_context.ray_hit_ws());
-                const float sample_to_hit_dist = length(sample_hit_ws - sample_ray_ctx.ray_hit_ws());
+                const float sample_to_hit_dist = length(sample_hit_ws - ray_origin_ws);
+                //const float sample_to_hit_dist = restir_ray_orig_tex[spx].w;
 
                 // TODO: should not be clamped to 1.0, but clamping reduces some excessive hotness
                 // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
@@ -305,6 +302,9 @@ void main(uint2 px : SV_DispatchThreadID) {
                     neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 1e-1, 1e1);
                 #endif
             } else {
+                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+                sample_origin_vs = sample_ray_ctx.ray_hit_vs();
+                
                 const float4 packed1 = hit1_tex[sample_px];
                 neighbor_sampling_pdf = packed1.w;
                 sample_radiance = packed0.xyz;
@@ -334,7 +334,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             float rejection_bias = 1;
         #else
             float rejection_bias = 1;
-            rejection_bias *= max(1e-2, ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)));
+            rejection_bias *= max(1e-2, SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)));
             rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
             rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
         #endif

@@ -147,6 +147,12 @@ struct SpecularBrdf {
 		return a2 / (M_PI * denom_sqrt * denom_sqrt);
 	}
 
+    // Like the GGX NDF, but scaled to peak at 1.0. Never _quite_ reaches zero.
+    static float ggx_ndf_0_1(float a2, float cos_theta) {
+    	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
+    	return a2 * a2 / (denom_sqrt * denom_sqrt);
+    }
+
     static float pdf_ggx(float a2, float cos_theta) {
 		return ggx_ndf(a2, cos_theta) * cos_theta;
 	}

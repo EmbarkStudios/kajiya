@@ -104,6 +104,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 normal_ws = direction_view_to_world(normal_vs);
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
     const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
+    const float3 refl_ray_origin_no_bias_ws = view_ray_context.ray_hit_ws();
     float3 outgoing_dir = float3(0, 0, 1);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
@@ -204,7 +205,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const int2 rpx_offset =
                 sample_i == 0
-                ? 0
+                ? int2(0, 0)
                 //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
                 : int2(reservoir_px_offset_base)
                 ;
@@ -238,7 +239,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
             if (dot(sample_normal_vs, normal_vs) < 0.7) {
-                continue;
+                //continue;
             }
 
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
@@ -260,9 +261,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 
             const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx];
+            // TODO: nuke. the ndf and jacobian-based rejection seem enough
             if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
                 // Reject disocclusions
-                continue;
+                //continue;
             }
 
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
@@ -277,18 +279,15 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
             const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
 
-            /*if (sample_i > 0 && !(prev_dist > 1e-4)) {
-                continue;
-            }*/
-
-            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_ws;
+            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_no_bias_ws;
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
+            // TODO: nuke. jacobian-based rejection looks to be enough
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
             if (dot(dir_to_sample_hit, normal_ws) < 1e-3) {
-                continue;
+                //continue;
             }
             
             const float4 prev_irrad_pdf = irradiance_history_tex[spx];
@@ -304,33 +303,16 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
 
-            // ReSTIR tends to produce firflies near contacts.
-            // This is a hack to reduce the effect while I figure out a better solution.
-            // HACK: reduce M close to surfaces.
-            //
-            // Note: This causes ReSTIR to be less effective, and can manifest
-            // as darkening in corners. Since it's mostly useful for smoother surfaces,
-            // fade it out when they're rough.
-            const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
-            #if 0
-                //r.M *= lerp(saturate(50.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled), 1.0, gbuffer.roughness);
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled), 1.0, gbuffer.roughness));
-            #else
-                {
-                    float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
-                    dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
-                    r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
-                }
-            #endif
-
-            // Don't allow old reservoirs for moving pixels with low roughness,
-            // as that causes reuse of wrong directions.
-            // This is especially visible if not re-normalizing spec PDFs in the
-            // resolve kernel, as that will cause surfaces to darken upon movement.
-            // Could do more fancy reprojection, but this is better than ghosting for now.
-            r.M *= 1.0 - smoothstep(0.0, 0.1 * gbuffer.roughness, length(reproj.xy));
-
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
+
+            if (true) {
+                const float a2 = pow(max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness), 2);
+                float ndf_of_prev = SpecularBrdf::ggx_ndf_0_1(a2, normalize(wo + wi).z);
+
+                const float t2 = SpecularBrdf::ggx_ndf_0_1(a2, 0.99);
+
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * smoothstep(0.005, 0.01, ndf_of_prev));
+            }
 
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
@@ -346,11 +328,9 @@ void main(uint2 px : SV_DispatchThreadID) {
             float jacobian = 1;
 
             // Note: needed for sample 0 due to temporal jitter.
-            //if (sample_i > 0)
             if (true) {
                 // Distance falloff. Needed to avoid leaks.
-                // Also important due to temporal jitter.
-                jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-8, 1e8);
+                jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-4, 1e4);
                 jacobian *= jacobian;
 
                 // N of hit dot -L. Needed to avoid leaks.
@@ -367,6 +347,16 @@ void main(uint2 px : SV_DispatchThreadID) {
                     //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
                 #endif
             }
+
+            const float JACOBIAN_REJECT_THRESHOLD = 1.1;
+
+            if (jacobian > JACOBIAN_REJECT_THRESHOLD || jacobian < 1.0 / JACOBIAN_REJECT_THRESHOLD) {
+                continue;
+            }
+
+            // We're not recalculating the PDF-based factor of p_q,
+            // so it needs measure adjustment.
+            p_q *= jacobian;
 
             // Raymarch to check occlusion
             if (sample_i > 0) {
@@ -405,14 +395,15 @@ void main(uint2 px : SV_DispatchThreadID) {
     		}
 
             M_sum += r.M;
-            if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {
+            if (reservoir.update(p_q * r.W * r.M * visibility, reservoir_payload, rng)) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
                 pdf_sel = prev_irrad_pdf.w;
                 ratio_estimator_factor = ray_history_tex[spx].w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
-                ray_orig_sel = prev_ray_orig_and_dist.xyz;
+                ray_orig_sel = refl_ray_origin_ws;
+                //ray_orig_sel = prev_ray_orig_and_dist.xyz;
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
@@ -457,7 +448,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, pdf_sel);
-    ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - refl_ray_origin_ws));
+    ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - ray_orig_sel));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = hit_normal_ws_dot;
     ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, ratio_estimator_factor);
