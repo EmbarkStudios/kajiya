@@ -199,23 +199,47 @@ void main(uint2 px : SV_DispatchThreadID) {
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
 
     // Feeds into the `pow` to remap sample index to radius.
-    // At 0.5 (sqrt), it's proper circle sampling, with higher values becoming conical.
-    // Must be constants, so the `pow` can be const-folded.
+    // At 0.5 (sqrt), it's disk sampling, with higher values becoming conical.
+    // Must be constant, so the `pow` can be const-folded.
     const float KERNEL_SHARPNESS = 0.666;
     //const float KERNEL_SHARPNESS = 0.5;
     const float RADIUS_SAMPLE_MULT = 1.0 / pow(float(MAX_SAMPLE_COUNT), KERNEL_SHARPNESS);
 
     //const float ang_offset = blue.x;
     // Way faster, seems to look the same.
-    const float ang_offset = (frame_constants.frame_index * 29 % 128) * M_PLASTIC;
+    const float ang_offset = (frame_constants.frame_index * 59 % 128) * M_PLASTIC;
 
-    for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+    Reservoir1spp center_r = Reservoir1spp::from_raw(restir_reservoir_tex[half_px]);
+
+    // Go from the outside to the inside. This is important for sampling of the central contribution,
+    // as we might need to disable jitter for it based on the suitability of the neighborhood.
+    for (int sample_i = sample_count - 1; sample_i >= 0; --sample_i) {
         int2 sample_offset; {
             float ang = (sample_i + ang_offset) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-            const float radius =
-                !BORROW_SAMPLES
-                ? 0
-                : pow(float(sample_i + blue.y), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT;
+
+            float sample_i_with_jitter = sample_i;
+
+            // If we've arrived at the central sample, and haven't found satisfactory
+            // contributions yet, load the candidate directly from `half_px`.
+            // Otherwise jitter the location to avoid half-pixel artifacts.
+            // This additional check reduces undersampling on thin shiny surfaces,
+            // which otherwise causes them to appear black.
+            if (sample_i == 0) {
+                const bool offset_center_pixel = true
+                    && contrib_accum.w > 1e-2
+                    && reprojection_params.z == 1.0
+                    ;
+
+                if (offset_center_pixel) {
+                    sample_i_with_jitter += blue.y;
+                }
+            } else {
+                sample_i_with_jitter += blue.y;
+            }
+
+            const float radius = BORROW_SAMPLES
+                ? pow(sample_i_with_jitter, KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT
+                : 0;
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
             float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
@@ -293,10 +317,9 @@ void main(uint2 px : SV_DispatchThreadID) {
                     pow(center_to_hit_dist / sample_to_hit_dist, 2)
                 );
 
-                // TODO: over-darkens corners
-                float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(position_world_to_view(sample_hit_ws) - view_ray_context.ray_hit_vs()));
+                float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
                 float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(position_world_to_view(sample_hit_ws) - sample_origin_vs));
-                //neighbor_sampling_pdf *= sample_to_hit_vis / center_to_hit_vis;
+                neighbor_sampling_pdf /= clamp(center_to_hit_vis / sample_to_hit_vis, 1e-1, 1e1);
 
                 float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
                 const float3 sample_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
