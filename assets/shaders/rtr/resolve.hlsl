@@ -216,11 +216,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
             float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
-            float3 sample_cs = position_world_to_clip(sample_ws);
+            float3 sample_cs = position_world_to_sample(sample_ws);
             float2 sample_uv = cs_to_uv(sample_cs.xy);
 
             // TODO: pass in `input_tex_size`
-            int2 sample_px = sample_uv * output_tex_size.xy / 2;
+            int2 sample_px = int2(floor(sample_uv * output_tex_size.xy / 2));
             sample_offset = sample_px - half_px;
         }
         
