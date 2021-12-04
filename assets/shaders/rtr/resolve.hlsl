@@ -212,7 +212,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
         int2 sample_offset; {
             float ang = (sample_i + ang_offset) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-            const float radius = !BORROW_SAMPLES ? 0 : pow(float(sample_i + blue.y), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT;
+            const float radius =
+                !BORROW_SAMPLES
+                ? 0
+                : pow(float(sample_i + blue.y), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT;
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
             float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;

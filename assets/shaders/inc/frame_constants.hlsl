@@ -178,6 +178,12 @@ float3 position_world_to_clip(float3 v) {
     return p.xyz / p.w;
 }
 
+float3 position_world_to_sample(float3 v) {
+    float4 p = mul(frame_constants.view_constants.world_to_view, float4(v, 1));
+    p = mul(frame_constants.view_constants.view_to_sample, p);
+    return p.xyz / p.w;
+}
+
 float pixel_cone_spread_angle_from_image_height(float image_height) {
     return atan(2.0 * frame_constants.view_constants.clip_to_view._11 / image_height);
 }

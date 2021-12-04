@@ -207,7 +207,7 @@ void main() {
             const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
 
             // Project the sample into clip space, and check if it's on-screen
-            const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
+            const float3 primary_hit_cs = position_world_to_sample(primary_hit.position);
             const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
             const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
             const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
