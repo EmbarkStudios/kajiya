@@ -357,6 +357,22 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
+#if 1
+            // ReSTIR tends to produce firflies near contacts.
+            // This is a hack to reduce the effect while I figure out a better solution.
+            // HACK: reduce M close to surfaces.
+            //
+            // Note: This causes ReSTIR to be less effective, and can manifest
+            // as darkening in corners. Since it's mostly useful for smoother surfaces,
+            // fade it out when they're rough.
+            const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
+            {
+                float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
+                dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
+            }
+#endif
+
             // We're not recalculating the PDF-based factor of p_q,
             // so it needs measure adjustment.
             p_q *= jacobian;
