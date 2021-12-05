@@ -142,9 +142,6 @@ void main() {
     urand.x = lerp(urand.x, 0.0, sampling_bias);
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
-
-    const float ratio_estimator_factor = normalize(wo + brdf_sample.wi).z;
-    //const float ratio_estimator_factor = brdf_sample.pdf;
     
 #if USE_TEMPORAL_JITTER && !USE_GGX_VNDF_SAMPLING
     [loop] for (uint retry_i = 0; retry_i < 4 && !brdf_sample.is_valid(); ++retry_i) {
@@ -157,6 +154,9 @@ void main() {
         brdf_sample = specular_brdf.sample(wo, urand);
     }
 #endif
+
+    const float ratio_estimator_factor = normalize(wo + brdf_sample.wi).z;
+    //const float ratio_estimator_factor = brdf_sample.pdf;
 
     if (brdf_sample.is_valid()) {
         //const bool use_short_ray = gbuffer.roughness > 0.55 && USE_SHORT_RAYS_FOR_ROUGH;

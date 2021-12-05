@@ -18,6 +18,7 @@
 #define RESTIR_RESERVOIR_W_CLAMP 1e20
 #define RESTIR_USE_PATH_VALIDATION !true
 #define RTR_RESTIR_BRDF_SAMPLING 1
+#define USE_SPATIAL_TAPS_AT_LOW_M true
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float3> half_view_normal_tex;
@@ -126,6 +127,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         LayeredBrdf layered_brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
         specular_brdf = layered_brdf.specular_brdf;
     }
+    const float a2 = max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness) * max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness);
 
     // TODO: use
     float3 light_radiance = 0.0.xxx;
@@ -133,12 +135,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     float p_q_sel = 0;
     float pdf_sel = 0;
     float ratio_estimator_factor = 0;
-    uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
     float3 ray_orig_sel = 0;
     float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
-    uint sel_valid_sample_idx = 0;
     bool prev_sample_valid = false;
 
     Reservoir1spp reservoir = Reservoir1spp::create();
@@ -185,15 +185,15 @@ void main(uint2 px : SV_DispatchThreadID) {
     //const bool use_resampling = false;
     const bool use_resampling = prev_sample_valid && true;
     const float rt_invalidity = 0;//sqrt(rt_invalidity_tex[px]);
+    const float4 center_reproj = reprojection_tex[hi_px];
 
     if (use_resampling) {
         float M_sum = reservoir.M;
 
-        uint valid_sample_count = 0;
         const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        //for (uint sample_i = 0; sample_i < 1 && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
-        for (uint sample_i = 0; sample_i < 1; ++sample_i) {
+        for (uint sample_i = 0; sample_i < ((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) ? 5 : 1) && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+        //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
                 float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
@@ -261,10 +261,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 
             const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx];
-            // TODO: nuke. the ndf and jacobian-based rejection seem enough
+
+            // TODO: nuke?. the ndf and jacobian-based rejection seem enough
+            // except when also using spatial reservoir samples
             if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
                 // Reject disocclusions
-                //continue;
+                continue;
             }
 
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
@@ -353,11 +355,11 @@ void main(uint2 px : SV_DispatchThreadID) {
             // in tight corners, which is desirable since the well-distributed
             // raw samples thrown at temporal filters will do better.
             const float JACOBIAN_REJECT_THRESHOLD = lerp(1.1, 4.0, gbuffer.roughness * gbuffer.roughness);
-            if (jacobian > JACOBIAN_REJECT_THRESHOLD || jacobian < 1.0 / JACOBIAN_REJECT_THRESHOLD) {
+            if (!(jacobian < JACOBIAN_REJECT_THRESHOLD && jacobian > 1.0 / JACOBIAN_REJECT_THRESHOLD)) {
                 continue;
             }
 
-#if 1
+#if 0
             // ReSTIR tends to produce firflies near contacts.
             // This is a hack to reduce the effect while I figure out a better solution.
             // HACK: reduce M close to surfaces.
@@ -419,17 +421,109 @@ void main(uint2 px : SV_DispatchThreadID) {
                 p_q_sel = p_q;
                 pdf_sel = prev_irrad_pdf.w;
                 ratio_estimator_factor = ray_history_tex[spx].w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
-                src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
                 ray_orig_sel = refl_ray_origin_ws;
                 //ray_orig_sel = prev_ray_orig_and_dist.xyz;
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
-                sel_valid_sample_idx = valid_sample_count;
             }
         }
 
-        valid_sample_count = max(valid_sample_count, 1);
+        if (USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) {
+            const float ang_offset = (0.2345 + ((frame_constants.frame_index + 7) * 11) % 32) * M_TAU;
+
+            for (uint sample_i = 1; sample_i <= 5 && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+            //for (uint sample_i = 1; sample_i <= 5; ++sample_i) {
+                const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
+                const float rpx_offset_radius = sqrt(
+                    float(((sample_i - 1) + frame_constants.frame_index + 1) & 3) + 1
+                ) * 7;
+
+                const float2 reservoir_px_offset_base = float2(
+                    cos(ang), sin(ang)
+                ) * rpx_offset_radius;
+
+                const int2 rpx_offset =
+                    sample_i == 0
+                    ? int2(0, 0)
+                    //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
+                    : int2(reservoir_px_offset_base)
+                    ;
+
+                int2 reproj_px = floor((
+                    sample_i == 0
+                    ? px
+                    // My poor approximation of permutation sampling.
+                    // https://twitter.com/more_fps/status/1457749362025459715
+                    //
+                    // When applied everywhere, it does nicely reduce noise, but also makes the GI less reactive
+                    // since we're effectively increasing the lifetime of the most attractive samples.
+                    // Where it does come in handy though is for boosting convergence rate for newly revealed
+                    // locations.
+                    : ((px + rpx_offset) ^ 3)) + 0.5);
+
+                const int2 rpx = reproj_px + rpx_offset;
+                const uint2 rpx_hi = rpx * 2 + hi_px_offset;
+
+                const float3 sample_normal_vs = half_view_normal_tex[rpx];
+                // Note: also doing this for sample 0, as under extreme aliasing,
+                // we can easily get bad samples in.
+                //if (dot(sample_normal_vs, normal_vs) < 0.9) {
+                if (SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)) < 0.9) {
+                    continue;
+                }
+
+                const float sample_depth = depth_tex[rpx_hi];
+                
+                if (0 == sample_depth) {
+                    continue;
+                }
+
+                if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
+                    continue;
+                }
+
+                TraceResult result = do_the_thing(rpx, normal_ws);
+                const float3 dir_to_sample_hit = normalize(position_view_to_world(result.hit_pos_vs) - refl_ray_origin_ws);
+                float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
+
+                const float p_q = 1
+                    * max(1e-3, calculate_luma(result.out_value))
+                    #if !RTR_RESTIR_BRDF_SAMPLING
+                        * max(0, dot(dir_to_sample_hit, normal_ws))
+                    #endif
+                    //* calculate_luma(specular_brdf.evaluate(wo, wi).value)
+                    * result.pdf
+                    ;
+
+                const float inv_pdf_q = 1.0 / result.pdf;
+
+                Reservoir1spp r = Reservoir1spp::create();
+                r.payload = reservoir_payload;
+
+                if (p_q * inv_pdf_q > 0) {
+                    r.payload = reservoir_payload;
+                    r.w_sum = p_q * inv_pdf_q;
+                    r.M = 1;
+                    r.W = inv_pdf_q;
+
+                    const float visibility = 1;
+
+                    M_sum += r.M;
+                    if (reservoir.update(p_q * r.W * r.M * visibility, reservoir_payload, rng)) {
+                        outgoing_dir = dir_to_sample_hit;
+                        p_q_sel = p_q;
+                        pdf_sel = result.pdf;
+                        ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
+                        irradiance_sel = result.out_value;
+                        ray_orig_sel = refl_ray_origin_ws;
+                        ray_hit_sel_ws = position_view_to_world(result.hit_pos_vs);
+                        hit_normal_sel = result.hit_normal_ws;
+                        prev_sample_valid = result.prev_sample_valid;
+                    }
+                }
+            }
+        }
 
         reservoir.M = M_sum;
         reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / max(1e-5, reservoir.M));
@@ -446,12 +540,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     //TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
 
     const float4 hit_normal_ws_dot = float4(hit_normal_sel, -dot(hit_normal_sel, outgoing_ray.Direction));
-
-    /*if (any(src_px_sel != px)) {
-        const uint2 spx = src_px_sel;
-        const float4 hit_normal_ws_dot = hit_normal_history_tex[spx];
-        jacobian *= max(0.0, hit_normal_ws_dot.w) / max(1e-4, hit_normal_ws_dot.w);
-    }*/
 
 #if 1
     /*if (!use_resampling) {
