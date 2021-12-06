@@ -192,35 +192,50 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Or not at all.
             const float2 reproj_rand_offset = 0.0;
 
-            int2 reproj_px = floor((
-                sample_i == 0
-                ? px
-                // My poor approximation of permutation sampling.
-                // https://twitter.com/more_fps/status/1457749362025459715
-                //
-                // When applied everywhere, it does nicely reduce noise, but also makes the GI less reactive
-                // since we're effectively increasing the lifetime of the most attractive samples.
-                // Where it does come in handy though is for boosting convergence rate for newly revealed
-                // locations.
-                : ((px + /*prev_*/rpx_offset) ^ 3)) + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
+            int2 reproj_px = floor(
+                (sample_i == 0
+                    ? px
+                    // My poor approximation of permutation sampling.
+                    // https://twitter.com/more_fps/status/1457749362025459715
+                    //
+                    // When applied everywhere, it does nicely reduce noise, but also makes the GI less reactive
+                    // since we're effectively increasing the lifetime of the most attractive samples.
+                    // Where it does come in handy though is for boosting convergence rate for newly revealed
+                    // locations.
+                    : ((px + /*prev_*/rpx_offset) ^ 3))
+                + gbuffer_tex_size.xy * reproj.xy * 0.5 + reproj_rand_offset + 0.5);
             //int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
 
             const int2 rpx = reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
-            const float3 sample_normal_vs = half_view_normal_tex[rpx];
-            // Note: also doing this for sample 0, as under extreme aliasing,
-            // we can easily get bad samples in.
-            if (dot(sample_normal_vs, normal_vs) < 0.7) {
-                continue;
-            }
+            // WRONG. needs previous normal
+            // const float3 sample_normal_vs = half_view_normal_tex[rpx];
+            // // Note: also doing this for sample 0, as under extreme aliasing,
+            // // we can easily get bad samples in.
+            // if (dot(sample_normal_vs, normal_vs) < 0.7) {
+            //     continue;
+            // }
 
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
             const uint2 spx = reservoir_payload_to_px(r.payload);
 
-            const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
-            const float sample_depth = depth_tex[rpx_hi];
-            
+            const float2 sample_uv = get_uv(hi_px + rpx_offset * 2, gbuffer_tex_size);
+            const float sample_depth = depth_tex[hi_px + rpx_offset * 2];
+
+
+            // WRONG: needs previous depth
+            // if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
+            //     // Reject disocclusions
+            //     continue;
+            // }
+
+            const float3 prev_ray_orig = ray_orig_history_tex[spx];
+            if (length(prev_ray_orig - refl_ray_origin) > 0.1 * -view_ray_context.ray_hit_vs().z) {
+                // Reject disocclusions
+                continue;
+            }
+
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
             if (0 == sample_depth) {
@@ -345,7 +360,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 p_q_sel = p_q;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
-                ray_orig_sel = ray_orig_history_tex[spx];
+                ray_orig_sel = prev_ray_orig;
                 ray_hit_sel = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
