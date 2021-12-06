@@ -157,6 +157,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
 
     float4 contrib_accum = 0.0;
+    float2 w_accum = 0.0;
     float ray_len_accum = 0;
 
     float ex = 0.0;
@@ -178,9 +179,17 @@ void main(uint2 px : SV_DispatchThreadID) {
     // What does work however is a square root relationship (constants arbitrary):
     const float tan_theta = sqrt(gbuffer.roughness) * 0.25;
     
-    const float kernel_size_vs = ray_len_avg / (ray_len_avg + eye_to_surf_dist);
-    float kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
-    kernel_size_ws *= tan_theta;
+    float kernel_size_ws;
+    {
+        // Clamp the ray length used in kernel size calculations, so we don't end up with
+        // tiny kernels in corners. In the presense of fireflies (e.g. from reflected spec),
+        // that would result in small circles appearing as reflections.
+        const float clamped_ray_len_avg = max(ray_len_avg, eye_to_surf_dist * 0.07 * 1);
+
+        const float kernel_size_vs = clamped_ray_len_avg / (clamped_ray_len_avg + eye_to_surf_dist);
+        kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
+        kernel_size_ws *= tan_theta;
+    }
 
     // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
     kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, output_tex_size.w * 0.5, 0.025) * eye_to_surf_dist;
@@ -286,6 +295,15 @@ void main(uint2 px : SV_DispatchThreadID) {
             float sample_cos_theta;
             float3 sample_hit_vs;
 
+            // The bent BRDF we're using for smooth surfaces needs NdotL adjustment.
+            // Rays hits close to surfaces will undergo a lot of distortion; because the bent BRDF
+            // intentionally ignores parallax, this distortion can result in over-amplifying close features,
+            // e.g. stretching dark lines where surfaces meet. Now, while the whole BRDF is supposed
+            // to be bent, the NdotL term can be corrected. Note that this needs to be applied
+            // after the PDF max value clamp, as the NdotL is not part of the PDF since we're using
+            // the projected solid angle metric for BRDFs.
+            float bent_pdf_ndotl_fix = 1;
+
             if (USE_RESTIR) {
                 const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
 
@@ -308,12 +326,12 @@ void main(uint2 px : SV_DispatchThreadID) {
                 sample_hit_vs = center_to_hit_vs + position_world_to_view(ray_origin_ws);
                 sample_cos_theta = restir_ray_tex[spx].a;
 
-                // Perform measure conversion based on real positions
-                const float center_to_hit_dist = length(sample_hit_ws - view_ray_context.ray_hit_ws());
-                const float sample_to_hit_dist = length(sample_hit_ws - ray_origin_ws);
-                //const float sample_to_hit_dist = restir_ray_orig_tex[spx].w;
+                // Perform measure conversion
 
-                // TODO: should not be clamped to 1.0, but clamping reduces some excessive hotness
+                const float center_to_hit_dist = length(center_to_hit_vs);
+                const float sample_to_hit_dist = length(sample_hit_ws - ray_origin_ws);
+
+                // TODO: should not be clamped, but clamping reduces some excessive hotness
                 // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
                 neighbor_sampling_pdf *= max(
                     RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION ? 1.0 : 1e-5,
@@ -321,14 +339,22 @@ void main(uint2 px : SV_DispatchThreadID) {
                 );
 
                 float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
-                float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(position_world_to_view(sample_hit_ws) - sample_origin_vs));
+                float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_hit_vs - sample_origin_vs));
                 neighbor_sampling_pdf /= clamp(center_to_hit_vis / sample_to_hit_vis, 1e-1, 1e1);
 
                 float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
-                const float3 sample_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
 
                 #if !RTR_APPROX_MEASURE_CONVERSION
-                    neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 1e-1, 1e1);
+                    const float3 sample_origin_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
+                    const float sample_wi_z = dot(sample_normal_vs, normalize(sample_origin_to_hit_vs));
+                    const float wi_measure_fix = sample_wi_z / wi.z;
+
+                    neighbor_sampling_pdf *= clamp(wi_measure_fix, 1e-2, 1e2);
+
+                    // Same factor will be applied to cancel this measure conversion for the bent BRDF.
+                    // Since the bent BRDF doesn't undergo parallax, it should not be converting
+                    // the wi measure.
+                    bent_pdf_ndotl_fix *= clamp(wi_measure_fix, 1e-2, 1e2);
                 #endif
             } else {
                 const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
@@ -358,14 +384,25 @@ void main(uint2 px : SV_DispatchThreadID) {
             if (dot(normal_vs, sample_normal_vs) <= 0) {
                 continue;
             }
+
+            // Discard hit samples which face away from the center pixel
+            if (dot(sample_hit_normal_vs, -center_to_hit_vs) <= 0) {
+                continue;
+            }
             
         #if 0
             float rejection_bias = 1;
         #else
             float rejection_bias = 1;
+            // Soft directional falloff
             rejection_bias *= max(1e-2, SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)));
+
+            // Hard cutoff below a pretty wide angle, to prevent contributions from
+            // widely different samples than the center.
+            rejection_bias *= dot(normal_vs, sample_normal_vs) > 0.8;
+
+            // Depth
             rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
-            rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
         #endif
 
         float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
@@ -382,17 +419,22 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                 float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
                 float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_to_hit_vs));
-                if (center_to_hit_vis <= 1e-5 || sample_to_hit_vis <= 1e-5) {
+                if (sample_to_hit_vis <= 1e-5) {
                     continue;
                 }
 
                 // If ReSTIR is used, measure conversion is done when loading sample data
                 if (!USE_RESTIR) {
                     neighbor_sampling_pdf *= max(1.0, center_to_hit_dist2 / sample_to_hit_dist2);
-                    neighbor_sampling_pdf /= center_to_hit_vis / sample_to_hit_vis;
+                    const float sample_wo_measure_fix = sample_to_hit_vis / center_to_hit_vis;
+                    const float wi_measure_fix = dot(sample_normal_vs, normalize(sample_to_hit_vs)) / wi.z;
+                    
+                    bent_pdf_ndotl_fix *= clamp(wi_measure_fix, 1e-2, 1e2);
 
                     #if !RTR_APPROX_MEASURE_CONVERSION
-                        neighbor_sampling_pdf /= clamp(wi.z / dot(sample_normal_vs, normalize(sample_to_hit_vs)), 1e-1, 1e1);
+                        neighbor_sampling_pdf *= clamp(sample_wo_measure_fix * wi_measure_fix, 1e-1, 1e1);
+                    #else
+                        neighbor_sampling_pdf *= clamp(sample_wo_measure_fix, 1e-1, 1e1);
                     #endif
                 }
             #endif
@@ -435,41 +477,58 @@ void main(uint2 px : SV_DispatchThreadID) {
                 contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
                 contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
             } else {
-                const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
-                const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
+                #if 0
+                    const float ray_sampling_pdf = sample_cos_theta;
+                    float mis_weight = max(1e-4, spec.pdf / (ray_sampling_pdf + spec.pdf));
 
-                float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
+                    //w_accum
 
-                // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
-                // estimator combined with bent sample rays results in too much brightness in corners/cracks.
-                // At low roughness this can result in noise in the FG estimate, causing darkening.
-                bent_sample_pdf = lerp(
-                    bent_sample_pdf,
-                    spec.pdf,
-                    smoothstep(0.4, 0.7, sqrt(gbuffer.roughness)) * smoothstep(0.0, 0.1, ray_len_avg / eye_to_surf_dist)
-                );
-                //bent_sample_pdf = spec.pdf;
+                    contrib_wt = rejection_bias * spec_weight / ray_sampling_pdf;
+                    //contrib_wt = rejection_bias * spec_weight / (ray_sampling_pdf * max(1e-3, calculate_luma(sample_radiance)));
+                    contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
+                    w_accum += float2(ray_sampling_pdf / neighbor_sampling_pdf, 1);
 
-                bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
+                    #if 0
+                        contrib_wt = rejection_bias;
+                        contrib_accum += float4(sample_radiance * spec.value / neighbor_sampling_pdf, 1) * contrib_wt;
+                    #endif
+                #else
+                    const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
+                    const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
 
-                // Pseudo MIS. Weigh down samples which claim to be high pdf
-                // if we could have sampled them with a lower pdf. This helps rough reflections
-                // surrounded by almost-mirrors. The rays sampled from the mirrors will have
-                // high pdf values, and skew the integration, creating halos around themselves
-                // on the rough objects.
-                // This is similar in formulation to actual MIS; where we're lying is in claiming
-                // that the central pixel generates samples, while it does not.
-                //
-                // The error from this seems to be making detail in roughness map hotter,
-                // which is not a terrible thing given that it's also usually dimmed down
-                // by temporal filters.
-                float mis_weight = max(1e-4, spec.pdf / (sample_ray_pdf + spec.pdf));
+                    float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
 
-                contrib_wt = rejection_bias * mis_weight * max(1e-10, spec_weight / bent_sample_pdf);
-                contrib_accum += float4(
-                    sample_radiance * bent_sample_pdf / neighbor_sampling_pdf * spec.value_over_pdf,
-                    1
-                ) * contrib_wt;
+                    // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
+                    // estimator combined with bent sample rays results in too much brightness in corners/cracks.
+                    // At low roughness this can result in noise in the FG estimate, causing darkening.
+                    bent_sample_pdf = lerp(
+                        min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP) * bent_pdf_ndotl_fix,
+                        min(spec.pdf, RTR_RESTIR_MAX_PDF_CLAMP),
+                        smoothstep(0.4, 0.7, sqrt(gbuffer.roughness)) * smoothstep(0.0, 0.1, ray_len_avg / eye_to_surf_dist)
+                    );
+                    //bent_sample_pdf = spec.pdf;
+
+                    //bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
+
+                    // Pseudo MIS. Weigh down samples which claim to be high pdf
+                    // if we could have sampled them with a lower pdf. This helps rough reflections
+                    // surrounded by almost-mirrors. The rays sampled from the mirrors will have
+                    // high pdf values, and skew the integration, creating halos around themselves
+                    // on the rough objects.
+                    // This is similar in formulation to actual MIS; where we're lying is in claiming
+                    // that the central pixel generates samples, while it does not.
+                    //
+                    // The error from this seems to be making detail in roughness map hotter,
+                    // which is not a terrible thing given that it's also usually dimmed down
+                    // by temporal filters.
+                    float mis_weight = max(1e-4, spec.pdf / (sample_ray_pdf + spec.pdf));
+
+                    contrib_wt = rejection_bias * mis_weight * max(1e-10, spec_weight / bent_sample_pdf);
+                    contrib_accum += float4(
+                        sample_radiance * bent_sample_pdf / neighbor_sampling_pdf * spec.value_over_pdf,
+                        1
+                    ) * contrib_wt;
+                #endif
             }
 
             float luma = calculate_luma(sample_radiance);
@@ -494,6 +553,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     ex /= contrib_norm_factor;
     ex2 /= contrib_norm_factor;
     ray_len_accum /= contrib_norm_factor;
+
+    //contrib_accum.rgb *= w_accum.x / max(1e-20, w_accum.y);
 
     #if !RTR_RENDER_SCALED_BY_FG
         SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);

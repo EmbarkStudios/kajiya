@@ -19,6 +19,10 @@
 #define RESTIR_USE_PATH_VALIDATION !true
 #define RTR_RESTIR_BRDF_SAMPLING 1
 #define USE_SPATIAL_TAPS_AT_LOW_M true
+#define USE_RESAMPLING true
+#define USE_NDF_BASED_M_CLAMP true
+#define USE_JACOBIAN_BASED_REJECTION true
+#define USE_DISTANCE_BASED_M_CLAMP true
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float3> half_view_normal_tex;
@@ -183,7 +187,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     //const bool use_resampling = false;
-    const bool use_resampling = prev_sample_valid && true;
+    const bool use_resampling = prev_sample_valid && USE_RESAMPLING;
     const float rt_invalidity = 0;//sqrt(rt_invalidity_tex[px]);
     const float4 center_reproj = reprojection_tex[hi_px];
 
@@ -307,7 +311,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
-            if (true) {
+            if (USE_NDF_BASED_M_CLAMP) {
                 const float a2 = pow(max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness), 2);
                 float ndf_of_prev = SpecularBrdf::ggx_ndf_0_1(a2, normalize(wo + wi).z);
 
@@ -354,26 +358,29 @@ void main(uint2 px : SV_DispatchThreadID) {
             // but also effectively reduces reliance on reservoir exchange
             // in tight corners, which is desirable since the well-distributed
             // raw samples thrown at temporal filters will do better.
-            const float JACOBIAN_REJECT_THRESHOLD = lerp(1.1, 4.0, gbuffer.roughness * gbuffer.roughness);
-            if (!(jacobian < JACOBIAN_REJECT_THRESHOLD && jacobian > 1.0 / JACOBIAN_REJECT_THRESHOLD)) {
-                continue;
+            if (USE_JACOBIAN_BASED_REJECTION) {
+                const float JACOBIAN_REJECT_THRESHOLD = lerp(1.1, 4.0, gbuffer.roughness * gbuffer.roughness);
+                if (!(jacobian < JACOBIAN_REJECT_THRESHOLD && jacobian > 1.0 / JACOBIAN_REJECT_THRESHOLD)) {
+                    continue;
+                    //r.M *= pow(saturate(1 - max(jacobian, 1.0 / jacobian) / JACOBIAN_REJECT_THRESHOLD), 4.0);
+                }
             }
 
-#if 0
-            // ReSTIR tends to produce firflies near contacts.
-            // This is a hack to reduce the effect while I figure out a better solution.
-            // HACK: reduce M close to surfaces.
-            //
-            // Note: This causes ReSTIR to be less effective, and can manifest
-            // as darkening in corners. Since it's mostly useful for smoother surfaces,
-            // fade it out when they're rough.
-            const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
-            {
-                float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
-                dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
+            if (USE_DISTANCE_BASED_M_CLAMP) {
+                // ReSTIR tends to produce firflies near contacts.
+                // This is a hack to reduce the effect while I figure out a better solution.
+                // HACK: reduce M close to surfaces.
+                //
+                // Note: This causes ReSTIR to be less effective, and can manifest
+                // as darkening in corners. Since it's mostly useful for smoother surfaces,
+                // fade it out when they're rough.
+                const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
+                {
+                    float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
+                    dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
+                    r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
+                }
             }
-#endif
 
             // We're not recalculating the PDF-based factor of p_q,
             // so it needs measure adjustment.

@@ -35,7 +35,7 @@
 #define COLOR_CODE_GROUND_SKY_BLACK_WHITE 0
 
 // Strongly reduces roughness of secondary hits
-#define USE_AGGRESSIVE_ROUGHNESS_BIAS 0
+#define USE_AGGRESSIVE_SECONDARY_ROUGHNESS_BIAS 1
 
 // BRDF bias
 #define SAMPLING_BIAS 0.05
@@ -44,8 +44,8 @@
 
 
 #if USE_HEAVY_BIAS
-    #undef USE_AGGRESSIVE_ROUGHNESS_BIAS
-    #define USE_AGGRESSIVE_ROUGHNESS_BIAS 1
+    #undef USE_AGGRESSIVE_SECONDARY_ROUGHNESS_BIAS
+    #define USE_AGGRESSIVE_SECONDARY_ROUGHNESS_BIAS 1
 
     #undef SAMPLING_BIAS
     #define SAMPLING_BIAS 0.2
@@ -119,8 +119,8 @@ void main() {
     specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
     specular_brdf.roughness = gbuffer.roughness;
 
-#if USE_AGGRESSIVE_ROUGHNESS_BIAS
-    const float roughness_bias = lerp(gbuffer.roughness, 1.0, 0.333);
+#if USE_AGGRESSIVE_SECONDARY_ROUGHNESS_BIAS
+    const float roughness_bias = lerp(gbuffer.roughness, 1.0, 0.15);
 #else
     const float roughness_bias = 0.5 * gbuffer.roughness;
 #endif

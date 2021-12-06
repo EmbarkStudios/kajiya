@@ -32,7 +32,7 @@
 //
 // Has slightly visible line artifacts when `RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS` is zero.
 // Has visible artifacts on edges when used with ReSTIR
-#define RTR_APPROX_MEASURE_CONVERSION 0
+#define RTR_APPROX_MEASURE_CONVERSION !true
 
 #define RTR_ROUGHNESS_CLAMP 6e-4
 
