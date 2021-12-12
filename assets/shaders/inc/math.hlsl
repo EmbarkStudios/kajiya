@@ -3,6 +3,14 @@
 
 #include "math_const.hlsl"
 
+float max3(float x, float y, float z) {
+    return max(x, max(y, z));
+}
+
+float square(float x) {
+    return x * x;
+}
+
 // Building an Orthonormal Basis, Revisited
 // http://jcgt.org/published/0006/01/01/
 float3x3 build_orthonormal_basis(float3 n) {
@@ -49,7 +57,7 @@ float4 prelerp(float4 b, float4 c) {
 }
 
 float inverse_depth_relative_diff(float primary_depth, float secondary_depth) {
-    return abs(primary_depth / max(1e-20, secondary_depth) - 1.0);
+    return abs(max(1e-20, primary_depth) / max(1e-20, secondary_depth) - 1.0);
 }
 
 #endif

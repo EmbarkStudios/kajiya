@@ -7,6 +7,7 @@ pub struct TaaRenderer {
     temporal_tex: PingPongTemporalResource,
     temporal_velocity_tex: PingPongTemporalResource,
     temporal_meta_tex: PingPongTemporalResource,
+    temporal_meta2_tex: PingPongTemporalResource,
     pub current_supersample_offset: Vec2,
 }
 
@@ -22,6 +23,7 @@ impl TaaRenderer {
             temporal_tex: PingPongTemporalResource::new("taa"),
             temporal_velocity_tex: PingPongTemporalResource::new("taa.velocity"),
             temporal_meta_tex: PingPongTemporalResource::new("taa.meta"),
+            temporal_meta2_tex: PingPongTemporalResource::new("taa.meta2"),
             current_supersample_offset: Vec2::ZERO,
         }
     }
@@ -85,9 +87,67 @@ impl TaaRenderer {
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
+        let (mut meta2_output_tex, meta2_history_tex) =
+            self.temporal_meta2_tex.get_output_and_history(
+                rg,
+                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_extent)
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            );
+
+        let mut filtered_input_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            input_tex.desc().extent_2d(),
+        ));
+        SimpleRenderPass::new_compute(
+            rg.add_pass("taa filter input"),
+            "/shaders/taa/filter_input.hlsl",
+        )
+        .read(input_tex)
+        .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
+        .write(&mut filtered_input_img)
+        .dispatch(filtered_input_img.desc().extent);
+
+        let mut filtered_history_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            output_extent,
+        ));
+        SimpleRenderPass::new_compute(
+            rg.add_pass("taa filter history"),
+            "/shaders/taa/filter_history.hlsl",
+        )
+        .read(&reprojected_history_img)
+        .write(&mut filtered_history_img)
+        .dispatch(filtered_history_img.desc().extent);
+
+        let mut input_variance_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16_SFLOAT,
+            input_tex.desc().extent_2d(),
+        ));
+        SimpleRenderPass::new_compute(
+            rg.add_pass("taa input variance"),
+            "/shaders/taa/input_variance.hlsl",
+        )
+        .read(input_tex)
+        .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
+        .write(&mut input_variance_img)
+        .constants((input_tex.desc().extent_inv_extent_2d(),))
+        .dispatch(input_variance_img.desc().extent);
+
+        let mut input_variance_eroded_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16_SFLOAT,
+            input_tex.desc().extent_2d(),
+        ));
+        SimpleRenderPass::new_compute(
+            rg.add_pass("taa input variance erode"),
+            "/shaders/taa/input_variance_erode.hlsl",
+        )
+        .read(&input_variance_img)
+        .write(&mut input_variance_eroded_img)
+        .dispatch(input_variance_img.desc().extent);
+
         let input_stats_img = {
             let mut input_stats_img = rg.create(ImageDesc::new_2d(
-                vk::Format::R16_SFLOAT,
+                vk::Format::R16G16_SFLOAT,
                 input_tex.desc().extent_2d(),
             ));
             SimpleRenderPass::new_compute(
@@ -95,11 +155,14 @@ impl TaaRenderer {
                 "/shaders/taa/input_stats.hlsl",
             )
             .read(input_tex)
+            .read(&filtered_input_img)
             .read(&reprojected_history_img)
+            .read(&filtered_history_img)
             .read(reprojection_map)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .read(&meta_history_tex)
             .read(&velocity_history_tex)
+            .read(&input_variance_eroded_img)
             .write(&mut input_stats_img)
             .constants((input_tex.desc().extent_inv_extent_2d(),))
             .dispatch(input_stats_img.desc().extent);
@@ -134,10 +197,13 @@ impl TaaRenderer {
             .read(&velocity_history_tex)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .read(&meta_history_tex)
+            .read(&meta2_history_tex)
             .read(&input_stats_img)
+            .read(&filtered_input_img)
             .write(&mut temporal_output_tex)
             .write(&mut debug_output_img)
             .write(&mut meta_output_tex)
+            .write(&mut meta2_output_tex)
             .write(&mut temporal_velocity_output_tex)
             .constants((
                 input_tex.desc().extent_inv_extent_2d(),

@@ -1,16 +1,21 @@
-[[vk::binding(0)]] Texture2D<float> input_tex;
-[[vk::binding(1)]] RWTexture2D<float> output_tex;
+[[vk::binding(0)]] Texture2D<float2> input_tex;
+[[vk::binding(1)]] RWTexture2D<float2> output_tex;
 
 [numthreads(8, 8, 1)]
 void main(int2 px: SV_DispatchThreadID) {
-    float input_prob = input_tex[px];
+    float2 input_stats = input_tex[px];
 
     #if 1
         const int k = 1;
         {for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
-                float prob = input_tex[px + int2(x, y)].x;
-                input_prob = max(input_prob, prob);
+                if (abs(x) + abs(y) > 1) {
+                    //continue;
+                }
+
+                float2 stats = input_tex[px + int2(x, y)];
+                input_stats.x = max(input_stats.x, stats.x);
+                //input_stats.y = max(input_stats.y, stats.y);
             }
         }}
     #else
@@ -40,8 +45,8 @@ void main(int2 px: SV_DispatchThreadID) {
             }
         }}
         ex /= wsum;
-        input_prob = ex;
+        input_stats = ex;
     #endif
 
-    output_tex[px] = input_prob;
+    output_tex[px] = input_stats;
 }
