@@ -89,7 +89,7 @@ PsOut main(PsIn ps) {
         normal_ws *= -1;
         //normal_ws = geometric_normal_ws;
     }
-    normal_ws = geometric_normal_ws;
+    //normal_ws = geometric_normal_ws;
 
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
