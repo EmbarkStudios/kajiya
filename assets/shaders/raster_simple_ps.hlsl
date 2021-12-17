@@ -101,6 +101,7 @@ PsOut main(PsIn ps) {
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //albedo = float3(0.966653, 0.4, 0.001);    // just testing
     //metalness = 0;
+    //roughness = pow(lerp(sqrt(roughness), 0.5, 0.5), 2);
     //roughness *= 0.5;
     //albedo = 0;
 

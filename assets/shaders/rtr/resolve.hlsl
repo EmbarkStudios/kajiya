@@ -141,10 +141,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float surf_to_hit_dist = length(hit1_tex[half_px].xyz);
     #endif
     const float eye_to_surf_dist = length(view_ray_context.ray_hit_vs());
-    const float filter_spread = surf_to_hit_dist / (surf_to_hit_dist + eye_to_surf_dist);
 
-    // Reduce size estimate variance by shrinking it across neighbors
-    float filter_size = filter_spread * gbuffer.roughness * 16;
+    // Needed to account for perspective distortion to keep the kernel constant
+    // near screen boundaries at high FOV.
+    const float eye_ray_z_scale = -view_ray_context.ray_dir_vs().z;
 
     const float4 reprojection_params = reprojection_tex[px];
 
@@ -184,15 +184,22 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Clamp the ray length used in kernel size calculations, so we don't end up with
         // tiny kernels in corners. In the presense of fireflies (e.g. from reflected spec),
         // that would result in small circles appearing as reflections.
-        const float clamped_ray_len_avg = max(ray_len_avg, eye_to_surf_dist * 0.07 * 1);
+        const float clamped_ray_len_avg = max(
+            ray_len_avg,
+            eye_to_surf_dist / eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1] * 0.2 * 1
+        );
 
         const float kernel_size_vs = clamped_ray_len_avg / (clamped_ray_len_avg + eye_to_surf_dist);
-        kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
+        kernel_size_ws = kernel_size_vs * eye_to_surf_dist * eye_ray_z_scale;
         kernel_size_ws *= tan_theta;
     }
 
-    // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
-    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, output_tex_size.w * 0.5, 0.025) * eye_to_surf_dist;
+    {
+        const float scale_factor = eye_to_surf_dist * eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1];
+
+        // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
+        kernel_size_ws = clamp(kernel_size_ws, output_tex_size.w * 0.5 * scale_factor, 0.1 * scale_factor);
+    }
     
     float3 kernel_t1, kernel_t2;
     get_specular_filter_kernel_basis(
@@ -556,10 +563,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     //contrib_accum.rgb *= w_accum.x / max(1e-20, w_accum.y);
 
+    SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
+
     #if !RTR_RENDER_SCALED_BY_FG
-        SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
         contrib_accum.rgb /= brdf_lut.preintegrated_reflection;
     #endif
+
+    contrib_accum.rgb *= brdf_lut.preintegrated_reflection_mult;
 
     ray_len_accum = unsquish_ray_len(ray_len_accum, RAY_SQUISH_STRENGTH);
     

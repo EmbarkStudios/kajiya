@@ -374,7 +374,10 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // Note: This causes ReSTIR to be less effective, and can manifest
                 // as darkening in corners. Since it's mostly useful for smoother surfaces,
                 // fade it out when they're rough.
-                const float dist_to_hit_vs_scaled = dist_to_sample_hit / -view_ray_context.ray_hit_vs().z;
+                const float dist_to_hit_vs_scaled =
+                    dist_to_sample_hit
+                    / -view_ray_context.ray_hit_vs().z
+                    * frame_constants.view_constants.view_to_clip[1][1];
                 {
                     float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
                     dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
