@@ -43,6 +43,8 @@
 // Adds quite a bit of ALU, but fixes some halos around corners.
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
+static const uint MAX_SAMPLE_COUNT = 8;
+
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
 }
@@ -123,10 +125,10 @@ void main(const uint2 px : SV_DispatchThreadID) {
         const float surf_to_hit_dist = length(hit1_tex[half_px].xyz);
     #endif
     const float eye_to_surf_dist = length(view_ray_context.ray_hit_vs());
-    const float filter_spread = surf_to_hit_dist / (surf_to_hit_dist + eye_to_surf_dist);
 
-    // Reduce size estimate variance by shrinking it across neighbors
-    float filter_size = filter_spread * gbuffer.roughness * 16;
+    // Needed to account for perspective distortion to keep the kernel constant
+    // near screen boundaries at high FOV.
+    const float eye_ray_z_scale = -view_ray_context.ray_dir_vs().z;
 
     const float4 reprojection_params = reprojection_tex[px];
 
@@ -145,13 +147,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
         exponential_squish(surf_to_hit_dist, ray_squish_strength),
         0.1),ray_squish_strength);
 
-    // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
-    const float error_adjusted_filter_size = min(filter_size * 4, filter_size + history_error * 0.5);
-
-    const uint sample_count = BORROW_SAMPLES ? 8 : 1;
-
-    // Choose one of a few pre-baked sample sets based on the footprint
-    const uint filter_idx = uint(clamp(error_adjusted_filter_size * 8, 0, 7));
+    const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
 
     float4 contrib_accum = 0.0;
     float ray_len_accum = 0;
@@ -176,15 +172,29 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // for the NDF which exists in half-angle space?
     //
     // What does work however is a square root relationship (constants arbitrary):
-    const float tan_theta = sqrt(gbuffer.roughness) * 0.1;
+    const float tan_theta = sqrt(gbuffer.roughness) * 0.25;
     
-    const float kernel_size_vs = ray_len_avg / (ray_len_avg + eye_to_surf_dist);
-    float kernel_size_ws = (kernel_size_vs * eye_to_surf_dist);
-    kernel_size_ws *= tan_theta;
+    float kernel_size_ws;
+    {
+        // Clamp the ray length used in kernel size calculations, so we don't end up with
+        // tiny kernels in corners. In the presense of fireflies (e.g. from reflected spec),
+        // that would result in small circles appearing as reflections.
+        const float clamped_ray_len_avg = max(
+            ray_len_avg,
+            eye_to_surf_dist / eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1] * 0.2 * 1
+        );
 
-    // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
-    // TODO: use pixels maybe
-    kernel_size_ws = clamp(kernel_size_ws / eye_to_surf_dist, 0.001, 0.01) * eye_to_surf_dist;
+        const float kernel_size_vs = clamped_ray_len_avg / (clamped_ray_len_avg + eye_to_surf_dist);
+        kernel_size_ws = kernel_size_vs * eye_to_surf_dist * eye_ray_z_scale;
+        kernel_size_ws *= tan_theta;
+    }
+
+    {
+        const float scale_factor = eye_to_surf_dist * eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1];
+
+        // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
+        kernel_size_ws = clamp(kernel_size_ws, output_tex_size.w * 2.0 * scale_factor, 0.1 * scale_factor);
+    }
     
     float3 kernel_t1, kernel_t2;
     get_specular_filter_kernel_basis(
@@ -197,20 +207,60 @@ void main(const uint2 px : SV_DispatchThreadID) {
     // Offset to avoid correlation with ray generation
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
 
-    for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+    // Feeds into the `pow` to remap sample index to radius.
+    // At 0.5 (sqrt), it's disk sampling, with higher values becoming conical.
+    // Must be constant, so the `pow` can be const-folded.
+    const float KERNEL_SHARPNESS = 0.666;
+    //const float KERNEL_SHARPNESS = 0.5;
+    const float RADIUS_SAMPLE_MULT = 1.0 / pow(float(MAX_SAMPLE_COUNT), KERNEL_SHARPNESS);
+
+    //const float ang_offset = blue.x;
+    // Way faster, seems to look the same.
+    const float ang_offset = (frame_constants.frame_index * 59 % 128) * M_PLASTIC;
+
+    // Go from the outside to the inside. This is important for sampling of the central contribution,
+    // as we might need to disable jitter for it based on the suitability of the neighborhood.
+    for (int sample_i = sample_count - 1; sample_i >= 0; --sample_i) {
         int2 sample_offset; {
-            float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-            float radius = (float(sample_i) + 0.5) * 0.5;
+            float ang = (sample_i + ang_offset) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
+
+            float sample_i_with_jitter = sample_i;
+
+            // If we've arrived at the central sample, and haven't found satisfactory
+            // contributions yet, load the candidate directly from `half_px`.
+            // Otherwise jitter the location to avoid half-pixel artifacts.
+            // This additional check reduces undersampling on thin shiny surfaces,
+            // which otherwise causes them to appear black.
+            if (sample_i == 0) {
+                const bool offset_center_pixel = true
+                    // roughness check is a HACK. it's only there because not offsetting
+                    // the center pixel on rough surfaces causes pixellation.
+                    // it can happen for thin features, or features seen at an angle.
+                    && (contrib_accum.w > 1e-2 || gbuffer.roughness > 0.1)
+                    && reprojection_params.z == 1.0
+                    ;
+
+                if (offset_center_pixel) {
+                    sample_i_with_jitter += blue.y;
+                }
+            } else {
+                sample_i_with_jitter += blue.y;
+            }
+
+            const float radius = BORROW_SAMPLES
+                ? pow(sample_i_with_jitter, KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT
+                : 0;
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
             float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
-            float3 sample_cs = position_world_to_clip(sample_ws);
+            float3 sample_cs = position_world_to_sample(sample_ws);
             float2 sample_uv = cs_to_uv(sample_cs.xy);
 
-            int2 sample_px = sample_uv * output_tex_size.xy / 2;
+            // TODO: pass in `input_tex_size`
+            int2 sample_px = int2(floor(sample_uv * output_tex_size.xy / 2));
             sample_offset = sample_px - half_px;
         }
-        
+
         int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
 
