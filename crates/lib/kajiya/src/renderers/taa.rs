@@ -112,7 +112,7 @@ impl TaaRenderer {
 
         let input_stats_img = {
             let mut input_stats_img = rg.create(ImageDesc::new_2d(
-                vk::Format::R16G16_SFLOAT,
+                vk::Format::R16_SFLOAT,
                 input_tex.desc().extent_2d(),
             ));
             SimpleRenderPass::new_compute(

@@ -14,7 +14,7 @@
 [[vk::binding(4)]] Texture2D<float2> velocity_history_tex;
 [[vk::binding(5)]] Texture2D<float> depth_tex;
 [[vk::binding(6)]] Texture2D<float> smooth_var_history_tex;
-[[vk::binding(7)]] Texture2D<float4> input_stats_tex;
+[[vk::binding(7)]] Texture2D<float> input_stats_tex;
 [[vk::binding(8)]] Texture2D<float4> filtered_input_tex;
 [[vk::binding(9)]] RWTexture2D<float4> output_tex;
 [[vk::binding(10)]] RWTexture2D<float4> debug_output_tex;
@@ -166,9 +166,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     history = lerp(history, bcenter, saturate(1.0 - history_coverage));
     bhistory = lerp(bhistory, bcenter, saturate(1.0 - bhistory_coverage));
 
-    const float4 input_stats = input_stats_tex[reproj_px];
-    const float filtered_input_dev = input_stats.y;
-    const float input_prob = input_stats.x;
+    const float input_prob = input_stats_tex[reproj_px];
 
     float3 ex = center_sample.ex;
     float3 ex2 = center_sample.ex2;

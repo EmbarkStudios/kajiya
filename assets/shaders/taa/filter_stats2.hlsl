@@ -1,38 +1,27 @@
-[[vk::binding(0)]] Texture2D<float2> input_tex;
-[[vk::binding(1)]] RWTexture2D<float2> output_tex;
+#include "../inc/math.hlsl"
 
-// Encode ray length in a space which heavily favors short ones.
-// For temporal averaging of distance to ray hits.
-float squish_ray_len(float len, float squish_strength) {
-    return exp2(-clamp(squish_strength * len, 0, 100));
-}
-
-// Ditto, decode.
-float unsquish_ray_len(float len, float squish_strength) {
-    return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
-}
+[[vk::binding(0)]] Texture2D<float> input_tex;
+[[vk::binding(1)]] RWTexture2D<float> output_tex;
 
 [numthreads(8, 8, 1)]
 void main(int2 px: SV_DispatchThreadID) {
-    float2 input_stats = input_tex[px];
+    float prob = input_tex[px];
 
-    float2 derp = 0;
+    float2 weighted_prob = 0;
+    const float SQUISH_STRENGTH = 10;
 
     const int k = 2;
-    const float m = 10;
-
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
-            float2 stats = input_tex[px + int2(x, y) * 2];
-            input_stats.x = min(input_stats.x, stats.x);
-            derp += float2(squish_ray_len(stats.x, m), 1);
+            float neighbor_prob = input_tex[px + int2(x, y) * 2];
+            weighted_prob += float2(exponential_squish(neighbor_prob, SQUISH_STRENGTH), 1);
         }
     }
 
-    input_stats.x = unsquish_ray_len(derp.x / derp.y, m);
+    prob = exponential_unsquish(weighted_prob.x / weighted_prob.y, SQUISH_STRENGTH);
 
-    //input_stats.x = min(input_stats.x, WaveReadLaneAt(input_stats.x, WaveGetLaneIndex() ^ 1));
-    //input_stats.x = min(input_stats.x, WaveReadLaneAt(input_stats.x, WaveGetLaneIndex() ^ 8));
+    //prob = min(prob, WaveReadLaneAt(prob, WaveGetLaneIndex() ^ 1));
+    //prob = min(prob, WaveReadLaneAt(prob, WaveGetLaneIndex() ^ 8));
 
-    output_tex[px] = input_stats;
+    output_tex[px] = prob;
 }
