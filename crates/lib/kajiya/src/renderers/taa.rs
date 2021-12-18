@@ -100,7 +100,7 @@ impl TaaRenderer {
 
         let mut filtered_history_img = rg.create(ImageDesc::new_2d(
             vk::Format::R16G16B16A16_SFLOAT,
-            output_extent,
+            filtered_input_img.desc().extent_2d(),
         ));
         SimpleRenderPass::new_compute(
             rg.add_pass("taa filter history"),
@@ -108,6 +108,10 @@ impl TaaRenderer {
         )
         .read(&reprojected_history_img)
         .write(&mut filtered_history_img)
+        .constants((
+            reprojected_history_img.desc().extent_inv_extent_2d(),
+            input_tex.desc().extent_inv_extent_2d(),
+        ))
         .dispatch(filtered_history_img.desc().extent);
 
         let input_prob_img = {

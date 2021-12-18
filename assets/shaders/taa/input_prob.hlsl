@@ -86,7 +86,7 @@ void main(uint2 px: SV_DispatchThreadID) {
             HistoryRemap::create()
         );*/
         //const float4 closest_history = HistoryRemap::create().remap(history_tex.SampleLevel(sampler_llc, input_uv, 0));
-        const float4 closest_history = filtered_history_tex.SampleLevel(sampler_lnc, input_uv, 0);
+        const float4 closest_history = filtered_history_tex.SampleLevel(sampler_nnc, input_uv, 0);
         const float closest_smooth_var = smooth_var_history_tex.SampleLevel(sampler_lnc, input_uv + reprojection_tex[px].xy, 0);
         const float2 closest_vel = velocity_history_tex.SampleLevel(sampler_lnc, input_uv + reprojection_tex[px].xy, 0).xy * frame_constants.delta_time_seconds;
         const float3 closest_var = ivar * closest_smooth_var / max(1e-8, ivar.x);
