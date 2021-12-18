@@ -110,32 +110,6 @@ impl TaaRenderer {
         .write(&mut filtered_history_img)
         .dispatch(filtered_history_img.desc().extent);
 
-        let mut input_variance_img = rg.create(ImageDesc::new_2d(
-            vk::Format::R16_SFLOAT,
-            input_tex.desc().extent_2d(),
-        ));
-        SimpleRenderPass::new_compute(
-            rg.add_pass("taa input variance"),
-            "/shaders/taa/input_variance.hlsl",
-        )
-        .read(input_tex)
-        .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
-        .write(&mut input_variance_img)
-        .constants((input_tex.desc().extent_inv_extent_2d(),))
-        .dispatch(input_variance_img.desc().extent);
-
-        let mut input_variance_eroded_img = rg.create(ImageDesc::new_2d(
-            vk::Format::R16_SFLOAT,
-            input_tex.desc().extent_2d(),
-        ));
-        SimpleRenderPass::new_compute(
-            rg.add_pass("taa input variance erode"),
-            "/shaders/taa/input_variance_erode.hlsl",
-        )
-        .read(&input_variance_img)
-        .write(&mut input_variance_eroded_img)
-        .dispatch(input_variance_img.desc().extent);
-
         let input_stats_img = {
             let mut input_stats_img = rg.create(ImageDesc::new_2d(
                 vk::Format::R16G16_SFLOAT,
@@ -153,7 +127,6 @@ impl TaaRenderer {
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .read(&smooth_var_history_tex)
             .read(&velocity_history_tex)
-            .read(&input_variance_eroded_img)
             .write(&mut input_stats_img)
             .constants((input_tex.desc().extent_inv_extent_2d(),))
             .dispatch(input_stats_img.desc().extent);

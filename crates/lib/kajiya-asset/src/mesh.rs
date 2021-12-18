@@ -289,7 +289,7 @@ impl LazyWorker for LoadGltfScene {
                         };
 
                         // Collect tangents (optional)
-                        let mut tangents = if let Some(iter) = reader.read_tangents() {
+                        let tangents = if let Some(iter) = reader.read_tangents() {
                             iter.collect::<Vec<_>>()
                         } else {
                             vec![[1.0, 0.0, 0.0, 0.0]; positions.len()]

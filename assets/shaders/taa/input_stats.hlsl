@@ -16,9 +16,8 @@
 [[vk::binding(5)]] Texture2D<float> depth_tex;
 [[vk::binding(6)]] Texture2D<float> smooth_var_history_tex;
 [[vk::binding(7)]] Texture2D<float2> velocity_history_tex;
-[[vk::binding(8)]] Texture2D<float> input_variance_tex;
-[[vk::binding(9)]] RWTexture2D<float2> output_tex;
-[[vk::binding(10)]] cbuffer _ {
+[[vk::binding(8)]] RWTexture2D<float2> output_tex;
+[[vk::binding(9)]] cbuffer _ {
     float4 input_tex_size;
 };
 
@@ -55,7 +54,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         
         float3 ivar;
 
-        if (true) {
+        {
             float3 iex = 0;
             float3 iex2 = 0;
             float iwsum = 0;
@@ -76,8 +75,6 @@ void main(uint2 px: SV_DispatchThreadID) {
             iex /= iwsum;
             iex2 /= iwsum;
             ivar = max(0, iex2 - iex * iex);
-        } else {
-            ivar = input_variance_tex[px];
         }
 
         //const float2 input_uv = get_uv(px + frame_constants.view_constants.sample_offset_pixels, input_tex_size);
