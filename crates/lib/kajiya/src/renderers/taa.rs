@@ -110,14 +110,14 @@ impl TaaRenderer {
         .write(&mut filtered_history_img)
         .dispatch(filtered_history_img.desc().extent);
 
-        let input_stats_img = {
-            let mut input_stats_img = rg.create(ImageDesc::new_2d(
+        let input_prob_img = {
+            let mut input_prob_img = rg.create(ImageDesc::new_2d(
                 vk::Format::R16_SFLOAT,
                 input_tex.desc().extent_2d(),
             ));
             SimpleRenderPass::new_compute(
-                rg.add_pass("taa input stats"),
-                "/shaders/taa/input_stats.hlsl",
+                rg.add_pass("taa input prob"),
+                "/shaders/taa/input_prob.hlsl",
             )
             .read(input_tex)
             .read(&filtered_input_img)
@@ -127,29 +127,29 @@ impl TaaRenderer {
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .read(&smooth_var_history_tex)
             .read(&velocity_history_tex)
-            .write(&mut input_stats_img)
+            .write(&mut input_prob_img)
             .constants((input_tex.desc().extent_inv_extent_2d(),))
-            .dispatch(input_stats_img.desc().extent);
+            .dispatch(input_prob_img.desc().extent);
 
-            let mut max_input_stats_img = rg.create(*input_stats_img.desc());
+            let mut prob_filtered1_img = rg.create(*input_prob_img.desc());
             SimpleRenderPass::new_compute(
-                rg.add_pass("taa stats filter"),
-                "/shaders/taa/filter_stats.hlsl",
+                rg.add_pass("taa prob filter"),
+                "/shaders/taa/filter_prob.hlsl",
             )
-            .read(&input_stats_img)
-            .write(&mut max_input_stats_img)
-            .dispatch(max_input_stats_img.desc().extent);
+            .read(&input_prob_img)
+            .write(&mut prob_filtered1_img)
+            .dispatch(prob_filtered1_img.desc().extent);
 
-            let mut min_input_stats_img = rg.create(*input_stats_img.desc());
+            let mut prob_filtered2_img = rg.create(*input_prob_img.desc());
             SimpleRenderPass::new_compute(
-                rg.add_pass("taa stats filter2"),
-                "/shaders/taa/filter_stats2.hlsl",
+                rg.add_pass("taa prob filter2"),
+                "/shaders/taa/filter_prob2.hlsl",
             )
-            .read(&max_input_stats_img)
-            .write(&mut min_input_stats_img)
-            .dispatch(max_input_stats_img.desc().extent);
+            .read(&prob_filtered1_img)
+            .write(&mut prob_filtered2_img)
+            .dispatch(prob_filtered1_img.desc().extent);
 
-            min_input_stats_img
+            prob_filtered2_img
         };
 
         let mut debug_output_img = rg.create(Self::temporal_tex_desc(output_extent));
@@ -161,7 +161,7 @@ impl TaaRenderer {
             .read(&velocity_history_tex)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .read(&smooth_var_history_tex)
-            .read(&input_stats_img)
+            .read(&input_prob_img)
             .read(&filtered_input_img)
             .write(&mut temporal_output_tex)
             .write(&mut debug_output_img)
