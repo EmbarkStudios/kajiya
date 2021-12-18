@@ -7,9 +7,10 @@ float max3(float x, float y, float z) {
     return max(x, max(y, z));
 }
 
-float square(float x) {
-    return x * x;
-}
+float square(float x) { return x * x; }
+float2 square(float2 x) { return x * x; }
+float3 square(float3 x) { return x * x; }
+float4 square(float4 x) { return x * x; }
 
 // Building an Orthonormal Basis, Revisited
 // http://jcgt.org/published/0006/01/01/

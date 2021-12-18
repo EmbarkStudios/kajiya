@@ -9,22 +9,7 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] RWTexture2D<float3> output_tex;
-
-// Approximate Gaussian remap
-// https://www.shadertoy.com/view/MlVSzw
-float inv_error_function(float x, float truncation) {
-    static const float ALPHA = 0.14;
-    static const float INV_ALPHA = 1.0 / ALPHA;
-    static const float K = 2.0 / (M_PI * ALPHA);
-
-	float y = log(max(truncation, 1.0 - x*x));
-	float z = K + 0.5 * y;
-	return sqrt(max(0.0, sqrt(z*z - y * INV_ALPHA) - z)) * sign(x);
-}
-
-float remap_unorm_to_gaussian(float x, float truncation) {
-	return inv_error_function(x * 2.0 - 1.0, truncation);
-}
+[[vk::binding(3)]] RWTexture2D<float3> dev_output_tex;
 
 struct InputRemap {
     static InputRemap create() {
@@ -37,47 +22,68 @@ struct InputRemap {
     }
 };
 
-float3 filter_input(uint2 px, float center_depth, float luma_cutoff, float depth_scale) {
-    const float ang_offset = uint_to_u01_float(hash3(
-        uint3(px, frame_constants.frame_index)
-    ));
+struct FilteredInput {
+    float3 clamped_ex;
+    float3 var;
+};
 
-    float3 min_s = 10000000.0;
-
+FilteredInput filter_input_inner(uint2 px, float center_depth, float luma_cutoff, float depth_scale) {
     float3 iex = 0;
+    float3 iex2 = 0;
     float iwsum = 0;
+
+    float3 clamped_iex = 0;
+    float clamped_iwsum = 0;
+
+    InputRemap input_remap = InputRemap::create();
 
     const int k = 1;
     for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
             const int2 spx_offset = int2(x, y);
-            const float r_w = exp(-(0.8 / (k * k)) * dot(spx_offset, spx_offset));
+            const float distance_w = exp(-(0.8 / (k * k)) * dot(spx_offset, spx_offset));
 
             const int2 spx = int2(px) + spx_offset;
-            float3 s = rgb_to_ycbcr(decode_rgb(input_tex[spx].rgb));
+            float3 s = input_remap.remap(input_tex[spx]).rgb;
 
             const float depth = depth_tex[spx];
             float w = 1;
             w *= exp2(-min(16, depth_scale * inverse_depth_relative_diff(center_depth, depth)));
-            w *= r_w;
+            w *= distance_w;
             w *= pow(saturate(luma_cutoff / s.x), 8);
 
-            if (s.x < min_s.x) {
-                min_s = s;
-            }
+            clamped_iwsum += w;
+            clamped_iex += s * w;
 
-            iwsum += w;
-            iex += s * w;
+            iwsum += 1;
+            iex += s;
+            iex2 += s * s;
         }
     }
 
-    return iex / iwsum;
-    //return min_s;
+    clamped_iex /= clamped_iwsum;
+
+    iex /= iwsum;
+    iex2 /= iwsum;
+
+    FilteredInput res;
+    res.clamped_ex = clamped_iex;
+    res.var = max(0, iex2 - iex * iex);
+    
+    return res;
 }
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
-    float filtered_luma = filter_input(px, center_depth, 1e10, 200).x;
-    output_tex[px] = filter_input(px, center_depth, filtered_luma * 1.001, 200);
+
+    // Filter the input, with a cross-bilateral weight based on depth
+    FilteredInput filtered_input = filter_input_inner(px, center_depth, 1e10, 200);
+
+    // Filter the input again, but add another cross-bilateral weight, reducing the weight of
+    // inputs brighter than the just-estimated luminance mean. This clamps bright outliers in the input.
+    FilteredInput clamped_filtered_input = filter_input_inner(px, center_depth, filtered_input.clamped_ex.x * 1.001, 200);
+
+    output_tex[px] = clamped_filtered_input.clamped_ex;
+    dev_output_tex[px] = sqrt(filtered_input.var);
 }

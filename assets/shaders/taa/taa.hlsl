@@ -13,12 +13,12 @@
 [[vk::binding(3)]] Texture2D<float2> closest_velocity_tex;
 [[vk::binding(4)]] Texture2D<float2> velocity_history_tex;
 [[vk::binding(5)]] Texture2D<float> depth_tex;
-[[vk::binding(6)]] Texture2D<float> smooth_var_history_tex;
+[[vk::binding(6)]] Texture2D<float3> smooth_var_history_tex;
 [[vk::binding(7)]] Texture2D<float> input_prob_tex;
 [[vk::binding(8)]] Texture2D<float4> filtered_input_tex;
 [[vk::binding(9)]] RWTexture2D<float4> output_tex;
 [[vk::binding(10)]] RWTexture2D<float4> debug_output_tex;
-[[vk::binding(11)]] RWTexture2D<float> smooth_var_output_tex;
+[[vk::binding(11)]] RWTexture2D<float3> smooth_var_output_tex;
 [[vk::binding(12)]] RWTexture2D<float2> velocity_output_tex;
 [[vk::binding(13)]] cbuffer _ {
     float4 input_tex_size;
@@ -172,8 +172,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 ex2 = center_sample.ex2;
     const float3 var = max(0.0.xxx, ex2 - ex * ex);
 
-    const float prev_meta = smooth_var_history_tex.SampleLevel(sampler_lnc, uv + reproj_xy, 0);
-    float prev_var = prev_meta.x;
+    const float3 prev_var = smooth_var_history_tex.SampleLevel(sampler_lnc, uv + reproj_xy, 0).x;
 
     // TODO: factor-out camera-only velocity
     const float2 vel_now = closest_velocity_tex[px] / frame_constants.delta_time_seconds;
@@ -181,10 +180,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float vel_diff = length((vel_now - vel_prev) / max(1, abs(vel_now + vel_prev)));
     const float var_blend = saturate(0.3 + 0.7 * (1 - reproj.z) + vel_diff);
 
-    float smooth_var = max(var.x, lerp(prev_var, var.x, var_blend));
+    float3 smooth_var = max(var, lerp(prev_var, var, var_blend));
 
     const float var_prob_blend = saturate(input_prob);
-    smooth_var = lerp(var.x, smooth_var, var_prob_blend);
+    smooth_var = lerp(var, smooth_var, var_prob_blend);
     
     const float3 input_dev = sqrt(var);
 

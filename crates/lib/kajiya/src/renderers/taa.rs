@@ -81,7 +81,7 @@ impl TaaRenderer {
         let (mut smooth_var_output_tex, smooth_var_history_tex) =
             self.temporal_smooth_var_tex.get_output_and_history(
                 rg,
-                ImageDesc::new_2d(vk::Format::R16_SFLOAT, output_extent)
+                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_extent)
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
@@ -89,6 +89,12 @@ impl TaaRenderer {
             vk::Format::R16G16B16A16_SFLOAT,
             input_tex.desc().extent_2d(),
         ));
+
+        let mut filtered_input_deviation_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            input_tex.desc().extent_2d(),
+        ));
+
         SimpleRenderPass::new_compute(
             rg.add_pass("taa filter input"),
             "/shaders/taa/filter_input.hlsl",
@@ -96,6 +102,7 @@ impl TaaRenderer {
         .read(input_tex)
         .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
         .write(&mut filtered_input_img)
+        .write(&mut filtered_input_deviation_img)
         .dispatch(filtered_input_img.desc().extent);
 
         let mut filtered_history_img = rg.create(ImageDesc::new_2d(
@@ -125,6 +132,7 @@ impl TaaRenderer {
             )
             .read(input_tex)
             .read(&filtered_input_img)
+            .read(&filtered_input_deviation_img)
             .read(&reprojected_history_img)
             .read(&filtered_history_img)
             .read(reprojection_map)
