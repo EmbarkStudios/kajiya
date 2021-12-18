@@ -14,7 +14,7 @@
 [[vk::binding(3)]] Texture2D<float4> filtered_history_tex;
 [[vk::binding(4)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(5)]] Texture2D<float> depth_tex;
-[[vk::binding(6)]] Texture2D<float4> meta_history_tex;
+[[vk::binding(6)]] Texture2D<float> smooth_var_history_tex;
 [[vk::binding(7)]] Texture2D<float2> velocity_history_tex;
 [[vk::binding(8)]] Texture2D<float> input_variance_tex;
 [[vk::binding(9)]] RWTexture2D<float2> output_tex;
@@ -90,9 +90,9 @@ void main(uint2 px: SV_DispatchThreadID) {
         );*/
         //const float4 closest_history = HistoryRemap::create().remap(history_tex.SampleLevel(sampler_llc, input_uv, 0));
         const float4 closest_history = filtered_history_tex.SampleLevel(sampler_lnc, input_uv, 0);
-        const float4 closest_meta = meta_history_tex.SampleLevel(sampler_lnc, input_uv + reprojection_tex[px].xy, 0);
+        const float closest_smooth_var = smooth_var_history_tex.SampleLevel(sampler_lnc, input_uv + reprojection_tex[px].xy, 0);
         const float2 closest_vel = velocity_history_tex.SampleLevel(sampler_lnc, input_uv + reprojection_tex[px].xy, 0).xy * frame_constants.delta_time_seconds;
-        const float3 closest_var = ivar * closest_meta.x / max(1e-8, ivar.x);
+        const float3 closest_var = ivar * closest_smooth_var / max(1e-8, ivar.x);
         //const float3 closest_var = closest_meta.x;
 
         //const float3 effective_var = closest_var;

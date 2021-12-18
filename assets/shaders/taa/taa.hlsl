@@ -13,16 +13,14 @@
 [[vk::binding(3)]] Texture2D<float2> closest_velocity_tex;
 [[vk::binding(4)]] Texture2D<float2> velocity_history_tex;
 [[vk::binding(5)]] Texture2D<float> depth_tex;
-[[vk::binding(6)]] Texture2D<float4> meta_history_tex;
-[[vk::binding(7)]] Texture2D<float4> meta2_history_tex;
-[[vk::binding(8)]] Texture2D<float4> input_stats_tex;
-[[vk::binding(9)]] Texture2D<float4> filtered_input_tex;
-[[vk::binding(10)]] RWTexture2D<float4> output_tex;
-[[vk::binding(11)]] RWTexture2D<float4> debug_output_tex;
-[[vk::binding(12)]] RWTexture2D<float4> meta_output_tex;
-[[vk::binding(13)]] RWTexture2D<float4> meta2_output_tex;
-[[vk::binding(14)]] RWTexture2D<float2> velocity_output_tex;
-[[vk::binding(15)]] cbuffer _ {
+[[vk::binding(6)]] Texture2D<float> smooth_var_history_tex;
+[[vk::binding(7)]] Texture2D<float4> input_stats_tex;
+[[vk::binding(8)]] Texture2D<float4> filtered_input_tex;
+[[vk::binding(9)]] RWTexture2D<float4> output_tex;
+[[vk::binding(10)]] RWTexture2D<float4> debug_output_tex;
+[[vk::binding(11)]] RWTexture2D<float> smooth_var_output_tex;
+[[vk::binding(12)]] RWTexture2D<float2> velocity_output_tex;
+[[vk::binding(13)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
 };
@@ -123,8 +121,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float2 uv = get_uv(px, output_tex_size);
 
-    float4 meta2 = meta2_history_tex.SampleLevel(sampler_llc, uv + reprojection_tex[reproj_px].xy, 0);
-
     float4 history_packed = history_tex[px];
     float3 history = history_packed.rgb;
     float history_coverage = max(0.0, history_packed.a);
@@ -178,7 +174,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 ex2 = center_sample.ex2;
     const float3 var = max(0.0.xxx, ex2 - ex * ex);
 
-    const float4 prev_meta = meta_history_tex.SampleLevel(sampler_lnc, uv + reproj_xy, 0);
+    const float prev_meta = smooth_var_history_tex.SampleLevel(sampler_lnc, uv + reproj_xy, 0);
     float prev_var = prev_meta.x;
 
     const float2 vel_now = closest_velocity_tex[px] / frame_constants.delta_time_seconds;
@@ -294,8 +290,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         result = lerp(clamped_history, result, blend_mult);
     }
 
-    float4 meta_out = float4(smooth_var, 0, 0, 0);
-    meta_output_tex[px] = meta_out;
+    smooth_var_output_tex[px] = smooth_var;
 
     result = ycbcr_to_rgb(result);
 	result = encode_rgb(result);
@@ -303,8 +298,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     debug_out = result;
 
     output_tex[px] = float4(max(0.0, result), coverage);
-    meta2_output_tex[px] = float4(0.0, filtered_input_dev, var.x, ex.x);
-
     debug_output_tex[px] = float4(debug_out, 1);
 
     float2 vel_out = reproj_xy;

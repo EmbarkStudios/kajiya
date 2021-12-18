@@ -6,8 +6,7 @@ use kajiya_rg::{self as rg, SimpleRenderPass};
 pub struct TaaRenderer {
     temporal_tex: PingPongTemporalResource,
     temporal_velocity_tex: PingPongTemporalResource,
-    temporal_meta_tex: PingPongTemporalResource,
-    temporal_meta2_tex: PingPongTemporalResource,
+    temporal_smooth_var_tex: PingPongTemporalResource,
     pub current_supersample_offset: Vec2,
 }
 
@@ -22,8 +21,7 @@ impl TaaRenderer {
         Self {
             temporal_tex: PingPongTemporalResource::new("taa"),
             temporal_velocity_tex: PingPongTemporalResource::new("taa.velocity"),
-            temporal_meta_tex: PingPongTemporalResource::new("taa.meta"),
-            temporal_meta2_tex: PingPongTemporalResource::new("taa.meta2"),
+            temporal_smooth_var_tex: PingPongTemporalResource::new("taa.smooth_var"),
             current_supersample_offset: Vec2::ZERO,
         }
     }
@@ -80,17 +78,10 @@ impl TaaRenderer {
         ))
         .dispatch(reprojected_history_img.desc().extent);
 
-        let (mut meta_output_tex, meta_history_tex) =
-            self.temporal_meta_tex.get_output_and_history(
+        let (mut smooth_var_output_tex, smooth_var_history_tex) =
+            self.temporal_smooth_var_tex.get_output_and_history(
                 rg,
-                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_extent)
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            );
-
-        let (mut meta2_output_tex, meta2_history_tex) =
-            self.temporal_meta2_tex.get_output_and_history(
-                rg,
-                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_extent)
+                ImageDesc::new_2d(vk::Format::R16_SFLOAT, output_extent)
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
@@ -160,7 +151,7 @@ impl TaaRenderer {
             .read(&filtered_history_img)
             .read(reprojection_map)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
-            .read(&meta_history_tex)
+            .read(&smooth_var_history_tex)
             .read(&velocity_history_tex)
             .read(&input_variance_eroded_img)
             .write(&mut input_stats_img)
@@ -196,14 +187,12 @@ impl TaaRenderer {
             .read(&closest_velocity_img)
             .read(&velocity_history_tex)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
-            .read(&meta_history_tex)
-            .read(&meta2_history_tex)
+            .read(&smooth_var_history_tex)
             .read(&input_stats_img)
             .read(&filtered_input_img)
             .write(&mut temporal_output_tex)
             .write(&mut debug_output_img)
-            .write(&mut meta_output_tex)
-            .write(&mut meta2_output_tex)
+            .write(&mut smooth_var_output_tex)
             .write(&mut temporal_velocity_output_tex)
             .constants((
                 input_tex.desc().extent_inv_extent_2d(),
