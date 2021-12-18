@@ -104,7 +104,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
     }
 
     pub fn dynamic_constants(&mut self) -> &mut DynamicConstants {
-        &mut self.resources.dynamic_constants
+        self.resources.dynamic_constants
     }
 
     pub fn bind_compute_pipeline<'s>(
