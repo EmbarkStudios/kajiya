@@ -28,8 +28,8 @@ impl TaaRenderer {
 }
 
 pub struct TaaOutput {
-    pub color: rg::ReadOnlyHandle<Image>,
-    pub debug: rg::Handle<Image>,
+    pub temporal_out: rg::ReadOnlyHandle<Image>,
+    pub this_frame_out: rg::Handle<Image>,
 }
 
 impl TaaRenderer {
@@ -164,7 +164,7 @@ impl TaaRenderer {
             prob_filtered2_img
         };
 
-        let mut debug_output_img = rg.create(Self::temporal_tex_desc(output_extent));
+        let mut this_frame_output_img = rg.create(Self::temporal_tex_desc(output_extent));
         SimpleRenderPass::new_compute(rg.add_pass("taa"), "/shaders/taa/taa.hlsl")
             .read(input_tex)
             .read(&reprojected_history_img)
@@ -174,9 +174,8 @@ impl TaaRenderer {
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
             .read(&smooth_var_history_tex)
             .read(&input_prob_img)
-            .read(&filtered_input_img)
             .write(&mut temporal_output_tex)
-            .write(&mut debug_output_img)
+            .write(&mut this_frame_output_img)
             .write(&mut smooth_var_output_tex)
             .write(&mut temporal_velocity_output_tex)
             .constants((
@@ -186,8 +185,8 @@ impl TaaRenderer {
             .dispatch(temporal_output_tex.desc().extent);
 
         TaaOutput {
-            color: temporal_output_tex.into(),
-            debug: debug_output_img,
+            temporal_out: temporal_output_tex.into(),
+            this_frame_out: this_frame_output_img,
         }
     }
 }

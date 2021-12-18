@@ -15,35 +15,33 @@
 [[vk::binding(5)]] Texture2D<float> depth_tex;
 [[vk::binding(6)]] Texture2D<float3> smooth_var_history_tex;
 [[vk::binding(7)]] Texture2D<float> input_prob_tex;
-[[vk::binding(8)]] Texture2D<float4> filtered_input_tex;
+[[vk::binding(8)]] RWTexture2D<float4> temporal_output_tex;
 [[vk::binding(9)]] RWTexture2D<float4> output_tex;
-[[vk::binding(10)]] RWTexture2D<float4> debug_output_tex;
-[[vk::binding(11)]] RWTexture2D<float3> smooth_var_output_tex;
-[[vk::binding(12)]] RWTexture2D<float2> velocity_output_tex;
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(10)]] RWTexture2D<float3> smooth_var_output_tex;
+[[vk::binding(11)]] RWTexture2D<float2> velocity_output_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 input_tex_size;
     float4 output_tex_size;
 };
 
-// Apply at Mitchell-Netravali filter to the current frame, "un-jittering" it,
-// and sharpening the content.
+// Apply at spatial kernel to the current frame, "un-jittering" it.
 #define FILTER_CURRENT_FRAME 1
+
 #define USE_ACCUMULATION 1
 #define RESET_ACCUMULATION 0
 #define USE_NEIGHBORHOOD_CLAMPING 1
-#define USE_ANTIFLICKER 0
 #define TARGET_SAMPLE_COUNT 8
+
+// If 1, outputs the input verbatim
+// if N > 1, exponentially blends approximately N frames together without any clamping
 #define SHORT_CIRCUIT 0
-#define USE_FILTERED_INPUT 0
+
+// Whether to use the input probability calculated in `input_prob.hlsl` and the subsequent filters.
+// Necessary for stability of temporal super-resolution.
 #define USE_CONFIDENCE_BASED_HISTORY_BLEND 1
 
-#if USE_FILTERED_INPUT
-    #define INPUT_TEX filtered_input_tex
-    #define INPUT_REMAP IdentityImageRemap
-#else
-    #define INPUT_TEX input_tex
-    #define INPUT_REMAP InputRemap
-#endif
+#define INPUT_TEX input_tex
+#define INPUT_REMAP InputRemap
 
 // Draw a rectangle indicating the current frame index. Useful for debugging frame drops.
 #define USE_FRAME_INDEX_INDICATOR_BAR 0
@@ -101,8 +99,8 @@ void main(uint2 px: SV_DispatchThreadID) {
             if (px.x < frame_constants.frame_index * 10 % uint(output_tex_size.x)) {
                 val = 1;
             }
+            temporal_output_tex[px] = val;
             output_tex[px] = val;
-            debug_output_tex[px] = val;
             return;
         }
     #endif
@@ -112,12 +110,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     //const uint2 reproj_px = uint2(px * input_resolution_fraction + 0.5);
 
     #if SHORT_CIRCUIT
-        output_tex[px] = lerp(filtered_input_tex[reproj_px], float4(encode_rgb(history_tex[px].rgb), 1), 1.0 - 1.0 / SHORT_CIRCUIT);
-        debug_output_tex[px] = output_tex[px];
+        temporal_output_tex[px] = lerp(input_tex[reproj_px], float4(encode_rgb(history_tex[px].rgb), 1), 1.0 - 1.0 / SHORT_CIRCUIT);
+        output_tex[px] = temporal_output_tex[px];
         return;
     #endif
-
-    float3 debug_out = 0;
 
     float2 uv = get_uv(px, output_tex_size);
 
@@ -187,82 +183,121 @@ void main(uint2 px: SV_DispatchThreadID) {
     
     const float3 input_dev = sqrt(var);
 
-    //float local_contrast = input_dev.x / (ex.x + 1e-5);
-    float box_n_deviations = 0.8;
-    //box_n_deviations *= lerp(0.5, 1.0, smoothstep(-0.1, 0.3, local_contrast));
-    //box_n_deviations *= lerp(0.5, 1.0, clamp(1.0 - texel_center_dist, 0.0, 1.0));
+    float4 this_frame_result = 0;
+    #define DEBUG_SHOW(value) { this_frame_result = float4((float3)(value), 1); }
 
-	float3 nmin = ex - input_dev * box_n_deviations;
-	float3 nmax = ex + input_dev * box_n_deviations;
+    float3 clamped_history;
 
-	#if USE_ACCUMULATION
-    #if USE_NEIGHBORHOOD_CLAMPING
-        float3 clamped_history = clamp(bhistory, nmin, nmax);
-    #else
-		float3 clamped_history = bhistory;
-    #endif
+    // Perform neighborhood clamping / disocclusion rejection
+    {
+        // Use a narrow color bounding box to avoid disocclusions
+        float box_n_deviations = 0.8;
 
-        const float clamping_event = length(max(0.0, max(bhistory - nmax, nmin - bhistory)) / max(0.01, ex));
-
-        float3 outlier3 = max(0.0, (max(nmin - history, history - nmax)) / (0.1 + max(max(abs(history), abs(ex)), 1e-5)));
-        float3 boutlier3 = max(0.0, (max(nmin - bhistory, bhistory - nmax)) / (0.1 + max(max(abs(bhistory), abs(ex)), 1e-5)));
-
-        float outlier = max(outlier3.x, max(outlier3.y, outlier3.z));
-        float boutlier = max(boutlier3.x, max(boutlier3.y, boutlier3.z));
-        float soutlier = saturate(lerp(boutlier, outlier, coverage));
-
-        const bool history_valid = all(uv + reproj_xy == saturate(uv + reproj_xy));
-
-#if 1
-        if (history_valid) {
-            const float bclamp_amount = length((clamped_history - bhistory) / max(1e-5, abs(ex)));
-            const float edge_outliers = abs(boutlier - outlier) * 10;
-            const float non_edge_outliers = (boutlier - abs(boutlier - outlier)) * 10;
-
-            const float bclamp_as_lerp = dot(
-                clamped_history - bhistory, bcenter - bhistory)
-                / max(1e-5, length(clamped_history - bhistory) * length(bcenter - bhistory));
-
-            float3 clamp_diff = history - clamped_history;
-            float3 diff = history - bhistory;
-
-            const float history_only_edges = length(clamp_diff.x / max(1e-3, input_dev.x)) * 0.05;
-            const float stabilize_edges = saturate(edge_outliers * exp2(-length(input_tex_size.xy * reproj_xy))) * saturate(1 - history_only_edges);
-            diff = lerp(diff, clamp_diff, stabilize_edges);
-
-            diff.yz /= max(1e-5, abs(diff.x));
-
-            const float keep_detail = 1 - saturate(bclamp_as_lerp) * (1 - stabilize_edges);
-            diff.x *= keep_detail;
-            clamped_history = clamped_history + diff * float3(1.0, max(1e-5, abs(diff.xx)));
-            
-            #if 1
-                // When temporally upsampling, after a clamping event, there's pixellation
-                // because we haven't accumulated enough samples yet from
-                // the reduced-resolution input. Dampening history coverage when
-                // clamping happens allows us to boost this convergence.
-
-                history_coverage *= lerp(
-                    lerp(0.0, 0.9, keep_detail), 1.0, saturate(10 * clamping_event)
-                );
-            #endif
-        } else {
-            coverage = 1;
-            center = bcenter;
-            history_coverage = 0;
+        if (USE_CONFIDENCE_BASED_HISTORY_BLEND) {
+            // Expand the box based on input confidence.
+            box_n_deviations = lerp(box_n_deviations, 3, input_prob);
         }
-#else
-        clamped_history = clamp(history, nmin, nmax);
-        //clamped_history = history;
-#endif
 
-    #if USE_CONFIDENCE_BASED_HISTORY_BLEND
-        clamped_history = lerp(
-            clamped_history,
-            history,
-            smoothstep(0.2, 1.0, input_prob)
-        );
+    	float3 nmin = ex - input_dev * box_n_deviations;
+    	float3 nmax = ex + input_dev * box_n_deviations;
+
+    	#if USE_ACCUMULATION
+        #if USE_NEIGHBORHOOD_CLAMPING
+            float3 clamped_bhistory = clamp(bhistory, nmin, nmax);
+        #else
+    		float3 clamped_bhistory = bhistory;
+        #endif
+
+            const float clamping_event = length(max(0.0, max(bhistory - nmax, nmin - bhistory)) / max(0.01, ex));
+
+            float3 outlier3 = max(0.0, (max(nmin - history, history - nmax)) / (0.1 + max(max(abs(history), abs(ex)), 1e-5)));
+            float3 boutlier3 = max(0.0, (max(nmin - bhistory, bhistory - nmax)) / (0.1 + max(max(abs(bhistory), abs(ex)), 1e-5)));
+
+            // Temporal outliers in sharp history
+            float outlier = max(outlier3.x, max(outlier3.y, outlier3.z));
+            //DEBUG_SHOW(outlier);
+
+            // Temporal outliers in blurry history
+            float boutlier = max(boutlier3.x, max(boutlier3.y, boutlier3.z));
+            //DEBUG_SHOW(boutlier);
+
+            const bool history_valid = all(uv + reproj_xy == saturate(uv + reproj_xy));
+
+    #if 1
+            if (history_valid) {
+                const float non_disoccluding_outliers = max(0.0, outlier - boutlier) * 10;
+                //DEBUG_SHOW(non_disoccluding_outliers);
+
+                const float3 unclamped_history_detail = history - clamped_bhistory;
+
+                // Temporal luminance diff, containing history edges, and peaking when
+                // clamping happens.
+                const float temporal_clamping_detail = length(unclamped_history_detail.x / max(1e-3, input_dev.x)) * 0.05;
+                //DEBUG_SHOW(temporal_clamping_detail);
+
+                // Close to 1.0 when temporal clamping is relatively low. Close to 0.0 when disocclusions happen.
+                const float temporal_stability = saturate(1 - temporal_clamping_detail);
+                //DEBUG_SHOW(temporal_stability);
+
+                const float allow_unclamped_detail = saturate(non_disoccluding_outliers) * temporal_stability;
+                //const float allow_unclamped_detail = saturate(non_disoccluding_outliers * exp2(-length(input_tex_size.xy * reproj_xy))) * temporal_stability;
+                //DEBUG_SHOW(allow_unclamped_detail);
+
+                // Clamping happens to blurry history because input is at lower fidelity (and potentially lower resolution)
+                // than history (we don't have enough data to perform good clamping of high frequencies).
+                // In order to keep high-resolution detail in the output, the high-frequency content is split from
+                // low-frequency (`bhistory`), and then selectively re-added. The detail needs to be attenuated
+                // in order not to cause false detail (which look like excessive sharpening artifacts).
+                float3 history_detail = history - bhistory;
+
+                // Selectively stabilize some detail, allowing unclamped history
+                history_detail = lerp(history_detail, unclamped_history_detail, allow_unclamped_detail);
+
+                // 0..1 value of how much clamping initially happened in the blurry history
+                const float initial_bclamp_amount = saturate(dot(
+                    clamped_bhistory - bhistory, bcenter - bhistory)
+                    / max(1e-5, length(clamped_bhistory - bhistory) * length(bcenter - bhistory)));
+
+                // Ditto, after adjusting for `allow_unclamped_detail`
+                const float effective_clamp_amount = saturate(initial_bclamp_amount) * (1 - allow_unclamped_detail);
+                //DEBUG_SHOW(effective_clamp_amount);
+
+                // Where clamping happened to the blurry history, also remove the detail (history-bhistory)
+                const float keep_detail = 1 - effective_clamp_amount;
+                history_detail *= keep_detail;
+
+                // Finally, construct the full-frequency output.
+                clamped_history = clamped_bhistory + history_detail;
+                
+                #if 1
+                    // When temporally upsampling, after a clamping event, there's pixellation
+                    // because we haven't accumulated enough samples yet from
+                    // the reduced-resolution input. Dampening history coverage when
+                    // clamping happens allows us to boost this convergence.
+
+                    history_coverage *= lerp(
+                        lerp(0.0, 0.9, keep_detail), 1.0, saturate(10 * clamping_event)
+                    );
+                #endif
+            } else {
+                clamped_history = clamped_bhistory;
+                coverage = 1;
+                center = bcenter;
+                history_coverage = 0;
+            }
+    #else
+            clamped_history = clamp(history, nmin, nmax);
     #endif
+
+        if (USE_CONFIDENCE_BASED_HISTORY_BLEND) {
+            // If input confidence is high, blend in unclamped history.
+            clamped_history = lerp(
+                clamped_history,
+                history,
+                smoothstep(0.5, 1.0, input_prob)
+            );
+        }
+    }
 
 
     #if RESET_ACCUMULATION
@@ -270,7 +305,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     #endif
 
         float total_coverage = max(1e-5, history_coverage + coverage);
-        float3 result = (clamped_history * history_coverage + center) / total_coverage;
+        float3 temporal_result = (clamped_history * history_coverage + center) / total_coverage;
 
         const float max_coverage = max(2, TARGET_SAMPLE_COUNT / (input_resolution_fraction.x * input_resolution_fraction.y));
 
@@ -278,25 +313,19 @@ void main(uint2 px: SV_DispatchThreadID) {
 
         coverage = total_coverage;
 	#else
-		float3 result = center / coverage;
+		float3 temporal_result = center / coverage;
 	#endif
-
-    // "Anti-flicker"
-    if (USE_ANTIFLICKER) {
-        float clamp_dist = (min(abs(bhistory.x - nmin.x), abs(bhistory.x - nmax.x))) / max(max(bhistory.x, ex.x), 1e-5);
-        const float blend_mult = lerp(0.2, 1.0, smoothstep(0.0, 2.0, clamp_dist));
-        result = lerp(clamped_history, result, blend_mult);
-    }
 
     smooth_var_output_tex[px] = smooth_var;
 
-    result = ycbcr_to_rgb(result);
-	result = encode_rgb(result);
+    temporal_result = ycbcr_to_rgb(temporal_result);
+	temporal_result = encode_rgb(temporal_result);
+    temporal_result = max(0.0, temporal_result);
     
-    debug_out = result;
+    this_frame_result.rgb = lerp(temporal_result, this_frame_result.rgb, this_frame_result.a);
 
-    output_tex[px] = float4(max(0.0, result), coverage);
-    debug_output_tex[px] = float4(debug_out, 1);
+    temporal_output_tex[px] = float4(temporal_result, coverage);
+    output_tex[px] = this_frame_result;
 
     float2 vel_out = reproj_xy;
     float vel_out_depth = 0;
