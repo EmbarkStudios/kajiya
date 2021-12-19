@@ -3,6 +3,7 @@
 
 #include "uv.hlsl"
 #include "lights/packed.hlsl"
+#include "ray_cone.hlsl"
 
 struct ViewConstants {
     float4x4 view_to_clip;
@@ -76,11 +77,11 @@ struct ViewRayContext {
     float4 ray_hit_ws_h;
 
     float3 ray_dir_vs() {
-        return ray_dir_vs_h.xyz;
+        return normalize(ray_dir_vs_h.xyz);
     }
 
     float3 ray_dir_ws() {
-        return ray_dir_ws_h.xyz;
+        return normalize(ray_dir_ws_h.xyz);
     }
 
     float3 ray_origin_vs() {
@@ -109,8 +110,8 @@ struct ViewRayContext {
 
         ViewRayContext res;
         res.ray_dir_cs = float4(uv_to_cs(uv), 0.0, 1.0);
-        res.ray_dir_vs_h = normalize(mul(view_constants.sample_to_view, res.ray_dir_cs));
-        res.ray_dir_ws_h = normalize(mul(view_constants.view_to_world, res.ray_dir_vs_h));
+        res.ray_dir_vs_h = mul(view_constants.sample_to_view, res.ray_dir_cs);
+        res.ray_dir_ws_h = mul(view_constants.view_to_world, res.ray_dir_vs_h);
 
         res.ray_origin_cs = float4(uv_to_cs(uv), 1.0, 1.0);
         res.ray_origin_vs_h = mul(view_constants.sample_to_view, res.ray_origin_cs);
@@ -157,14 +158,24 @@ float3 direction_world_to_view(float3 v) {
 }
 
 float3 position_world_to_view(float3 v) {
-    float4 p = mul(frame_constants.view_constants.world_to_view, float4(v, 1));
-    return p.xyz / p.w;
+    return mul(frame_constants.view_constants.world_to_view, float4(v, 1)).xyz;
 }
 
 float3 position_world_to_clip(float3 v) {
     float4 p = mul(frame_constants.view_constants.world_to_view, float4(v, 1));
     p = mul(frame_constants.view_constants.view_to_clip, p);
     return p.xyz / p.w;
+}
+
+float pixel_cone_spread_angle_from_image_height(float image_height) {
+    return atan(2.0 * frame_constants.view_constants.clip_to_view._11 / image_height);
+}
+
+RayCone pixel_ray_cone_from_image_height(float image_height) {
+    RayCone res;
+    res.width = 0.0;
+    res.spread_angle = pixel_cone_spread_angle_from_image_height(image_height);
+    return res;
 }
 
 #endif

@@ -135,7 +135,7 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &reprojection_map,
-            &convolved_sky_cube,
+            &sky_cube,
             self.bindless_descriptor_set,
             &tlas,
             &csgi_volume,

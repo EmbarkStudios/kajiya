@@ -50,7 +50,7 @@ DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(4, 5, 6)
 #include "../csgi/lookup.hlsl"
 #include "../csgi/subray_lookup.hlsl"
 
-static const float SKY_DIST = 1e5;
+static const float SKY_DIST = 1e4;
 
 [shader("raygeneration")]
 void main() {
@@ -206,9 +206,13 @@ void main() {
         // This does not provide any benefits for variance reduction, but it eliminates the artifacts.
         bool control_variate_sample_directional = ssao_tex[hi_px] > 0.8;
 
-        // TODO: cone spread angle
+        const float reflected_cone_spread_angle = 0.2;
+        const RayCone ray_cone =
+            pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
+            .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
+
         const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-            .with_cone_width(0.05)
+            .with_cone(ray_cone)
             .with_cull_back_faces(true)
             .with_path_length(1)
             .trace(acceleration_structure);

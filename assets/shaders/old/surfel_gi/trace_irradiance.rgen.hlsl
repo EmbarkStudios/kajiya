@@ -119,7 +119,7 @@ void main() {
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
             const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-                .with_cone_width(1.0)
+                .with_cone(RayCone::from_spread_angle(1.0))
                 .with_cull_back_faces(true)
                 .with_path_length(path_length + 1)  // +1 because this is indirect light
                 .trace(acceleration_structure);

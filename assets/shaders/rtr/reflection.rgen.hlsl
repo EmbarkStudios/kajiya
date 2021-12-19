@@ -167,9 +167,14 @@ void main() {
             outgoing_ray.TMax = SKY_DIST;
         }
 
+        const float reflected_cone_spread_angle = sqrt(gbuffer.roughness) * 0.1;
+        const RayCone ray_cone =
+            pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
+            .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
+
         // TODO: cone spread angle
         const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-            .with_cone_width(0.1)
+            .with_cone(ray_cone)
             .with_cull_back_faces(true)
             .with_path_length(1)
             .trace(acceleration_structure);

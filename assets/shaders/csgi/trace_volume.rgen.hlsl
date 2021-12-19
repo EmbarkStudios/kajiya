@@ -123,7 +123,7 @@ void main() {
         // Note2: actually without _nocull, the GI can spread through backfaces, causing major leaks in scenes which
         // appear watertight, but are leaky from the outside, e.g. "kitchen-interior"
         const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-            .with_cone_width(1e2)
+            .with_cone(RayCone::from_spread_angle(1.0))
             .with_cull_back_faces(false)
             .with_path_length(1)
             .trace(acceleration_structure);

@@ -263,6 +263,7 @@ dependencies = [
  "async-channel",
  "async-executor",
  "easy-parallel",
+ "env_logger",
  "futures",
  "glam",
  "kajiya-asset",

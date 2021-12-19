@@ -68,10 +68,6 @@ float remap_unorm_to_gaussian(float x, float truncation) {
 	return inv_error_function(x * 2.0 - 1.0, truncation);
 }
 
-float pixel_cone_spread_angle(float texture_height) {
-    return atan(2.0 * frame_constants.view_constants.clip_to_view._11 / texture_height);
-}
-
 [shader("raygeneration")]
 void main() {
     const uint2 px = DispatchRaysIndex().xy;
@@ -110,8 +106,12 @@ void main() {
 
         float roughness_bias = 0.0;
 
-        // TODO
-        float cone_spread_angle = 0;//pixel_cone_spread_angle(DispatchRaysDimensions().y);
+        RayCone ray_cone = pixel_ray_cone_from_image_height(
+            DispatchRaysDimensions().y
+        );
+
+        // Bias for texture sharpness
+        ray_cone.spread_angle *= 0.3;
 
         [loop]
         for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
@@ -126,15 +126,19 @@ void main() {
             }
 
             GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-                .with_cone_width(cone_spread_angle)
+                .with_cone(ray_cone)
                 .with_cull_back_faces(true || 0 == path_length)
                 .with_path_length(path_length)
                 .trace(acceleration_structure);
 
             if (primary_hit.is_hit) {
+                // TODO
+                const float surface_spread_angle = 0.0;
+                ray_cone = ray_cone.propagate(surface_spread_angle, primary_hit.ray_t);
+
                 const float3 to_light_norm = sample_sun_direction(
                     float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))),
-                    false
+                    true
                 );
                 
                 const bool is_shadowed =
