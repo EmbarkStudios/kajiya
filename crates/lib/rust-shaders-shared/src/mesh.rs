@@ -4,7 +4,7 @@ use macaw::{Mat2, UVec4, Vec2, Vec4};
 #[derive(Copy, Clone)]
 #[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
 pub struct MeshDescriptor {
-    pub vertex_core_offset: u32,      // position, normal packed in one
+    pub vertex_core_offset: u32, // position, normal packed in one
     pub vertex_uv_offset: u32,
     pub vertex_mat_offset: u32,
     pub vertex_aux_offset: u32,
