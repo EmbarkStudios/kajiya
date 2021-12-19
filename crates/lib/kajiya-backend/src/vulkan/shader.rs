@@ -1028,8 +1028,8 @@ fn merge_shader_stage_layout_pair(
                     match existing.entry(binding_idx) {
                         Entry::Occupied(existing) => {
                             let existing = existing.get();
-                            assert_eq!(existing.ty, binding.ty);
-                            assert_eq!(existing.name, binding.name);
+                            assert_eq!(existing.ty, binding.ty, "binding idx: {}, name: {:?}", binding_idx, binding.name);
+                            assert_eq!(existing.name, binding.name, "binding idx: {}, name: {:?}", binding_idx, binding.name);
                         }
                         Entry::Vacant(vacant) => {
                             vacant.insert(binding);

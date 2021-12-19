@@ -26,7 +26,7 @@ pub fn raster_simple_vs(
     #[spirv(instance_index)] instance_index: u32,
 
     // Descriptors
-    instance_transforms_dyn: &[InstanceTransform],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] instance_transforms_dyn: &[InstanceTransform],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] meshes: &[MeshDescriptor],
     #[spirv(uniform, descriptor_set = 0, binding = 2)] frame_constants: &FrameConstants,
     #[spirv(storage_buffer, descriptor_set = 1, binding = 1)] vertices: &[u32], // ByteAddressableBuffer
@@ -114,11 +114,11 @@ pub fn raster_simple_fs(
     // Pipeline inputs
 
     // Descriptors
-    instance_transforms_dyn: &[InstanceTransform],
+    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] instance_transforms_dyn: &[InstanceTransform],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] meshes: &[MeshDescriptor],
     #[spirv(uniform, descriptor_set = 0, binding = 2)] frame_constants: &FrameConstants,
     #[spirv(storage_buffer, descriptor_set = 1, binding = 1)] vertices: &[u32], // ByteAddressableBuffer
-    instance_dynamic_parameters_dyn: &[InstanceDynamicConstants],
+    #[spirv(storage_buffer, descriptor_set = 2, binding = 1)] instance_dynamic_parameters_dyn: &[InstanceDynamicConstants],
     #[spirv(descriptor_set = 1, binding = 3)] bindless_textures: &RuntimeArray<
         Image!(2D, type=f32, sampled=true),
     >,
