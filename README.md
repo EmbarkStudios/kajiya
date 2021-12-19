@@ -22,6 +22,7 @@ Its general goal is to get as close as possible to path-traced reference at real
 `kajiya` does not currently aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
 
 ![screenshot](docs/screenshot.jpg)
+_["Flying world - Battle of the Trash god" Scene](https://sketchfab.com/3d-models/flying-world-battle-of-the-trash-god-350a9b2fac4c4430b883898e7d3c431f) by burunduk._
 
 ## Features
 
