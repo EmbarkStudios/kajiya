@@ -240,6 +240,7 @@ impl AddMeshOptions {
 
 impl WorldRenderer {
     pub(crate) fn new_empty(
+        // Internal render resolution, before any upsampling
         #[allow(unused_variables)] render_extent: [u32; 2],
         temporal_upscale_extent: [u32; 2],
         backend: &RenderBackend,

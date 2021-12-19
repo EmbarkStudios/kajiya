@@ -178,6 +178,10 @@ impl SimpleMainLoop {
         kajiya::logging::set_up_logging(builder.default_log_level)?;
         std::env::set_var("SMOL_THREADS", "64"); // HACK; TODO: get a real executor
 
+        // Note: asking for the logical size means that if the OS is using DPI scaling,
+        // we'll get a physically larger window (with more pixels).
+        // The internal rendering resolution will still be what was asked of the `builder`,
+        // and the last blit pass will perform spatial upsampling.
         window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
             builder.resolution[0] as f64,
             builder.resolution[1] as f64,
@@ -205,25 +209,27 @@ impl SimpleMainLoop {
         // Physical window extent in pixels
         let swapchain_extent = [window.inner_size().width, window.inner_size().height];
 
-        //let scale_factor = window.scale_factor();
+        // Find the internal rendering resolution
         let render_extent = [
             (builder.resolution[0] as f32 / builder.temporal_upsampling) as u32,
             (builder.resolution[1] as f32 / builder.temporal_upsampling) as u32,
         ];
 
         log::info!(
-            "Actual rendering extent: {}x{}",
+            "Internal rendering extent: {}x{}",
             render_extent[0],
             render_extent[1]
         );
 
         let temporal_upscale_extent = builder.resolution;
 
-        log::info!(
-            "Temporal upscaling extent: {}x{}",
-            temporal_upscale_extent[0],
-            temporal_upscale_extent[1]
-        );
+        if builder.temporal_upsampling != 1.0 {
+            log::info!(
+                "Temporal upscaling extent: {}x{}",
+                temporal_upscale_extent[0],
+                temporal_upscale_extent[1]
+            );
+        }
 
         let render_backend = RenderBackend::new(
             &window,

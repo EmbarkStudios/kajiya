@@ -181,16 +181,13 @@ impl WorldRenderer {
 
         #[cfg(feature = "dlss")]
         if self.use_dlss {
-            anti_aliased = Some(
-                self.dlss
-                    .render(
-                        rg,
-                        &debug_out_tex,
-                        &reprojection_map,
-                        &gbuffer_depth.depth,
-                        self.temporal_upscale_extent,
-                    ),
-            );
+            anti_aliased = Some(self.dlss.render(
+                rg,
+                &debug_out_tex,
+                &reprojection_map,
+                &gbuffer_depth.depth,
+                self.temporal_upscale_extent,
+            ));
         }
 
         let anti_aliased = anti_aliased.unwrap_or_else(|| {

@@ -36,6 +36,8 @@ impl ViewConstants {
         }
     }
 
+    /// `render_extent` is the Internal render resolution, before any upsampling:
+    /// important for jittering over the whole domain.
     pub fn set_pixel_offset(&mut self, v: Vec2, render_extent: UVec2) {
         let sample_offset_pixels = v;
         let sample_offset_clip = Vec2::new(
