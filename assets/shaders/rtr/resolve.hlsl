@@ -66,17 +66,6 @@ void get_specular_filter_kernel_basis(float3 v, float3 n, float roughness, float
     t2 = cross(reflected, t1);
 }
 
-// Encode ray length in a space which heavily favors short ones.
-// For temporal averaging of distance to ray hits.
-float squish_ray_len(float len, float squish_strength) {
-    return exp2(-clamp(squish_strength * len, 0, 100));
-}
-
-// Ditto, decode.
-float unsquish_ray_len(float len, float squish_strength) {
-    return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
-}
-
 [numthreads(8, 8, 1)]
 void main(const uint2 px : SV_DispatchThreadID) {
     const uint2 half_px = px / 2;
@@ -151,9 +140,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     const float ray_squish_strength = 4;
 
-    const float ray_len_avg = unsquish_ray_len(lerp(
-        squish_ray_len(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_strength),
-        squish_ray_len(surf_to_hit_dist, ray_squish_strength),
+    const float ray_len_avg = exponential_unsquish(lerp(
+        exponential_squish(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_strength),
+        exponential_squish(surf_to_hit_dist, ray_squish_strength),
         0.1),ray_squish_strength);
 
     // Expand the filter size if variance is high, but cap it, so we don't destroy contact reflections
@@ -364,7 +353,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 ex2 += luma * luma * contrib_wt;
 
                 // Aggressively bias towards closer hits
-                ray_len_accum += squish_ray_len(surf_to_hit_dist, ray_squish_strength) * contrib_wt;
+                ray_len_accum += exponential_squish(surf_to_hit_dist, ray_squish_strength) * contrib_wt;
             }
         }
     }
@@ -395,7 +384,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
         contrib_accum.rgb *= max(1e-8, brdf_weight_accum);
     #endif
 
-    ray_len_accum = unsquish_ray_len(ray_len_accum, ray_squish_strength);
+    ray_len_accum = exponential_unsquish(ray_len_accum, ray_squish_strength);
     
     float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);

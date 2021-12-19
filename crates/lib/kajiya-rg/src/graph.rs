@@ -378,7 +378,7 @@ impl RenderGraph {
 
 #[derive(Debug)]
 struct ResourceLifetime {
-    first_access: Option<usize>,
+    //first_access: Option<usize>,
     last_access: Option<usize>,
 }
 
@@ -429,11 +429,11 @@ impl RenderGraph {
             .iter()
             .map(|res| match res {
                 GraphResourceInfo::Created(_) => ResourceLifetime {
-                    first_access: None,
+                    //first_access: None,
                     last_access: None,
                 },
                 GraphResourceInfo::Imported(_) => ResourceLifetime {
-                    first_access: Some(0),
+                    //first_access: Some(0),
                     last_access: Some(0),
                 },
             })
