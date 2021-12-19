@@ -42,12 +42,11 @@ impl DlssRenderer {
             );
 
             /*let inst_exts = (0..inst_ext_count)
-                .map(|i| CStr::from_ptr(*inst_exts.add(i as _).as_ref().unwrap()))
+                .map(|i| std::ffi::CStr::from_ptr(*inst_exts.add(i as _).as_ref().unwrap()))
                 .collect::<Vec<_>>();
             let device_exts = (0..device_ext_count)
-                .map(|i| CStr::from_ptr(*device_exts.add(i as _).as_ref().unwrap()))
+                .map(|i| std::ffi::CStr::from_ptr(*device_exts.add(i as _).as_ref().unwrap()))
                 .collect::<Vec<_>>();
-
             dbg!(inst_exts);
             dbg!(device_exts);*/
 
@@ -62,7 +61,7 @@ impl DlssRenderer {
                 .collect::<Vec<u16>>();
 
             let mut ngx_dll_paths = [dlss_search_path_wchar.as_mut_ptr()];
-            let mut ngx_common_info = NVSDK_NGX_FeatureCommonInfo {
+            let ngx_common_info = NVSDK_NGX_FeatureCommonInfo {
                 PathListInfo: NVSDK_NGX_PathListInfo {
                     Path: ngx_dll_paths.as_mut_ptr(),
                     Length: ngx_dll_paths.len() as _,
@@ -82,7 +81,7 @@ impl DlssRenderer {
                 transmute(backend.device.physical_device().instance.raw.handle()),
                 transmute(backend.device.physical_device().raw),
                 transmute(backend.device.raw.handle()),
-                &mut ngx_common_info,
+                &ngx_common_info,
                 NVSDK_NGX_Version_NVSDK_NGX_Version_API,
             ));
 
@@ -281,7 +280,7 @@ impl DlssRenderer {
             AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
         let motion_vectors_ref = pass.read(
-            &motion_vectors,
+            motion_vectors,
             AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
         let output_ref = pass.write(&mut output, AccessType::AnyShaderWrite);

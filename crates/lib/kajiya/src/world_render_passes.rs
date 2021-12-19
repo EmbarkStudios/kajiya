@@ -189,8 +189,7 @@ impl WorldRenderer {
                         &reprojection_map,
                         &gbuffer_depth.depth,
                         self.temporal_upscale_extent,
-                    )
-                    .into(),
+                    ),
             );
         }
 
