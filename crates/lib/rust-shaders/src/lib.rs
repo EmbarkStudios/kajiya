@@ -20,6 +20,7 @@ pub mod gbuffer;
 pub mod motion_blur;
 pub mod pack_unpack;
 pub mod post_combine;
+pub mod raster_simple;
 pub mod rev_blur;
 pub mod sky;
 pub mod ssgi;
