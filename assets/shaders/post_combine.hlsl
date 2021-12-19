@@ -15,12 +15,13 @@
     float ev_shift;
 };
 
+#define USE_GRADE 1
 #define USE_TONEMAP 1
-#define USE_TIGHT_BLUR 0
 #define USE_DITHER 1
 #define USE_SHARPEN 1
+#define USE_VIGNETTE 1
 
-static const float sharpen_amount = 0.2;
+static const float sharpen_amount = 0.1;
 static const float glare_amount = 0.05;
 //static const float glare_amount = 0.0;
 
@@ -40,32 +41,21 @@ float triangle_remap(float n) {
     return v;
 }
 
-float local_tmo_constrain(float x, float max_compression) {
-    #define local_tmo_constrain_mode 2
+// (Very) reduced version of:
+// Uchimura 2017, "HDR theory and practice"
+// Math: https://www.desmos.com/calculator/gslcdxvipg
+// Source: https://www.slideshare.net/nikuque/hdr-theory-and-practicce-jp
+//  m: linear section start
+//  c: black
+float3 push_down_black_point(float3 x, float m, float c) {
+    float3 w0 = 1.0 - smoothstep(0.0, m, x);
+    float3 w1 = 1.0 - w0;
 
-    #if local_tmo_constrain_mode == 0
-        return exp(tanh(log(x) / max_compression) * max_compression);
-    #elif local_tmo_constrain_mode == 1
+    float3 T = m * pow(x / m, c);
+    float3 L = x;
 
-        x = log(x);
-        float s = sign(x);
-        x = sqrt(abs(x));
-        x = tanh(x / max_compression) * max_compression;
-        x = exp(x * x * s);
-
-        return x;
-    #elif local_tmo_constrain_mode == 2
-        float k = 3.0 * max_compression;
-        x = 1.0 / x;
-        x = tonemap_curve(x / k) * k;
-        x = 1.0 / x;
-        x = tonemap_curve(x / k) * k;
-        return x;
-    #else
-        return x;
-    #endif
+    return T * w0 + L * w1;
 }
-
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
@@ -113,15 +103,25 @@ void main(uint2 px: SV_DispatchThreadID) {
     //col = col * (1.0 - debug_input_tex[px].a) + debug_input_tex[px].rgb;
 
     col *= exp2(ev_shift);
-    
-#if USE_TONEMAP
-    col = neutral_tonemap(col);
 
-    // Boost saturation and contrast to compensate for the loss from glare
-    col = saturate(lerp(calculate_luma(col), col, 1.05));
-    col = pow(col, 1.03);
+#if USE_VIGNETTE
+    col *= exp(-2 * pow(length(uv - 0.5), 3));
 #endif
 
+#if USE_GRADE
+    // Lift mids
+    col = pow(col, 0.9);
+
+    // Push down lows
+    col = push_down_black_point(col, 0.2, 1.25);
+#endif
+
+#if USE_TONEMAP
+    // Apply a perceptually neutral shoulder
+    col = neutral_tonemap(col);
+#endif
+
+    // Dither
 #if USE_DITHER
     const uint urand_idx = frame_constants.frame_index;
     // 256x256 blue noise
@@ -131,6 +131,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     col += dither / 256.0;
 #endif
+
+    //col = filtered_luminance;
 
     output_tex[px] = float4(col, 1);
 }

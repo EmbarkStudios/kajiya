@@ -1,17 +1,25 @@
 use crate::color;
 use macaw::{prelude::*, Vec3};
 
+#[cfg(target_arch = "spirv")]
+use spirv_std::num_traits::Float;
+
 pub fn tonemap_curve(v: f32) -> f32 {
+    /*
+    // Large linear part in the lows, but compresses highs.
     let c = v + v * v + 0.5 * v * v * v;
     c / (1.0 + c)
+    */
+    1.0 - (-v).exp()
 }
 
 pub fn tonemap_curve_vec3(v: Vec3) -> Vec3 {
-    // Vec3::new(tonemap_curve(v.x), tonemap_curve(v.y), tonemap_curve(v.z))
+    Vec3::new(tonemap_curve(v.x), tonemap_curve(v.y), tonemap_curve(v.z))
+
     // Vector operations for smaller SPIR-V.
-    let v2 = v * v;
+    /*let v2 = v * v;
     let c = v + v2 + 0.5 * v2 * v;
-    c / (Vec3::ONE + c)
+    c / (Vec3::ONE + c)*/
 }
 
 pub fn neutral_tonemap(col: Vec3) -> Vec3 {

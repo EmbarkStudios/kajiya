@@ -120,6 +120,10 @@ pub fn post_process(
         rg.add_pass("post combine"),
         "post_combine::post_combine_cs",
     )
+    /*SimpleRenderPass::new_compute(
+        rg.add_pass("post combine"),
+        "/shaders/post_combine.hlsl",
+    )*/
     .read(input)
     //.read(debug_input)
     .read(&blur_pyramid)
