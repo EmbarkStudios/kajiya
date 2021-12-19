@@ -344,7 +344,7 @@ impl ShaderSource {
 
     pub fn entry(&self) -> &str {
         match self {
-            ShaderSource::Rust { entry } => &entry,
+            ShaderSource::Rust { entry } => entry,
             ShaderSource::Hlsl { .. } => "main",
         }
     }
