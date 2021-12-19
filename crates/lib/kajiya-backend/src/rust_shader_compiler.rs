@@ -7,7 +7,6 @@ use turbosloth::*;
 
 #[derive(Clone, Hash)]
 pub struct CompileRustShader {
-    pub profile: String,
     pub entry: String,
 }
 

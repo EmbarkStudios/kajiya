@@ -16,6 +16,7 @@ pub mod convolve_cube;
 pub mod copy_depth_to_r;
 pub mod extract_half_res_depth;
 pub mod extract_half_res_gbuffer_view_normal_rgba8;
+pub mod gbuffer;
 pub mod motion_blur;
 pub mod pack_unpack;
 pub mod post_combine;

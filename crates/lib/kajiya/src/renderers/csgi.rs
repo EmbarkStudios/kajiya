@@ -10,7 +10,7 @@ use kajiya_backend::{
         image::*,
         ray_tracing::RayTracingAcceleration,
         shader::{
-            PipelineShader, PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage,
+            PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage, ShaderSource,
         },
     },
 };
@@ -282,12 +282,12 @@ impl CsgiRenderer {
 
             SimpleRenderPass::new_rt(
                 rg.add_pass("csgi trace"),
-                "/shaders/csgi/trace_volume.rgen.hlsl",
-                &[
-                    "/shaders/rt/gbuffer.rmiss.hlsl",
-                    "/shaders/rt/shadow.rmiss.hlsl",
+                ShaderSource::hlsl("/shaders/csgi/trace_volume.rgen.hlsl"),
+                [
+                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
                 ],
-                &["/shaders/rt/gbuffer.rchit.hlsl"],
+                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
             )
             .read_array(&indirect_combined_cascades)
             .read(sky_cube)
@@ -397,18 +397,14 @@ impl CsgiVolume {
 
         let pipeline = pass.register_raster_pipeline(
             &[
-                PipelineShader {
-                    code: "/shaders/csgi/raster_voxels_vs.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
-                        .build()
-                        .unwrap(),
-                },
-                PipelineShader {
-                    code: "/shaders/csgi/raster_voxels_ps.hlsl",
-                    desc: PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
-                        .build()
-                        .unwrap(),
-                },
+                PipelineShaderDesc::builder(ShaderPipelineStage::Vertex)
+                    .hlsl_source("/shaders/csgi/raster_voxels_vs.hlsl")
+                    .build()
+                    .unwrap(),
+                PipelineShaderDesc::builder(ShaderPipelineStage::Pixel)
+                    .hlsl_source("/shaders/csgi/raster_voxels_ps.hlsl")
+                    .build()
+                    .unwrap(),
             ],
             RasterPipelineDesc::builder()
                 .render_pass(render_pass.clone())

@@ -14,6 +14,7 @@ use parking_lot::Mutex;
 use std::{
     collections::{hash_map::Entry, HashMap},
     ffi::CString,
+    path::PathBuf,
     sync::Arc,
 };
 
@@ -324,16 +325,29 @@ impl DescriptorSetLayoutOpts {
     }
 }
 
-#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub enum ShaderSourceType {
-    Rust,
-    Hlsl,
+#[derive(Clone, Hash, PartialEq, Eq, Debug)]
+pub enum ShaderSource {
+    Rust { entry: String },
+    Hlsl { path: PathBuf },
 }
 
-#[derive(Clone, Hash, PartialEq, Eq, Debug)]
-pub struct ShaderSource {
-    pub entry: String,
-    pub ty: ShaderSourceType,
+impl ShaderSource {
+    pub fn rust(entry: impl Into<String>) -> Self {
+        ShaderSource::Rust {
+            entry: entry.into(),
+        }
+    }
+
+    pub fn hlsl(path: impl Into<PathBuf>) -> Self {
+        ShaderSource::Hlsl { path: path.into() }
+    }
+
+    pub fn entry(&self) -> &str {
+        match self {
+            ShaderSource::Rust { entry } => entry,
+            ShaderSource::Hlsl { .. } => "main",
+        }
+    }
 }
 
 #[derive(Builder, Clone)]
@@ -343,8 +357,7 @@ pub struct ComputePipelineDesc {
     pub descriptor_set_opts: [Option<(u32, DescriptorSetLayoutOpts)>; MAX_DESCRIPTOR_SETS],
     #[builder(default)]
     pub push_constants_bytes: usize,
-    #[builder(setter(custom))]
-    pub compute_source: ShaderSource,
+    pub source: ShaderSource,
 }
 
 impl ComputePipelineDescBuilder {
@@ -359,19 +372,13 @@ impl ComputePipelineDescBuilder {
         self
     }
 
-    pub fn compute_entry_rust(mut self, entry: impl Into<String>) -> Self {
-        self.compute_source = Some(ShaderSource {
-            entry: entry.into(),
-            ty: ShaderSourceType::Rust,
-        });
+    pub fn compute_rust(mut self, entry: impl Into<String>) -> Self {
+        self.source = Some(ShaderSource::rust(entry));
         self
     }
 
-    pub fn compute_entry_hlsl(mut self, entry: impl Into<String>) -> Self {
-        self.compute_source = Some(ShaderSource {
-            entry: entry.into(),
-            ty: ShaderSourceType::Hlsl,
-        });
+    pub fn compute_hlsl(mut self, path: impl Into<PathBuf>) -> Self {
+        self.source = Some(ShaderSource::hlsl(path));
         self
     }
 }
@@ -422,7 +429,7 @@ pub fn create_compute_pipeline(
             )
             .unwrap();
 
-        let entry_name = CString::new(desc.compute_source.entry.as_str()).unwrap();
+        let entry_name = CString::new(desc.source.entry()).unwrap();
         let stage_create_info = vk::PipelineShaderStageCreateInfo::builder()
             .module(shader_module)
             .stage(vk::ShaderStageFlags::COMPUTE)
@@ -490,12 +497,27 @@ pub struct PipelineShaderDesc {
     #[builder(default)]
     pub push_constants_bytes: usize,
     #[builder(default = "\"main\".to_owned()")]
-    pub entry_name: String,
+    pub entry: String,
+    pub source: ShaderSource,
 }
 
 impl PipelineShaderDesc {
     pub fn builder(stage: ShaderPipelineStage) -> PipelineShaderDescBuilder {
         PipelineShaderDescBuilder::default().stage(stage)
+    }
+}
+
+impl PipelineShaderDescBuilder {
+    pub fn hlsl_source(mut self, path: impl Into<PathBuf>) -> Self {
+        self.source = Some(ShaderSource::hlsl(path));
+
+        self
+    }
+
+    pub fn rust_source(mut self, entry: impl Into<String>) -> Self {
+        self.source = Some(ShaderSource::rust(entry));
+
+        self
     }
 }
 
@@ -811,8 +833,8 @@ pub fn create_raster_pipeline(
 ) -> anyhow::Result<RasterPipeline> {
     let stage_layouts = shaders
         .iter()
-        .map(|desc| {
-            rspirv_reflect::Reflection::new_from_spirv(&desc.code)
+        .map(|shader| {
+            rspirv_reflect::Reflection::new_from_spirv(&shader.code)
                 .unwrap()
                 .get_descriptor_sets()
                 .unwrap()
@@ -867,7 +889,7 @@ pub fn create_raster_pipeline(
 
                 vk::PipelineShaderStageCreateInfo::builder()
                     .module(shader_module)
-                    .name(entry_names.add(CString::new(desc.desc.entry_name.as_str()).unwrap()))
+                    .name(entry_names.add(CString::new(desc.desc.entry.as_str()).unwrap()))
                     .stage(stage)
                     .build()
             })
@@ -1006,8 +1028,16 @@ fn merge_shader_stage_layout_pair(
                     match existing.entry(binding_idx) {
                         Entry::Occupied(existing) => {
                             let existing = existing.get();
-                            assert_eq!(existing.ty, binding.ty);
-                            assert_eq!(existing.name, binding.name);
+                            assert_eq!(
+                                existing.ty, binding.ty,
+                                "binding idx: {}, name: {:?}",
+                                binding_idx, binding.name
+                            );
+                            assert_eq!(
+                                existing.name, binding.name,
+                                "binding idx: {}, name: {:?}",
+                                binding_idx, binding.name
+                            );
                         }
                         Entry::Vacant(vacant) => {
                             vacant.insert(binding);

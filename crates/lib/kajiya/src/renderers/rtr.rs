@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kajiya_backend::{
     ash::vk,
     vk_sync,
-    vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration},
+    vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
     Device,
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
@@ -112,12 +112,12 @@ impl RtrRenderer {
 
         SimpleRenderPass::new_rt(
             rg.add_pass("reflection trace"),
-            "/shaders/rtr/reflection.rgen.hlsl",
-            &[
-                "/shaders/rt/gbuffer.rmiss.hlsl",
-                "/shaders/rt/shadow.rmiss.hlsl",
+            ShaderSource::hlsl("/shaders/rtr/reflection.rgen.hlsl"),
+            [
+                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
             ],
-            &["/shaders/rt/gbuffer.rchit.hlsl"],
+            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
         )
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)

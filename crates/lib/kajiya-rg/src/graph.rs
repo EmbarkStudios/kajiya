@@ -33,7 +33,7 @@ use kajiya_backend::{
         image::ImageViewDesc,
         profiler::VkProfilerData,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::{ComputePipelineDesc, PipelineShader, RasterPipelineDesc},
+        shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, RasterPipelineDesc},
     },
 };
 use parking_lot::Mutex;
@@ -94,7 +94,6 @@ pub struct RgComputePipelineHandle {
 }
 
 pub(crate) struct RgComputePipeline {
-    pub(crate) shader_path: PathBuf,
     pub(crate) desc: ComputePipelineDesc,
 }
 
@@ -104,7 +103,7 @@ pub struct RgRasterPipelineHandle {
 }
 
 pub(crate) struct RgRasterPipeline {
-    pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) shaders: Vec<PipelineShaderDesc>,
     pub(crate) desc: RasterPipelineDesc,
 }
 
@@ -114,7 +113,7 @@ pub struct RgRtPipelineHandle {
 }
 
 pub(crate) struct RgRtPipeline {
-    pub(crate) shaders: Vec<PipelineShader<&'static str>>, // TODO, HACK
+    pub(crate) shaders: Vec<PipelineShaderDesc>,
     pub(crate) desc: RayTracingPipelineDesc,
 }
 
@@ -559,7 +558,7 @@ impl RenderGraph {
         let compute_pipelines = self
             .compute_pipelines
             .iter()
-            .map(|pipeline| pipeline_cache.register_compute(&pipeline.shader_path, &pipeline.desc))
+            .map(|pipeline| pipeline_cache.register_compute(&pipeline.desc))
             .collect::<Vec<_>>();
 
         let raster_pipelines = self

@@ -5,7 +5,7 @@ use kajiya_backend::{
     vulkan::{
         image::*,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
-        shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, ShaderPipelineStage},
+        shader::{ComputePipelineDesc, PipelineShaderDesc, ShaderPipelineStage, ShaderSource},
     },
 };
 
@@ -118,10 +118,8 @@ impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
 
     pub fn new_compute_rust(mut pass: PassBuilder<'rg>, entry_name: &str) -> Self {
         let pipeline = pass.register_compute_pipeline_with_desc(
-            // TODO
-            "assets/rust-shaders/target/spirv-unknown-vulkan1.1/release/deps/rust_shaders.spv.dir/module",
             ComputePipelineDesc::builder()
-                .compute_entry_rust(entry_name)
+                .compute_rust(entry_name)
                 .build()
                 .unwrap(),
         );
@@ -161,34 +159,37 @@ impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
 impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
     pub fn new_rt(
         mut pass: PassBuilder<'rg>,
-        rgen: &'static str,
-        miss: &[&'static str],
-        hit: &[&'static str],
+        rgen: ShaderSource,
+        miss: impl IntoIterator<Item = ShaderSource>,
+        hit: impl IntoIterator<Item = ShaderSource>,
     ) -> Self {
-        let mut shaders = Vec::with_capacity(1 + miss.len() + hit.len());
+        let miss = miss.into_iter();
+        let hit = hit.into_iter();
 
-        shaders.push(PipelineShader {
-            code: rgen,
-            desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+        let mut shaders = Vec::with_capacity(1 + miss.size_hint().0 + hit.size_hint().0);
+
+        shaders.push(
+            PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
+                .source(rgen)
                 .build()
                 .unwrap(),
-        });
-        for &shader in miss {
-            shaders.push(PipelineShader {
-                code: shader,
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+        );
+        for source in miss {
+            shaders.push(
+                PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
+                    .source(source)
                     .build()
                     .unwrap(),
-            });
+            );
         }
 
-        for &shader in hit {
-            shaders.push(PipelineShader {
-                code: shader,
-                desc: PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+        for source in hit {
+            shaders.push(
+                PipelineShaderDesc::builder(ShaderPipelineStage::RayClosestHit)
+                    .source(source)
                     .build()
                     .unwrap(),
-            });
+            );
         }
 
         let pipeline = pass.register_ray_tracing_pipeline(
