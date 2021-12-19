@@ -1,6 +1,11 @@
 use std::sync::Arc;
 
-use kajiya_backend::{Device, ash::vk, vk_sync, vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource}};
+use kajiya_backend::{
+    ash::vk,
+    vk_sync,
+    vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
+    Device,
+};
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{csgi, GbufferDepth, PingPongTemporalResource};

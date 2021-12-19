@@ -1,4 +1,7 @@
-use kajiya_backend::{ash::vk, vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource}};
+use kajiya_backend::{
+    ash::vk,
+    vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
+};
 use kajiya_rg::{self as rg};
 use rg::{RenderGraph, SimpleRenderPass};
 

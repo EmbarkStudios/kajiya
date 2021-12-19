@@ -1,4 +1,13 @@
-use kajiya_backend::{ash::vk, dynamic_constants, vk_sync::AccessType, vulkan::{image::*, ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc}, shader::{ComputePipelineDesc, PipelineShaderDesc, ShaderPipelineStage, ShaderSource}}};
+use kajiya_backend::{
+    ash::vk,
+    dynamic_constants,
+    vk_sync::AccessType,
+    vulkan::{
+        image::*,
+        ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
+        shader::{ComputePipelineDesc, PipelineShaderDesc, ShaderPipelineStage, ShaderSource},
+    },
+};
 
 use crate::Image;
 
@@ -151,8 +160,8 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
     pub fn new_rt(
         mut pass: PassBuilder<'rg>,
         rgen: ShaderSource,
-        miss: impl IntoIterator<Item=ShaderSource>,
-        hit: impl IntoIterator<Item=ShaderSource>,
+        miss: impl IntoIterator<Item = ShaderSource>,
+        hit: impl IntoIterator<Item = ShaderSource>,
     ) -> Self {
         let miss = miss.into_iter();
         let hit = hit.into_iter();
@@ -163,14 +172,14 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
             PipelineShaderDesc::builder(ShaderPipelineStage::RayGen)
                 .source(rgen)
                 .build()
-                .unwrap()
+                .unwrap(),
         );
         for source in miss {
             shaders.push(
                 PipelineShaderDesc::builder(ShaderPipelineStage::RayMiss)
                     .source(source)
                     .build()
-                    .unwrap()
+                    .unwrap(),
             );
         }
 

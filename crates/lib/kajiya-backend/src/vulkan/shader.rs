@@ -11,7 +11,12 @@ use byte_slice_cast::AsSliceOf as _;
 use bytes::Bytes;
 use derive_builder::Builder;
 use parking_lot::Mutex;
-use std::{collections::{hash_map::Entry, HashMap}, ffi::CString, path::PathBuf, sync::Arc};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    ffi::CString,
+    path::PathBuf,
+    sync::Arc,
+};
 
 pub const MAX_DESCRIPTOR_SETS: usize = 4;
 pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 512 * 1024;
@@ -322,17 +327,15 @@ impl DescriptorSetLayoutOpts {
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
 pub enum ShaderSource {
-    Rust {
-        entry: String,
-    },
-    Hlsl {
-        path: PathBuf,
-    }
+    Rust { entry: String },
+    Hlsl { path: PathBuf },
 }
 
 impl ShaderSource {
     pub fn rust(entry: impl Into<String>) -> Self {
-        ShaderSource::Rust { entry: entry.into() }
+        ShaderSource::Rust {
+            entry: entry.into(),
+        }
     }
 
     pub fn hlsl(path: impl Into<PathBuf>) -> Self {

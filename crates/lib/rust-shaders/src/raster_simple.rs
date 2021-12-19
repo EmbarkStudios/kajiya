@@ -1,6 +1,6 @@
 use crate::gbuffer::GBufferData;
 
-use macaw::{Vec2, Vec3, Vec4, UVec4, Mat3, Vec4Swizzles};
+use macaw::{Mat3, UVec4, Vec2, Vec3, Vec4, Vec4Swizzles};
 
 use core::mem::size_of;
 
@@ -9,12 +9,12 @@ use spirv_std::macros::spirv;
 
 use spirv_std::{
     arch::{ddx_vector, ddy_vector},
-    RuntimeArray, Image, Sampler
+    Image, RuntimeArray, Sampler,
 };
 
 use rust_shaders_shared::{
     frame_constants::FrameConstants,
-    mesh::{InstanceTransform, InstanceDynamicConstants, MeshDescriptor, MaterialDescriptor},
+    mesh::{InstanceDynamicConstants, InstanceTransform, MaterialDescriptor, MeshDescriptor},
     raster_simple::*,
     util::*,
 };
@@ -26,7 +26,7 @@ pub fn raster_simple_vs(
     #[spirv(instance_index)] instance_index: u32,
 
     // Descriptors
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] instance_transforms_dyn: &[InstanceTransform],
+    instance_transforms_dyn: &[InstanceTransform],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] meshes: &[MeshDescriptor],
     #[spirv(uniform, descriptor_set = 0, binding = 2)] frame_constants: &FrameConstants,
     #[spirv(storage_buffer, descriptor_set = 1, binding = 1)] vertices: &[u32], // ByteAddressableBuffer
@@ -76,15 +76,25 @@ pub fn raster_simple_vs(
         instance_transform.prev_transform.transform_point3(v_pos)
     } else {
         // Load the previous position if available (produced by skinning with the last frame's bones).
-        instance_transform.prev_transform.transform_point3(
-            load3f(vertices, vid * 16 + mesh.vertex_prev_core_offset))
+        instance_transform
+            .prev_transform
+            .transform_point3(load3f(vertices, vid * 16 + mesh.vertex_prev_core_offset))
     };
 
-    let ws_normal = instance_transform.transform.transform_vector3(v_normal).normalize();
+    let ws_normal = instance_transform
+        .transform
+        .transform_vector3(v_normal)
+        .normalize();
 
-    let vs_pos: Vec3 = frame_constants.view_constants.world_to_view.transform_point3(ws_pos);
+    let vs_pos: Vec3 = frame_constants
+        .view_constants
+        .world_to_view
+        .transform_point3(ws_pos);
     let cs_pos: Vec4 = frame_constants.view_constants.view_to_sample * vs_pos.extend(1.0);
-    let prev_vs_pos: Vec3 = frame_constants.view_constants.world_to_view.transform_point3(prev_ws_pos);
+    let prev_vs_pos: Vec3 = frame_constants
+        .view_constants
+        .world_to_view
+        .transform_point3(prev_ws_pos);
 
     let tangent = v_tangent_packed.truncate();
 
@@ -104,11 +114,11 @@ pub fn raster_simple_fs(
     // Pipeline inputs
 
     // Descriptors
-    #[spirv(storage_buffer, descriptor_set = 0, binding = 0)] instance_transforms_dyn: &[InstanceTransform],
+    instance_transforms_dyn: &[InstanceTransform],
     #[spirv(storage_buffer, descriptor_set = 0, binding = 1)] meshes: &[MeshDescriptor],
     #[spirv(uniform, descriptor_set = 0, binding = 2)] frame_constants: &FrameConstants,
     #[spirv(storage_buffer, descriptor_set = 1, binding = 1)] vertices: &[u32], // ByteAddressableBuffer
-    #[spirv(storage_buffer, descriptor_set = 1, binding = 2)] instance_dynamic_parameters_dyn: &[InstanceDynamicConstants],
+    instance_dynamic_parameters_dyn: &[InstanceDynamicConstants],
     #[spirv(descriptor_set = 1, binding = 3)] bindless_textures: &RuntimeArray<
         Image!(2D, type=f32, sampled=true),
     >,
@@ -131,17 +141,22 @@ pub fn raster_simple_fs(
     out_velocity: &mut Vec4,
 ) {
     let mesh: &MeshDescriptor = &meshes[push_constants.mesh_index as usize];
-    let material = MaterialDescriptor::load(vertices, mesh.vertex_mat_offset + in_material_id * size_of::<MaterialDescriptor>() as u32);
+    let material = MaterialDescriptor::load(
+        vertices,
+        mesh.vertex_mat_offset + in_material_id * size_of::<MaterialDescriptor>() as u32,
+    );
 
     let albedo_uv = material.transform_uv(in_uv, 0);
     let albedo_tex = unsafe { bindless_textures.index(material.maps.albedo()) };
     let albedo_texel: Vec4 = albedo_tex.sample_bias(*sampler_llr, albedo_uv, -0.5);
-    
+
     let albedo = albedo_texel.xyz() * material.base_color_mult.xyz() * in_color.xyz();
 
     let metallic_roughness_uv = material.transform_uv(in_uv, 2);
-    let metallic_roughness_tex = unsafe { bindless_textures.index(material.maps.metallic_roughness()) };
-    let metallic_roughness: Vec4 = metallic_roughness_tex.sample_bias(*sampler_llr, metallic_roughness_uv, -0.5);
+    let metallic_roughness_tex =
+        unsafe { bindless_textures.index(material.maps.metallic_roughness()) };
+    let metallic_roughness: Vec4 =
+        metallic_roughness_tex.sample_bias(*sampler_llr, metallic_roughness_uv, -0.5);
     let perceptual_roughness = material.roughness_mult * metallic_roughness.y;
     let roughness = perceptual_roughness_to_roughness(perceptual_roughness).clamp(1e-4, 1.0);
     let metalness = metallic_roughness.z * material.metalness_factor;
@@ -160,7 +175,10 @@ pub fn raster_simple_fs(
             in_normal
         };
 
-        instance_transform.transform.transform_vector3(normal_os).normalize()
+        instance_transform
+            .transform
+            .transform_vector3(normal_os)
+            .normalize()
     };
 
     // Derive geometric normal from depth
@@ -169,7 +187,10 @@ pub fn raster_simple_fs(
         let d2: Vec3 = ddy_vector(in_vs_pos);
         d2.cross(d1).normalize()
     };
-    let geometric_normal_ws = frame_constants.view_constants.view_to_world.transform_vector3(geometric_normal_vs);
+    let geometric_normal_ws = frame_constants
+        .view_constants
+        .view_to_world
+        .transform_vector3(geometric_normal_vs);
 
     // Fix invalid normals
     if normal_ws.dot(geometric_normal_ws) < 0.0 {
@@ -179,7 +200,9 @@ pub fn raster_simple_fs(
     let emissive_uv = material.transform_uv(in_uv, 3);
     let emissive_tex = unsafe { bindless_textures.index(material.maps.emissive()) };
     let emissive_texel: Vec4 = emissive_tex.sample_bias(*sampler_llr, emissive_uv, -0.5);
-    let emissive = emissive_texel.xyz() * material.emissive.xyz() * instance_dynamic_parameters_dyn[push_constants.draw_index as usize].emissive_multiplier;
+    let emissive = emissive_texel.xyz()
+        * material.emissive.xyz()
+        * instance_dynamic_parameters_dyn[push_constants.draw_index as usize].emissive_multiplier;
 
     *out_velocity = (in_prev_vs_pos - in_vs_pos).extend(0.0);
     *out_geometric_normal = geometric_normal_vs * 0.5 + 0.5;
@@ -193,5 +216,4 @@ pub fn raster_simple_fs(
     };
 
     *out_gbuffer = gbuffer.pack();
-
 }

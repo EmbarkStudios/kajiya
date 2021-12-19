@@ -8,10 +8,7 @@ use crate::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{
-    collections::HashMap,
-    sync::Arc,
-};
+use std::{collections::HashMap, sync::Arc};
 use turbosloth::*;
 
 #[derive(Clone, Copy, Hash, Eq, PartialEq)]
@@ -45,27 +42,23 @@ impl LazyWorker for CompilePipelineShaders {
     async fn run(self, ctx: RunContext) -> Self::Output {
         let shaders = futures::future::try_join_all(self.shader_descs.iter().map(|desc| {
             match &desc.source {
-                ShaderSource::Rust { entry } => {
-                    CompileRustShader {
-                        entry: entry.clone(),
-                    }
-                    .into_lazy()
-                    .eval(&ctx)
-                },
-                ShaderSource::Hlsl { path } => {
-                    CompileShader {
-                        path: path.clone(),
-                        profile: match desc.stage {
-                            ShaderPipelineStage::Vertex => "vs".to_owned(),
-                            ShaderPipelineStage::Pixel => "ps".to_owned(),
-                            ShaderPipelineStage::RayGen
-                            | ShaderPipelineStage::RayMiss
-                            | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
-                        },
-                    }
-                    .into_lazy()
-                    .eval(&ctx)
+                ShaderSource::Rust { entry } => CompileRustShader {
+                    entry: entry.clone(),
                 }
+                .into_lazy()
+                .eval(&ctx),
+                ShaderSource::Hlsl { path } => CompileShader {
+                    path: path.clone(),
+                    profile: match desc.stage {
+                        ShaderPipelineStage::Vertex => "vs".to_owned(),
+                        ShaderPipelineStage::Pixel => "ps".to_owned(),
+                        ShaderPipelineStage::RayGen
+                        | ShaderPipelineStage::RayMiss
+                        | ShaderPipelineStage::RayClosestHit => "lib".to_owned(),
+                    },
+                }
+                .into_lazy()
+                .eval(&ctx),
             }
         }))
         .await?;
@@ -124,10 +117,7 @@ impl PipelineCache {
     }
 
     // TODO: should probably use the `desc` as key as well
-    pub fn register_compute(
-        &mut self,
-        desc: &ComputePipelineDesc,
-    ) -> ComputePipelineHandle {
+    pub fn register_compute(&mut self, desc: &ComputePipelineDesc) -> ComputePipelineHandle {
         match self.compute_shader_to_handle.entry(desc.source.clone()) {
             std::collections::hash_map::Entry::Occupied(occupied) => *occupied.get(),
             std::collections::hash_map::Entry::Vacant(vacant) => {

@@ -1,4 +1,3 @@
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct RasterConstants {

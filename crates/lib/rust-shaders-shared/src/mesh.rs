@@ -1,4 +1,4 @@
-use macaw::{Vec2, Vec4, Mat4, Mat2, UVec4};
+use macaw::{Mat2, Mat4, UVec4, Vec2, Vec4};
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -53,14 +53,15 @@ impl TextureMaps {
     pub fn emissive(&self) -> usize {
         self.0.w as usize
     }
-
 }
 
 #[derive(Clone, Copy, Default)]
 pub struct TextureMapsBuilder(UVec4);
 
 impl TextureMapsBuilder {
-    pub fn new() -> Self { Default::default() }
+    pub fn new() -> Self {
+        Default::default()
+    }
 
     pub fn with_normal(mut self, normal: u32) -> Self {
         self.0.x = normal;
@@ -132,7 +133,6 @@ impl MaterialDescriptor {
         let offset: Vec2 = Vec2::new(mat[4], mat[5]);
         rot_scl * uv + offset
     }
-
 }
 
 fn load_vec4(data: &[u32], offset: usize) -> Vec4 {

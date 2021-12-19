@@ -3,7 +3,17 @@
 use std::sync::Arc;
 
 use glam::{IVec4, Vec3};
-use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::{PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage, ShaderSource}}};
+use kajiya_backend::{
+    ash::vk,
+    vk_sync::AccessType,
+    vulkan::{
+        image::*,
+        ray_tracing::RayTracingAcceleration,
+        shader::{
+            PipelineShaderDesc, RasterPipelineDesc, RenderPass, ShaderPipelineStage, ShaderSource,
+        },
+    },
+};
 use kajiya_rg::{
     self as rg, BindRgRef, GetOrCreateTemporal, IntoRenderPassPipelineBinding, SimpleRenderPass,
 };
