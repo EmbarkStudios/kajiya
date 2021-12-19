@@ -41,15 +41,15 @@ struct FrameConstants {
     uint frame_index;
     float delta_time_seconds;
     float sun_angular_radius_cos;
-    float global_fog_thickness;
+    uint triangle_light_count;
 
     float4 sun_color_multiplier;
     float4 sky_ambient;
 
-    uint triangle_light_count;
     float world_gi_scale;
 	uint pad0;
 	uint pad1;
+	uint pad2;
 
     GiCascadeConstants gi_cascades[4];
 };
