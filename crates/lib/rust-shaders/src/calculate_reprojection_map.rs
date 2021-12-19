@@ -2,9 +2,9 @@
 
 use crate::bilinear::Bilinear;
 use macaw::{vec4, IVec2, UVec3, Vec2, Vec2Ext, Vec3, Vec4, Vec4Ext, Vec4Swizzles};
-use rust_shaders_shared::frame_constants::FrameConstants;
-use rust_shaders_shared::util::{
-    abs_vec2, abs_vec4, cs_to_uv, depth_to_view_z_vec4, get_uv_u, uv_to_cs,
+use rust_shaders_shared::{
+    frame_constants::FrameConstants,
+    util::{abs_vec2, abs_vec4, cs_to_uv, depth_to_view_z_vec4, get_uv_u, uv_to_cs},
 };
 use spirv_std::{Image, Sampler};
 

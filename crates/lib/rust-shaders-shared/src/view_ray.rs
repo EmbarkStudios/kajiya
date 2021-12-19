@@ -1,5 +1,4 @@
-use crate::frame_constants::FrameConstants;
-use crate::util::*;
+use crate::{frame_constants::FrameConstants, util::*};
 use macaw::*;
 
 #[repr(C)]
