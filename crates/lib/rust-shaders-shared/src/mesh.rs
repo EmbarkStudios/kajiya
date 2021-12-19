@@ -1,16 +1,25 @@
-use macaw::{Mat2, UVec4, Vec2, Vec4};
+use macaw::{Mat2, Mat4, UVec4, Vec2, Vec4};
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 #[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
 pub struct MeshDescriptor {
-    pub vertex_core_offset: u32, // position, normal packed in one
+    pub vertex_core_offset: u32,      // position, normal packed in one
+    pub vertex_prev_core_offset: u32, // previous position, noraml packed in one. Usually 0, if not skinning.
     pub vertex_uv_offset: u32,
     pub vertex_mat_offset: u32,
     pub vertex_aux_offset: u32,
     pub vertex_tangent_offset: u32,
-    pub mat_data_offset: u32,
+    pub vertex_bone_indices_weights_offset: u32,
     pub index_offset: u32,
+    pub flags: u32,
+}
+
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct InstanceTransform {
+    pub transform: Mat4,
+    pub prev_transform: Mat4,
 }
 
 #[repr(C, align(16))]
