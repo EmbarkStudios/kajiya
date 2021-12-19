@@ -66,16 +66,11 @@ void main(uint2 px: SV_DispatchThreadID) {
         noise = (-scale + 2.0 * scale * positionMod.x) * (-1.0 + 2.0 * positionMod.y);
     }
 
-    //if (length(tile_velocity * depth_tex_size.xy) > kernel_width * 4)
-    {
-        noise = 0.5 * float(noise1) / 15;
-    }
-    //noise = 0;
+    noise = 0.5 * float(noise1) / 15;
 
     float center_offset_len = noise / kernel_width * 0.5;
     float2 center_uv = uv + tile_velocity * center_offset_len;
 
-    //float3 center_color = texelFetch(inputImage, px, 0).rgb;
     float3 center_color = input_tex[clamp(int2(center_uv * output_tex_size.xy), int2(0, 0), int2(output_tex_size.xy - 1))];
     float center_depth = -depth_to_view_z(depth_tex.SampleLevel(sampler_nnc, center_uv, 0));
     float2 center_velocity = blur_scale * velocity_tex.SampleLevel(sampler_lnc, center_uv, 0);
@@ -102,11 +97,11 @@ void main(uint2 px: SV_DispatchThreadID) {
 
             float weight0 = sample_weight(center_depth, d0, length((uv0 - uv) * depth_tex_size.xy), length(center_velocity_px), v0, soft_z);
             float weight1 = sample_weight(center_depth, d1, length((uv1 - uv) * depth_tex_size.xy), length(center_velocity_px), v1, soft_z);
-#if 1
+
             bool2 mirror = bool2(d0 > d1, v1 > v0);
             weight0 = all(mirror) ? weight1 : weight0;
             weight1 = any(mirror) ? weight1 : weight0;
-#endif
+
             float valid0 = float(all(uv0 == clamp(uv0, 0.0, 1.0)));
             float valid1 = float(all(uv1 == clamp(uv1, 0.0, 1.0)));
 
@@ -118,15 +113,10 @@ void main(uint2 px: SV_DispatchThreadID) {
             sum += float4(input_tex.SampleLevel(sampler_lnc, uv1, 0).rgb, 1) * weight1;
         }
 
-        //sum *= 1.0 / (kernel_width * 2 + 1);
         sum *= 1.0 / sample_count;
     }
 
     float3 result = sum.rgb + (1.0 - sum.w) * center_color;
-    //result.xyz = float3(abs(center_velocity.xy) * 16, 0);
-    //result.xyz = float3(abs(tile_velocity.xy) * 16, 0);
-    //result.xyz = float3(center_velocity.xy * 16, 0);
-    //result = center_color;
-
+ 
     output_tex[px] = result;
 }

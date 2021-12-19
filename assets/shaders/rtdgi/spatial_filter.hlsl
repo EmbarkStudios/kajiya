@@ -9,7 +9,6 @@
 #include "../inc/hash.hlsl"
 
 #define USE_SSAO_STEERING 1
-#define USE_DYNAMIC_KERNEL_RADIUS 0
 
 [[vk::binding(0)]] Texture2D<float4> hit0_tex;
 [[vk::binding(1)]] Texture2D<float4> half_view_normal_tex;
@@ -43,72 +42,49 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float2 uv = get_uv(px, output_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, center_depth);
 
-    #define USE_POISSON 1
-
-    float spatial_sharpness = 0.25;//lerp(0.5, 0.25, saturate(center_ssao));
-    #if !USE_POISSON
-
-    int k = 2;
-    int skip = 3;
-
-    for (int y = -k; y <= k; ++y) {
-        for (int x = -k; x <= k; ++x) {
-            const int2 sample_offset = int2(x, y) * skip;
-    #else
-
+    const float spatial_sharpness = 0.25;
     const int sample_count = 16;
-    //const int sample_count = 1;
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_constants.frame_index) & 3;
 
     const bool input_gi_stable = center_validity >= 0.5;
 
-    #if USE_DYNAMIC_KERNEL_RADIUS
-        const uint filter_idx =
-            input_gi_stable
-                ? uint(clamp(center_ssao * 3.0, 0.0, 7.0))
-                : 7;
-    #else
-        const uint filter_idx = 5;
-    #endif
+    const uint filter_idx = 5;
 
-    {
-        for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
-            const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
-    #endif
+    for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
+        const int2 sample_offset = spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
+        const int2 sample_px = px + sample_offset;
 
-            const int2 sample_px = px + sample_offset;
+        const float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
+        const float sample_depth = half_depth_tex[sample_px];
+        const float3 sample_val = hit0_tex[sample_px].rgb;
+        const float sample_ssao = ssao_tex[sample_px * 2].r;
 
-            const float3 sample_normal_vs = half_view_normal_tex[sample_px].rgb;
-            const float sample_depth = half_depth_tex[sample_px];
-            const float3 sample_val = hit0_tex[sample_px].rgb;
-            const float sample_ssao = ssao_tex[sample_px * 2].r;
+        if (sample_depth != 0) {
+            float wt = 1;
+            wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
+            wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 20);
+            wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
 
-            if (sample_depth != 0) {
-                float wt = 1;
-                wt *= exp2(-spatial_sharpness * sqrt(float(dot(sample_offset, sample_offset))));
-                wt *= pow(saturate(dot(center_normal_vs, sample_normal_vs)), 20);
-                wt *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
+            #if USE_SSAO_STEERING
+                wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
+            #endif
 
-                #if USE_SSAO_STEERING
-                    wt *= exp2(-20.0 * abs(sample_ssao - center_ssao));
-                #endif
+            sum += float4(sample_val, 1) * wt;
+            
+            float luma = calculate_luma(sample_val);
+            ex += luma * wt;
+            ex2 += luma * luma * wt;
+        }
 
-                sum += float4(sample_val, 1) * wt;
-                
-                float luma = calculate_luma(sample_val);
-                ex += luma * wt;
-                ex2 += luma * luma * wt;
-            }
-
-            // Adaptive stopping
-            if (sample_i >= 3) {
-                float var = abs(ex2 / sum.a - (ex / sum.a) * (ex / sum.a));
-                var *= (sample_i + 1) / sample_i;   // Bessel's correction, 0-based
-                float rel_dev = sqrt(var) / (abs(ex) / sum.a);
-                if (rel_dev < 0.3)
-                {
-                    break;
-                }
+        // Adaptive stopping
+        // Based on "Precomputed Global Illumination in Frostbite" by Yuriy O’Donnell
+        if (sample_i >= 3) {
+            float var = abs(ex2 / sum.a - (ex / sum.a) * (ex / sum.a));
+            var *= (sample_i + 1) / sample_i;   // Bessel's correction, 0-based
+            float rel_dev = sqrt(var) / (abs(ex) / sum.a);
+            if (rel_dev < 0.3)
+            {
+                break;
             }
         }
     }
@@ -120,12 +96,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     ex *= norm_factor;
     ex2 *= norm_factor;
     float variance = max(0.0, ex2 - ex * ex);
-    float rel_dev = sqrt(variance);// / max(1e-5, ex);
+    float rel_dev = sqrt(variance);
 
-    //filtered = rel_dev;
-    //filtered = center_sample;
-    //filtered = filter_idx / 7.0;
-
-    //output_tex[px] = float4(filtered, /*rel_dev*/rel_std_dev);
-    output_tex[px] = float4(filtered, /*rel_dev*/center_validity);
+    output_tex[px] = float4(filtered, center_validity);
 }

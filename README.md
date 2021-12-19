@@ -1,17 +1,28 @@
+<!-- Allow this file to not have a first line heading -->
+<!-- markdownlint-disable-file MD041 -->
+
+<!-- inline html -->
+<!-- markdownlint-disable-file MD033 -->
+
+<div align="center">
+   
 # 💡 kajiya
+
+<!--- FIXME: Write short catchy description/tagline of project --->
+**Experimental real-time global illumination renderer made with Rust and Vulkan**
 
 [![Embark](https://img.shields.io/badge/embark-open%20source-blueviolet.svg)](https://embark.dev)
 [![Embark](https://img.shields.io/badge/discord-ark-%237289da.svg?logo=discord)](https://discord.gg/dAuKfZS)
 [![dependency status](https://deps.rs/repo/github/EmbarkStudios/kajiya/status.svg)](https://deps.rs/repo/github/EmbarkStudios/kajiya)
 [![Build status](https://github.com/EmbarkStudios/kajiya/workflows/CI/badge.svg)](https://github.com/EmbarkStudios/kajiya/actions)
-
-A real-time global illumination renderer; primarily a toy written for fun to explore various algorithms. Uses Vulkan with ray-tracing extensions under the hood.
+</div>
 
 Its general goal is to get as close as possible to path-traced reference at real-time rates in dynamic scenes, without any precomputed light transport, or manually placed light probes.
 
-At the same time, `kajiya` does not aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
+`kajiya` does not currently aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
 
 ![screenshot](docs/screenshot.jpg)
+_["Flying world - Battle of the Trash god" Scene](https://sketchfab.com/3d-models/flying-world-battle-of-the-trash-god-350a9b2fac4c4430b883898e7d3c431f) by burunduk._
 
 ## Features
 
@@ -22,31 +33,20 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
     * Single bounce specular, falling back to diffuse after the first hit
 * Sun with ray-traced soft shadows
 * Standard PBR with GGX and roughness/metalness
-    * Multi-scattering BRDF, energy-preserving metalness
+    * Energy-preserving multi-scattering BRDF
 * Reference path-tracing mode
-* Physically-based rendering
-* Temporal anti-aliasing
+* Temporal super-resolution and anti-aliasing
 * Natural tone mapping
 * Physically-based glare
 * Basic motion blur
 * Contrast-adaptive sharpening
-* DLSS support
+* Optional DLSS support
 * GLTF mesh loading (no animations yet)
 * A render graph running it all
 
-Not actively used:
-
-* Screen-space ambient occlusion (GTAO)
-    * Currently plugged in as a cross-bilateral feature guide for GI denoising
-* Screen-space diffuse bounce based on GTAO
-
-Traces of code:
-
-* Basic SDF sculpting and rendering
-
 ## Platforms
 
-It currently works on a very limited number of systems and hardware.
+It currently works on a limited range of systems and hardware.
 
 Operating systems:
 * Windows
@@ -80,8 +80,6 @@ or
 ```
 cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no-debug
 ```
-
-_Please note that the `smol` async runtime is used for baking and run-time shader compilation. There's no custom executor yet, so the `SMOL_THREADS` environment variable controls parallelism._
 
 ## Adding Meshes and Scenes
 
@@ -117,9 +115,10 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 
 * Vulkan API usage is extremely basic. Resources are usually not released, and barriers aren't optimal.
 * There's a hard limit on mesh data and instance count. Exceeding those limits will result in Vulkan validation errors / driver crashes.
-* Window (framebuffer) resizing is not implemented.
-* The voxel GI uses a fixed-size volume around the origin. It will get cascades later.
+* Window (framebuffer) resizing is not yet implemented.
+* The voxel GI uses a fixed-size volume around the origin by default.
     * Use `--gi-volume-scale` to change its extent in the `view` app
+    * It can be configured to use camera-centered cascades at an extra performance cost
 * Denoising needs more work (always).
 
 ## Using DLSS
@@ -157,7 +156,7 @@ Add your shaders to the `assets/rust-shaders` crate. Run the shader builder from
 
 ## Acknowledgments
 
-This project is made possible by the awesome open source Rust community, and benefits from too many crates to mention here. Special thanks go to:
+This project is made possible by the awesome open source Rust community, and benefits from a multitude of crates. Special shout-outs go to:
 
 * Felix Westin for his [MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere), which this project uses for sky rendering
 * AMD, especially Dominik Baumeister and Guillaume Boissé for the [FidelityFX Shadow Denoiser](https://gpuopen.com/fidelityfx-denoiser/), which forms the basis of shadow denoising in `kajiya`.

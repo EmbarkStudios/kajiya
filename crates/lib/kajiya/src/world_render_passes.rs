@@ -203,7 +203,7 @@ impl WorldRenderer {
                     &gbuffer_depth.depth,
                     self.temporal_upscale_extent,
                 )
-                .color
+                .this_frame_out
         });
 
         let mut final_post_input =

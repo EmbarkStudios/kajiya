@@ -124,7 +124,6 @@ void main(uint2 px: SV_DispatchThreadID) {
             history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
         } else {
             float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
-            //quad_reproj_valid.xyzw = 0;
 
             const Bilinear bilinear = get_bilinear_filter(uv + reproj.xy, output_tex_size.xy);
             float4 s00 = history_tex[int2(bilinear.origin) + int2(0, 0)];
@@ -146,9 +145,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0));
     float history1_valid = 1;
-    /*if (any(abs(hit_prev_uv * 2 - 1) > 0.99)) {
-        history1_valid = 0;
-    }*/
 
     float4 history0_reproj = reprojection_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     float4 history1_reproj = reprojection_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0);
@@ -163,9 +159,7 @@ void main(uint2 px: SV_DispatchThreadID) {
             const float sample_depth = depth_tex[sample_px];
 
             float4 neigh = linear_to_working(input_tex[sample_px]);
-			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
-
-            w *= exp2(-200.0 * abs(/*center_normal_vs.z **/ (center_depth / sample_depth - 1.0)));
+			float w = exp2(-200.0 * abs(/*center_normal_vs.z **/ (center_depth / sample_depth - 1.0)));
 
 			vsum += neigh * w;
 			wsum += w;
@@ -174,19 +168,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 	float4 ex = vsum / wsum;
     float reproj_validity_dilated = reproj.z;
-    /*#if 1
-        {
-         	const int k = 2;
-            for (int y = -k; y <= k; ++y) {
-                for (int x = -k; x <= k; ++x) {
-                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[px + 2 * int2(x, y)].z);
-                }
-            }
-        }
-    #else
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 1));
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
-    #endif*/
     
     float h0diff = length(history0.xyz - ex.xyz);
     float h1diff = length(history1.xyz - ex.xyz);
@@ -200,10 +181,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float h1_score = 1;
 #endif
 
-    //const float reproj_penalty = 1000;
-    //history0 = lerp(center, history0, exp2(-reproj_penalty * length(history0_reproj.xy - reproj.xy)));
-    //history1 = lerp(center, history1, exp2(-reproj_penalty * length(history1_reproj.xy - reproj.xy)));
-
     const float score_sum = h0_score + h1_score;
     if (score_sum > 1e-50) {
         h0_score /= score_sum;
@@ -215,22 +192,9 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float4 history = history0 * h0_score + history1 * h1_score;
 
-    //float sample_count = history0.w * h0_score + history1.w * h1_score;
-    //sample_count *= reproj.z;
-
-    //history = lerp(center, history, reproj.z);
-    //history = center;
-
-    //history = history0;
-    //history.w = history0.w;
-
     float target_sample_count = 4;
     float4 res = lerp(history, center, lerp(1.0, 1.0 / target_sample_count, reproj_validity_dilated));
-    //res.w = sample_count + 1;
-    //res.w = refl_ray_length * 20;
-
     res = working_to_linear(res);
 
-    //res = float4(reflector_move_rate * 0.1, 0, 0);
     output_tex[px] = max(0.0.xxxx, res);
 }

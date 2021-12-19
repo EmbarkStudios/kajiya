@@ -6,7 +6,7 @@ use kajiya_rg::{self as rg, SimpleRenderPass};
 pub struct TaaRenderer {
     temporal_tex: PingPongTemporalResource,
     temporal_velocity_tex: PingPongTemporalResource,
-    temporal_meta_tex: PingPongTemporalResource,
+    temporal_smooth_var_tex: PingPongTemporalResource,
     pub current_supersample_offset: Vec2,
 }
 
@@ -21,15 +21,15 @@ impl TaaRenderer {
         Self {
             temporal_tex: PingPongTemporalResource::new("taa"),
             temporal_velocity_tex: PingPongTemporalResource::new("taa.velocity"),
-            temporal_meta_tex: PingPongTemporalResource::new("taa.meta"),
+            temporal_smooth_var_tex: PingPongTemporalResource::new("taa.smooth_var"),
             current_supersample_offset: Vec2::ZERO,
         }
     }
 }
 
 pub struct TaaOutput {
-    pub color: rg::ReadOnlyHandle<Image>,
-    pub debug: rg::Handle<Image>,
+    pub temporal_out: rg::ReadOnlyHandle<Image>,
+    pub this_frame_out: rg::Handle<Image>,
 }
 
 impl TaaRenderer {
@@ -78,54 +78,93 @@ impl TaaRenderer {
         ))
         .dispatch(reprojected_history_img.desc().extent);
 
-        let (mut meta_output_tex, meta_history_tex) =
-            self.temporal_meta_tex.get_output_and_history(
+        let (mut smooth_var_output_tex, smooth_var_history_tex) =
+            self.temporal_smooth_var_tex.get_output_and_history(
                 rg,
                 ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, output_extent)
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
-        let input_stats_img = {
-            let mut input_stats_img = rg.create(ImageDesc::new_2d(
+        let mut filtered_input_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            input_tex.desc().extent_2d(),
+        ));
+
+        let mut filtered_input_deviation_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            input_tex.desc().extent_2d(),
+        ));
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("taa filter input"),
+            "/shaders/taa/filter_input.hlsl",
+        )
+        .read(input_tex)
+        .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
+        .write(&mut filtered_input_img)
+        .write(&mut filtered_input_deviation_img)
+        .dispatch(filtered_input_img.desc().extent);
+
+        let mut filtered_history_img = rg.create(ImageDesc::new_2d(
+            vk::Format::R16G16B16A16_SFLOAT,
+            filtered_input_img.desc().extent_2d(),
+        ));
+        SimpleRenderPass::new_compute(
+            rg.add_pass("taa filter history"),
+            "/shaders/taa/filter_history.hlsl",
+        )
+        .read(&reprojected_history_img)
+        .write(&mut filtered_history_img)
+        .constants((
+            reprojected_history_img.desc().extent_inv_extent_2d(),
+            input_tex.desc().extent_inv_extent_2d(),
+        ))
+        .dispatch(filtered_history_img.desc().extent);
+
+        let input_prob_img = {
+            let mut input_prob_img = rg.create(ImageDesc::new_2d(
                 vk::Format::R16_SFLOAT,
                 input_tex.desc().extent_2d(),
             ));
             SimpleRenderPass::new_compute(
-                rg.add_pass("taa input stats"),
-                "/shaders/taa/input_stats.hlsl",
+                rg.add_pass("taa input prob"),
+                "/shaders/taa/input_prob.hlsl",
             )
             .read(input_tex)
+            .read(&filtered_input_img)
+            .read(&filtered_input_deviation_img)
             .read(&reprojected_history_img)
+            .read(&filtered_history_img)
             .read(reprojection_map)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
-            .read(&meta_history_tex)
+            .read(&smooth_var_history_tex)
             .read(&velocity_history_tex)
-            .write(&mut input_stats_img)
+            .write(&mut input_prob_img)
             .constants((input_tex.desc().extent_inv_extent_2d(),))
-            .dispatch(input_stats_img.desc().extent);
+            .dispatch(input_prob_img.desc().extent);
 
-            let mut max_input_stats_img = rg.create(*input_stats_img.desc());
+            let mut prob_filtered1_img = rg.create(*input_prob_img.desc());
             SimpleRenderPass::new_compute(
-                rg.add_pass("taa stats filter"),
-                "/shaders/taa/filter_stats.hlsl",
+                rg.add_pass("taa prob filter"),
+                "/shaders/taa/filter_prob.hlsl",
             )
-            .read(&input_stats_img)
-            .write(&mut max_input_stats_img)
-            .dispatch(max_input_stats_img.desc().extent);
+            .read(&input_prob_img)
+            .write(&mut prob_filtered1_img)
+            .dispatch(prob_filtered1_img.desc().extent);
 
-            let mut min_input_stats_img = rg.create(*input_stats_img.desc());
+            let mut prob_filtered2_img = rg.create(*input_prob_img.desc());
             SimpleRenderPass::new_compute(
-                rg.add_pass("taa stats filter2"),
-                "/shaders/taa/filter_stats2.hlsl",
+                rg.add_pass("taa prob filter2"),
+                "/shaders/taa/filter_prob2.hlsl",
             )
-            .read(&max_input_stats_img)
-            .write(&mut min_input_stats_img)
-            .dispatch(max_input_stats_img.desc().extent);
+            .read(&prob_filtered1_img)
+            .write(&mut prob_filtered2_img)
+            .dispatch(prob_filtered1_img.desc().extent);
 
-            min_input_stats_img
+            prob_filtered2_img
         };
 
-        let mut debug_output_img = rg.create(Self::temporal_tex_desc(output_extent));
+        let mut this_frame_output_img = rg.create(Self::temporal_tex_desc(output_extent));
         SimpleRenderPass::new_compute(rg.add_pass("taa"), "/shaders/taa/taa.hlsl")
             .read(input_tex)
             .read(&reprojected_history_img)
@@ -133,11 +172,11 @@ impl TaaRenderer {
             .read(&closest_velocity_img)
             .read(&velocity_history_tex)
             .read_aspect(depth_tex, vk::ImageAspectFlags::DEPTH)
-            .read(&meta_history_tex)
-            .read(&input_stats_img)
+            .read(&smooth_var_history_tex)
+            .read(&input_prob_img)
             .write(&mut temporal_output_tex)
-            .write(&mut debug_output_img)
-            .write(&mut meta_output_tex)
+            .write(&mut this_frame_output_img)
+            .write(&mut smooth_var_output_tex)
             .write(&mut temporal_velocity_output_tex)
             .constants((
                 input_tex.desc().extent_inv_extent_2d(),
@@ -146,8 +185,8 @@ impl TaaRenderer {
             .dispatch(temporal_output_tex.desc().extent);
 
         TaaOutput {
-            color: temporal_output_tex.into(),
-            debug: debug_output_img,
+            temporal_out: temporal_output_tex.into(),
+            this_frame_out: this_frame_output_img,
         }
     }
 }

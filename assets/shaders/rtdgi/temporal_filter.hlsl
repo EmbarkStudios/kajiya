@@ -37,7 +37,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 reproj = reprojection_tex[px * 2];
     float4 history = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     
-#if 1
 	float4 vsum = 0.0.xxxx;
 	float4 vsum2 = 0.0.xxxx;
 	float wsum = 0.0;
@@ -46,7 +45,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
             float4 neigh = (input_tex[px + int2(x, y) * 2]);
-			float w = 1;//exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
+			const float w = 1;
 			vsum += neigh * w;
 			vsum2 += neigh * neigh * w;
 			wsum += w;
@@ -62,19 +61,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float n_deviations = 5.0;
 	float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
-#else
-	float4 nmin = center;
-	float4 nmax = center;
-
-	const int k = 2;
-    for (int y = -k; y <= k; ++y) {
-        for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y) * 2]);
-			nmin = min(nmin, neigh);
-            nmax = max(nmax, neigh);
-        }
-    }
-#endif
 
     float3 control_variate = 0.0.xxx;
     {
@@ -143,14 +129,11 @@ void main(uint2 px: SV_DispatchThreadID) {
         for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
                 float4 history = history_tex[history_px + int2(x, y)];
-                //history_dist = min(history_dist, abs(control_variate_luma - history.a));
-                //float dist = abs(control_variate_luma - history.a);
                 float dist = abs(control_variate_luma - history.a) / max(1e-5, control_variate_luma + history.a);
                 history_dist = min(history_dist, dist);
             }
         }
     }
-    //history_dist = WaveActiveMin(history_dist);
 
     const float4 cv_history_dev_packed = cv_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
     const float3 cv_history = cv_history_dev_packed.rgb;
@@ -159,13 +142,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     history_dist = min(history_dist, WaveReadLaneAt(history_dist, WaveGetLaneIndex() ^ 1));
     history_dist = min(history_dist, WaveReadLaneAt(history_dist, WaveGetLaneIndex() ^ 8));
 
-    //history_dist = abs(control_variate_luma - calculate_luma(cv_history));
-
-    //const float invalid = smoothstep(0.0, 10.0, history_dist / max(1e-5, min(history.a, control_variate_luma)));
-    
     const float light_stability = 1.0 - 0.8 * smoothstep(0.1, 0.5, history_dist);
-    //const float light_stability = 1.0 - step(0.01, history_dist);
-    //const float light_stability = 1;
 
     const float3 cv_diff = (control_variate - cv_history);
 
@@ -209,7 +186,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     // TODO: proper rejection (not "reproj_validity_dilated")
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
-    //res = center.rgb;
 
     const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
 
@@ -226,20 +202,5 @@ void main(uint2 px: SV_DispatchThreadID) {
         spatial_input = max(0.0.xxx, res);
     }
 
-    //spatial_input *= reproj.z;    // debug validity
-    //spatial_input *= light_stability;
-    //spatial_input = smoothstep(0.0, 0.05, history_dist);
-    //spatial_input = length(dev.rgb);
-    //spatial_input = 1-light_stability;
-    //spatial_input = control_variate_luma;
-    //spatial_input = abs(cv_diff);
-    //spatial_input = abs(dev.rgb);
-    //spatial_input = smoothed_dev;
-
-    // TODO: adaptively sample according to abs(res)
-    //spatial_input = max(0.0, abs(res) / max(1e-5, control_variate));
-
-    //output_tex[px] = float4(spatial_input, smoothed_dev * (light_stability > 0.5 ? 1.0 : -1.0));
     output_tex[px] = float4(spatial_input, light_stability);
-    //history_output_tex[px] = reproj.w;
 }

@@ -2,7 +2,7 @@
 #![allow(unused_imports)]
 
 use byteorder::{ByteOrder, NativeEndian, WriteBytesExt};
-use glam::{Mat4, Quat, Vec3};
+use glam::{Mat4, Quat, Vec3, Vec4};
 use gltf::texture::TextureTransform;
 use kajiya_backend::bytes::into_byte_vec;
 /*use render_core::{
@@ -289,7 +289,7 @@ impl LazyWorker for LoadGltfScene {
                         };
 
                         // Collect tangents (optional)
-                        let mut tangents = if let Some(iter) = reader.read_tangents() {
+                        let tangents = if let Some(iter) = reader.read_tangents() {
                             iter.collect::<Vec<_>>()
                         } else {
                             vec![[1.0, 0.0, 0.0, 0.0]; positions.len()]
@@ -303,7 +303,7 @@ impl LazyWorker for LoadGltfScene {
                         };
 
                         // Collect colors (optional)
-                        let colors = if let Some(iter) = reader.read_colors(0) {
+                        let mut colors = if let Some(iter) = reader.read_colors(0) {
                             iter.into_rgba_f32().collect::<Vec<_>>()
                         } else {
                             vec![[1.0, 1.0, 1.0, 1.0]; positions.len()]
@@ -336,22 +336,27 @@ impl LazyWorker for LoadGltfScene {
                             // log::info!("Loading a mesh with {} indices", indices.len());
 
                             res.indices.append(&mut indices);
-                            res.tangents.append(&mut tangents);
+                            res.colors.append(&mut colors);
                             res.material_ids.append(&mut material_ids);
                         }
 
-                        for p in positions {
-                            let pos = (xform * Vec3::from(p).extend(1.0)).truncate();
+                        for v in positions {
+                            let pos = (xform * Vec3::from(v).extend(1.0)).truncate();
                             res.positions.push(pos.into());
                         }
 
-                        for n in normals {
-                            let norm = (xform * Vec3::from(n).extend(0.0)).truncate().normalize();
+                        for v in normals {
+                            let norm = (xform * Vec3::from(v).extend(0.0)).truncate().normalize();
                             res.normals.push(norm.into());
                         }
 
-                        for c in colors {
-                            res.colors.push(c);
+                        for v in tangents {
+                            let v = Vec4::from(v);
+                            let t = (xform * v.truncate().extend(0.0)).truncate().normalize();
+                            res.tangents.push(
+                                t.extend(v.w * if flip_winding_order { -1.0 } else { 1.0 })
+                                    .into(),
+                            );
                         }
 
                         res.uvs.append(&mut uvs);

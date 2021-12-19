@@ -39,7 +39,10 @@ pub fn set_standard_vfs_mount_points(kajiya_path: impl Into<PathBuf>) {
     let kajiya_path = kajiya_path.into();
     set_vfs_mount_point("/kajiya", &kajiya_path);
     set_vfs_mount_point("/shaders", kajiya_path.join("assets/shaders"));
-    set_vfs_mount_point("/rust-shaders", kajiya_path.join("assets/rust-shaders"));
+    set_vfs_mount_point(
+        "/rust-shaders-compiled",
+        kajiya_path.join("assets/rust-shaders-compiled"),
+    );
     set_vfs_mount_point("/images", kajiya_path.join("assets/images"));
 }
 
