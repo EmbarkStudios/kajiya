@@ -128,16 +128,18 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 ## Known issues
 
 * Vulkan API usage is extremely basic. Resources are usually not released, and barriers aren't optimal.
-* There's a hard limit on mesh data and instance count. Exceeding those limits will result in Vulkan validation errors / driver crashes.
+* There are hard limit on mesh data and instance counts. Exceeding those limits will result in panics and Vulkan validation errors / driver crashes.
 * Window (framebuffer) resizing is not yet implemented.
 * The voxel GI uses a fixed-size volume around the origin by default.
     * Use `--gi-volume-scale` to change its extent in the `view` app
-    * It can be configured to use camera-centered cascades at an extra performance cost
+    * It can be configured to use camera-centered cascades at an extra performance cost (see `CASCADE_COUNT` and `SCROLL_CASCADES` in [`csgi.rs`](../crates/lib/kajiya/src/renderers/csgi.rs`))
 * Denoising needs more work (always).
 
 ## Acknowledgments
 
-This project is made possible by the awesome open source Rust community, and benefits from a multitude of crates. Special shout-outs go to:
+This project is made possible by the awesome open source Rust community, and benefits from a multitude of crates 💖🦀
+
+Special shout-outs go to:
 
 * Felix Westin for his [MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere), which this project uses for sky rendering
 * AMD, especially Dominik Baumeister and Guillaume Boissé for the [FidelityFX Shadow Denoiser](https://gpuopen.com/fidelityfx-denoiser/), which forms the basis of shadow denoising in `kajiya`.
