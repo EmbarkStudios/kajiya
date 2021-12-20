@@ -124,6 +124,7 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 ## Technical guides
 * [Using DLSS](docs/using-dlss.md)
 * [Working on Rust shaders](docs/rust-shaders.md)
+* [Using `kajiya` as a crate](docs/using-kajiya.md)
 
 ## Known issues
 
