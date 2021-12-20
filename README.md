@@ -20,8 +20,8 @@ Its general goal is to get as close as possible to path-traced reference at real
 
 `kajiya` does not currently aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
 
-![image](https://user-images.githubusercontent.com/16522064/146754251-4a022514-03c9-420a-ac84-4f780f3b670b.png)
-_[The Junk Shop](https://cloud.blender.org/p/gallery/5dd6d7044441651fa3decb56) scene by Alex Treviño. Original Concept by Anaïs Maamar._
+![image (5)](https://user-images.githubusercontent.com/16522064/146789417-0cc84f60-157d-4a7d-99f5-79122c1fa982.png)
+_Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/marketplace/en-US/product/modular-ruins-c) by Crebotoly_
 
 ## Features
 
