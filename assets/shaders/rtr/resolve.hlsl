@@ -27,17 +27,13 @@
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
 
-#define USE_APPROX_BRDF 0
 #define SHUFFLE_SUBPIXELS 1
 #define BORROW_SAMPLES 1
 #define SHORT_CIRCUIT_NO_BORROW_SAMPLES 0
 
-// If true: Accumulate the full reflection * BRDF term, including FG
-// If false: Accumulate lighting only, without the BRDF term
-#define ACCUM_FG_IN_RATIO_ESTIMATOR 0
-
 #define USE_APPROXIMATE_SAMPLE_SHADOWING 1
 
+// Note: Only does anything if RTR_RAY_HIT_STORED_AS_POSITION is 0
 // Calculates hit points of neighboring samples, and rejects them if those land
 // in the negative hemisphere of the sample being calculated.
 // Adds quite a bit of ALU, but fixes some halos around corners.
@@ -132,26 +128,16 @@ void main(const uint2 px : SV_DispatchThreadID) {
 
     const float4 reprojection_params = reprojection_tex[px];
 
-    float history_error;
-    {
-        float4 history = history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).w;
-        float ex = calculate_luma(history.xyz);
-        float ex2 = history.w;
-        history_error = abs(ex * ex - ex2) / max(1e-8, ex);
-    }
-
-    const float ray_squish_strength = 4;
-
+    const float RAY_SQUISH_STRENGTH = 4;
     const float ray_len_avg = exponential_unsquish(lerp(
-        exponential_squish(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_strength),
-        exponential_squish(surf_to_hit_dist, ray_squish_strength),
-        0.1),ray_squish_strength);
+        exponential_squish(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, RAY_SQUISH_STRENGTH),
+        exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH),
+        0.1),RAY_SQUISH_STRENGTH);
 
     const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
 
     float4 contrib_accum = 0.0;
     float ray_len_accum = 0;
-    float3 brdf_weight_accum = 0.0;
 
     float ex = 0.0;
     float ex2 = 0.0;
@@ -294,18 +280,23 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 const float3 center_to_hit_vs = packed1.xyz;
             #endif
 
+            // Discard hit samples which face away from the center pixel
+            if (dot(sample_hit_normal_vs, -center_to_hit_vs) <= 0) {
+                continue;
+            }
+
             float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
 
             float sample_hit_to_center_vis = 1;
 
             if (wi.z > 1e-5) {
                 float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
-                // TODO: brdf-driven blend
+
+                // Soft directional falloff; TODO: brdf-driven blend
                 float rejection_bias =
                     0.01 + 0.99 * saturate(inverse_lerp(0.6, 0.9, dot(normal_vs, sample_normal_vs)));
-                //rejection_bias *= exp2(-10.0 * abs(1.0 / sample_depth - 1.0 / depth) * depth);
+                // Depth
                 rejection_bias *= exp2(-10.0 * abs(depth / sample_depth - 1.0));
-                rejection_bias *= dot(sample_hit_normal_vs, center_to_hit_vs) < 0;
 
                 sample_hit_to_center_vis = saturate(dot(sample_hit_normal_vs, -normalize(center_to_hit_vs)));
 
@@ -344,27 +335,11 @@ void main(const uint2 px : SV_DispatchThreadID) {
                 #endif
             #endif
 
-    #if !USE_APPROX_BRDF
                 BrdfValue spec = specular_brdf.evaluate(wo, wi);
 
-                // Note: looks closer to reference when comparing against metalness=1 albedo=1 PT reference.
-                // As soon as the regular image is compared though. This term just happens to look
-                // similar to the lack of Fresnel in the metalness=1 albedo=1 case.
-                // const float spec_weight = spec.value.x * max(0.0, wi.z);
-
-                #if ACCUM_FG_IN_RATIO_ESTIMATOR
-                    // Note: could be spec.pdf too, though then fresnel isn't accounted for in the weights
-                    const float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
-                #else
-                    const float spec_weight = calculate_luma(spec.value) * step(0.0, wi.z);
-                #endif
-    #else
-                const float3 m = normalize(wo + wi);
-                const float cos_theta = m.z;
-                const float pdf_h_over_cos_theta = SpecularBrdf::ggx_ndf(a2, cos_theta);
-                const float3 f = eval_fresnel_schlick(specular_brdf.albedo, 1.0, dot(m, wi)).x;
-                const float spec_weight = calculate_luma(f) * pdf_h_over_cos_theta * step(0.0, wi.z) / max(1e-5, wo.z + wi.z);
-    #endif
+                // The FG weight is included in the radiance accumulator,
+                // so should not be in the ratio estimator weight.
+                const float spec_weight = spec.pdf * step(0.0, wi.z);
 
                 float to_psa_metric = 1;
                 #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
@@ -380,41 +355,26 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     neighbor_sampling_pdf /= to_psa_metric;
                 #endif
 
-                #if !ACCUM_FG_IN_RATIO_ESTIMATOR
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
-                    contrib_accum += float4(
-                        packed0.rgb
-                        ,
-                        1
-                    ) * contrib_wt;
-                #else
-                    float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
-                    contrib_accum += float4(
-                        packed0.rgb * spec.value_over_pdf
-                        ,
-                        1
-                    ) * contrib_wt;
-                #endif
-
-                brdf_weight_accum += spec.value_over_pdf * contrib_wt;
+                const float contrib_wt = rejection_bias * step(0.0, wi.z) * spec_weight / neighbor_sampling_pdf;
+                contrib_accum += float4(
+                    packed0.rgb * spec.value_over_pdf
+                    ,
+                    1
+                ) * contrib_wt;
 
                 float luma = calculate_luma(packed0.rgb);
                 ex += luma * contrib_wt;
                 ex2 += luma * luma * contrib_wt;
 
                 // Aggressively bias towards closer hits
-                ray_len_accum += exponential_squish(surf_to_hit_dist, ray_squish_strength) * contrib_wt;
+                ray_len_accum += exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;
             }
         }
     }
 
-    // TODO: when the borrow sample count is low (or 1), normalizing here
+    // Note: When the borrow sample count is low (or 1), normalizing here
     // introduces a heavy bias, as it disregards the PDFs with which
-    // samples have been taken. It should probably be temporally accumulated instead.
-    //
-    // Could temporally accumulate contributions scaled by brdf_weight_accum,
-    // but then the latter needs to be stored as well, and renormalized before
-    // sampling in a given frame. Could also be tricky to temporally filter it.
+    // samples have been taken.
 
     const float contrib_norm_factor = max(1e-8, contrib_accum.w);
 
@@ -423,18 +383,15 @@ void main(const uint2 px : SV_DispatchThreadID) {
     ex2 /= contrib_norm_factor;
     ray_len_accum /= contrib_norm_factor;
 
-    brdf_weight_accum /= max(1e-8, contrib_accum.w);
+    SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
 
-    #if !RTR_RENDER_SCALED_BY_FG && ACCUM_FG_IN_RATIO_ESTIMATOR
-        // Un-scale by the FG term so we can denoise just the lighting,
-        // and the darkening effect of FG becomes temporally responsive.
-        contrib_accum.rgb /= max(1e-8, brdf_weight_accum);
-    #elif RTR_RENDER_SCALED_BY_FG && !ACCUM_FG_IN_RATIO_ESTIMATOR
-        // Edge case for debug only
-        contrib_accum.rgb *= max(1e-8, brdf_weight_accum);
+    #if !RTR_RENDER_SCALED_BY_FG
+        contrib_accum.rgb /= brdf_lut.preintegrated_reflection;
     #endif
 
-    ray_len_accum = exponential_unsquish(ray_len_accum, ray_squish_strength);
+    //contrib_accum.rgb *= brdf_lut.preintegrated_reflection_mult;
+
+    ray_len_accum = exponential_unsquish(ray_len_accum, RAY_SQUISH_STRENGTH);
     
     float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);

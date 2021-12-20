@@ -8,7 +8,6 @@
    
 # 💡 kajiya
 
-<!--- FIXME: Write short catchy description/tagline of project --->
 **Experimental real-time global illumination renderer made with Rust and Vulkan**
 
 [![Embark](https://img.shields.io/badge/embark-open%20source-blueviolet.svg)](https://embark.dev)
