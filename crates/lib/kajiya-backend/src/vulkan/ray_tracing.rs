@@ -85,7 +85,7 @@ impl Device {
             .create_buffer(
                 super::buffer::BufferDesc {
                     size: RT_SCRATCH_BUFFER_SIZE,
-                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
                     mapped: false,
                 },
