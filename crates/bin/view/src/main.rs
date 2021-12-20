@@ -92,7 +92,7 @@ struct PersistedAppState {
 #[derive(PartialEq, Eq)]
 enum LeftClickEditMode {
     MoveSun,
-    MoveLocalLights,
+    //MoveLocalLights,
 }
 
 const APP_STATE_CONFIG_FILE_PATH: &str = "view_state.ron";
@@ -215,7 +215,7 @@ fn main() -> anyhow::Result<()> {
 
         let mut show_gui = false;
         let mut sun_direction_interp = state.sun.direction();
-        let mut left_click_edit_mode = LeftClickEditMode::MoveSun;
+        let left_click_edit_mode = LeftClickEditMode::MoveSun;
 
         const MAX_FPS_LIMIT: u32 = 256;
         let mut max_fps = MAX_FPS_LIMIT;
@@ -309,10 +309,10 @@ fn main() -> anyhow::Result<()> {
                         state.sun.theta += theta_delta;
                         state.sun.phi += phi_delta;
                     }
-                    LeftClickEditMode::MoveLocalLights => {
+                    /*LeftClickEditMode::MoveLocalLights => {
                         state.lights.theta += theta_delta;
                         state.lights.phi += phi_delta;
-                    }
+                    }*/
                 }
             }
 
@@ -423,7 +423,7 @@ fn main() -> anyhow::Result<()> {
                             .speed(0.02)
                             .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
 
-                        if ui.radio_button_bool(
+                        /*if ui.radio_button_bool(
                             im_str!("Move sun"),
                             left_click_edit_mode == LeftClickEditMode::MoveSun,
                         ) {
@@ -439,7 +439,7 @@ fn main() -> anyhow::Result<()> {
 
                         imgui::Drag::<u32>::new(im_str!("Light count"))
                             .range(0..=10)
-                            .build(ui, &mut state.lights.count);
+                            .build(ui, &mut state.lights.count);*/
 
                         #[cfg(feature = "dlss")]
                         {
