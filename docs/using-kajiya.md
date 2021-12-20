@@ -1,8 +1,10 @@
 # Using `kajiya` as a crate
 
+_Please note that the project is experimental. Shipping games/apps is not one of its current goals, and is not actively supported._
+
 `kajiya` is not currently published on `crates.io`, and doesn't have an asset packaging system. For those reasons, using it as a crate is a bit fiddly. It's possible though.
 
-Documentation is currently scarce, meaning that it's best to follow examples (see `crates/bin/hello`).
+Documentation is currently scarce, meaning that it's best to follow examples (see [`crates/bin/hello`](../crates/bin/hello)).
 
 ## VFS
 
@@ -18,7 +20,7 @@ set_vfs_mount_point("/baked", "./baked");
 
 ## Cargo patches
 
-For a standalone project to compile, please copy the `[patch.crates-io]` section from the top-level `Cargo.toml`
+For a standalone project to compile, please copy the `[patch.crates-io]` section from the top-level [`Cargo.toml`](../Cargo.toml)
 
 # More examples
 
