@@ -44,9 +44,19 @@ _["Flying world - Battle of the Trash god" Scene](https://sketchfab.com/3d-model
 * GLTF mesh loading (no animations yet)
 * A render graph running it all
 
+## Technical overview
+
+* [A quick presentation](https://docs.google.com/presentation/d/1LWo5TtWUAH9d62sGY9Sjmu1JqIs8BsxLbVDxLuhhX8U/edit?usp=sharing) about the renderer
+* Repository highlights:
+  * HLSL shaders: [`assets/shaders/`](assets/shaders)
+  * Rust shaders: [`crates/lib/rust-shaders/`](crates/lib/rust-shaders)
+  * Main render graph passes: [`world_render_passes.rs`](crates/lib/kajiya/src/world_render_passes.rs)
+* Notable branches:
+  * `restir-meets-surfel` - latest experimental branch, with [new GI in the works](https://gist.github.com/h3r2tic/ba39300c2b2ca4d9ca5f6ff22350a037)
+
 ## Platforms
 
-It currently works on a limited range of systems and hardware.
+`kajiya` currently works on a limited range of operating systems and hardware.
 
 Operating systems:
 * Windows
@@ -64,7 +74,7 @@ There's a very minimal asset pipeline in `bake.rs`, which converts meshes from G
 * Windows: `bake.cmd`
 * Linux: `./bake.sh`
 
-When done, run the renderer demo via:
+When done, run the renderer demo (`view` app from `crates/bin/view`) via:
 
 * Windows: `build_and_run.cmd [scene_name]`
 * Linux: `./build_and_run.sh [scene_name]`
@@ -80,6 +90,17 @@ or
 ```
 cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no-debug
 ```
+
+### Controls in the `view` app
+
+* WSAD, QE - movement
+* Mouse + RMB - rotate the camera
+* Mouse + LMB - rotate the sun
+* Shift - move faster
+* Ctrl - move slower
+* Space - switch to reference path tracing
+* Backspace - reset view to previous saved state
+* Tab - show/hide the UI
 
 ## Adding Meshes and Scenes
 
@@ -100,16 +121,9 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 )
 ```
 
-### Controls
-
-* WSAD, QE - movement
-* Mouse + RMB - rotate the camera
-* Mouse + LMB - rotate the sun
-* Shift - move faster
-* Ctrl - move slower
-* Space - switch to reference path tracing
-* Backpace - reset reference path tracing accumulation
-* Tab - show/hide the UI
+## Technical guides
+* [Using DLSS](docs/using-dlss.md)
+* [Working on Rust shaders](docs/rust-shaders.md)
 
 ## Known issues
 
@@ -120,39 +134,6 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
     * Use `--gi-volume-scale` to change its extent in the `view` app
     * It can be configured to use camera-centered cascades at an extra performance cost
 * Denoising needs more work (always).
-
-## Using DLSS
-
-DLSS is supported on Nvidia RTX GPUs, and `kajiya` can currently use it when running on Windows.
-
-#### SDK
-
-Nvidia's DLSS EULA prohibits distribution of the DLSS SDK, so you will have to obtain it yourself. The stand-alone SDK currently requires an NVIDIA Developer Program membership, _however_ the Unreal Enigine 5 plugin does not, yet it contains the necessary files.
-
-Therefore, the easiest way to get DLSS into `kajiya` is to [download the UE5 DLSS plugin](https://developer.nvidia.com/dlss-getting-started#ue-version), and extract the following:
-
-* Copy `DLSS/Binaries/ThirdParty/Win64/nvngx_dlss.dll` to the root `kajiya` folder (where this README resides).
-* Copy the entire `DLSS/Source/ThirdParty/NGX` folder to `crates/lib/ngx_dlss/NGX`
-
-#### Rust bindings
-
-Please make sure you can run `bindgen`, which is necessary to generate a Rust binding to the SDK. Here's the official [installation instructions and requirements page](https://rust-lang.github.io/rust-bindgen/requirements.html). If `cargo` complains about `libclang.dll`, it's probably this.
-
-#### Usage
-
-When building `kajiya`, use the `dlss` Cargo feature, and specify temporal upsampling, e.g.:
-
-```
-cargo run --bin view --release --features dlss -- --scene battle --no-debug --temporal-upsampling 1.5 --width 1920 --height 1080
-```
-
-This will run DLSS _Quality_ mode. `--temporal-upsampling 2.0` corresponds to _Performance_.
-
-Please note that while DLSS works well for AAA-style content, it currently struggles with flat colors and smooth gradients. The built-in `kajiya` TAA and its temporal upsampling tends to look better there.
-
-# Working on Rust shaders
-
-Add your shaders to the `assets/rust-shaders` crate. Run the shader builder from `assets/rust-shaders/builder` to make sure they can be loaded at runtime. Finally, use `SimpleRenderPass::new_compute_rust` to create a render graph pass (see existing examples).
 
 ## Acknowledgments
 
