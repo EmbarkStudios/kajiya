@@ -21,7 +21,3 @@ set_vfs_mount_point("/baked", "./baked");
 ## Cargo patches
 
 For a standalone project to compile, please copy the `[patch.crates-io]` section from the top-level [`Cargo.toml`](../Cargo.toml)
-
-# More examples
-
-* [Cornell McRay t'Racing](https://github.com/h3r2tic/cornell-mcray) -- a simple racing game
