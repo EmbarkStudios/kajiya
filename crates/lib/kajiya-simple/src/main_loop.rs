@@ -194,8 +194,7 @@ impl SimpleMainLoop {
                 FullscreenMode::Borderless => Some(Fullscreen::Borderless(None)),
                 FullscreenMode::Exclusive => Some(Fullscreen::Exclusive(
                     event_loop
-                        .available_monitors()
-                        .next()
+                        .primary_monitor()
                         .expect("at least one monitor")
                         .video_modes()
                         .next()
