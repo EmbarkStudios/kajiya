@@ -308,11 +308,10 @@ fn main() -> anyhow::Result<()> {
                     LeftClickEditMode::MoveSun => {
                         state.sun.theta += theta_delta;
                         state.sun.phi += phi_delta;
-                    }
-                    /*LeftClickEditMode::MoveLocalLights => {
-                        state.lights.theta += theta_delta;
-                        state.lights.phi += phi_delta;
-                    }*/
+                    } /*LeftClickEditMode::MoveLocalLights => {
+                          state.lights.theta += theta_delta;
+                          state.lights.phi += phi_delta;
+                      }*/
                 }
             }
 
