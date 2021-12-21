@@ -59,14 +59,19 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 
 `kajiya` currently works on a limited range of operating systems and hardware.
 
-Operating systems:
-* Windows
-* Linux
 
 Hardware:
 * Nvidia RTX series
 * Nvidia GTX 1060 and newer (slow: driver-emulated ray-tracing)
 * AMD Radeon RX 6000 series
+
+Operating systems:
+* Windows
+* Linux
+
+### (Some) Linux dependencies
+* `libtinfo5`
+* `uuid-dev`
 
 ## Building and running
 
