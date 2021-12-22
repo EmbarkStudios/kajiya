@@ -108,6 +108,18 @@ cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no
 * Backspace - reset view to previous saved state
 * Tab - show/hide the UI
 
+### Resolution scaling
+
+#### DPI
+
+For the `view` app, DPI scaling in the operating system affects the physical number of pixels of the rendering output. The `--width` and `--height` parameters correspond to _logical_ window size **and** the internal rendering resolution. Suppose the OS uses DPI scaling of `1.5`, and the app is launched with `--width 1000`, the actual physical width of the window will be `1500` px. Rendering will still happen at `1000` px, with upscaling to `1500` px at the very end, via a Catmull-Rom kernel.
+
+#### Temporal upsampling
+
+`kajiya` can also render at a reduced internal resolution, and reconstruct a larger image via temporal upsampling, trading quality for performance. A custom temporal super-resolution algorithm is used by default, and [DLSS is supported](docs/using-dlss.md) on some platforms. Both approaches result in better quality than what could be achieved by simply spatially scaling up the image at the end.
+
+For example, `--width 1920 --height 1080 --temporal-upsampling 1.5` will produce a `1920x1080` image by upsampling by a factor of `1.5` from `1280x720`. Most of the rendering will then happen with `1.5 * 1.5 = 2.25` times fewer pixels, resulting in an _almost_ 2x speedup.
+
 ## Adding Meshes and Scenes
 
 To add new mesh(es), open `bake.cmd` (Win) / `bake.sh` (Linux), and add
