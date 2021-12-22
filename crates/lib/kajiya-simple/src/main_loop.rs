@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     frame_desc::WorldFrameDesc,
@@ -315,7 +317,15 @@ impl SimpleMainLoop {
         let mut last_frame_instant = std::time::Instant::now();
         let mut last_error_text = None;
 
-        let mut dt_filtered: f32 = 0.0;
+        // Delta times are filtered over _this many_ frames.
+        const DT_FILTER_WIDTH: usize = 10;
+
+        // Past delta times used for filtering
+        let mut dt_queue: VecDeque<f32> = VecDeque::with_capacity(DT_FILTER_WIDTH);
+
+        // Fake the first frame's delta time. In the first frame, shaders
+        // and pipelines are be compiled, so it will most likely have a spike.
+        let mut fake_dt_countdown: i32 = 1;
 
         let mut running = true;
         while running {
@@ -366,13 +376,28 @@ impl SimpleMainLoop {
             // Should applications need unfiltered delta time, they can calculate
             // it themselves, but it's good to pass the filtered time so users
             // don't need to worry about it.
-            {
+            let dt_filtered = {
                 let now = std::time::Instant::now();
                 let dt_duration = now - last_frame_instant;
                 last_frame_instant = now;
 
                 let dt_raw = dt_duration.as_secs_f32();
-                dt_filtered = dt_filtered + (dt_raw - dt_filtered) / 10.0;
+
+                // >= because rendering (and thus the spike) happens _after_ this.
+                if fake_dt_countdown >= 0 {
+                    // First frame. Return the fake value.
+                    fake_dt_countdown -= 1;
+                    dt_raw.min(1.0 / 60.0)
+                } else {
+                    // Not the first frame. Start averaging.
+
+                    if dt_queue.len() >= DT_FILTER_WIDTH {
+                        dt_queue.pop_front();
+                    }
+
+                    dt_queue.push_back(dt_raw);
+                    dt_queue.iter().copied().sum::<f32>() / dt_queue.len() as f32
+                }
             };
 
             let frame_desc = frame_fn(FrameContext {
