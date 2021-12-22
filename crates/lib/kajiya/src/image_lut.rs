@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kajiya_backend::{vk_sync, vulkan::image::*};
 use kajiya_rg as rg;
 
-pub trait ComputeImageLut {
+pub trait ComputeImageLut: Send {
     fn create(&mut self, device: &kajiya_backend::Device) -> Image;
     fn compute(&mut self, rg: &mut rg::RenderGraph, img: &mut rg::Handle<Image>);
 }
