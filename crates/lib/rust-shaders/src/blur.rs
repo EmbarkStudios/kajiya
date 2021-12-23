@@ -1,8 +1,9 @@
 use macaw::{IVec2, UVec2, UVec3, Vec4};
-use spirv_std::arch::control_barrier;
-use spirv_std::memory::Scope;
-use spirv_std::memory::Semantics;
-use spirv_std::Image;
+use spirv_std::{
+    arch::control_barrier,
+    memory::{Scope, Semantics},
+    Image,
+};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;

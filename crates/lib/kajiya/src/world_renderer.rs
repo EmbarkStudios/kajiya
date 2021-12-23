@@ -177,7 +177,6 @@ pub struct WorldRenderer {
     pub ev_shift: f32,
 
     pub world_gi_scale: f32,
-    pub global_fog_thickness: f32,
     pub sun_size_multiplier: f32,
     pub sun_color_multiplier: Vec3,
     pub sky_ambient: Vec3,
@@ -238,6 +237,7 @@ impl AddMeshOptions {
 
 impl WorldRenderer {
     pub(crate) fn new_empty(
+        // Internal render resolution, before any upsampling
         #[allow(unused_variables)] render_extent: [u32; 2],
         temporal_upscale_extent: [u32; 2],
         backend: &RenderBackend,
@@ -358,7 +358,7 @@ impl WorldRenderer {
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             lighting: LightingRenderer::new(),
-            rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
+            rtdgi: RtdgiRenderer::new(),
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
 
@@ -375,7 +375,6 @@ impl WorldRenderer {
             ev_shift: 0.0,
 
             world_gi_scale: 1.0,
-            global_fog_thickness: 0.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth
             sun_color_multiplier: Vec3::ONE,
             sky_ambient: Vec3::ZERO,
@@ -881,7 +880,6 @@ impl WorldRenderer {
             frame_index: self.frame_idx,
             delta_time_seconds,
             sun_angular_radius_cos: (self.sun_size_multiplier * real_sun_angular_radius).cos(),
-            global_fog_thickness: self.global_fog_thickness,
 
             sun_color_multiplier: self.sun_color_multiplier.extend(0.0),
             sky_ambient: self.sky_ambient.extend(0.0),
@@ -889,6 +887,7 @@ impl WorldRenderer {
             world_gi_scale: self.world_gi_scale,
             pad0: 0,
             pad1: 0,
+            pad2: 0,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

@@ -165,6 +165,10 @@ impl Device {
                 b"VK_NVX_binary_import\0".as_ptr() as *const i8
             },
             #[cfg(feature = "dlss")]
+            {
+                b"VK_KHR_push_descriptor\0".as_ptr() as *const i8
+            },
+            #[cfg(feature = "dlss")]
             vk::NvxImageViewHandleFn::name().as_ptr(),
         ];
 

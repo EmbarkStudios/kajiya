@@ -1,6 +1,6 @@
 use kajiya_backend::{
     ash::vk,
-    vulkan::{image::*, ray_tracing::RayTracingAcceleration},
+    vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 use rg::BindToSimpleRenderPass;
@@ -45,12 +45,12 @@ pub fn wrc_trace(
 
     SimpleRenderPass::new_rt(
         rg.add_pass("wrc trace"),
-        "/shaders/wrc/trace_wrc.rgen.hlsl",
-        &[
-            "/shaders/rt/gbuffer.rmiss.hlsl",
-            "/shaders/rt/shadow.rmiss.hlsl",
+        ShaderSource::hlsl("/shaders/wrc/trace_wrc.rgen.hlsl"),
+        [
+            ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+            ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
         ],
-        &["/shaders/rt/gbuffer.rchit.hlsl"],
+        [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
     )
     .read(sky_cube)
     .bind(surfel_gi)
@@ -73,12 +73,12 @@ impl WrcRenderState {
     ) {
         SimpleRenderPass::new_rt(
             rg.add_pass("wrc see through"),
-            "/shaders/wrc/wrc_see_through.rgen.hlsl",
-            &[
-                "/shaders/rt/gbuffer.rmiss.hlsl",
-                "/shaders/rt/shadow.rmiss.hlsl",
+            ShaderSource::hlsl("/shaders/wrc/wrc_see_through.rgen.hlsl"),
+            [
+                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
             ],
-            &["/shaders/rt/gbuffer.rchit.hlsl"],
+            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
         )
         .bind(self)
         .read(sky_cube)

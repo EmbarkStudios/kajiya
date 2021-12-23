@@ -7,6 +7,7 @@ use kajiya_backend::{
         buffer::{Buffer, BufferDesc},
         image::*,
         ray_tracing::RayTracingAcceleration,
+        shader::ShaderSource,
     },
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
@@ -242,12 +243,12 @@ impl SurfelGiRenderState {
 
         SimpleRenderPass::new_rt(
             rg.add_pass("surfel gi trace"),
-            "/shaders/surfel_gi/trace_irradiance.rgen.hlsl",
-            &[
-                "/shaders/rt/gbuffer.rmiss.hlsl",
-                "/shaders/rt/shadow.rmiss.hlsl",
+            ShaderSource::hlsl("/shaders/surfel_gi/trace_irradiance.rgen.hlsl"),
+            [
+                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
             ],
-            &["/shaders/rt/gbuffer.rchit.hlsl"],
+            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
         )
         .read(&self.surfel_spatial_buf)
         .read(sky_cube)

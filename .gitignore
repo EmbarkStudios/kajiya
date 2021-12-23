@@ -6,6 +6,6 @@
 *.log
 **/*.rs.bk
 imgui.ini
-view_state.ron
+view_state*.ron
 nvngx*
 nvsdk*

@@ -92,7 +92,7 @@ struct PersistedAppState {
 #[derive(PartialEq, Eq)]
 enum LeftClickEditMode {
     MoveSun,
-    MoveLocalLights,
+    //MoveLocalLights,
 }
 
 const APP_STATE_CONFIG_FILE_PATH: &str = "view_state.ron";
@@ -162,11 +162,11 @@ fn main() -> anyhow::Result<()> {
         .bind(VirtualKeyCode::LShift, KeyMap::new("boost", 1.0))
         .bind(VirtualKeyCode::LControl, KeyMap::new("boost", -1.0));
 
-    let light_mesh = kajiya.world_renderer.add_baked_mesh(
+    /*let light_mesh = kajiya.world_renderer.add_baked_mesh(
         "/baked/emissive-triangle.mesh",
         AddMeshOptions::new().use_lights(true),
     )?;
-    let mut light_instances = Vec::new();
+    let mut light_instances = Vec::new();*/
 
     let mut render_instances = vec![];
     for instance in scene_desc.instances {
@@ -204,7 +204,7 @@ fn main() -> anyhow::Result<()> {
             lights: LocalLightsState {
                 theta: 1.0,
                 phi: 1.0,
-                count: 1,
+                count: 0,
                 distance: 1.5,
                 multiplier: 10.0,
             },
@@ -215,7 +215,7 @@ fn main() -> anyhow::Result<()> {
 
         let mut show_gui = false;
         let mut sun_direction_interp = state.sun.direction();
-        let mut left_click_edit_mode = LeftClickEditMode::MoveSun;
+        let left_click_edit_mode = LeftClickEditMode::MoveSun;
 
         const MAX_FPS_LIMIT: u32 = 256;
         let mut max_fps = MAX_FPS_LIMIT;
@@ -307,11 +307,10 @@ fn main() -> anyhow::Result<()> {
                     LeftClickEditMode::MoveSun => {
                         state.sun.theta += theta_delta;
                         state.sun.phi += phi_delta;
-                    }
-                    LeftClickEditMode::MoveLocalLights => {
-                        state.lights.theta += theta_delta;
-                        state.lights.phi += phi_delta;
-                    }
+                    } /*LeftClickEditMode::MoveLocalLights => {
+                          state.lights.theta += theta_delta;
+                          state.lights.phi += phi_delta;
+                      }*/
                 }
             }
 
@@ -328,7 +327,7 @@ fn main() -> anyhow::Result<()> {
             let sun_direction = state.sun.direction();
             sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
 
-            #[allow(clippy::comparison_chain)]
+            /*#[allow(clippy::comparison_chain)]
             if light_instances.len() > state.lights.count as usize {
                 for extra_light in light_instances.drain(state.lights.count as usize..) {
                     ctx.world_renderer.remove_instance(extra_light);
@@ -359,7 +358,7 @@ fn main() -> anyhow::Result<()> {
                 ctx.world_renderer
                     .get_instance_dynamic_parameters_mut(*inst)
                     .emissive_multiplier = state.lights.multiplier;
-            }
+            }*/
 
             let lens = CameraLens {
                 aspect_ratio: ctx.aspect_ratio(),
@@ -427,7 +426,7 @@ fn main() -> anyhow::Result<()> {
                             &mut ctx.world_renderer.debug_show_wrc,
                         );
 
-                        if ui.radio_button_bool(
+                        /*if ui.radio_button_bool(
                             im_str!("Move sun"),
                             left_click_edit_mode == LeftClickEditMode::MoveSun,
                         ) {
@@ -443,7 +442,7 @@ fn main() -> anyhow::Result<()> {
 
                         imgui::Drag::<u32>::new(im_str!("Light count"))
                             .range(0..=10)
-                            .build(ui, &mut state.lights.count);
+                            .build(ui, &mut state.lights.count);*/
 
                         imgui::Drag::<u32>::new(im_str!("GI spatial reuse passes"))
                             .range(1..=3)

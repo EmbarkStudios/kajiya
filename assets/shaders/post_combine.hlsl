@@ -17,7 +17,6 @@
 
 #define USE_GRADE 1
 #define USE_TONEMAP 1
-#define USE_TIGHT_BLUR 0
 #define USE_DITHER 1
 #define USE_SHARPEN 1
 #define USE_VIGNETTE 1
@@ -40,32 +39,6 @@ float triangle_remap(float n) {
     v = max(-1.0, v);
     v -= sign(origin);
     return v;
-}
-
-float local_tmo_constrain(float x, float max_compression) {
-    #define local_tmo_constrain_mode 2
-
-    #if local_tmo_constrain_mode == 0
-        return exp(tanh(log(x) / max_compression) * max_compression);
-    #elif local_tmo_constrain_mode == 1
-
-        x = log(x);
-        float s = sign(x);
-        x = sqrt(abs(x));
-        x = tanh(x / max_compression) * max_compression;
-        x = exp(x * x * s);
-
-        return x;
-    #elif local_tmo_constrain_mode == 2
-        float k = 3.0 * max_compression;
-        x = 1.0 / x;
-        x = tonemap_curve(x / k) * k;
-        x = 1.0 / x;
-        x = tonemap_curve(x / k) * k;
-        return x;
-    #else
-        return x;
-    #endif
 }
 
 // (Very) reduced version of:
@@ -96,7 +69,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 glare = rev_blur_pyramid_tex.SampleLevel(sampler_lnc, uv, 0).rgb;
     float3 col = input_tex[px].rgb;
 
-    // TODO: move to its own pass
 #if USE_SHARPEN
 	float neighbors = 0;
 	float wt_sum = 0;
@@ -145,10 +117,8 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
 #if USE_TONEMAP
-    // Apply perceptually neutral shoulder
+    // Apply a perceptually neutral shoulder
     col = neutral_tonemap(col);
-
-    //col = saturate(lerp(calculate_luma(col), col, 1.05));
 #endif
 
     // Dither

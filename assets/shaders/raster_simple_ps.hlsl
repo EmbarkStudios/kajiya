@@ -41,7 +41,6 @@ PsOut main(PsIn ps) {
 
     float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
-    //float3 albedo = albedo_tex.SampleLevel(sampler_llr, ps.uv, 0).xyz * float4(material.base_color_mult).xyz * ps.color.xyz;
     float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5);
     if (albedo_texel.a < 0.5) {
         discard;
@@ -99,20 +98,6 @@ PsOut main(PsIn ps) {
         * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    //albedo = float3(0.966653, 0.4, 0.001);    // just testing
-    //metalness = 0;
-    //roughness = pow(lerp(sqrt(roughness), 0.5, 0.5), 2);
-    //roughness *= 0.5;
-    //albedo = 0;
-
-    /*if (ps.vs_pos.x > 0) {
-        roughness = 0.1;
-    } else {
-        roughness = 0.001;
-    }*/
-
-    //albedo = pow(albedo, 2);
-    //albedo /= max(albedo.r, max(albedo.g, albedo.b)) * 1.2;
 
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
@@ -121,17 +106,9 @@ PsOut main(PsIn ps) {
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
 
-    //gbuffer.albedo = 0.7;
-
     PsOut ps_out;
     ps_out.geometric_normal = geometric_normal_vs * 0.5 + 0.5;
     ps_out.gbuffer = asfloat(gbuffer.pack().data0);
-
-    /*float4 cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.vs_pos, 1));
-    float4 prev_cs_pos = mul(frame_constants.view_constants.view_to_sample, float4(ps.prev_vs_pos, 1));
-    float2 uv_pos = cs_to_uv(cs_pos.xy / cs_pos.w);
-    float2 prev_uv_pos = cs_to_uv(prev_cs_pos.xy / prev_cs_pos.w);*/
-
     ps_out.velocity = float4(ps.prev_vs_pos - ps.vs_pos, 0);
 
     return ps_out;

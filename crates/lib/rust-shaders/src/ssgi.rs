@@ -2,11 +2,10 @@ use macaw::{
     ivec2, uvec3, vec2, vec4, FloatExt, IVec3, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Ext,
     Vec4Swizzles,
 };
-use rust_shaders_shared::frame_constants::FrameConstants;
-use rust_shaders_shared::gbuffer::*;
-use rust_shaders_shared::ssgi::SsgiConstants;
-use rust_shaders_shared::util::*;
-use rust_shaders_shared::view_ray::ViewRayContext;
+use rust_shaders_shared::{
+    frame_constants::FrameConstants, gbuffer::*, ssgi::SsgiConstants, util::*,
+    view_ray::ViewRayContext,
+};
 use spirv_std::{Image, Sampler};
 
 #[cfg(not(target_arch = "spirv"))]

@@ -1,6 +1,6 @@
 use kajiya_backend::{
     ash::vk,
-    vulkan::{image::*, ray_tracing::RayTracingAcceleration},
+    vulkan::{image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
@@ -48,12 +48,12 @@ impl LightingRenderer {
 
         SimpleRenderPass::new_rt(
             rg.add_pass("sample lights"),
-            "/shaders/lighting/sample_lights.rgen.hlsl",
-            &[
-                "/shaders/rt/gbuffer.rmiss.hlsl",
-                "/shaders/rt/shadow.rmiss.hlsl",
+            ShaderSource::hlsl("/shaders/lighting/sample_lights.rgen.hlsl"),
+            [
+                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
             ],
-            &["/shaders/rt/gbuffer.rchit.hlsl"],
+            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
         )
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .write(&mut refl0_tex)

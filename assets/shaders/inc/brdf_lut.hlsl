@@ -62,6 +62,10 @@ struct SpecularBrdfEnergyPreservation {
             //
             // Gives a very close match to Eric Heitz's "Multiple-scattering microfacet BSDFs with the Smith model"
             // when testing against a uniform grey background, and comparing against the Mitsuba implementation.
+            //
+            // In retrospect, this is just a special case of "Eﬀicient Rendering of Layered Materials using an
+            // Atomic Decomposition with Statistical Operators" by Laurent Belcour, specifically section 5.1:
+            // https://hal.archives-ouvertes.fr/hal-01785457/document
 
             float e_ss = fg.x + fg.y;
             float3 f_ss = single_scatter / e_ss;

@@ -3,6 +3,8 @@
 pub mod camera;
 pub mod frame_constants;
 pub mod gbuffer;
+pub mod mesh;
+pub mod raster_simple;
 pub mod ssgi;
 pub mod util;
 pub mod view_constants;

@@ -38,6 +38,7 @@
 
 #define USE_APPROXIMATE_SAMPLE_SHADOWING 1
 
+// Note: Only does anything if RTR_RAY_HIT_STORED_AS_POSITION is 0
 // Calculates hit points of neighboring samples, and rejects them if those land
 // in the negative hemisphere of the sample being calculated.
 // Adds quite a bit of ALU, but fixes some halos around corners.
@@ -71,17 +72,6 @@ void get_specular_filter_kernel_basis(float3 v, float3 n, float roughness, float
 
     t1 = normalize(cross(n, reflected)) * scale;
     t2 = cross(reflected, t1);
-}
-
-// Encode ray length in a space which heavily favors short ones.
-// For temporal averaging of distance to ray hits.
-float squish_ray_len(float len, float squish_strength) {
-    return exp2(-clamp(squish_strength * len, 0, 100));
-}
-
-// Ditto, decode.
-float unsquish_ray_len(float len, float squish_strength) {
-    return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
 }
 
 [numthreads(8, 8, 1)]
@@ -149,9 +139,9 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float4 reprojection_params = reprojection_tex[px];
 
     const float RAY_SQUISH_STRENGTH = 4;
-    const float ray_len_avg = unsquish_ray_len(lerp(
-        squish_ray_len(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, RAY_SQUISH_STRENGTH),
-        squish_ray_len(surf_to_hit_dist, RAY_SQUISH_STRENGTH),
+    const float ray_len_avg = exponential_unsquish(lerp(
+        exponential_squish(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, RAY_SQUISH_STRENGTH),
+        exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH),
         0.1), RAY_SQUISH_STRENGTH);
 
     const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
@@ -198,7 +188,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float scale_factor = eye_to_surf_dist * eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1];
 
         // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
-        kernel_size_ws = clamp(kernel_size_ws, output_tex_size.w * 0.5 * scale_factor, 0.1 * scale_factor);
+        kernel_size_ws = clamp(kernel_size_ws, output_tex_size.w * 2.0 * scale_factor, 0.1 * scale_factor);
     }
     
     float3 kernel_t1, kernel_t2;
@@ -269,7 +259,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             int2 sample_px = int2(floor(sample_uv * output_tex_size.xy / 2));
             sample_offset = sample_px - half_px;
         }
-        
+
         int2 sample_px = half_px + sample_offset;
         float sample_depth = half_depth_tex[sample_px];
         float4 packed0 = hit0_tex[sample_px];
@@ -543,13 +533,13 @@ void main(uint2 px : SV_DispatchThreadID) {
             ex2 += luma * luma * contrib_wt;
 
             // Aggressively bias towards closer hits
-            ray_len_accum += squish_ray_len(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;
+            ray_len_accum += exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;
         }
     }
 
-    // TODO: when the borrow sample count is low (or 1), normalizing here
+    // Note: When the borrow sample count is low (or 1), normalizing here
     // introduces a heavy bias, as it disregards the PDFs with which
-    // samples have been taken. It should probably be temporally accumulated instead.
+    // samples have been taken.
 
     // Note: do not include the clamp range from `rejection_bias`
     const float contrib_norm_factor = max(1e-14, contrib_accum.w);
@@ -571,7 +561,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     contrib_accum.rgb *= brdf_lut.preintegrated_reflection_mult;
 
-    ray_len_accum = unsquish_ray_len(ray_len_accum, RAY_SQUISH_STRENGTH);
+    ray_len_accum = exponential_unsquish(ray_len_accum, RAY_SQUISH_STRENGTH);
     
     float3 out_color = contrib_accum.rgb;
     float relative_error = sqrt(max(0.0, ex2 - ex * ex)) / max(1e-5, ex2);

@@ -59,7 +59,7 @@ pub fn set_up_logging(default_log_level: log::LevelFilter) -> anyhow::Result<()>
             std::fs::OpenOptions::new()
                 .write(true)
                 .create(true)
-                .append(false)
+                .truncate(true)
                 .open("output.log")
                 .unwrap(),
         );

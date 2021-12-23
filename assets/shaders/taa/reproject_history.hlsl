@@ -15,6 +15,10 @@
     float4 output_tex_size;
 };
 
+// Optimization: Try to skip velocity dilation if velocity diff is small
+// around the pixel.
+#define APPROX_SKIP_DILATION true
+
 float4 fetch_history(float2 uv) {
     float4 h = history_tex.SampleLevel(sampler_lnc, uv, 0);
 	return float4(decode_rgb(h.xyz), h.w);
@@ -43,6 +47,7 @@ void main(
     float2 uv = get_uv(px, output_tex_size);
     uint2 closest_px = reproj_px;
 
+#if APPROX_SKIP_DILATION
     // Find the bounding box of velocities around this 3x3 region
     float2 vel_min;
     float2 vel_max;
@@ -67,6 +72,15 @@ void main(
         vel_max = max(vel_max, v);
     }
 
+    bool should_dilate = any((vel_max - vel_min) > 0.1 * max(input_tex_size.zw, abs(vel_max + vel_min)));
+    
+    // Since we're only checking a few pixels, there's a chance we'll miss something.
+    // Dilate in the wave to reduce the chance of that happening.
+    //should_dilate |= WaveReadLaneAt(should_dilate, WaveGetLaneIndex() ^ 1);
+    should_dilate |= WaveReadLaneAt(should_dilate, WaveGetLaneIndex() ^ 2);
+    //should_dilate |= WaveReadLaneAt(should_dilate, WaveGetLaneIndex() ^ 8);
+    should_dilate |= WaveReadLaneAt(should_dilate, WaveGetLaneIndex() ^ 16);
+
     // We want to find the velocity of the pixel which is closest to the camera,
     // which is critical to anti-aliased moving edges.
     // At the same time, when everything moves with roughly the same velocity
@@ -74,7 +88,8 @@ void main(
     // only to return the same value.
     // Therefore, we predicate the search on there being any appreciable
     // velocity difference around the target pixel. This ends up being faster on average.
-    if (any((vel_max - vel_min) > 0.1 * max(input_tex_size.zw, abs(vel_max + vel_min))))
+    if (should_dilate)
+#endif
     {
         float reproj_depth = depth_tex[reproj_px];
         int k = 1;

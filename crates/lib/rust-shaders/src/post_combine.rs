@@ -1,11 +1,12 @@
-// Lots of Tomasz' prototyping remainders in this file, plus disabled dither for now.
+// Lots of prototyping remainders in this file
 #![allow(dead_code)]
 
-use crate::color::lin_srgb_to_luminance;
-use crate::tonemap::*;
+use crate::{color::lin_srgb_to_luminance, tonemap::*};
 use macaw::{lerp, IVec2, UVec3, Vec3, Vec4};
-use rust_shaders_shared::frame_constants::FrameConstants;
-use rust_shaders_shared::util::{abs_f32, get_uv_u, signum_f32};
+use rust_shaders_shared::{
+    frame_constants::FrameConstants,
+    util::{abs_f32, get_uv_u, signum_f32},
+};
 use spirv_std::{Image, RuntimeArray, Sampler};
 
 #[cfg(not(target_arch = "spirv"))]
@@ -21,11 +22,13 @@ pub struct Constants {
     ev_shift: f32,
 }
 
+const USE_GRADE: bool = true;
 const USE_TONEMAP: bool = true;
 const USE_DITHER: bool = true;
 const USE_SHARPEN: bool = true;
 const USE_VIGNETTE: bool = true;
 
+const SHARPEN_AMOUNT: f32 = 0.1;
 const GLARE_AMOUNT: f32 = 0.05;
 
 fn rsqrt(f: f32) -> f32 {
@@ -46,33 +49,43 @@ fn triangle_remap(n: f32) -> f32 {
     v.max(-1.0) - signum_f32(origin)
 }
 
-fn local_tmo_constrain(x: f32, max_compression: f32) -> f32 {
-    const LOCAL_TMO_CONSTRAIN_MODE: usize = 2;
+fn bitwise_and(a: IVec2, b: IVec2) -> IVec2 {
+    IVec2::new(a.x & b.x, a.y & b.y)
+}
 
-    match LOCAL_TMO_CONSTRAIN_MODE {
-        0 => ((x.ln() / max_compression).tanh() * max_compression).exp(),
-        1 => {
-            let mut x = x.ln();
-            let s = signum_f32(x);
-            x = abs_f32(x).sqrt();
-            x = (x / max_compression).tanh() * max_compression;
-            x = (x * x * s).exp();
-            x
-        }
-        2 => {
-            let k = 3.0 * max_compression;
-            let mut x = 1.0 / x;
-            x = tonemap_curve(x / k) * k;
-            x = 1.0 / x;
-            x = tonemap_curve(x / k) * k;
-            x
-        }
-        _ => x,
+trait Smoothstep: Sized {
+    fn smoothstep(edge0: Self, edge1: Self, x: Self) -> Self;
+}
+
+impl Smoothstep for f32 {
+    fn smoothstep(edge0: f32, edge1: f32, x: f32) -> f32 {
+        let x = ((x - edge0) / (edge1 - edge0)).max(0.0).min(1.0);
+        x * x * (3.0 - 2.0 * x)
     }
 }
 
-fn bitwise_and(a: IVec2, b: IVec2) -> IVec2 {
-    IVec2::new(a.x & b.x, a.y & b.y)
+impl Smoothstep for Vec3 {
+    fn smoothstep(edge0: Vec3, edge1: Vec3, x: Vec3) -> Vec3 {
+        Vec3::new(
+            <f32 as Smoothstep>::smoothstep(edge0.x, edge1.x, x.x),
+            <f32 as Smoothstep>::smoothstep(edge0.y, edge1.y, x.y),
+            <f32 as Smoothstep>::smoothstep(edge0.z, edge1.z, x.z),
+        )
+    }
+}
+
+// (Very) reduced version of:
+// Uchimura 2017, "HDR theory and practice"
+// Math: https://www.desmos.com/calculator/gslcdxvipg
+// Source: https://www.slideshare.net/nikuque/hdr-theory-and-practicce-jp
+//  m: linear section start
+//  c: black
+fn push_down_black_point(x: Vec3, m: f32, c: f32) -> Vec3 {
+    let w0 = Vec3::ONE - Vec3::smoothstep(Vec3::ZERO, Vec3::splat(m), x);
+    let w1 = 1.0 - w0;
+
+    let t = (x / m).powf(c) * m;
+    t * w0 + x * w1
 }
 
 #[spirv(compute(threads(8, 8)))]
@@ -99,8 +112,6 @@ pub fn post_combine_cs(
 
     // TODO: move to its own pass
     if USE_SHARPEN {
-        let sharpen_amount = 0.1;
-
         let mut neighbors = 0.0;
         let mut wt_sum = 0.0;
 
@@ -118,7 +129,7 @@ pub fn post_combine_cs(
             let n0 = sharpen_remap(lin_srgb_to_luminance(n0_texel.truncate()));
             let n1 = sharpen_remap(lin_srgb_to_luminance(n1_texel.truncate()));
             let wt = 0f32.max(1.0 - 6.0 * (abs_f32(center - n0) + abs_f32(center - n1)));
-            let wt = wt.min(sharpen_amount * wt * 1.25);
+            let wt = wt.min(SHARPEN_AMOUNT * wt * 1.25);
 
             neighbors += n0 * wt;
             neighbors += n1 * wt;
@@ -139,12 +150,16 @@ pub fn post_combine_cs(
         col *= (-2.0 * (uv - 0.5).length().powi(3)).exp();
     }
 
+    if USE_GRADE {
+        // Lift mids
+        col = col.powf(0.9);
+
+        // Push down lows
+        col = push_down_black_point(col, 0.2, 1.25);
+    }
+
     if USE_TONEMAP {
         col = neutral_tonemap(col);
-
-        // Boost saturation and contrast to compensate for the loss from glare
-        //col = lerp(Vec3::splat(lin_srgb_to_luminance(col))..=col, 1.05).min(Vec3::ONE);
-        col = col.powf(1.03);
     }
 
     if USE_DITHER {

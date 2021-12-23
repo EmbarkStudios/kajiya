@@ -34,7 +34,6 @@ float compute_texture_lod(Texture2D tex, float triangle_constant, float3 ray_dir
     return lambda;
 }
 
-
 [shader("closesthit")]
 void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib: SV_IntersectionAttributes) {
     float3 hit_point = WorldRayOrigin() + WorldRayDirection() * RayTCurrent();

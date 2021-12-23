@@ -193,6 +193,88 @@ pub fn unpack_color_888(p: u32) -> Vec3 {
     color * color
 }
 
+pub fn unpack_unit_direction_11_10_11(pck: u32) -> Vec3 {
+    Vec3::new(
+        (pck & ((1u32 << 11u32) - 1u32)) as f32 * (2.0 / ((1u32 << 11u32) - 1u32) as f32) - 1.0,
+        ((pck >> 11u32) & ((1u32 << 10) - 1u32)) as f32 * (2.0 / ((1u32 << 10u32) - 1u32) as f32)
+            - 1.0,
+        (pck >> 21) as f32 * (2.0 / ((1u32 << 11u32) - 1u32) as f32) - 1.0,
+    )
+}
+
+pub fn pack_unit_direction_11_10_11(x: f32, y: f32, z: f32) -> u32 {
+    let x = (x.max(-1.0).min(1.0).mul_add(0.5, 0.5) * ((1u32 << 11u32) - 1u32) as f32) as u32;
+    let y = (y.max(-1.0).min(1.0).mul_add(0.5, 0.5) * ((1u32 << 10u32) - 1u32) as f32) as u32;
+    let z = (z.max(-1.0).min(1.0).mul_add(0.5, 0.5) * ((1u32 << 11u32) - 1u32) as f32) as u32;
+
+    (z << 21) | (y << 11) | x
+}
+
+// The below functions provide a simulation of ByteAddressBuffer and VertexPacked.
+
+pub fn load2f(data: &[u32], byte_offset: u32) -> Vec2 {
+    let offset = (byte_offset >> 2) as usize;
+    let a = f32::from_bits(data[offset]);
+    let b = f32::from_bits(data[offset + 1]);
+    Vec2::new(a, b)
+}
+
+pub fn load3f(data: &[u32], byte_offset: u32) -> Vec3 {
+    let offset = (byte_offset >> 2) as usize;
+    let a = f32::from_bits(data[offset]);
+    let b = f32::from_bits(data[offset + 1]);
+    let c = f32::from_bits(data[offset + 2]);
+    Vec3::new(a, b, c)
+}
+
+pub fn load4f(data: &[u32], byte_offset: u32) -> Vec4 {
+    let offset = (byte_offset >> 2) as usize;
+    let a = f32::from_bits(data[offset]);
+    let b = f32::from_bits(data[offset + 1]);
+    let c = f32::from_bits(data[offset + 2]);
+    let d = f32::from_bits(data[offset + 3]);
+    Vec4::new(a, b, c, d)
+}
+
+/// Decode mesh vertex from Kajiya ("core", position + normal packed together)
+/// The returned normal is not normalized (but close).
+pub fn load_vertex(data: &[u32], byte_offset: u32) -> (Vec3, Vec3) {
+    let core_offset = (byte_offset >> 2) as usize;
+    let in_pos = Vec3::new(
+        f32::from_bits(data[core_offset]),
+        f32::from_bits(data[core_offset + 1]),
+        f32::from_bits(data[core_offset + 2]),
+    );
+    let in_normal = unpack_unit_direction_11_10_11(data[core_offset + 3]);
+    (in_pos, in_normal)
+}
+
+pub fn store_vertex(data: &mut [u32], byte_offset: u32, position: Vec3, normal: Vec3) {
+    let offset = (byte_offset >> 2) as usize;
+    let packed_normal = pack_unit_direction_11_10_11(normal.x, normal.y, normal.z);
+    data[offset] = position.x.to_bits();
+    data[offset + 1] = position.y.to_bits();
+    data[offset + 2] = position.z.to_bits();
+    data[offset + 3] = packed_normal;
+}
+
+pub fn unpack_u32_to_vec4(v: u32) -> Vec4 {
+    Vec4::new(
+        (v & 0xFF) as f32 / 255.0,
+        ((v >> 8) & 0xFF) as f32 / 255.0,
+        ((v >> 16) & 0xFF) as f32 / 255.0,
+        ((v >> 24) & 0xFF) as f32 / 255.0,
+    )
+}
+
+pub fn roughness_to_perceptual_roughness(r: f32) -> f32 {
+    r.sqrt()
+}
+
+pub fn perceptual_roughness_to_roughness(r: f32) -> f32 {
+    r * r
+}
+
 const RGB9E5_EXPONENT_BITS: u32 = 5;
 const RGB9E5_MANTISSA_BITS: u32 = 9;
 const RGB9E5_EXP_BIAS: u32 = 15;

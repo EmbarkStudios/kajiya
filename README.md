@@ -1,17 +1,29 @@
+<!-- Allow this file to not have a first line heading -->
+<!-- markdownlint-disable-file MD041 -->
+
+<!-- inline html -->
+<!-- markdownlint-disable-file MD033 -->
+
+<div align="center">
+   
 # 💡 kajiya
+
+**Experimental real-time global illumination renderer made with Rust and Vulkan**
 
 [![Embark](https://img.shields.io/badge/embark-open%20source-blueviolet.svg)](https://embark.dev)
 [![Embark](https://img.shields.io/badge/discord-ark-%237289da.svg?logo=discord)](https://discord.gg/dAuKfZS)
 [![dependency status](https://deps.rs/repo/github/EmbarkStudios/kajiya/status.svg)](https://deps.rs/repo/github/EmbarkStudios/kajiya)
 [![Build status](https://github.com/EmbarkStudios/kajiya/workflows/CI/badge.svg)](https://github.com/EmbarkStudios/kajiya/actions)
-
-A real-time global illumination renderer; primarily a toy written for fun to explore various algorithms. Uses Vulkan with ray-tracing extensions under the hood.
+</div>
 
 Its general goal is to get as close as possible to path-traced reference at real-time rates in dynamic scenes, without any precomputed light transport, or manually placed light probes.
 
-At the same time, `kajiya` does not aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
+`kajiya` does not currently aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
 
-![screenshot](docs/screenshot.jpg)
+For more context, check out our [announcement article on Embark's Medium](https://medium.com/embarkstudios/homegrown-rendering-with-rust-1e39068e56a7). You'll also get to learn how `kajiya` connects to our rendering work, and the [`rust-gpu`](https://github.com/EmbarkStudios/rust-gpu) project!
+
+![image (5)](https://user-images.githubusercontent.com/16522064/146789417-0cc84f60-157d-4a7d-99f5-79122c1fa982.png)
+_Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/marketplace/en-US/product/modular-ruins-c) by Crebotoly_
 
 ## Features
 
@@ -22,40 +34,45 @@ At the same time, `kajiya` does not aim to be a fully-featured renderer used to 
     * Single bounce specular, falling back to diffuse after the first hit
 * Sun with ray-traced soft shadows
 * Standard PBR with GGX and roughness/metalness
-    * Multi-scattering BRDF, energy-preserving metalness
+    * Energy-preserving multi-scattering BRDF
 * Reference path-tracing mode
-* Physically-based rendering
-* Temporal anti-aliasing
+* Temporal super-resolution and anti-aliasing
 * Natural tone mapping
 * Physically-based glare
 * Basic motion blur
 * Contrast-adaptive sharpening
-* DLSS support
+* Optional DLSS support
 * GLTF mesh loading (no animations yet)
 * A render graph running it all
 
-Not actively used:
+## Technical overview
 
-* Screen-space ambient occlusion (GTAO)
-    * Currently plugged in as a cross-bilateral feature guide for GI denoising
-* Screen-space diffuse bounce based on GTAO
-
-Traces of code:
-
-* Basic SDF sculpting and rendering
+* [A quick presentation](https://docs.google.com/presentation/d/1LWo5TtWUAH9d62sGY9Sjmu1JqIs8BsxLbVDxLuhhX8U/edit?usp=sharing) about the renderer
+* Repository highlights:
+  * HLSL shaders: [`assets/shaders/`](assets/shaders)
+  * Rust shaders: [`crates/lib/rust-shaders/`](crates/lib/rust-shaders)
+  * Main render graph passes: [`world_render_passes.rs`](crates/lib/kajiya/src/world_render_passes.rs)
+* Notable branches:
+  * `restir-meets-surfel` - latest experimental branch, with [new GI in the works](https://gist.github.com/h3r2tic/ba39300c2b2ca4d9ca5f6ff22350a037)
 
 ## Platforms
 
-It currently works on a very limited number of systems and hardware.
+`kajiya` currently works on a limited range of operating systems and hardware.
 
-Operating systems:
-* Windows
-* Linux
 
 Hardware:
 * Nvidia RTX series
 * Nvidia GTX 1060 and newer (slow: driver-emulated ray-tracing)
 * AMD Radeon RX 6000 series
+
+Operating systems:
+* Windows
+* Linux
+
+### (Some) Linux dependencies
+* `libtinfo5`
+* `uuid-dev`
+* In case the bundled `libdxcompiler.so` doesn't work: https://github.com/microsoft/DirectXShaderCompiler#downloads
 
 ## Building and running
 
@@ -64,7 +81,7 @@ There's a very minimal asset pipeline in `bake.rs`, which converts meshes from G
 * Windows: `bake.cmd`
 * Linux: `./bake.sh`
 
-When done, run the renderer demo via:
+When done, run the renderer demo (`view` app from `crates/bin/view`) via:
 
 * Windows: `build_and_run.cmd [scene_name]`
 * Linux: `./build_and_run.sh [scene_name]`
@@ -81,7 +98,28 @@ or
 cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no-debug
 ```
 
-_Please note that the `smol` async runtime is used for baking and run-time shader compilation. There's no custom executor yet, so the `SMOL_THREADS` environment variable controls parallelism._
+### Controls in the `view` app
+
+* WSAD, QE - movement
+* Mouse + RMB - rotate the camera
+* Mouse + LMB - rotate the sun
+* Shift - move faster
+* Ctrl - move slower
+* Space - switch to reference path tracing
+* Backspace - reset view to previous saved state
+* Tab - show/hide the UI
+
+### Resolution scaling
+
+#### DPI
+
+For the `view` app, DPI scaling in the operating system affects the physical number of pixels of the rendering output. The `--width` and `--height` parameters correspond to _logical_ window size **and** the internal rendering resolution. Suppose the OS uses DPI scaling of `1.5`, and the app is launched with `--width 1000`, the actual physical width of the window will be `1500` px. Rendering will still happen at `1000` px, with upscaling to `1500` px at the very end, via a Catmull-Rom kernel.
+
+#### Temporal upsampling
+
+`kajiya` can also render at a reduced internal resolution, and reconstruct a larger image via temporal upsampling, trading quality for performance. A custom temporal super-resolution algorithm is used by default, and [DLSS is supported](docs/using-dlss.md) on some platforms. Both approaches result in better quality than what could be achieved by simply spatially scaling up the image at the end.
+
+For example, `--width 1920 --height 1080 --temporal-upsampling 1.5` will produce a `1920x1080` image by upsampling by a factor of `1.5` from `1280x720`. Most of the rendering will then happen with `1.5 * 1.5 = 2.25` times fewer pixels, resulting in an _almost_ 2x speedup.
 
 ## Adding Meshes and Scenes
 
@@ -102,62 +140,26 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 )
 ```
 
-### Controls
-
-* WSAD, QE - movement
-* Mouse + RMB - rotate the camera
-* Mouse + LMB - rotate the sun
-* Shift - move faster
-* Ctrl - move slower
-* Space - switch to reference path tracing
-* Backpace - reset reference path tracing accumulation
-* Tab - show/hide the UI
+## Technical guides
+* [Using DLSS](docs/using-dlss.md)
+* [Working on Rust shaders](docs/rust-shaders.md)
+* [Using `kajiya` as a crate](docs/using-kajiya.md)
 
 ## Known issues
 
 * Vulkan API usage is extremely basic. Resources are usually not released, and barriers aren't optimal.
-* There's a hard limit on mesh data and instance count. Exceeding those limits will result in Vulkan validation errors / driver crashes.
-* Window (framebuffer) resizing is not implemented.
-* The voxel GI uses a fixed-size volume around the origin. It will get cascades later.
+* There are hard limit on mesh data and instance counts. Exceeding those limits will result in panics and Vulkan validation errors / driver crashes.
+* Window (framebuffer) resizing is not yet implemented.
+* The voxel GI uses a fixed-size volume around the origin by default.
     * Use `--gi-volume-scale` to change its extent in the `view` app
+    * It can be configured to use camera-centered cascades at an extra performance cost (see `CASCADE_COUNT` and `SCROLL_CASCADES` in [`csgi.rs`](../crates/lib/kajiya/src/renderers/csgi.rs`))
 * Denoising needs more work (always).
-
-## Using DLSS
-
-DLSS is supported on Nvidia RTX GPUs, and `kajiya` can currently use it when running on Windows.
-
-#### SDK
-
-Nvidia's DLSS EULA prohibits distribution of the DLSS SDK, so you will have to obtain it yourself. The stand-alone SDK currently requires an NVIDIA Developer Program membership, _however_ the Unreal Enigine 5 plugin does not, yet it contains the necessary files.
-
-Therefore, the easiest way to get DLSS into `kajiya` is to [download the UE5 DLSS plugin](https://developer.nvidia.com/dlss-getting-started#ue-version), and extract the following:
-
-* Copy `DLSS/Binaries/ThirdParty/Win64/nvngx_dlss.dll` to the root `kajiya` folder (where this README resides).
-* Copy the entire `DLSS/Source/ThirdParty/NGX` folder to `crates/lib/ngx_dlss/NGX`
-
-#### Rust bindings
-
-Please make sure you can run `bindgen`, which is necessary to generate a Rust binding to the SDK. Here's the official [installation instructions and requirements page](https://rust-lang.github.io/rust-bindgen/requirements.html). If `cargo` complains about `libclang.dll`, it's probably this.
-
-#### Usage
-
-When building `kajiya`, use the `dlss` Cargo feature, and specify temporal upsampling, e.g.:
-
-```
-cargo run --bin view --release --features dlss -- --scene battle --no-debug --temporal-upsampling 1.5 --width 1920 --height 1080
-```
-
-This will run DLSS _Quality_ mode. `--temporal-upsampling 2.0` corresponds to _Performance_.
-
-Please note that while DLSS works well for AAA-style content, it currently struggles with flat colors and smooth gradients. The built-in `kajiya` TAA and its temporal upsampling tends to look better there.
-
-# Working on Rust shaders
-
-Add your shaders to the `assets/rust-shaders` crate. Run the shader builder from `assets/rust-shaders/builder` to make sure they can be loaded at runtime. Finally, use `SimpleRenderPass::new_compute_rust` to create a render graph pass (see existing examples).
 
 ## Acknowledgments
 
-This project is made possible by the awesome open source Rust community, and benefits from too many crates to mention here. Special thanks go to:
+This project is made possible by the awesome open source Rust community, and benefits from a multitude of crates 💖🦀
+
+Special shout-outs go to:
 
 * Felix Westin for his [MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere), which this project uses for sky rendering
 * AMD, especially Dominik Baumeister and Guillaume Boissé for the [FidelityFX Shadow Denoiser](https://gpuopen.com/fidelityfx-denoiser/), which forms the basis of shadow denoising in `kajiya`.

@@ -88,28 +88,23 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     if (depth == 0.0) {
-        #if 1
-            // Render the sun disk
+        // Render the sun disk
 
-            // Allow the size to be changed, but don't go below the real sun's size,
-            // so that we have something in the sky.
-            const float real_sun_angular_radius = 0.53 * 0.5 * PI / 180.0;
-            const float sun_angular_radius_cos = min(cos(real_sun_angular_radius), frame_constants.sun_angular_radius_cos);
+        // Allow the size to be changed, but don't go below the real sun's size,
+        // so that we have something in the sky.
+        const float real_sun_angular_radius = 0.53 * 0.5 * PI / 180.0;
+        const float sun_angular_radius_cos = min(cos(real_sun_angular_radius), frame_constants.sun_angular_radius_cos);
 
-            // Conserve the sun's energy by making it dimmer as it increases in size
-            // Note that specular isn't quite correct with this since we're not using area lights.
-            float current_sun_angular_radius = acos(sun_angular_radius_cos);
-            float sun_radius_ratio = real_sun_angular_radius / current_sun_angular_radius;
+        // Conserve the sun's energy by making it dimmer as it increases in size
+        // Note that specular isn't quite correct with this since we're not using area lights.
+        float current_sun_angular_radius = acos(sun_angular_radius_cos);
+        float sun_radius_ratio = real_sun_angular_radius / current_sun_angular_radius;
 
-            float3 output = unconvolved_sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
-            if (dot(outgoing_ray.Direction, SUN_DIRECTION) > sun_angular_radius_cos) {
-                // TODO: what's the correct value?
-                output += 800 * sun_color_in_direction(outgoing_ray.Direction) * sun_radius_ratio * sun_radius_ratio;
-            }
-        #else
-            float3 output = atmosphere_default(outgoing_ray.Direction, SUN_DIRECTION);
-            //float3 output = outgoing_ray.Direction * 0.5 + 0.5;
-        #endif
+        float3 output = unconvolved_sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+        if (dot(outgoing_ray.Direction, SUN_DIRECTION) > sun_angular_radius_cos) {
+            // TODO: what's the correct value?
+            output += 800 * sun_color_in_direction(outgoing_ray.Direction) * sun_radius_ratio * sun_radius_ratio;
+        }
         
         temporal_output_tex[px] = float4(output, 1);
         output_tex[px] = float4(output, 1);
@@ -133,9 +128,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
-    //gbuffer.roughness = 0.9;
-    //gbuffer.metalness = 0;
-    //gbuffer.metalness = 1;
 
     if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
         gbuffer.albedo = 0.5;
@@ -159,21 +151,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     float3 total_radiance = brdf_value * light_radiance;
 
     total_radiance += gbuffer.emissive;
-
-    //const float3 radiance = (spec.value + spec.transmission_fraction * diff.value) * max(0.0, wi.z);
-    //const float3 light_radiance = shadow_mask * SUN_COLOR;
-    //total_radiance += radiance * light_radiance;
-
-    //res.xyz += radiance * SUN_COLOR + ambient;
-    //res.xyz += albedo;
-    //res.xyz += metalness;
-    //res.xyz = metalness;
-    //res.xyz = 0.0001 / depth;
-    //res.xyz = frac(pt_ws.xyz * 10.0);
-    //res.xyz = brdf_d * 0.1;
-
-    //res.xyz = 1.0 - exp(-res.xyz);
-    //total_radiance = preintegrated_specular_brdf_fg(specular_brdf.albedo, specular_brdf.roughness, wo.z);
 
     float3 gi_irradiance = 0.0.xxx;
 
@@ -216,22 +193,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     temporal_output_tex[px] = float4(total_radiance, 1.0);
 
     float3 output = total_radiance;
-    
-    #if 0
-        float4 pos_vs = mul(frame_constants.view_constants.world_to_view, pt_ws);
-        const float view_dot = -normalize(pos_vs.xyz).z;
-
-        float3 v_ws = normalize(mul(frame_constants.view_constants.view_to_world, float4(0, 0, -1, 0)).xyz);
-
-        output +=
-            smoothstep(0.997, 1.0, view_dot) * gbuffer.albedo * max(0.0, dot(gbuffer.normal, -v_ws)) / M_PI;
-    #endif
-
-    //float ex = calculate_luma(rtr_tex[px].xyz);
-    //float ex2 = rtr_tex[px].w;
-    //output = 1e-1 * abs(ex * ex - ex2) / max(1e-8, ex);
-
-    //output = rtr_tex[px].www / 16.0;
 
     if (debug_shading_mode == SHADING_MODE_REFLECTIONS) {
         #if !RTR_RENDER_SCALED_BY_FG
@@ -260,74 +221,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
         output = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal);
     }
 
-    //output = gbuffer.emissive;
-
-    // Hacky visual test of volumetric scattering
-    /*if (frame_constants.global_fog_thickness > 0.0) {
-        float3 scattering = 0.0.xxx;
-        float prev_t = 0.0;
-        float sigma_s = 0.07 * frame_constants.global_fog_thickness;
-        float sigma_e = sigma_s * 0.4;
-
-        float3 eye_to_pt = pt_ws.xyz - get_eye_position();
-        const float total_ray_length = length(eye_to_pt);
-        const int k_samples = 6;//clamp(int(0.25 * total_ray_length), 3, 8);
-
-        //uint rng = hash3(uint3(px * 2, 0*frame_constants.frame_index));
-        //float t_offset = uint_to_u01_float(hash1_mut(rng));
-        float t_offset;
-        {
-            const uint noise_offset = frame_constants.frame_index;
-            t_offset = bindless_textures[BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0][
-                (px + int2(noise_offset * 59, noise_offset * 37)) & 255
-            ].x * 255.0 / 256.0 + 0.5 / 256.0;
-        }
-
-        float transmittance = 1.0;
-
-        for (int k = 0; k < k_samples; ++k) {
-            const float t = float(k + t_offset) / float(k_samples);
-            const float step_size = (t - prev_t);
-
-            const float3 air_ws = get_eye_position() + eye_to_pt * lerp(prev_t, t, 0.5);
-            const float3 gi_color = lookup_gi(
-                air_ws,
-                0.0.xxx,
-                GiLookupParams::make_default()
-                    .with_sample_phase(0.6, outgoing_ray.Direction)
-            );
-
-            const float local_density = 1;//max(1e-5, lerp(0.1, 1.0, smoothstep(0.0, 1.0, air_ws.x)));
-            
-            // Based on https://www.shadertoy.com/view/XlBSRz
-            // (See slide 28 at http://www.frostbite.com/2015/08/physically-based-unified-volumetric-rendering-in-frostbite/)
-            float3 scattered_light = gi_color * (sigma_s * local_density);
-            float3 s_int = scattered_light * (1.0 - exp(-total_ray_length * step_size * sigma_e * local_density)) / (sigma_e * local_density);
-            scattering += transmittance * s_int;
-            transmittance *= exp(-total_ray_length * step_size * sigma_e * local_density);
-
-            prev_t = t;
-        }
-
-        output *= transmittance;
-        output += scattering;
-        //output = scattering;
-    }*/
-
-    //output = gbuffer.metalness;
-    //output = gbuffer.roughness;
     //output = gbuffer.albedo;
-    //output = gbuffer.normal * 0.5 + 0.5;
-
-    //output = shadow_mask;
-    //output = shadow_mask_tex[px].x;
-    //output = shadow_mask_tex[px].y * 10;
-    //output = sqrt(shadow_mask_tex[px].y) * 0.1;
-    //output = shadow_mask_tex[px].z * 0.1;
-    //output = rtr_tex[px].rgb;
-
-    //output.xz += 1;
-    //output.rgb /= max(1e-5, calculate_luma(output));
-
     output_tex[px] = float4(output, 1.0);
 }

@@ -43,12 +43,6 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float4 history = 0.0.xxxx;
 
-    /*if (length(uv - 0.5.xx) < 0.1) {
-        output_tex[px] = 0;
-        return;
-    }*/
-
-    //if (quad_reproj_valid_packed < 15) {
     if (0 == quad_reproj_valid_packed) {
         // Everything invalid
     } else if (15 == quad_reproj_valid_packed) {
@@ -65,7 +59,6 @@ void main(uint2 px: SV_DispatchThreadID) {
         // Only some samples are valid. Only include those, and don't do a sharpening fetch here.
 
         float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
-        //quad_reproj_valid.xyzw = 0;
 
         const Bilinear bilinear = get_bilinear_filter(prev_uv, output_tex_size.xy);
         float4 s00 = input_tex[int2(bilinear.origin) + int2(0, 0)];

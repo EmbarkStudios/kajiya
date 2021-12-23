@@ -185,17 +185,13 @@ impl WorldRenderer {
 
         #[cfg(feature = "dlss")]
         if self.use_dlss {
-            anti_aliased = Some(
-                self.dlss
-                    .render(
-                        rg,
-                        &debug_out_tex,
-                        &reprojection_map,
-                        &gbuffer_depth.depth,
-                        self.temporal_upscale_extent,
-                    )
-                    .into(),
-            );
+            anti_aliased = Some(self.dlss.render(
+                rg,
+                &debug_out_tex,
+                &reprojection_map,
+                &gbuffer_depth.depth,
+                self.temporal_upscale_extent,
+            ));
         }
 
         //let dof = crate::renderers::dof::dof(rg, &debug_out_tex, &gbuffer_depth.depth);
@@ -210,7 +206,7 @@ impl WorldRenderer {
                     &gbuffer_depth.depth,
                     self.temporal_upscale_extent,
                 )
-                .color
+                .this_frame_out
         });
 
         let mut final_post_input =
