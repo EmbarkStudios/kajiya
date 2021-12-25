@@ -70,8 +70,8 @@ float4 fetch_blurred_history(int2 px, int k, float sigma) {
             float2 offset = float2(x, y) * sigma;
             float w = exp(-dot(offset, offset));
             float color_diff =
-                linear_to_perceptual(calculate_luma(c.rgb))
-                - linear_to_perceptual(calculate_luma(center));
+                linear_to_perceptual(srgb_to_luminance(c.rgb))
+                - linear_to_perceptual(srgb_to_luminance(center));
             csum += c * w;
             wsum += w;
         }

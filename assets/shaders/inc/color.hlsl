@@ -51,7 +51,7 @@ float3 ycbcr_to_rgb(float3 col) {
 }
 
 // Rec. 709
-float calculate_luma(float3 col) {
+float srgb_to_luminance(float3 col) {
     return dot(float3(0.2126, 0.7152, 0.0722), col);
 }
 
