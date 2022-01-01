@@ -200,7 +200,7 @@ impl RtdgiRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        tlas: &rg::Handle<RayTracingAcceleration>,
+        //tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi::CsgiVolume,
 
         // TODO: calculate specialized SSAO
@@ -245,6 +245,7 @@ impl RtdgiRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
+        /*
         SimpleRenderPass::new_rt(
             rg.add_pass("rtdgi trace"),
             ShaderSource::hlsl("/shaders/rtdgi/trace_diffuse.rgen.hlsl"),
@@ -268,7 +269,7 @@ impl RtdgiRenderer {
         .read(sky_cube)
         .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, hit0_tex.desc().extent);
+        .trace_rays(tlas, hit0_tex.desc().extent);*/
 
         let filtered_tex = self.temporal(
             rg,

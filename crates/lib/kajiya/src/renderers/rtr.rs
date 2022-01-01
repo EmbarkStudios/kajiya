@@ -77,7 +77,7 @@ impl RtrRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        tlas: &rg::Handle<RayTracingAcceleration>,
+        //tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi::CsgiVolume,
         rtdgi: &rg::Handle<Image>,
     ) -> TracedRtr {
@@ -110,6 +110,7 @@ impl RtrRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
+        /*
         SimpleRenderPass::new_rt(
             rg.add_pass("reflection trace"),
             ShaderSource::hlsl("/shaders/rtr/reflection.rgen.hlsl"),
@@ -132,7 +133,7 @@ impl RtrRenderer {
         .write(&mut refl2_tex)
         .constants((gbuffer_desc.extent_inv_extent_2d(),))
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, refl0_tex.desc().extent);
+        .trace_rays(tlas, refl0_tex.desc().extent);*/
 
         let mut resolved_tex = rg.create(
             gbuffer_depth

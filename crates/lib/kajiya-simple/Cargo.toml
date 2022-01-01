@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kajiya = { path = "../kajiya" }
-kajiya-imgui = { path = "../kajiya-imgui", optional = true }
+kajiya = { path = "../kajiya", default-features = false }
+kajiya-imgui = { path = "../kajiya-imgui", default-features = false, optional = true }
 
 anyhow = "1.0"
 glam = { version = "0.18", features = ["serde"] }
@@ -20,6 +20,8 @@ puffin_http = { version = "0.8.0", optional = true }
 imgui = { version = "0.7", optional = true }
 
 [features]
+default = ["ray-tracing"]
+ray-tracing = ["kajiya/ray-tracing", "kajiya-imgui/ray-tracing"]
 dear-imgui = [
     "imgui",
     "kajiya-imgui",

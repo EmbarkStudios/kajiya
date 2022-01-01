@@ -6,9 +6,9 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kajiya-asset = { path = "../kajiya-asset" }
-kajiya-backend = { path = "../kajiya-backend" }
-kajiya-rg = { path = "../kajiya-rg" }
+kajiya-asset = { path = "../kajiya-asset", default-features = false }
+kajiya-backend = { path = "../kajiya-backend", default-features = false }
+kajiya-rg = { path = "../kajiya-rg", default-features = false }
 rust-shaders-shared = { path = "../rust-shaders-shared" }
 
 anyhow = "1.0"
@@ -31,5 +31,6 @@ wchar = "0.10"
 easy-parallel = "3.1.0"
 
 [features]
-default = []
+default = ["ray-tracing"]
+ray-tracing = ["kajiya-backend/ray-tracing", "kajiya-rg/ray-tracing", "kajiya-asset/ray-tracing"]
 dlss = [ "ngx_dlss", "kajiya-backend/dlss" ]

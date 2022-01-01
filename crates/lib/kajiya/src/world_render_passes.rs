@@ -15,7 +15,7 @@ impl WorldRenderer {
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
     ) -> rg::Handle<Image> {
-        let tlas = self.prepare_top_level_acceleration(rg);
+        //let tlas = self.prepare_top_level_acceleration(rg);
 
         let mut accum_img = rg
             .get_or_create_temporal(
@@ -36,7 +36,7 @@ impl WorldRenderer {
             rg,
             &convolved_sky_cube,
             self.bindless_descriptor_set,
-            &tlas,
+            //&tlas,
         );
 
         let (gbuffer_depth, velocity_img) = {
@@ -105,7 +105,7 @@ impl WorldRenderer {
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
         let sun_shadow_mask =
-            trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
+            trace_sun_shadow_mask(rg, &gbuffer_depth /*&tlas*/, self.bindless_descriptor_set);
 
         let denoised_shadow_mask = if self.sun_size_multiplier > 0.0f32 {
             self.shadow_denoise
@@ -120,7 +120,7 @@ impl WorldRenderer {
             &reprojection_map,
             &sky_cube,
             self.bindless_descriptor_set,
-            &tlas,
+            //&tlas,
             &csgi_volume,
             &ssgi_tex,
         );
@@ -137,12 +137,12 @@ impl WorldRenderer {
             &reprojection_map,
             &sky_cube,
             self.bindless_descriptor_set,
-            &tlas,
+            //&tlas,
             &csgi_volume,
             &rtdgi,
         );
 
-        if any_triangle_lights {
+       /* if any_triangle_lights {
             // Render specular lighting into the RTR image so they can be jointly filtered
             self.lighting.render_specular(
                 &mut rtr.resolved_tex,
@@ -151,7 +151,7 @@ impl WorldRenderer {
                 self.bindless_descriptor_set,
                 &tlas,
             );
-        }
+        }*/
 
         let rtr = rtr.filter_temporal(rg, &gbuffer_depth, &reprojection_map);
 
@@ -206,7 +206,7 @@ impl WorldRenderer {
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
 
         if self.debug_mode == RenderDebugMode::CsgiRadiance {
-            csgi_volume.fullscreen_debug_radiance(rg, &mut final_post_input);
+            //csgi_volume.fullscreen_debug_radiance(rg, &mut final_post_input);
         }
 
         let post_processed = post_process(
@@ -241,9 +241,9 @@ impl WorldRenderer {
             rg::imageops::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
-        let tlas = self.prepare_top_level_acceleration(rg);
+        //let tlas = self.prepare_top_level_acceleration(rg);
 
-        reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
+        //reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
 
         post_process(
             rg,

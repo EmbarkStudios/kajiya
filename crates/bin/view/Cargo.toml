@@ -6,8 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kajiya = { path = "../../lib/kajiya" }
-kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
+kajiya = { path = "../../lib/kajiya", default-features = false }
+kajiya-simple = { path = "../../lib/kajiya-simple", default-features = false, features = ["dear-imgui"] }
 
 anyhow = "1.0"
 dolly = "0.1"
@@ -18,4 +18,6 @@ serde = { version = "1.0", features = ["derive"] }
 structopt = "0.3"
 
 [features]
+default = ["ray-tracing"]
+ray-tracing = ["kajiya/ray-tracing", "kajiya-simple/ray-tracing"]
 dlss = ["kajiya/dlss"]

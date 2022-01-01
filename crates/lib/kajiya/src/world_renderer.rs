@@ -374,7 +374,7 @@ impl WorldRenderer {
             temporal_upscale_extent,
 
             debug_mode: RenderDebugMode::None,
-            debug_shading_mode: 0,
+            debug_shading_mode: 4,
             ev_shift: 0.0,
             world_gi_scale: 1.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth
@@ -545,6 +545,7 @@ impl WorldRenderer {
         let vertex_buffer_da = base_da + vertex_core_offset as u64;
         let index_buffer_da = base_da + vertex_index_offset as u64;
 
+        /*
         let blas = self
             .device
             .create_ray_tracing_bottom_acceleration(
@@ -570,7 +571,7 @@ impl WorldRenderer {
                 },
                 &self.accel_scratch,
             )
-            .expect("blas");
+            .expect("blas");*/
 
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,
@@ -587,7 +588,7 @@ impl WorldRenderer {
             index_count: mesh.indices.len() as _,
         });
 
-        self.mesh_blas.push(Arc::new(blas));
+        //self.mesh_blas.push(Arc::new(blas));
 
         let mesh_lights = if opts.use_lights {
             let emissive_materials = mesh

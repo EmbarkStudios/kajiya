@@ -46,7 +46,7 @@ impl WorldRenderer {
         }
 
         // Build an empty TLAS to create the resources. We'll update it at runtime.
-        world_renderer.build_ray_tracing_top_level_acceleration();
+        //world_renderer.build_ray_tracing_top_level_acceleration();
 
         Ok(world_renderer)
     }
