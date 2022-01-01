@@ -541,11 +541,12 @@ impl WorldRenderer {
             std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
         };
 
+        /*
+
         let base_da = vertex_buffer.device_address(&self.device);
         let vertex_buffer_da = base_da + vertex_core_offset as u64;
         let index_buffer_da = base_da + vertex_index_offset as u64;
 
-        /*
         let blas = self
             .device
             .create_ray_tracing_bottom_acceleration(

@@ -74,6 +74,10 @@ Operating systems:
 * `uuid-dev`
 * In case the bundled `libdxcompiler.so` doesn't work: https://github.com/microsoft/DirectXShaderCompiler#downloads
 
+### (Some) MacOS dependencies
+
+* `ossp-uuid` (`brew install ossp-uuid`)
+
 ## Building and running
 
 There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:

@@ -155,10 +155,10 @@ impl Device {
             vk::KhrImagelessFramebufferFn::name().as_ptr(),
             vk::KhrImageFormatListFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
-            vk::KhrDrawIndirectCountFn::name().as_ptr(),
+            //vk::KhrDrawIndirectCountFn::name().as_ptr(),
             // Rust-GPU
             vk::KhrShaderFloat16Int8Fn::name().as_ptr(),
-            vk::KhrVulkanMemoryModelFn::name().as_ptr(),
+            //vk::KhrVulkanMemoryModelFn::name().as_ptr(),
             // DLSS
             #[cfg(feature = "dlss")]
             {
@@ -316,18 +316,18 @@ impl Device {
 
                 assert!(shader_float16_int8.shader_int8 != 0);
 
-                assert!(vulkan_memory_model.vulkan_memory_model != 0);
-
                 #[cfg(feature = "ray-tracing")]
                 {
+                    assert!(vulkan_memory_model.vulkan_memory_model != 0);
+
                     assert!(acceleration_structure_features.acceleration_structure != 0);
                     assert!(acceleration_structure_features.descriptor_binding_acceleration_structure_update_after_bind != 0);
 
                     assert!(ray_tracing_pipeline_features.ray_tracing_pipeline != 0);
                     assert!(ray_tracing_pipeline_features.ray_tracing_pipeline_trace_rays_indirect != 0);
-                }
 
-                assert!(get_buffer_device_address_features.buffer_device_address != 0);
+                    assert!(get_buffer_device_address_features.buffer_device_address != 0);
+                }
             }
 
             let device_create_info = vk::DeviceCreateInfo::builder()

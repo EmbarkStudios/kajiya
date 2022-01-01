@@ -19,7 +19,7 @@ use std::{
 };
 
 pub const MAX_DESCRIPTOR_SETS: usize = 4;
-pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 512 * 1024;
+pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 64;
 
 type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
 type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;

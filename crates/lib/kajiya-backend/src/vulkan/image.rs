@@ -245,10 +245,13 @@ impl Default for ImageViewDesc {
 impl Device {
     pub fn create_image(
         &self,
-        desc: ImageDesc,
+        mut desc: ImageDesc,
         initial_data: Vec<ImageSubResourceData>,
     ) -> Result<Image> {
         log::info!("Creating an image: {:?}", desc);
+
+        // The max image width on macOS.
+        desc.extent[0] = desc.extent[0].min(2048);
 
         let create_info = get_image_create_info(&desc, !initial_data.is_empty());
 
