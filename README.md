@@ -62,7 +62,7 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 
 Hardware:
 * Nvidia RTX series
-* Nvidia GTX 1060 and newer (slow: driver-emulated ray-tracing)
+* Nvidia GTX 1060 and newer _with 6+ GB of VRAM_ (slow: driver-emulated ray-tracing)
 * AMD Radeon RX 6000 series
 
 Operating systems:
