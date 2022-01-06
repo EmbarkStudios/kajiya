@@ -850,7 +850,7 @@ impl WorldRenderer {
             .instances
             .iter()
             .flat_map(|inst| {
-                let (_scale, roation, translation) =
+                let (_scale, rotation, translation) =
                     inst.transformation.to_scale_rotation_translation();
                 let inst_position = translation;
                 let inst_rotation = roation;
