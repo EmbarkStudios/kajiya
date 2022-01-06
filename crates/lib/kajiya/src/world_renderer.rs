@@ -8,7 +8,7 @@ use crate::{
         rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
 };
-use glam::{Mat3, Quat, Vec2, Vec3};
+use glam::{Affine3A, Quat, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
     ash::vk::{self, ImageView},
@@ -70,10 +70,8 @@ impl Default for InstanceDynamicParameters {
 
 #[derive(Clone, Copy)]
 pub struct MeshInstance {
-    pub rotation: Mat3,
-    pub position: Vec3,
-    pub prev_rotation: Mat3,
-    pub prev_position: Vec3,
+    pub transformation: Affine3A,
+    pub prev_transformation: Affine3A,
     pub mesh: MeshHandle,
     pub dynamic_parameters: InstanceDynamicParameters,
 }
@@ -637,13 +635,11 @@ impl WorldRenderer {
         let handle = InstanceHandle(handle);
 
         let index = self.instances.len();
-        let rotation_mat = Mat3::from_quat(rotation);
 
+        let transform = Affine3A::from_rotation_translation(rotation, position);
         self.instances.push(MeshInstance {
-            rotation: rotation_mat,
-            position,
-            prev_rotation: rotation_mat,
-            prev_position: position,
+            transformation: transform,
+            prev_transformation: transform,
             mesh,
             dynamic_parameters: InstanceDynamicParameters::default(),
         });
@@ -671,10 +667,9 @@ impl WorldRenderer {
         }
     }
 
-    pub fn set_instance_transform(&mut self, inst: InstanceHandle, position: Vec3, rotation: Quat) {
+    pub fn set_instance_transform(&mut self, inst: InstanceHandle, transform: Affine3A) {
         let index = self.instance_handle_to_index[&inst];
-        self.instances[index].position = position;
-        self.instances[index].rotation = Mat3::from_quat(rotation);
+        self.instances[index].transformation = transform;
     }
 
     pub fn get_instance_dynamic_parameters(
@@ -704,8 +699,7 @@ impl WorldRenderer {
                         .iter()
                         .map(|inst| RayTracingInstanceDesc {
                             blas: self.mesh_blas[inst.mesh.0].clone(),
-                            position: inst.position,
-                            rotation: inst.rotation,
+                            transformation: inst.transformation,
                             mesh_index: inst.mesh.0 as u32,
                         })
                         .collect::<Vec<_>>(),
@@ -737,8 +731,7 @@ impl WorldRenderer {
             .iter()
             .map(|inst| RayTracingInstanceDesc {
                 blas: self.mesh_blas[inst.mesh.0].clone(),
-                position: inst.position,
-                rotation: inst.rotation,
+                transformation: inst.transformation,
                 mesh_index: inst.mesh.0 as u32,
             })
             .collect::<Vec<_>>();
@@ -772,8 +765,7 @@ impl WorldRenderer {
 
     fn store_prev_mesh_transforms(&mut self) {
         for inst in &mut self.instances {
-            inst.prev_position = inst.position;
-            inst.prev_rotation = inst.rotation;
+            inst.prev_transformation = inst.transformation;
         }
     }
 
@@ -858,8 +850,10 @@ impl WorldRenderer {
             .instances
             .iter()
             .flat_map(|inst| {
-                let inst_position = inst.position;
-                let inst_rotation = inst.rotation;
+                let (_scale, roation, translation) =
+                    inst.transformation.to_scale_rotation_translation();
+                let inst_position = translation;
+                let inst_rotation = roation;
 
                 let emissive_multiplier = Vec3::splat(inst.dynamic_parameters.emissive_multiplier);
 
