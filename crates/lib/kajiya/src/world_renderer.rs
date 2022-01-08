@@ -853,7 +853,7 @@ impl WorldRenderer {
                 let (_scale, rotation, translation) =
                     inst.transformation.to_scale_rotation_translation();
                 let inst_position = translation;
-                let inst_rotation = roation;
+                let inst_rotation = rotation;
 
                 let emissive_multiplier = Vec3::splat(inst.dynamic_parameters.emissive_multiplier);
 
