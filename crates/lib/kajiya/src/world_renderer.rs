@@ -8,7 +8,7 @@ use crate::{
         rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
 };
-use glam::{Affine3A, Quat, Vec2, Vec3};
+use glam::{Affine3A, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
     ash::vk::{self, ImageView},
@@ -624,19 +624,13 @@ impl WorldRenderer {
         MeshHandle(mesh_idx)
     }
 
-    pub fn add_instance(
-        &mut self,
-        mesh: MeshHandle,
-        position: Vec3,
-        rotation: Quat,
-    ) -> InstanceHandle {
+    pub fn add_instance(&mut self, mesh: MeshHandle, transform: Affine3A) -> InstanceHandle {
         let handle = self.next_instance_handle;
         self.next_instance_handle += 1;
         let handle = InstanceHandle(handle);
 
         let index = self.instances.len();
 
-        let transform = Affine3A::from_rotation_translation(rotation, position);
         self.instances.push(MeshInstance {
             transformation: transform,
             prev_transformation: transform,
