@@ -176,8 +176,7 @@ fn main() -> anyhow::Result<()> {
         )?;
         render_instances.push(kajiya.world_renderer.add_instance(
             mesh,
-            instance.position.into(),
-            Quat::IDENTITY,
+            Affine3A::from_rotation_translation(Quat::IDENTITY, instance.position.into()),
         ));
     }
 

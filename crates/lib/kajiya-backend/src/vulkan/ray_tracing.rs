@@ -13,7 +13,7 @@ use anyhow::{Context, Result};
 use ash::vk;
 use byte_slice_cast::AsSliceOf;
 use bytes::Bytes;
-use glam::{Mat3, Vec3};
+use glam::Affine3A;
 use parking_lot::Mutex;
 
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
@@ -42,8 +42,7 @@ pub struct RayTracingGeometryDesc {
 #[derive(Clone)]
 pub struct RayTracingInstanceDesc {
     pub blas: Arc<RayTracingAcceleration>,
-    pub position: Vec3,
-    pub rotation: Mat3,
+    pub transformation: Affine3A,
     pub mesh_index: u32,
 }
 
@@ -196,19 +195,19 @@ impl Device {
                         )
                 };
 
-                let transform: [f32; 12] = [
-                    desc.rotation.x_axis.x,
-                    desc.rotation.y_axis.x,
-                    desc.rotation.z_axis.x,
-                    desc.position.x,
-                    desc.rotation.x_axis.y,
-                    desc.rotation.y_axis.y,
-                    desc.rotation.z_axis.y,
-                    desc.position.y,
-                    desc.rotation.x_axis.z,
-                    desc.rotation.y_axis.z,
-                    desc.rotation.z_axis.z,
-                    desc.position.z,
+                let transform = [
+                    desc.transformation.x_axis.x,
+                    desc.transformation.y_axis.x,
+                    desc.transformation.z_axis.x,
+                    desc.transformation.translation.x,
+                    desc.transformation.x_axis.y,
+                    desc.transformation.y_axis.y,
+                    desc.transformation.z_axis.y,
+                    desc.transformation.translation.y,
+                    desc.transformation.x_axis.z,
+                    desc.transformation.y_axis.z,
+                    desc.transformation.z_axis.z,
+                    desc.transformation.translation.z,
                 ];
 
                 GeometryInstance::new(
@@ -409,19 +408,19 @@ impl Device {
                     )
             };
 
-            let transform: [f32; 12] = [
-                desc.rotation.x_axis.x,
-                desc.rotation.y_axis.x,
-                desc.rotation.z_axis.x,
-                desc.position.x,
-                desc.rotation.x_axis.y,
-                desc.rotation.y_axis.y,
-                desc.rotation.z_axis.y,
-                desc.position.y,
-                desc.rotation.x_axis.z,
-                desc.rotation.y_axis.z,
-                desc.rotation.z_axis.z,
-                desc.position.z,
+            let transform = [
+                desc.transformation.x_axis.x,
+                desc.transformation.y_axis.x,
+                desc.transformation.z_axis.x,
+                desc.transformation.translation.x,
+                desc.transformation.x_axis.y,
+                desc.transformation.y_axis.y,
+                desc.transformation.z_axis.y,
+                desc.transformation.translation.y,
+                desc.transformation.x_axis.z,
+                desc.transformation.y_axis.z,
+                desc.transformation.z_axis.z,
+                desc.transformation.translation.z,
             ];
 
             GeometryInstance::new(
