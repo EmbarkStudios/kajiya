@@ -1,0 +1,13 @@
+[package]
+name = "ash-egui"
+version = "0.1.0"
+authors = ["Simon Brown <si@sjbrown.co.uk>", "Tomasz Stachowiak <h3@h3.gd>", "Sebastian Hamel <sebastian.hamel@rockets.utoledo.edu>"]
+edition = "2021"
+publish = false
+
+[dependencies]
+ash = "0.33"
+egui = "0.16.1"
+arrayvec = "0.5"
+memoffset = "0.6"
+bytemuck = "1.5.0"
