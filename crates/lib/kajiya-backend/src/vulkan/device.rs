@@ -57,6 +57,8 @@ pub struct DeviceFrame {
     pub profiler_data: VkProfilerData,
 }
 
+unsafe impl Send for DeviceFrame {}
+
 pub struct CommandBuffer {
     pub raw: vk::CommandBuffer,
     pub submit_done_fence: vk::Fence,
