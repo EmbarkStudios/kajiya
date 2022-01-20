@@ -57,8 +57,6 @@ pub struct DeviceFrame {
     pub profiler_data: VkProfilerData,
 }
 
-unsafe impl Send for DeviceFrame {}
-
 pub struct CommandBuffer {
     pub raw: vk::CommandBuffer,
     pub submit_done_fence: vk::Fence,
@@ -141,7 +139,13 @@ pub struct Device {
 
     frames: [Mutex<Arc<DeviceFrame>>; 2],
 }
+
+// Allowing `Send` on `frames` is technically unsound. There are some checks
+// in place that `Arc<DeviceFrame>` doesn't get retained by the user,
+// but it begs for a clearer solution.
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Device {}
+
 unsafe impl Sync for Device {}
 
 impl Device {
