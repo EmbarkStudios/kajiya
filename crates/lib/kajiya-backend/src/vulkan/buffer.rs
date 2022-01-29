@@ -42,6 +42,14 @@ impl BufferDesc {
             memory_location: MemoryLocation::CpuToGpu,
         }
     }
+
+    pub fn new_gpu_to_cpu(size: usize, usage: vk::BufferUsageFlags) -> Self {
+        Self {
+            size,
+            usage,
+            memory_location: MemoryLocation::GpuToCpu,
+        }
+    }
 }
 
 impl Device {
