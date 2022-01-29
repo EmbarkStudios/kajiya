@@ -244,7 +244,7 @@ impl DlssRenderer {
                     ));
                 })
                 .map_err(|err| backend.device.report_error(err))
-                .unwrap();
+                .expect("NVSDK_NGX_VULKAN_CreateFeature (DLSS) failed");
 
             Self {
                 dlss_feature,

@@ -43,39 +43,40 @@ impl Device {
         }
     }
 
-    pub fn report_error(&self, err: BackendError) -> never::Never {
-        match err {
-            BackendError::Vulkan {
-                err: ash::vk::Result::ERROR_DEVICE_LOST,
-                ..
-            } => {
-                // Something went very wrong. Find the last marker which was successfully written
-                // to the crash tracking buffer, and report its corresponding name.
-                let last_marker = self
-                    .crash_tracking_buffer
-                    .allocation
-                    .mapped_ptr()
-                    .unwrap()
-                    .as_ptr() as *const u32;
-                let last_marker: u32 = unsafe { *last_marker.as_ref().unwrap() };
+    pub fn report_error(&self, err: BackendError) -> BackendError {
+        if let BackendError::Vulkan {
+            err: ash::vk::Result::ERROR_DEVICE_LOST,
+            ..
+        } = &err
+        {
+            // Something went very wrong. Find the last marker which was successfully written
+            // to the crash tracking buffer, and report its corresponding name.
+            let last_marker = self
+                .crash_tracking_buffer
+                .allocation
+                .mapped_ptr()
+                .unwrap()
+                .as_ptr() as *const u32;
+            let last_marker: u32 = unsafe { *last_marker.as_ref().unwrap() };
 
-                let names = self.crash_marker_names.lock();
-                let panic_msg = match names.get_name(last_marker) {
-                    Some(last_marker_str) => {
-                        format!(
-                            "Queue submit failed. Last marker: {} => {}",
-                            last_marker, last_marker_str
-                        )
-                    }
-                    _ => {
-                        format!("Queue submit failed. Last marker: {}", last_marker)
-                    }
-                };
+            let names = self.crash_marker_names.lock();
+            let msg = match names.get_name(last_marker) {
+                Some(last_marker_str) => {
+                    format!(
+                        "The GPU device has been lost. This is usually due to an infinite loop in a shader.\n\
+                        The last crash marker was: {} => {}. The problem most likely exists directly after.",
+                        last_marker, last_marker_str
+                    )
+                }
+                _ => {
+                    format!("The GPU device has been lost. This is usually due to an infinite loop in a shader.\n\
+                    The last crash marker was: {}. The problem most likely exists directly after.", last_marker)
+                }
+            };
 
-                log::error!("{}", panic_msg);
-                panic!("{}", panic_msg);
-            }
-            _ => panic!("Kajiya backend error: {:?}", err),
+            log::error!("{}", msg);
         }
+
+        err
     }
 }

@@ -207,7 +207,7 @@ impl Renderer {
                         main_cb.submit_done_fence,
                     )
                     .map_err(|err| device.report_error(err.into()))
-                    .unwrap();
+                    .expect("main queue_submit failed");
             };
         }
 
@@ -281,7 +281,7 @@ impl Renderer {
                         presentation_cb.submit_done_fence,
                     )
                     .map_err(|err| device.report_error(err.into()))
-                    .unwrap();
+                    .expect("presentation queue_submit failed");
             }
 
             swapchain.present_image(swapchain_image);
