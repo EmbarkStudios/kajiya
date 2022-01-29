@@ -730,9 +730,12 @@ impl CompiledRenderGraph {
                     GraphResourceDesc::Buffer(mut desc) => {
                         desc.usage = self.resource_info.buffer_usage_flags[resource_idx];
 
-                        let buffer = transient_resource_cache
-                            .get_buffer(&desc)
-                            .unwrap_or_else(|| device.create_buffer(desc, None).unwrap());
+                        let buffer =
+                            transient_resource_cache
+                                .get_buffer(&desc)
+                                .unwrap_or_else(|| {
+                                    device.create_buffer(desc, "rg buffer", None).unwrap()
+                                });
 
                         RegistryResource {
                             resource: AnyRenderResource::OwnedBuffer(buffer),
@@ -869,6 +872,11 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
     ) {
         let params = &resource_registry.execution_params;
 
+        // Record a crash marker just before this pass
+        params
+            .device
+            .record_crash_marker(cb, format!("begin render pass {:?}", pass.name));
+
         if let Some(debug_utils) = params.device.debug_utils() {
             unsafe {
                 let label: CString = CString::new(pass.name.as_str()).unwrap();
@@ -940,6 +948,11 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
                 debug_utils.cmd_end_debug_utils_label(cb.raw);
             }
         }
+
+        // Record a crash marker just after this pass
+        params
+            .device
+            .record_crash_marker(cb, format!("end render pass {:?}", pass.name));
     }
 
     fn transition_resource(

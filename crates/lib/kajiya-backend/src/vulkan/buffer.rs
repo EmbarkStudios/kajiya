@@ -1,5 +1,6 @@
+use crate::BackendError;
+
 use super::device::Device;
-use anyhow::Result;
 use ash::vk;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 
@@ -42,10 +43,23 @@ impl BufferDesc {
             memory_location: MemoryLocation::CpuToGpu,
         }
     }
+
+    pub fn new_gpu_to_cpu(size: usize, usage: vk::BufferUsageFlags) -> Self {
+        Self {
+            size,
+            usage,
+            memory_location: MemoryLocation::GpuToCpu,
+        }
+    }
 }
 
 impl Device {
-    fn create_buffer_impl(&self, desc: BufferDesc) -> Result<Buffer> {
+    pub(crate) fn create_buffer_impl(
+        raw: &ash::Device,
+        allocator: &mut gpu_allocator::VulkanAllocator,
+        desc: BufferDesc,
+        name: &str,
+    ) -> Result<Buffer, BackendError> {
         let buffer_info = vk::BufferCreateInfo {
             size: desc.size as u64,
             usage: desc.usage,
@@ -54,11 +68,10 @@ impl Device {
         };
 
         let buffer = unsafe {
-            self.raw
-                .create_buffer(&buffer_info, None)
+            raw.create_buffer(&buffer_info, None)
                 .expect("create_buffer")
         };
-        let mut requirements = unsafe { self.raw.get_buffer_memory_requirements(buffer) };
+        let mut requirements = unsafe { raw.get_buffer_memory_requirements(buffer) };
 
         // TODO: why does `get_buffer_memory_requirements` fail to get the correct alignment on AMD?
         if desc
@@ -69,27 +82,23 @@ impl Device {
             requirements.alignment = requirements.alignment.max(64);
         }
 
-        let allocation = self
-            .global_allocator
-            .lock()
+        let allocation = allocator
             .allocate(&AllocationCreateDesc {
-                name: "buffer",
+                name,
                 requirements,
                 location: desc.memory_location,
                 linear: true, // Buffers are always linear
+            })
+            .map_err(move |err| BackendError::Allocation {
+                inner: err,
+                name: name.to_owned(),
             })?;
 
         // Bind memory to the buffer
         unsafe {
-            self.raw
-                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+            raw.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
                 .expect("bind_buffer_memory")
         };
-
-        /*let (buffer, allocation, allocation_info) = self
-        .global_allocator
-        .create_buffer(&buffer_info, &buffer_mem_info)
-        .expect("vma::create_buffer");*/
 
         Ok(Buffer {
             raw: buffer,
@@ -101,12 +110,16 @@ impl Device {
     pub fn create_buffer(
         &self,
         mut desc: BufferDesc,
+        name: impl Into<String>,
         initial_data: Option<&[u8]>,
-    ) -> Result<Buffer> {
+    ) -> Result<Buffer, BackendError> {
+        let name = name.into();
+
         if initial_data.is_some() {
             desc.usage |= vk::BufferUsageFlags::TRANSFER_DST;
         }
-        let buffer = self.create_buffer_impl(desc)?;
+        let buffer =
+            Self::create_buffer_impl(&self.raw, &mut self.global_allocator.lock(), desc, &name)?;
 
         if let Some(initial_data) = initial_data {
             let scratch_desc = BufferDesc {
@@ -115,7 +128,12 @@ impl Device {
                 memory_location: MemoryLocation::CpuToGpu,
             };
 
-            let mut scratch_buffer = self.create_buffer_impl(scratch_desc)?;
+            let mut scratch_buffer = Self::create_buffer_impl(
+                &self.raw,
+                &mut self.global_allocator.lock(),
+                scratch_desc,
+                &format!("Initial data for {:?}", name),
+            )?;
 
             scratch_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.len()]
                 .copy_from_slice(initial_data);
@@ -131,7 +149,7 @@ impl Device {
                         .size(desc.size as u64)
                         .build()],
                 );
-            });
+            })?;
         }
 
         Ok(buffer)
