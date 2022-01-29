@@ -233,14 +233,18 @@ impl DlssRenderer {
             );
 
             let mut dlss_feature: *mut NVSDK_NGX_Handle = ptr::null_mut();
-            backend.device.with_setup_cb(|cb| {
-                ngx_checked!(NVSDK_NGX_VULKAN_CreateFeature(
-                    transmute(cb),
-                    NVSDK_NGX_Feature_NVSDK_NGX_Feature_SuperSampling,
-                    ngx_params,
-                    &mut dlss_feature,
-                ));
-            });
+            backend
+                .device
+                .with_setup_cb(|cb| {
+                    ngx_checked!(NVSDK_NGX_VULKAN_CreateFeature(
+                        transmute(cb),
+                        NVSDK_NGX_Feature_NVSDK_NGX_Feature_SuperSampling,
+                        ngx_params,
+                        &mut dlss_feature,
+                    ));
+                })
+                .map_err(|err| backend.device.report_error(err))
+                .unwrap();
 
             Self {
                 dlss_feature,

@@ -84,7 +84,7 @@ impl Device {
 
         let allocation = allocator
             .allocate(&AllocationCreateDesc {
-                name: &name,
+                name,
                 requirements,
                 location: desc.memory_location,
                 linear: true, // Buffers are always linear
