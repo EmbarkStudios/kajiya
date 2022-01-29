@@ -1,4 +1,4 @@
-use kajiya_backend::{ash::vk, vulkan};
+use kajiya_backend::{ash::vk, vulkan, BackendError};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::ops::Range;
@@ -83,17 +83,21 @@ impl BufferBuilder {
         data_start
     }
 
-    pub fn upload(self, device: &kajiya_backend::Device, target: &mut Buffer, target_offset: u64) {
+    pub fn upload(
+        self,
+        device: &kajiya_backend::Device,
+        target: &mut Buffer,
+        target_offset: u64,
+    ) -> Result<(), BackendError> {
         let target = target.raw;
 
         // TODO: share a common staging buffer, don't leak
         const STAGING_BYTES: usize = 16 * 1024 * 1024;
-        let mut staging_buffer = device
-            .create_buffer(
-                BufferDesc::new_cpu_to_gpu(STAGING_BYTES, vk::BufferUsageFlags::TRANSFER_SRC),
-                None,
-            )
-            .expect("Staging buffer for buffer upload");
+        let mut staging_buffer = device.create_buffer(
+            BufferDesc::new_cpu_to_gpu(STAGING_BYTES, vk::BufferUsageFlags::TRANSFER_SRC),
+            "BufferBuilder staging",
+            None,
+        )?;
 
         struct UploadChunk {
             pending_idx: usize,
@@ -136,7 +140,9 @@ impl BufferBuilder {
                         .size((src_range.end - src_range.start) as u64)
                         .build()],
                 );
-            });
+            })?;
         }
+
+        Ok(())
     }
 }

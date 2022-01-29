@@ -262,7 +262,7 @@ impl GetOrCreateTemporal<BufferDesc> for TemporalRenderGraph {
                 }
             }
             hash_map::Entry::Vacant(entry) => {
-                let resource = Arc::new(self.device.create_buffer(desc, None)?);
+                let resource = Arc::new(self.device.create_buffer(desc, &key.0, None)?);
                 let handle = self.rg.import(resource.clone(), AccessType::Nothing);
                 entry.insert(TemporalResourceState::Imported {
                     resource: TemporalResource::Buffer(resource),

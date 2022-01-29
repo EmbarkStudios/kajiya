@@ -15,6 +15,7 @@ use kajiya_backend::{
     dynamic_constants::DynamicConstants,
     vk_sync::{self, AccessType},
     vulkan::{self, device, image::*, ray_tracing::*, shader::*, RenderBackend},
+    BackendError,
 };
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
@@ -242,7 +243,7 @@ impl WorldRenderer {
         #[allow(unused_variables)] render_extent: [u32; 2],
         temporal_upscale_extent: [u32; 2],
         backend: &RenderBackend,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, BackendError> {
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -257,33 +258,29 @@ impl WorldRenderer {
                 ],
                 depth_attachment: Some(RenderPassAttachmentDesc::new(vk::Format::D32_SFLOAT)),
             },
+        );
+
+        let mesh_buffer = backend.device.create_buffer(
+            BufferDesc::new_cpu_to_gpu(
+                MAX_GPU_MESHES * size_of::<GpuMesh>(),
+                vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+            "mesh buffer",
+            None,
         )?;
 
-        let mesh_buffer = backend
-            .device
-            .create_buffer(
-                BufferDesc::new_cpu_to_gpu(
-                    MAX_GPU_MESHES * size_of::<GpuMesh>(),
-                    vk::BufferUsageFlags::STORAGE_BUFFER,
-                ),
-                None,
-            )
-            .unwrap();
-
-        let vertex_buffer = backend
-            .device
-            .create_buffer(
-                BufferDesc::new_gpu_only(
-                    VERTEX_BUFFER_CAPACITY,
-                    vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                        | vk::BufferUsageFlags::INDEX_BUFFER
-                        | vk::BufferUsageFlags::TRANSFER_DST
-                        | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-                ),
-                None,
-            )
-            .unwrap();
+        let vertex_buffer = backend.device.create_buffer(
+            BufferDesc::new_gpu_only(
+                VERTEX_BUFFER_CAPACITY,
+                vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::INDEX_BUFFER
+                    | vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+            ),
+            "vertex buffer",
+            None,
+        )?;
 
         let bindless_descriptor_set = create_bindless_descriptor_set(backend.device.as_ref());
 
@@ -355,10 +352,10 @@ impl WorldRenderer {
             supersample_offsets,
 
             ssgi: Default::default(),
-            rtr: RtrRenderer::new(backend.device.as_ref()),
+            rtr: RtrRenderer::new(backend.device.as_ref())?,
             lighting: LightingRenderer::new(),
             csgi: CsgiRenderer::default(),
-            rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
+            rtdgi: RtdgiRenderer::new(backend.device.as_ref())?,
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
 
@@ -522,11 +519,14 @@ impl WorldRenderer {
 
         let total_buffer_size = buffer_builder.current_offset();
         let mut vertex_buffer = self.vertex_buffer.lock();
-        buffer_builder.upload(
-            self.device.as_ref(),
-            Arc::get_mut(&mut *vertex_buffer).expect("refs may not be retained"),
-            self.vertex_buffer_written,
-        );
+        buffer_builder
+            .upload(
+                self.device.as_ref(),
+                Arc::get_mut(&mut *vertex_buffer).expect("refs may not be retained"),
+                self.vertex_buffer_written,
+            )
+            .map_err(|err| self.device.report_error(err))
+            .unwrap();
         self.vertex_buffer_written += total_buffer_size;
 
         let mesh_buffer_dst = unsafe {

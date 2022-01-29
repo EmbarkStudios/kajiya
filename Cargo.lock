@@ -1416,6 +1416,7 @@ dependencies = [
  "arrayvec",
  "ash",
  "ash-window",
+ "backtrace",
  "byte-slice-cast",
  "bytes",
  "derive_builder",
@@ -1427,6 +1428,7 @@ dependencies = [
  "lazy_static",
  "log",
  "nanoserde",
+ "never",
  "normpath",
  "parking_lot",
  "puffin",
@@ -1436,6 +1438,7 @@ dependencies = [
  "rspirv-reflect",
  "shader-prepper",
  "smol",
+ "thiserror",
  "turbosloth",
  "vk-sync",
 ]
@@ -1788,6 +1791,12 @@ dependencies = [
  "libc",
  "winapi 0.3.9",
 ]
+
+[[package]]
+name = "never"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c96aba5aa877601bb3f6dd6a63a969e1f82e60646e81e71b14496995e9853c91"
 
 [[package]]
 name = "ngx_dlss"

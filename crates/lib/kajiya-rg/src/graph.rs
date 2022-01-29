@@ -730,9 +730,12 @@ impl CompiledRenderGraph {
                     GraphResourceDesc::Buffer(mut desc) => {
                         desc.usage = self.resource_info.buffer_usage_flags[resource_idx];
 
-                        let buffer = transient_resource_cache
-                            .get_buffer(&desc)
-                            .unwrap_or_else(|| device.create_buffer(desc, None).unwrap());
+                        let buffer =
+                            transient_resource_cache
+                                .get_buffer(&desc)
+                                .unwrap_or_else(|| {
+                                    device.create_buffer(desc, "rg buffer", None).unwrap()
+                                });
 
                         RegistryResource {
                             resource: AnyRenderResource::OwnedBuffer(buffer),
@@ -800,16 +803,8 @@ pub struct ExecutingRenderGraph<'exec_params, 'constants> {
     resource_registry: ResourceRegistry<'exec_params, 'constants>,
 }
 
-pub struct RgRecordingLog {
-    pub crash_marker_names: Vec<String>,
-}
-
 impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
-    pub fn record_main_cb(
-        &mut self,
-        cb: &CommandBuffer,
-        crash_tracking_buffer: &mut Buffer,
-    ) -> RgRecordingLog {
+    pub fn record_main_cb(&mut self, cb: &CommandBuffer) {
         let mut first_presentation_pass: usize = self.passes.len();
 
         for (pass_idx, pass) in self.passes.iter().enumerate() {
@@ -825,21 +820,11 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
             }
         }
 
-        let mut crash_marker_names: Vec<String> = Vec::new();
-
         let mut passes = std::mem::take(&mut self.passes);
         for pass in passes.drain(..first_presentation_pass) {
-            Self::record_pass_cb(
-                pass,
-                &mut self.resource_registry,
-                cb,
-                crash_tracking_buffer,
-                &mut crash_marker_names,
-            );
+            Self::record_pass_cb(pass, &mut self.resource_registry, cb);
         }
         self.passes = passes;
-
-        RgRecordingLog { crash_marker_names }
     }
 
     #[must_use]
@@ -847,7 +832,6 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         mut self,
         cb: &CommandBuffer,
         swapchain_image: Arc<Image>,
-        crash_tracking_buffer: &mut Buffer,
     ) -> RetiredRenderGraph {
         let params = &self.resource_registry.execution_params;
 
@@ -873,13 +857,7 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
 
         let passes = self.passes;
         for pass in passes {
-            Self::record_pass_cb(
-                pass,
-                &mut self.resource_registry,
-                cb,
-                crash_tracking_buffer,
-                &mut Vec::new(),
-            );
+            Self::record_pass_cb(pass, &mut self.resource_registry, cb);
         }
 
         RetiredRenderGraph {
@@ -887,42 +865,17 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         }
     }
 
-    // Background: https://www.asawicki.info/news_1677_debugging_vulkan_driver_crash_-_equivalent_of_nvidia_aftermath
-    fn record_crash_marker(
-        params: &RenderGraphExecutionParams,
-        cb: &CommandBuffer,
-        crash_tracking_buffer: &mut Buffer,
-        crash_marker_names: &mut Vec<String>,
-        name: String,
-    ) {
-        let marker_idx = crash_marker_names.len() as u32;
-        crash_marker_names.push(name);
-
-        unsafe {
-            params
-                .device
-                .raw
-                .cmd_fill_buffer(cb.raw, crash_tracking_buffer.raw, 0, 4, marker_idx);
-        }
-    }
-
     fn record_pass_cb(
         pass: RecordedPass,
         resource_registry: &mut ResourceRegistry,
         cb: &CommandBuffer,
-        crash_tracking_buffer: &mut Buffer,
-        crash_marker_names: &mut Vec<String>,
     ) {
         let params = &resource_registry.execution_params;
 
         // Record a crash marker just before this pass
-        Self::record_crash_marker(
-            params,
-            cb,
-            crash_tracking_buffer,
-            crash_marker_names,
-            format!("begin render pass {:?}", pass.name),
-        );
+        params
+            .device
+            .record_crash_marker(cb, format!("begin render pass {:?}", pass.name));
 
         if let Some(debug_utils) = params.device.debug_utils() {
             unsafe {
@@ -997,13 +950,9 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         }
 
         // Record a crash marker just after this pass
-        Self::record_crash_marker(
-            params,
-            cb,
-            crash_tracking_buffer,
-            crash_marker_names,
-            format!("end render pass {:?}", pass.name),
-        );
+        params
+            .device
+            .record_crash_marker(cb, format!("end render pass {:?}", pass.name));
     }
 
     fn transition_resource(

@@ -3,7 +3,6 @@ use crate::{
     PredefinedDescriptorSet, RenderGraphExecutionParams, TemporalRenderGraph,
     TemporalRenderGraphState, TemporalResourceState,
 };
-use anyhow::Context;
 use kajiya_backend::{
     ash::vk,
     dynamic_constants::*,
@@ -38,8 +37,6 @@ pub struct Renderer {
     transient_resource_cache: TransientResourceCache,
     dynamic_constants: DynamicConstants,
     frame_descriptor_set: vk::DescriptorSet,
-
-    crash_tracking_buffer: Buffer,
 
     compiled_rg: Option<CompiledRenderGraph>,
     temporal_rg_state: TemporalRg,
@@ -89,30 +86,20 @@ pub struct FrameConstantsLayout {
 impl Renderer {
     pub fn new(backend: &RenderBackend) -> anyhow::Result<Self> {
         let dynamic_constants = DynamicConstants::new({
-            backend
-                .device
-                .create_buffer(
-                    BufferDesc::new_cpu_to_gpu(
-                        DYNAMIC_CONSTANTS_SIZE_BYTES * DYNAMIC_CONSTANTS_BUFFER_COUNT,
-                        vk::BufferUsageFlags::UNIFORM_BUFFER
-                            | vk::BufferUsageFlags::STORAGE_BUFFER
-                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    ),
-                    None,
-                )
-                .context("a buffer for dynamic constants")?
+            backend.device.create_buffer(
+                BufferDesc::new_cpu_to_gpu(
+                    DYNAMIC_CONSTANTS_SIZE_BYTES * DYNAMIC_CONSTANTS_BUFFER_COUNT,
+                    vk::BufferUsageFlags::UNIFORM_BUFFER
+                        | vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                ),
+                "dynamic constants buffer",
+                None,
+            )?
         });
 
         let frame_descriptor_set =
             Self::create_frame_descriptor_set(backend, &dynamic_constants.buffer);
-
-        let crash_tracking_buffer = backend
-            .device
-            .create_buffer(
-                BufferDesc::new_gpu_to_cpu(4, vk::BufferUsageFlags::TRANSFER_DST),
-                None,
-            )
-            .context("creating the crash tracking buffer")?;
 
         Ok(Renderer {
             device: backend.device.clone(),
@@ -120,8 +107,6 @@ impl Renderer {
             frame_descriptor_set,
             pipeline_cache: PipelineCache::new(&LazyCache::create()),
             transient_resource_cache: Default::default(),
-
-            crash_tracking_buffer,
 
             compiled_rg: None,
             temporal_rg_state: Default::default(),
@@ -197,10 +182,10 @@ impl Renderer {
             unsafe {
                 puffin::profile_scope!("main cb");
 
-                let pass_recording_log = {
+                {
                     puffin::profile_scope!("rg::record_main_cb");
-                    executing_rg.record_main_cb(main_cb, &mut self.crash_tracking_buffer)
-                };
+                    executing_rg.record_main_cb(main_cb)
+                }
 
                 raw_device.end_command_buffer(main_cb.raw).unwrap();
 
@@ -215,40 +200,14 @@ impl Renderer {
                 puffin::profile_scope!("submit main cb");
 
                 // Try to submit the command buffer to the GPU. We might encounter a GPU crash.
-                match raw_device.queue_submit(
-                    self.device.universal_queue.raw,
-                    &submit_info,
-                    main_cb.submit_done_fence,
-                ) {
-                    Ok(_) => {}
-                    Err(_) => {
-                        // Something went wrong. Find the last marker which was successfully written
-                        // to the crash tracking buffer, and report its corresponding name.
-
-                        let last_marker = self
-                            .crash_tracking_buffer
-                            .allocation
-                            .mapped_ptr()
-                            .unwrap()
-                            .as_ptr() as *const u32;
-                        let last_marker = *last_marker.as_ref().unwrap();
-
-                        let panic_msg = if let Some(last_marker_str) = pass_recording_log
-                            .crash_marker_names
-                            .get(last_marker as usize)
-                        {
-                            format!(
-                                "Queue submit failed. Last marker: {} => {}",
-                                last_marker, last_marker_str
-                            )
-                        } else {
-                            format!("Queue submit failed. Last marker: {}", last_marker)
-                        };
-
-                        log::error!("{}", panic_msg);
-                        panic!("{}", panic_msg);
-                    }
-                }
+                raw_device
+                    .queue_submit(
+                        self.device.universal_queue.raw,
+                        &submit_info,
+                        main_cb.submit_done_fence,
+                    )
+                    .map_err(|err| device.report_error(err.into()))
+                    .unwrap();
             };
         }
 
@@ -279,11 +238,8 @@ impl Renderer {
                 .with_discard(true),
             );
 
-            let retired_rg = executing_rg.record_presentation_cb(
-                presentation_cb,
-                swapchain_image.image.clone(),
-                &mut self.crash_tracking_buffer,
-            );
+            let retired_rg =
+                executing_rg.record_presentation_cb(presentation_cb, swapchain_image.image.clone());
 
             // Transition the swapchain to present
             vulkan::barrier::record_image_barrier(
@@ -324,7 +280,8 @@ impl Renderer {
                         &submit_info,
                         presentation_cb.submit_done_fence,
                     )
-                    .expect("Presentation queue submit failed.");
+                    .map_err(|err| device.report_error(err.into()))
+                    .unwrap();
             }
 
             swapchain.present_image(swapchain_image);
