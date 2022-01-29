@@ -6,7 +6,6 @@ use crate::{
 use kajiya_backend::{
     ash::vk,
     dynamic_constants::*,
-    gpu_allocator::MemoryLocation,
     pipeline_cache::*,
     rspirv_reflect,
     transient_resource_cache::TransientResourceCache,
@@ -89,16 +88,14 @@ impl Renderer {
         let dynamic_constants = DynamicConstants::new({
             backend
                 .device
-                .create_buffer_impl(
-                    BufferDesc {
-                        size: DYNAMIC_CONSTANTS_SIZE_BYTES * DYNAMIC_CONSTANTS_BUFFER_COUNT,
-                        usage: vk::BufferUsageFlags::UNIFORM_BUFFER
+                .create_buffer(
+                    BufferDesc::new_cpu_to_gpu(
+                        DYNAMIC_CONSTANTS_SIZE_BYTES * DYNAMIC_CONSTANTS_BUFFER_COUNT,
+                        vk::BufferUsageFlags::UNIFORM_BUFFER
                             | vk::BufferUsageFlags::STORAGE_BUFFER
                             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                        mapped: true,
-                    },
-                    Default::default(),
-                    MemoryLocation::CpuToGpu,
+                    ),
+                    None,
                 )
                 .expect("a buffer for dynamic constants")
         });

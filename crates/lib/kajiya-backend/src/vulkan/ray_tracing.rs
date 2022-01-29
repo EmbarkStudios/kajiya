@@ -78,16 +78,15 @@ impl Device {
     pub fn create_ray_tracing_acceleration_scratch_buffer(
         &self,
     ) -> Result<RayTracingAccelerationScratchBuffer> {
-        const INITIAL_SIZE: usize = 1024 * 1024 * 144;
+        const INITIAL_SIZE: usize = 1024 * 1024 * 1440;
 
         let buffer = self
             .create_buffer(
-                super::buffer::BufferDesc {
-                    size: INITIAL_SIZE,
-                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                super::buffer::BufferDesc::new_gpu_only(
+                    INITIAL_SIZE,
+                    vk::BufferUsageFlags::STORAGE_BUFFER
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    mapped: false,
-                },
+                ),
                 None,
             )
             .context("Acceleration structure scratch buffer")?;
@@ -226,11 +225,10 @@ impl Device {
         let instance_buffer_size = std::mem::size_of::<GeometryInstance>() * instances.len().max(1);
         let instance_buffer = self
             .create_buffer(
-                super::buffer::BufferDesc {
-                    size: instance_buffer_size,
-                    usage: ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-                    mapped: false,
-                },
+                super::buffer::BufferDesc::new_gpu_only(
+                     instance_buffer_size,
+                     ash::vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+                ),
                 unsafe {
                     (!instances.is_empty()).then(|| {
                         std::slice::from_raw_parts(
@@ -309,12 +307,11 @@ impl Device {
 
         let accel_buffer = self
             .create_buffer(
-                super::buffer::BufferDesc {
-                    size: backing_buffer_size,
-                    usage: vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
+                super::buffer::BufferDesc::new_gpu_only(
+                    backing_buffer_size,
+                    vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                    mapped: false,
-                },
+                ),
                 None,
             )
             .context("Acceleration structure buffer")?;
@@ -597,13 +594,12 @@ impl Device {
 
             Ok(Some(
                 self.create_buffer(
-                    super::buffer::BufferDesc {
-                        size: shader_binding_table_data.len(),
-                        usage: vk::BufferUsageFlags::TRANSFER_SRC
+                    super::buffer::BufferDesc::new_gpu_only(
+                        shader_binding_table_data.len(),
+                        vk::BufferUsageFlags::TRANSFER_SRC
                             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                             | vk::BufferUsageFlags::SHADER_BINDING_TABLE_KHR,
-                        mapped: false,
-                    },
+                    ),
                     Some(&shader_binding_table_data),
                 )
                 .context("SBT sub-buffer")?,

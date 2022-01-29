@@ -290,14 +290,13 @@ impl Device {
             let total_initial_data_bytes = initial_data.iter().map(|d| d.data.len()).sum();
 
             let mut image_buffer = self
-                .create_buffer_impl(
+                .create_buffer(
                     super::buffer::BufferDesc {
                         size: total_initial_data_bytes,
                         usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                        mapped: true,
+                        memory_location: MemoryLocation::CpuToGpu,
                     },
-                    Default::default(),
-                    MemoryLocation::CpuToGpu,
+                    None,
                 )
                 .context("CpuToGpu image staging buffer")?;
 

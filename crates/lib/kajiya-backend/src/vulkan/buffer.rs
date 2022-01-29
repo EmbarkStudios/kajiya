@@ -23,30 +23,32 @@ impl Buffer {
 pub struct BufferDesc {
     pub size: usize,
     pub usage: vk::BufferUsageFlags,
-    pub mapped: bool,
+    pub memory_location: MemoryLocation,
 }
 
 impl BufferDesc {
-    pub fn new(size: usize, usage: vk::BufferUsageFlags) -> Self {
+    pub fn new_gpu_only(size: usize, usage: vk::BufferUsageFlags) -> Self {
         Self {
             size,
             usage,
-            mapped: false,
+            memory_location: MemoryLocation::GpuOnly,
+        }
+    }
+
+    pub fn new_cpu_to_gpu(size: usize, usage: vk::BufferUsageFlags) -> Self {
+        Self {
+            size,
+            usage,
+            memory_location: MemoryLocation::CpuToGpu,
         }
     }
 }
 
 impl Device {
-    // TODO: not pub.
-    pub fn create_buffer_impl(
-        &self,
-        desc: BufferDesc,
-        extra_usage: vk::BufferUsageFlags,
-        memory_location: MemoryLocation,
-    ) -> Result<Buffer> {
+    fn create_buffer_impl(&self, desc: BufferDesc) -> Result<Buffer> {
         let buffer_info = vk::BufferCreateInfo {
             size: desc.size as u64,
-            usage: desc.usage | extra_usage,
+            usage: desc.usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
         };
@@ -73,7 +75,7 @@ impl Device {
             .allocate(&AllocationCreateDesc {
                 name: "buffer",
                 requirements,
-                location: memory_location,
+                location: desc.memory_location,
                 linear: true, // Buffers are always linear
             })?;
 
@@ -96,29 +98,24 @@ impl Device {
         })
     }
 
-    pub fn create_buffer(&self, desc: BufferDesc, initial_data: Option<&[u8]>) -> Result<Buffer> {
-        let memory_location = if desc.mapped {
-            MemoryLocation::CpuToGpu
-        } else {
-            MemoryLocation::GpuOnly
-        };
-
-        let buffer = self.create_buffer_impl(
-            desc,
-            if initial_data.is_some() {
-                vk::BufferUsageFlags::TRANSFER_DST
-            } else {
-                vk::BufferUsageFlags::empty()
-            },
-            memory_location,
-        )?;
+    pub fn create_buffer(
+        &self,
+        mut desc: BufferDesc,
+        initial_data: Option<&[u8]>,
+    ) -> Result<Buffer> {
+        if initial_data.is_some() {
+            desc.usage |= vk::BufferUsageFlags::TRANSFER_DST;
+        }
+        let buffer = self.create_buffer_impl(desc)?;
 
         if let Some(initial_data) = initial_data {
-            let mut scratch_buffer = self.create_buffer_impl(
-                desc,
-                vk::BufferUsageFlags::TRANSFER_SRC,
-                MemoryLocation::CpuToGpu,
-            )?;
+            let scratch_desc = BufferDesc {
+                size: desc.size,
+                usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                memory_location: MemoryLocation::CpuToGpu,
+            };
+
+            let mut scratch_buffer = self.create_buffer_impl(scratch_desc)?;
 
             scratch_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.len()]
                 .copy_from_slice(initial_data);

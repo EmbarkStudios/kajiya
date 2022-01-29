@@ -90,11 +90,7 @@ impl BufferBuilder {
         const STAGING_BYTES: usize = 16 * 1024 * 1024;
         let mut staging_buffer = device
             .create_buffer(
-                BufferDesc {
-                    size: STAGING_BYTES,
-                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                    mapped: true,
-                },
+                BufferDesc::new_cpu_to_gpu(STAGING_BYTES, vk::BufferUsageFlags::TRANSFER_SRC),
                 None,
             )
             .expect("Staging buffer for buffer upload");

@@ -262,11 +262,10 @@ impl WorldRenderer {
         let mesh_buffer = backend
             .device
             .create_buffer(
-                BufferDesc {
-                    size: MAX_GPU_MESHES * size_of::<GpuMesh>(),
-                    usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-                    mapped: true,
-                },
+                BufferDesc::new_cpu_to_gpu(
+                    MAX_GPU_MESHES * size_of::<GpuMesh>(),
+                    vk::BufferUsageFlags::STORAGE_BUFFER,
+                ),
                 None,
             )
             .unwrap();
@@ -274,15 +273,14 @@ impl WorldRenderer {
         let vertex_buffer = backend
             .device
             .create_buffer(
-                BufferDesc {
-                    size: VERTEX_BUFFER_CAPACITY,
-                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                BufferDesc::new_gpu_only(
+                    VERTEX_BUFFER_CAPACITY,
+                    vk::BufferUsageFlags::STORAGE_BUFFER
                         | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
                         | vk::BufferUsageFlags::INDEX_BUFFER
                         | vk::BufferUsageFlags::TRANSFER_DST
                         | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-                    mapped: false,
-                },
+                ),
                 None,
             )
             .unwrap();

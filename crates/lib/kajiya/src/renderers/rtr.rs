@@ -32,7 +32,7 @@ fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
     Arc::new(
         device
             .create_buffer(
-                BufferDesc::new(
+                BufferDesc::new_gpu_only(
                     v.len() * std::mem::size_of::<T>(),
                     vk::BufferUsageFlags::STORAGE_BUFFER,
                 ),
