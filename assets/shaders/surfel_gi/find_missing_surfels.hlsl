@@ -11,7 +11,6 @@
 #define VISUALIZE_SURFELS 1
 #define VISUALIZE_SURFELS_AS_NORMALS 0
 #define VISUALIZE_CELL_SURFEL_COUNT 0
-#define USE_DIRECTIONAL_IRRADIANCE 0
 #define USE_GEOMETRIC_NORMALS 1
 #define USE_DEBUG_OUT 0
 
@@ -25,11 +24,10 @@
 [[vk::binding(7)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(8)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
 [[vk::binding(9)]] StructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(10)]] StructuredBuffer<float4> surfel_sh_buf;
-[[vk::binding(11)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(12)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(11)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
 
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -190,41 +188,6 @@ void main(
             float3 shading_normal = geometric_normal_ws;
         #else
             float3 shading_normal = gbuffer.normal;
-        #endif
-
-        #if USE_DIRECTIONAL_IRRADIANCE
-            const float3 surfel_tet_basis[4] = calc_surfel_tet_basis(surfel.normal);
-            float b_weights[4];
-            float b_weight_sum = 0;
-
-            {[unroll]
-            for (int b = 0; b < 4; ++b) {
-                b_weights[b] = pow(max(0.0, dot(surfel_tet_basis[b], shading_normal)), 4);
-                b_weight_sum += b_weights[b];
-            }}
-
-            // HACK
-            float spoke_mult = lerp(1.3, 1.8, saturate(dot(shading_normal, shading_normal)));
-            float3 c_sum = 0.0;
-
-            [unroll]
-            for (int b = 0; b < 4; ++b) {
-                c_sum += max(0.0, b_weights[b] / b_weight_sum * float3(
-                    surfel_sh_buf[surfel_idx * 3 + 0][b],
-                    surfel_sh_buf[surfel_idx * 3 + 1][b],
-                    surfel_sh_buf[surfel_idx * 3 + 2][b]
-                )) * ((b == 0) ? 1.0 : spoke_mult);
-            }
-
-            //c_sum *= saturate(dot(normalize(shading_normal), gbuffer.normal));
-
-            surfel_color = c_sum * 2;
-        #else
-            /*surfel_color = max(0.0, float3(
-                surfel_sh_buf[surfel_idx * 3 + 0].r,
-                surfel_sh_buf[surfel_idx * 3 + 1].r,
-                surfel_sh_buf[surfel_idx * 3 + 2].r
-            )) * 2;*/
         #endif
 
             #if VISUALIZE_SURFELS && VISUALIZE_SURFELS_AS_NORMALS

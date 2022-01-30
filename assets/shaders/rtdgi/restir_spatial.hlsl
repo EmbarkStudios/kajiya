@@ -94,7 +94,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         uint3((px >> 2), frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
     )) * M_PI * 2;
 
-    //sample_count = 1;
+    if (!RESTIR_USE_SPATIAL) {
+        sample_count = 1;
+    }
 
     uint valid_sample_count = 0;
     for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {

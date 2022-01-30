@@ -42,7 +42,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         const float2 reproj_rand_offset = 0.0;
 
-        invalid_blurred.x = smoothstep(0.1, 1.0, invalid_blurred.x);
+        invalid_blurred.x = smoothstep(0.0, 1.0, invalid_blurred.x) * 5;
     }
     
     /*if (reproj.z == 0) {
@@ -73,6 +73,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     edge = max(edge, WaveReadLaneAt(edge, WaveGetLaneIndex() ^ 8));
     /*edge = max(edge, WaveReadLaneAt(edge, WaveGetLaneIndex() ^ 4));
     edge = max(edge, WaveReadLaneAt(edge, WaveGetLaneIndex() ^ 32));*/
+
     invalid_blurred.x += edge;
 
     invalid_blurred = saturate(invalid_blurred);

@@ -166,6 +166,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float clamp_box_size = 1
         * lerp(0.25, 1.0, 1.0 - rt_invalid)
         //* lerp(0.25, 1.0, pow(saturate(current_sample_count / 32.0), 2))
+
+        
         * 3
         ;
     clamp_box_size = max(clamp_box_size, 0.5);
@@ -197,7 +199,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     max_sample_count = lerp(max_sample_count, 4, variance_adjusted_temporal_change);
     //max_sample_count = lerp(max_sample_count, 1, smoothstep(0.01, 0.6, 10 * temporal_change * (center_dev / max(1e-5, center_luma))));
     max_sample_count *= light_stability;
-    max_sample_count *= lerp(1.0, 0.0, rt_invalid);
+    max_sample_count *= lerp(1.0, 0.5, rt_invalid);
 
 // hax
 //max_sample_count = 16;

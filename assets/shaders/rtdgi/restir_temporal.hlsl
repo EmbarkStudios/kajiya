@@ -145,6 +145,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
 
+    const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px]));
+
     //const bool use_resampling = false;
     const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
 
@@ -158,8 +160,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         int2(0, -1),
     };
 
-    const float rt_invalidity = sqrt(rt_invalidity_tex[px]);
-
     if (use_resampling) {
         float M_sum = reservoir.M;
 
@@ -168,7 +168,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
         // could be due to lack of bias compensation (the `Z` term)
-        for (uint sample_i = 0; sample_i < 5 && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
+        for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
                 float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
@@ -283,8 +283,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             // resampling. To fix this, we simply clamp the previous frame’s M
             // to at most 20× of the current frame’s reservoir’s M
 
-            r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
+            //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
+            r.M = max(0, min(r.M, exp2(log2(RESTIR_TEMPORAL_M_CLAMP) * (1.0 - rt_invalidity))));
             //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP);
+            //r.M = min(r.M, 0.1);
 
             float p_q = 1;
             p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));

@@ -30,7 +30,7 @@ pub struct SurfelGiRenderState {
 
     surfel_spatial_buf: rg::Handle<Buffer>,
     surfel_irradiance_buf: rg::Handle<Buffer>,
-    surfel_sh_buf: rg::Handle<Buffer>,
+    surfel_aux_buf: rg::Handle<Buffer>,
 
     pub debug_out: rg::Handle<Image>,
 }
@@ -106,12 +106,11 @@ pub fn allocate_surfels(
             "surfel_gi.surfel_irradiance_buf",
             size_of::<[f32; 4]>() * MAX_SURFELS,
         ),
-        surfel_sh_buf: temporal_storage_buffer(
+        surfel_aux_buf: temporal_storage_buffer(
             rg,
-            "surfel_gi.surfel_sh_buf",
+            "surfel_gi.surfel_aux_buf",
             3 * size_of::<[f32; 4]>() * MAX_SURFELS,
         ),
-        //surfel_sh_buf: temporal_storage_buffer(rg, "surfel_gi.surfel_sh_buf", 4 * 32 * MAX_SURFELS),
         debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
     };
 
@@ -135,7 +134,6 @@ pub fn allocate_surfels(
     .read(&state.surfel_index_buf)
     .read(&state.surfel_spatial_buf)
     .read(&state.surfel_irradiance_buf)
-    .read(&state.surfel_sh_buf)
     .write(&mut state.debug_out)
     .write(&mut tile_surfel_alloc_tex)
     .constants(gbuffer_desc.extent_inv_extent_2d())
@@ -258,7 +256,7 @@ impl SurfelGiRenderState {
         .read(&self.surfel_index_buf)
         .bind(wrc)
         .write(&mut self.surfel_irradiance_buf)
-        .write(&mut self.surfel_sh_buf)
+        .write(&mut self.surfel_aux_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays_indirect(tlas, &indirect_args_buf, 0);
     }

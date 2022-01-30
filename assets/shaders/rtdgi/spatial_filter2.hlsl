@@ -50,10 +50,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
         return;
     }
 
-    const float ang_off = (frame_constants.frame_index * 13) % 32 * M_TAU;
+    const float ang_off = (frame_constants.frame_index * 23) % 32 * M_TAU + interleaved_gradient_noise(px) * M_PI;
 
     const uint MAX_SAMPLE_COUNT = 8;
-    const float MAX_RADIUS_PX = 16.0;
+    const float MAX_RADIUS_PX = sqrt(lerp(16.0 * 16.0, 2.0 * 2.0, center_validity));
 
     // Feeds into the `pow` to remap sample index to radius.
     // At 0.5 (sqrt), it's proper circle sampling, with higher values becoming conical.
@@ -69,9 +69,10 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         // Note: faster on RTX2080 than a dynamic loop
         for (uint sample_i = 1; sample_i < MAX_SAMPLE_COUNT; ++sample_i) {
-            float ang = (sample_i + ang_off) * GOLDEN_ANGLE;
+            const float ang = (sample_i + ang_off) * GOLDEN_ANGLE;
+
             float radius = pow(float(sample_i), KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT;
-            int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
+            float2 sample_offset = float2(cos(ang), sin(ang)) * radius;
             const int2 sample_px = px + sample_offset;
 
             const float sample_depth = depth_tex[sample_px];
