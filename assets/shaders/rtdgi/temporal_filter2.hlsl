@@ -168,7 +168,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         //* lerp(0.25, 1.0, pow(saturate(current_sample_count / 32.0), 2))
 
         
-        * 3
+        * 2
         ;
     clamp_box_size = max(clamp_box_size, 0.5);
 

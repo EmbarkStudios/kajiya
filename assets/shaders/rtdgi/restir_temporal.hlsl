@@ -38,6 +38,8 @@
 
 #include "candidate_ray_dir.hlsl"
 
+#define USE_JACOBIAN_BASED_REJECTION !true
+
 static const float SKY_DIST = 1e4;
 
 uint2 reservoir_payload_to_px(uint payload) {
@@ -90,7 +92,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
-    const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
     float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
@@ -101,8 +103,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     float p_q_sel = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
-    float3 ray_orig_sel = 0;
-    float3 ray_hit_sel = 1;
+    float3 ray_orig_sel_ws = 0;
+    float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
     uint sel_valid_sample_idx = 0;
     bool prev_sample_valid = false;
@@ -115,7 +117,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     {
         RayDesc outgoing_ray;
         outgoing_ray.Direction = outgoing_dir;
-        outgoing_ray.Origin = refl_ray_origin;
+        outgoing_ray.Origin = refl_ray_origin_ws;
         outgoing_ray.TMin = 0;
         outgoing_ray.TMax = SKY_DIST;
 
@@ -131,8 +133,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float inv_pdf_q = result.inv_pdf;
 
         irradiance_sel = result.out_value;
-        ray_orig_sel = outgoing_ray.Origin;
-        ray_hit_sel = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
+        ray_orig_sel_ws = outgoing_ray.Origin;
+        ray_hit_sel_ws = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
         hit_normal_sel = result.hit_normal_ws;
         prev_sample_valid = result.prev_sample_valid;
 
@@ -153,13 +155,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     // 1 (center) plus offset samples
     const uint MAX_RESOLVE_SAMPLE_COUNT = 5;
 
-    int2 sample_offsets[4] = {
-        int2(1, 0),
-        int2(0, 1),
-        int2(-1, 0),
-        int2(0, -1),
-    };
-
     if (use_resampling) {
         float M_sum = reservoir.M;
 
@@ -169,6 +164,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
         // could be due to lack of bias compensation (the `Z` term)
         for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
+        //for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
+        //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
                 float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
@@ -181,7 +178,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             const int2 rpx_offset =
                 sample_i == 0
                 ? 0
-                //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
                 : int2(reservoir_px_offset_base)
                 ;
 
@@ -231,7 +227,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // }
 
             const float3 prev_ray_orig = ray_orig_history_tex[spx];
-            if (length(prev_ray_orig - refl_ray_origin) > 0.1 * -view_ray_context.ray_hit_vs().z) {
+            if (length(prev_ray_orig - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
                 // Reject disocclusions
                 continue;
             }
@@ -245,6 +241,13 @@ void main(uint2 px : SV_DispatchThreadID) {
             // TODO: some more rejection based on the reprojection map.
             // This one is not enough ("battle", buttom of tower).
             if (inverse_depth_relative_diff(depth, sample_depth) > 0.2 || reproj.z == 0) {
+                continue;
+            }
+
+            const float normal_cutoff = 0.9;
+            const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
+            const float normal_similarity_dot = dot(sample_normal_vs, normal_vs);
+            if (sample_i != 0 && normal_similarity_dot < normal_cutoff) {
                 continue;
             }
 
@@ -263,9 +266,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }*/
 
-            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin;
+            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_ws;
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
+
+            const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
 
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
@@ -273,6 +278,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
             
+            // Ignore samples hit surfaces that face away from the center point
+            if (center_to_hit_vis <= 1e-3 && sample_i != 0) {
+                continue;
+            }
+
             const float4 prev_irrad = irradiance_history_tex[spx];
 
             // From the ReSTIR paper:
@@ -295,21 +305,21 @@ void main(uint2 px : SV_DispatchThreadID) {
             #endif
 
             float visibility = 1;
-
             float jacobian = 1;
 
             // Note: needed for sample 0 due to temporal jitter.
             //if (sample_i > 0)
             {
                 // Distance falloff. Needed to avoid leaks.
-                jacobian *= clamp(prev_dist, 1e-4, 1e4) / clamp(dist_to_sample_hit, 1e-4, 1e4);
+                jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-4, 1e4);
                 jacobian *= jacobian;
 
                 // N of hit dot -L. Needed to avoid leaks.
-                jacobian *=
-                    max(0.0, -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit))
-                    / max(1e-5, sample_hit_normal_ws_dot.w);
+                jacobian *= clamp(
+                    center_to_hit_vis
+                    / sample_hit_normal_ws_dot.w,
                     /// max(1e-5, -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws));
+                    0, 1e4);
 
                 #if DIFFUSE_GI_BRDF_SAMPLING
                     // N dot L. Useful for normal maps, micro detail.
@@ -318,6 +328,17 @@ void main(uint2 px : SV_DispatchThreadID) {
                     //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
                     //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
                 #endif
+            }
+
+            // Fixes boiling artifacts near edges. Unstable jacobians,
+            // but also effectively reduces reliance on reservoir exchange
+            // in tight corners, which is desirable since the well-distributed
+            // raw samples thrown at temporal filters will do better.
+            if (USE_JACOBIAN_BASED_REJECTION) {
+                const float JACOBIAN_REJECT_THRESHOLD = 4.0;
+                if (!(jacobian < JACOBIAN_REJECT_THRESHOLD && jacobian > 1.0 / JACOBIAN_REJECT_THRESHOLD)) {
+                    continue;
+                }
             }
 
             // Raymarch to check occlusion
@@ -350,20 +371,23 @@ void main(uint2 px : SV_DispatchThreadID) {
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
                     const float depth_at_interp = depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z) {
+                    if (depth_at_interp > interp_pos_cs.z * 1.001) {
                         visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
                     }
                 }
     		}
 
+            // TODO: mult p_q by jacobian here or only in `update`?
+            //p_q *= jacobian;
+
             M_sum += r.M;
-            if (reservoir.update(p_q * r.W * r.M * jacobian * visibility, reservoir_payload, rng)) {
+            if (reservoir.update(p_q * r.W * r.M * visibility * jacobian, reservoir_payload, rng)) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
-                ray_orig_sel = prev_ray_orig;
-                ray_hit_sel = sample_hit_ws;
+                ray_orig_sel_ws = prev_ray_orig;
+                ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
                 sel_valid_sample_idx = valid_sample_count;
             }
@@ -380,7 +404,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     RayDesc outgoing_ray;
     outgoing_ray.Direction = outgoing_dir;
-    outgoing_ray.Origin = refl_ray_origin;
+    outgoing_ray.Origin = refl_ray_origin_ws;
     outgoing_ray.TMin = 0;
 
     //TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
@@ -407,10 +431,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
-    ray_orig_output_tex[px] = ray_orig_sel;
+    ray_orig_output_tex[px] = ray_orig_sel_ws;
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = hit_normal_ws_dot;
-    ray_output_tex[px] = float4(ray_hit_sel/* - get_eye_position()*/, length(ray_hit_sel - refl_ray_origin));
+    ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, length(ray_hit_sel_ws - refl_ray_origin_ws));
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

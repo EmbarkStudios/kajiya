@@ -72,7 +72,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
             //float radius = 1.5 + float(sample_i) * lerp(0.333, 0.8, center_ssao);
             float radius = 1.5 + float(sample_i) * 0.333;
-            int2 sample_offset = float2(cos(ang), sin(ang)) * radius;
+            float2 sample_offset = float2(cos(ang), sin(ang)) * radius;
     
             int2 sample_px = half_px + sample_offset;
 

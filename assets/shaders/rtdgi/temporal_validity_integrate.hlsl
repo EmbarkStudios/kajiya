@@ -42,7 +42,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
         const float2 reproj_rand_offset = 0.0;
 
-        invalid_blurred.x = smoothstep(0.0, 1.0, invalid_blurred.x) * 5;
+        invalid_blurred.x = smoothstep(0.0, 1.0, invalid_blurred.x);
     }
     
     /*if (reproj.z == 0) {

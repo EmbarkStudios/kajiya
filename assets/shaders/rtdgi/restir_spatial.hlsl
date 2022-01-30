@@ -70,27 +70,33 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Don't be picky at low contribution counts. SSAO weighing
     // in those circumstances results in boiling near edges.
-    #if 1
+    #if 0
     const float ssao_factor_importance =
         spatial_reuse_pass_idx == 0
         ? smoothstep(5.0, 10.0, center_r.M)
         : smoothstep(25.0, 50.0, center_r.M);
+    #elif 1
+    const float ssao_factor_importance = smoothstep(5.0, 10.0, center_r.M);
     #else
         const float ssao_factor_importance = 0;
     #endif
 
     float kernel_radius = lerp(2.0, 16.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
+
     if (spatial_reuse_pass_idx == 1) {
         sample_count = 5;
         kernel_radius = lerp(2.0, 32.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
     }
+
+                                        //kernel_radius = 32;
+                                        //sample_count = 2;
 
     const uint TARGET_M = 512;
 
     // Scrambling angles here would be nice, but results in bad cache thrashing.
     // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
     // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
-    const float ang_offset = uint_to_u01_float(hash3(
+    float ang_offset = uint_to_u01_float(hash3(
         uint3((px >> 2), frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
     )) * M_PI * 2;
 
@@ -98,8 +104,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         sample_count = 1;
     }
 
+if (spatial_reuse_pass_idx != 0) {
+    //sample_count = 1;
+}
+
     uint valid_sample_count = 0;
     for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
+        //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
@@ -202,7 +213,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
-        const float3 dir_to_sample_hit_unnorm = sample_hit_ws - view_ray_context.biased_secondary_ray_origin_ws();
+        const float3 dir_to_sample_hit_unnorm = sample_hit_ws - view_ray_context.ray_hit_ws();
         const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
         const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
@@ -235,7 +246,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 
             // Raymarch to check occlusion
-            if (!is_center_sample) {
+            if (true && !is_center_sample) {
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
                 const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
@@ -260,7 +271,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
                     const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z) {
+                    if (depth_at_interp > interp_pos_cs.z * 1.001) {
                         visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
                     }
                 }
@@ -268,6 +279,12 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         const float4 sample_hit_normal_ws_dot = hit_normal_tex[spx];
+        const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
+
+        // Ignore samples hit surfaces that face away from the center point
+        if (center_to_hit_vis <= 1e-3 && sample_i != 0) {
+            continue;
+        }
 
         float p_q = 1;
         p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
@@ -281,14 +298,17 @@ void main(uint2 px : SV_DispatchThreadID) {
         float jacobian = 1;
 
         // Distance falloff. Needed to avoid leaks.
-        jacobian *= max(0.0, prev_dist) / max(1e-4, dist_to_sample_hit);
+        //jacobian *= max(0.0, prev_dist) / max(1e-4, dist_to_sample_hit);
+        jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-4, 1e4);
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks.
         jacobian *=
-            max(0.0, -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit))
-            /// max(1e-5, sample_hit_normal_ws_dot.w);
-            / max(1e-5, -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws));
+            clamp(
+                center_to_hit_vis
+                / sample_hit_normal_ws_dot.w,
+                // / -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws),
+                0, 1e4);
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             // N dot L. Useful for normal maps, micro detail.
@@ -302,12 +322,20 @@ void main(uint2 px : SV_DispatchThreadID) {
             jacobian = 1;
         }
 
+// haaaaaaaaaaaaaaaaaaaax
+        if (jacobian < 1.0 / 4.0 || jacobian > 16.0) {
+            continue;
+        }
+
+        // TODO: mult p_q by jacobian here or only in `update`?
+        //p_q *= jacobian;
+
         if (!(p_q > 0)) {
             continue;
         }
 
-        float w = p_q * r.W * r.M;
-        if (reservoir.update(w * jacobian * visibility, r.payload, rng)) {
+        float w = p_q * r.W * r.M * jacobian;
+        if (reservoir.update(w * visibility, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = dir_to_sample_hit;
         }

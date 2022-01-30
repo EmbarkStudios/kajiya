@@ -419,7 +419,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
                     const float depth_at_interp = depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z) {
+                    if (depth_at_interp > interp_pos_cs.z * 1.001) {
                         visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
                     }
                 }
