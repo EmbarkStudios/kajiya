@@ -40,11 +40,12 @@
 DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
 DEFINE_WRC_BINDINGS(12)
 [[vk::binding(13)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(14)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(15)]] RWTexture2D<float4> candidate_irradiance_out_tex;
-[[vk::binding(16)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(17)]] RWTexture2D<float> rt_history_validity_out_tex;
-[[vk::binding(18)]] cbuffer _ {
+[[vk::binding(14)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(15)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(16)]] RWTexture2D<float4> candidate_irradiance_out_tex;
+[[vk::binding(17)]] RWTexture2D<float4> candidate_normal_out_tex;
+[[vk::binding(18)]] RWTexture2D<float> rt_history_validity_out_tex;
+[[vk::binding(19)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -139,7 +140,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
         float3 sun_radiance = SUN_COLOR;
         if (any(sun_radiance) > 0) {
             const float3 to_light_norm = sample_sun_direction(
-                blue_noise_for_pixel(px, frame_constants.frame_index).xy,
+                blue_noise_for_pixel(px, rng).xy,
                 USE_SOFT_SHADOWS
             );
 
@@ -292,12 +293,17 @@ void main() {
     const float3 prev_hit_pos = reservoir_ray_history_tex[reproj_px].xyz/* + get_prev_eye_position()*/;
 
     bool is_prev_valid = true;
+    //float validity = 0.0;
 
     if (RESTIR_USE_PATH_VALIDATION) {
+        const float3 prev_irradiance = max(0.0.xxx, irradiance_history_tex[reproj_px].rgb);
+
         // Find whether the ray traces the same hit point as previously,
         // but don't bother for screen edges.
-        if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)) && length(prev_hit_pos - prev_ray_orig) > 0.1)
+        //if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)) && length(prev_hit_pos - prev_ray_orig) > 0.1)
+        if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)))
         {
+            #if 0
             is_prev_valid =
                 !rt_is_shadowed(
                     acceleration_structure,
@@ -319,10 +325,29 @@ void main() {
                             2.0
                     ))
                 );
+            #else
+                RayDesc prev_ray;
+                prev_ray.Direction = normalize(prev_hit_pos - prev_ray_orig);
+                prev_ray.Origin = prev_ray_orig;
+                prev_ray.TMin = 0;
+                prev_ray.TMax = SKY_DIST;
+
+                // TODO: frame index
+                uint rng = hash3(uint3(px, 0));
+
+                TraceResult check_result = do_the_thing(px, normal_ws, rng, prev_ray, normal_ws);
+                const float3 check_radiance = max(0.0.xxx, check_result.out_value);
+
+                const float rad_diff = length(abs(prev_irradiance - check_radiance) / max(1e-3, prev_irradiance + check_radiance));
+                //validity = rad_diff;
+
+                is_prev_valid = rad_diff < 0.5 * length(1.0.xxx);
+            #endif
         }
     }
 
     candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
     candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
     rt_history_validity_out_tex[px] = is_prev_valid ? 0.0 : 1.0;
+    //rt_history_validity_out_tex[px] = validity;
 }

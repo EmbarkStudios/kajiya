@@ -44,7 +44,7 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
-static const uint TARGET_SAMPLE_COUNT = 256;
+static const uint TARGET_SAMPLE_COUNT = 32;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;

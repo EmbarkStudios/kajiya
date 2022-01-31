@@ -12,7 +12,7 @@
 [[vk::binding(2)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(3)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(4)]] Texture2D<float> half_depth_tex;
-[[vk::binding(5)]] RWTexture2D<float> output_tex;
+[[vk::binding(5)]] RWTexture2D<float2> output_tex;
 [[vk::binding(6)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
@@ -111,5 +111,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     //float history = history_tex[reproj_px];
 
-    output_tex[px] = max(history * (7.0 / 8.0), invalid_blurred.x);
+    output_tex[px] = float2(
+        max(history * (7.0 / 8.0), invalid_blurred.x),
+        input_tex[px]
+    );
 }

@@ -25,7 +25,7 @@
 [[vk::binding(8)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(9)]] Texture2D<float4> hit_normal_history_tex;
 [[vk::binding(10)]] Texture2D<float4> candidate_history_tex;
-[[vk::binding(11)]] Texture2D<float> rt_invalidity_tex;
+[[vk::binding(11)]] Texture2D<float2> rt_invalidity_tex;
 [[vk::binding(12)]] RWTexture2D<float4> irradiance_out_tex;
 [[vk::binding(13)]] RWTexture2D<float3> ray_orig_output_tex;
 [[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
@@ -147,7 +147,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
 
-    const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px]));
+    const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));
 
     //const bool use_resampling = false;
     const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
@@ -163,6 +163,12 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
         // could be due to lack of bias compensation (the `Z` term)
+        //
+        // TODO: using the neighbors creates mid-frequency noise while accumulating,
+        // and looks bad. Maybe try using accum at the start, skip the middle, and then engage it once
+        // the central reservoir is full, to stabilize the boiling.
+
+        //for (uint sample_i = 0; sample_i < 1 || (sample_i < MAX_RESOLVE_SAMPLE_COUNT && M_sum < 4); ++sample_i) {
         for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
         //for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
