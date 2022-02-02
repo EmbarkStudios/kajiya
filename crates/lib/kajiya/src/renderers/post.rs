@@ -116,14 +116,14 @@ pub fn post_process(
 
     //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
 
-    /*SimpleRenderPass::new_compute_rust(
+    SimpleRenderPass::new_compute_rust(
         rg.add_pass("post combine"),
         "post_combine::post_combine_cs",
-    )*/
+    )/*
     SimpleRenderPass::new_compute(
         rg.add_pass("post combine hlsl"),
         "/shaders/post_combine.hlsl",
-    )
+    )*/
     .read(input)
     //.read(debug_input)
     .read(&blur_pyramid)
