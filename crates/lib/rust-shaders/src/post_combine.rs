@@ -119,8 +119,8 @@ pub fn post_combine_cs(
 
         let center = sharpen_remap(lin_srgb_to_luminance(col));
 
-        #[allow(clippy::needless_range_loop)]
-        for dim in 0..2 {
+        let mut dim = 0;
+        while dim < 2 {
             let n0coord: IVec2 = px.truncate().as_ivec2() + dim_offsets[dim];
             let n1coord: IVec2 = px.truncate().as_ivec2() - dim_offsets[dim];
 
@@ -134,6 +134,7 @@ pub fn post_combine_cs(
             neighbors += n0 * wt;
             neighbors += n1 * wt;
             wt_sum += wt * 2.0;
+            dim += 1;
         }
 
         let mut sharpened_luma = (center * (wt_sum + 1.0) - neighbors).max(0.0);
