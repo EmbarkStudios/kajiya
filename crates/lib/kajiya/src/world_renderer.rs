@@ -8,13 +8,14 @@ use crate::{
         rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
 };
-use glam::{Mat3, Quat, Vec2, Vec3};
+use glam::{Affine3A, Vec2, Vec3};
 use kajiya_asset::mesh::{AssetRef, GpuImage, MeshMaterialFlags, PackedTriMesh, PackedVertex};
 use kajiya_backend::{
     ash::vk::{self, ImageView},
     dynamic_constants::DynamicConstants,
     vk_sync::{self, AccessType},
     vulkan::{self, device, image::*, ray_tracing::*, shader::*, RenderBackend},
+    BackendError,
 };
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
@@ -70,10 +71,8 @@ impl Default for InstanceDynamicParameters {
 
 #[derive(Clone, Copy)]
 pub struct MeshInstance {
-    pub rotation: Mat3,
-    pub position: Vec3,
-    pub prev_rotation: Mat3,
-    pub prev_position: Vec3,
+    pub transformation: Affine3A,
+    pub prev_transformation: Affine3A,
     pub mesh: MeshHandle,
     pub dynamic_parameters: InstanceDynamicParameters,
 }
@@ -244,7 +243,7 @@ impl WorldRenderer {
         #[allow(unused_variables)] render_extent: [u32; 2],
         temporal_upscale_extent: [u32; 2],
         backend: &RenderBackend,
-    ) -> anyhow::Result<Self> {
+    ) -> Result<Self, BackendError> {
         let raster_simple_render_pass = create_render_pass(
             &*backend.device,
             RenderPassDesc {
@@ -259,35 +258,29 @@ impl WorldRenderer {
                 ],
                 depth_attachment: Some(RenderPassAttachmentDesc::new(vk::Format::D32_SFLOAT)),
             },
+        );
+
+        let mesh_buffer = backend.device.create_buffer(
+            BufferDesc::new_cpu_to_gpu(
+                MAX_GPU_MESHES * size_of::<GpuMesh>(),
+                vk::BufferUsageFlags::STORAGE_BUFFER,
+            ),
+            "mesh buffer",
+            None,
         )?;
 
-        let mesh_buffer = backend
-            .device
-            .create_buffer(
-                BufferDesc {
-                    size: MAX_GPU_MESHES * size_of::<GpuMesh>(),
-                    usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-                    mapped: true,
-                },
-                None,
-            )
-            .unwrap();
-
-        let vertex_buffer = backend
-            .device
-            .create_buffer(
-                BufferDesc {
-                    size: VERTEX_BUFFER_CAPACITY,
-                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
-                        | vk::BufferUsageFlags::INDEX_BUFFER
-                        | vk::BufferUsageFlags::TRANSFER_DST
-                        | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
-                    mapped: false,
-                },
-                None,
-            )
-            .unwrap();
+        let vertex_buffer = backend.device.create_buffer(
+            BufferDesc::new_gpu_only(
+                VERTEX_BUFFER_CAPACITY,
+                vk::BufferUsageFlags::STORAGE_BUFFER
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS
+                    | vk::BufferUsageFlags::INDEX_BUFFER
+                    | vk::BufferUsageFlags::TRANSFER_DST
+                    | vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
+            ),
+            "vertex buffer",
+            None,
+        )?;
 
         let bindless_descriptor_set = create_bindless_descriptor_set(backend.device.as_ref());
 
@@ -359,10 +352,10 @@ impl WorldRenderer {
             supersample_offsets,
 
             ssgi: Default::default(),
-            rtr: RtrRenderer::new(backend.device.as_ref()),
+            rtr: RtrRenderer::new(backend.device.as_ref())?,
             lighting: LightingRenderer::new(),
             csgi: CsgiRenderer::default(),
-            rtdgi: RtdgiRenderer::new(backend.device.as_ref()),
+            rtdgi: RtdgiRenderer::new(backend.device.as_ref())?,
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
 
@@ -526,11 +519,14 @@ impl WorldRenderer {
 
         let total_buffer_size = buffer_builder.current_offset();
         let mut vertex_buffer = self.vertex_buffer.lock();
-        buffer_builder.upload(
-            self.device.as_ref(),
-            Arc::get_mut(&mut *vertex_buffer).expect("refs may not be retained"),
-            self.vertex_buffer_written,
-        );
+        buffer_builder
+            .upload(
+                self.device.as_ref(),
+                Arc::get_mut(&mut *vertex_buffer).expect("refs may not be retained"),
+                self.vertex_buffer_written,
+            )
+            .map_err(|err| self.device.report_error(err))
+            .unwrap();
         self.vertex_buffer_written += total_buffer_size;
 
         let mesh_buffer_dst = unsafe {
@@ -628,24 +624,16 @@ impl WorldRenderer {
         MeshHandle(mesh_idx)
     }
 
-    pub fn add_instance(
-        &mut self,
-        mesh: MeshHandle,
-        position: Vec3,
-        rotation: Quat,
-    ) -> InstanceHandle {
+    pub fn add_instance(&mut self, mesh: MeshHandle, transform: Affine3A) -> InstanceHandle {
         let handle = self.next_instance_handle;
         self.next_instance_handle += 1;
         let handle = InstanceHandle(handle);
 
         let index = self.instances.len();
-        let rotation_mat = Mat3::from_quat(rotation);
 
         self.instances.push(MeshInstance {
-            rotation: rotation_mat,
-            position,
-            prev_rotation: rotation_mat,
-            prev_position: position,
+            transformation: transform,
+            prev_transformation: transform,
             mesh,
             dynamic_parameters: InstanceDynamicParameters::default(),
         });
@@ -673,10 +661,9 @@ impl WorldRenderer {
         }
     }
 
-    pub fn set_instance_transform(&mut self, inst: InstanceHandle, position: Vec3, rotation: Quat) {
+    pub fn set_instance_transform(&mut self, inst: InstanceHandle, transform: Affine3A) {
         let index = self.instance_handle_to_index[&inst];
-        self.instances[index].position = position;
-        self.instances[index].rotation = Mat3::from_quat(rotation);
+        self.instances[index].transformation = transform;
     }
 
     pub fn get_instance_dynamic_parameters(
@@ -706,8 +693,7 @@ impl WorldRenderer {
                         .iter()
                         .map(|inst| RayTracingInstanceDesc {
                             blas: self.mesh_blas[inst.mesh.0].clone(),
-                            position: inst.position,
-                            rotation: inst.rotation,
+                            transformation: inst.transformation,
                             mesh_index: inst.mesh.0 as u32,
                         })
                         .collect::<Vec<_>>(),
@@ -739,8 +725,7 @@ impl WorldRenderer {
             .iter()
             .map(|inst| RayTracingInstanceDesc {
                 blas: self.mesh_blas[inst.mesh.0].clone(),
-                position: inst.position,
-                rotation: inst.rotation,
+                transformation: inst.transformation,
                 mesh_index: inst.mesh.0 as u32,
             })
             .collect::<Vec<_>>();
@@ -774,8 +759,7 @@ impl WorldRenderer {
 
     fn store_prev_mesh_transforms(&mut self) {
         for inst in &mut self.instances {
-            inst.prev_position = inst.position;
-            inst.prev_rotation = inst.rotation;
+            inst.prev_transformation = inst.transformation;
         }
     }
 
@@ -860,8 +844,10 @@ impl WorldRenderer {
             .instances
             .iter()
             .flat_map(|inst| {
-                let inst_position = inst.position;
-                let inst_rotation = inst.rotation;
+                let (_scale, rotation, translation) =
+                    inst.transformation.to_scale_rotation_translation();
+                let inst_position = translation;
+                let inst_rotation = rotation;
 
                 let emissive_multiplier = Vec3::splat(inst.dynamic_parameters.emissive_multiplier);
 

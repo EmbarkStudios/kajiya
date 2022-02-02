@@ -1,4 +1,8 @@
+use crate::{vulkan::buffer::BufferDesc, BackendError};
+
 use super::{
+    buffer::Buffer,
+    error::CrashMarkerNames,
     physical_device::{PhysicalDevice, QueueFamily},
     profiler::VkProfilerData,
 };
@@ -132,6 +136,9 @@ pub struct Device {
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) setup_cb: Mutex<CommandBuffer>,
 
+    pub(crate) crash_tracking_buffer: Buffer,
+    pub(crate) crash_marker_names: Mutex<CrashMarkerNames>,
+
     pub acceleration_structure_ext: khr::AccelerationStructure,
     pub ray_tracing_pipeline_ext: khr::RayTracingPipeline,
     // pub ray_query_ext: khr::RayQuery,
@@ -139,7 +146,13 @@ pub struct Device {
 
     frames: [Mutex<Arc<DeviceFrame>>; 2],
 }
+
+// Allowing `Send` on `frames` is technically unsound. There are some checks
+// in place that `Arc<DeviceFrame>` doesn't get retained by the user,
+// but it begs for a clearer solution.
+#[allow(clippy::non_send_fields_in_send_ty)]
 unsafe impl Send for Device {}
+
 unsafe impl Sync for Device {}
 
 impl Device {
@@ -375,6 +388,13 @@ impl Device {
             let ray_tracing_pipeline_properties =
                 khr::RayTracingPipeline::get_properties(&pdevice.instance.raw, pdevice.raw);
 
+            let crash_tracking_buffer = Self::create_buffer_impl(
+                &device,
+                &mut global_allocator,
+                BufferDesc::new_gpu_to_cpu(4, vk::BufferUsageFlags::TRANSFER_DST),
+                "crash tracking buffer",
+            )?;
+
             Ok(Arc::new(Device {
                 pdevice: pdevice.clone(),
                 instance: pdevice.instance.clone(),
@@ -383,6 +403,8 @@ impl Device {
                 global_allocator: Arc::new(Mutex::new(global_allocator)),
                 immutable_samplers,
                 setup_cb: Mutex::new(setup_cb),
+                crash_tracking_buffer,
+                crash_marker_names: Default::default(),
                 acceleration_structure_ext,
                 ray_tracing_pipeline_ext,
                 // ray_query_ext,
@@ -480,6 +502,7 @@ impl Device {
                         true,
                         std::u64::MAX,
                     )
+                    .map_err(|err| self.report_error(err.into()))
                     .expect("Wait for fence failed.");
             }
 
@@ -515,7 +538,10 @@ impl Device {
         resource.enqueue_release(&mut self.frames[0].lock().pending_resource_releases.lock());
     }
 
-    pub fn with_setup_cb(&self, callback: impl FnOnce(vk::CommandBuffer)) {
+    pub fn with_setup_cb(
+        &self,
+        callback: impl FnOnce(vk::CommandBuffer),
+    ) -> Result<(), BackendError> {
         let cb = self.setup_cb.lock();
 
         unsafe {
@@ -545,7 +571,8 @@ impl Device {
                 .expect("queue submit failed.");
 
             log::trace!("device_wait_idle");
-            self.raw.device_wait_idle().unwrap();
+
+            Ok(self.raw.device_wait_idle()?)
         }
     }
 

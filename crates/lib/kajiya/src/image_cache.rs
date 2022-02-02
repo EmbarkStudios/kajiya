@@ -82,6 +82,6 @@ impl LazyWorker for UploadGpuImage {
             );
         }
 
-        self.device.create_image(desc, initial_data)
+        Ok(self.device.create_image(desc, initial_data)?)
     }
 }

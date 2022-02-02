@@ -883,28 +883,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f7531096570974c3a9dcf9e4b8e1cede1ec26cf5046219fb3b9d897503b9be59"
 
 [[package]]
-name = "failure"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d32e9bd16cc02eae7db7ef620b392808b89f6a5e16bb3497d159c6b92a0f4f86"
-dependencies = [
- "backtrace",
- "failure_derive",
-]
-
-[[package]]
-name = "failure_derive"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "aa4da3c766cd7a0db8242e326e9e4e081edd567072893ed320008189715366a4"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
- "synstructure",
-]
-
-[[package]]
 name = "fastrand"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1439,10 +1417,10 @@ dependencies = [
  "arrayvec",
  "ash",
  "ash-window",
+ "backtrace",
  "byte-slice-cast",
  "bytes",
  "derive_builder",
- "failure",
  "futures",
  "glam",
  "gpu-allocator",
@@ -1460,6 +1438,7 @@ dependencies = [
  "rspirv-reflect",
  "shader-prepper",
  "smol",
+ "thiserror",
  "turbosloth",
  "vk-sync",
 ]
@@ -2444,11 +2423,11 @@ dependencies = [
 
 [[package]]
 name = "shader-prepper"
-version = "0.2.0"
+version = "0.3.0-pre.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19f530c403254fa44c549a4a877dce231768a068d8aec3bb8d57f890293e5c0e"
+checksum = "998c7255e5600ddf2f503e0b3de47e7109a9de490fa1a01119db40bfa4dd729c"
 dependencies = [
- "failure",
+ "thiserror",
 ]
 
 [[package]]
@@ -2623,18 +2602,6 @@ checksum = "d010a1623fbd906d51d650a9916aaefc05ffa0e4053ff7fe601167f3e715d194"
 dependencies = [
  "proc-macro2",
  "quote",
- "unicode-xid",
-]
-
-[[package]]
-name = "synstructure"
-version = "0.12.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f36bdaa60a83aca3921b5259d5400cbf5e90fc51931376a9bd4a0eb79aa7210f"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
  "unicode-xid",
 ]
 

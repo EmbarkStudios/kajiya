@@ -51,8 +51,8 @@ void main(uint2 px: SV_DispatchThreadID) {
             float4 neigh = (input_tex[px + int2(x, y) * 2]);
             float4 hist_neigh = (history_tex[px + int2(x, y) * 2]);
 
-            float neigh_luma = calculate_luma(neigh.rgb);
-            float hist_luma = calculate_luma(hist_neigh.rgb);
+            float neigh_luma = srgb_to_luminance(neigh.rgb);
+            float hist_luma = srgb_to_luminance(hist_neigh.rgb);
 
 			float w = exp(-3.0 * float(x * x + y * y) / float((k+1.) * (k+1.)));
 			vsum += neigh * w;
@@ -76,7 +76,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     dev_sum /= wsum;
 
     const float2 moments_history = variance_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
-    const float center_luma = calculate_luma(center.rgb) + (hist_vsum - calculate_luma(ex.rgb));
+    const float center_luma = srgb_to_luminance(center.rgb) + (hist_vsum - srgb_to_luminance(ex.rgb));
     const float2 current_moments = float2(center_luma, center_luma * center_luma);
     variance_history_output_tex[px] = lerp(moments_history, current_moments, 0.25);
     const float center_temporal_dev = sqrt(max(0.0, moments_history.y - moments_history.x * moments_history.x));
@@ -91,7 +91,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     // Temporal variance estimate with spatial colors
     float3 hist_dev = sqrt(abs(hist_vsum2 - hist_vsum * hist_vsum));
 
-    float temporal_change = abs(hist_vsum - calculate_luma(ex.rgb)) / max(1e-8, hist_vsum + calculate_luma(ex.rgb));
+    float temporal_change = abs(hist_vsum - srgb_to_luminance(ex.rgb)) / max(1e-8, hist_vsum + srgb_to_luminance(ex.rgb));
 
     const float n_deviations = 5.0;
 	float4 nmin = center - dev * n_deviations;

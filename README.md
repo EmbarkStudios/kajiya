@@ -59,10 +59,9 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 
 `kajiya` currently works on a limited range of operating systems and hardware.
 
-
 Hardware:
 * Nvidia RTX series
-* Nvidia GTX 1060 and newer (slow: driver-emulated ray-tracing)
+* Nvidia GTX 1060 and newer _with 6+ GB of VRAM_ (slow: driver-emulated ray-tracing)
 * AMD Radeon RX 6000 series
 
 Operating systems:
@@ -79,6 +78,8 @@ Operating systems:
 * `ossp-uuid` (`brew install ossp-uuid`)
 
 ## Building and running
+
+To build `kajiya` and its tools, [you need Rust](https://www.rust-lang.org/tools/install).
 
 There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:
 

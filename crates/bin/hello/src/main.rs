@@ -22,9 +22,10 @@ fn main() -> anyhow::Result<()> {
         .world_renderer
         .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::new())?;
 
-    let car_inst = kajiya
-        .world_renderer
-        .add_instance(car_mesh, Vec3::ZERO, Quat::IDENTITY);
+    let car_inst = kajiya.world_renderer.add_instance(
+        car_mesh,
+        Affine3A::from_rotation_translation(Quat::IDENTITY, Vec3::ZERO),
+    );
 
     let mut car_rot = 0.0f32;
 
@@ -32,8 +33,7 @@ fn main() -> anyhow::Result<()> {
         car_rot += 0.5 * ctx.dt_filtered;
         ctx.world_renderer.set_instance_transform(
             car_inst,
-            Vec3::ZERO,
-            Quat::from_rotation_y(car_rot),
+            Affine3A::from_rotation_translation(Quat::from_rotation_y(car_rot), Vec3::ZERO),
         );
 
         WorldFrameDesc {

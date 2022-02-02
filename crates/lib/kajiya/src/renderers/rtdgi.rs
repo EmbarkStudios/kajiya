@@ -4,7 +4,7 @@ use kajiya_backend::{
     ash::vk,
     vk_sync,
     vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
-    Device,
+    BackendError, Device,
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
@@ -29,31 +29,28 @@ fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
     }
 }
 
-fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
-    Arc::new(
-        device
-            .create_buffer(
-                BufferDesc::new(
-                    v.len() * std::mem::size_of::<T>(),
-                    vk::BufferUsageFlags::STORAGE_BUFFER,
-                ),
-                Some(as_byte_slice_unchecked(v)),
-            )
-            .unwrap(),
-    )
+fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Result<Arc<Buffer>, BackendError> {
+    Ok(Arc::new(device.create_buffer(
+        BufferDesc::new_gpu_only(
+            v.len() * std::mem::size_of::<T>(),
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        ),
+        "lut buffer",
+        Some(as_byte_slice_unchecked(v)),
+    )?))
 }
 
 impl RtdgiRenderer {
-    pub fn new(device: &Device) -> Self {
-        Self {
+    pub fn new(device: &Device) -> Result<Self, BackendError> {
+        Ok(Self {
             temporal_tex: PingPongTemporalResource::new("rtdgi.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
             cv_temporal_tex: PingPongTemporalResource::new("rtdgi.cv"),
-            ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
-            scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
-            sobol_buf: make_lut_buffer(device, SOBOL),
-        }
+            ranking_tile_buf: make_lut_buffer(device, RANKING_TILE)?,
+            scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE)?,
+            sobol_buf: make_lut_buffer(device, SOBOL)?,
+        })
     }
 }
 

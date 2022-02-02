@@ -24,7 +24,7 @@ float3 neutral_tonemap(float3 col) {
     float3 desat_col = lerp(col.rgb, ycbcr.xxx, desat);
 
     float tm_luma = tonemap_curve(ycbcr.x);
-    float3 tm0 = col.rgb * max(0.0, tm_luma / max(1e-5, calculate_luma(col.rgb)));
+    float3 tm0 = col.rgb * max(0.0, tm_luma / max(1e-5, srgb_to_luminance(col.rgb)));
     float final_mult = 0.97;
     float3 tm1 = tonemap_curve(desat_col);
 

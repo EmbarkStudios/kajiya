@@ -106,7 +106,7 @@ void main(const uint2 px : SV_DispatchThreadID) {
         LayeredBrdf layered_brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
         specular_brdf = layered_brdf.specular_brdf;
     }
-    const float f0_grey = calculate_luma(specular_brdf.albedo);
+    const float f0_grey = srgb_to_luminance(specular_brdf.albedo);
 
     // Index used to calculate a sample set disjoint for all four pixels in the quad
     // Offsetting by frame index reduces small structured artifacts
@@ -362,9 +362,9 @@ void main(const uint2 px : SV_DispatchThreadID) {
                     1
                 ) * contrib_wt;
 
-                float luma = calculate_luma(packed0.rgb);
-                ex += luma * contrib_wt;
-                ex2 += luma * luma * contrib_wt;
+                float luminance = srgb_to_luminance(packed0.rgb);
+                ex += luminance * contrib_wt;
+                ex2 += luminance * luminance * contrib_wt;
 
                 // Aggressively bias towards closer hits
                 ray_len_accum += exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;

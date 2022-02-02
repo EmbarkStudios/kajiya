@@ -720,10 +720,7 @@ pub struct RenderPass {
     pub framebuffer_cache: FramebufferCache,
 }
 
-pub fn create_render_pass(
-    device: &Device,
-    desc: RenderPassDesc<'_>,
-) -> anyhow::Result<Arc<RenderPass>> {
+pub fn create_render_pass(device: &Device, desc: RenderPassDesc<'_>) -> Arc<RenderPass> {
     let renderpass_attachments = desc
         .color_attachments
         .iter()
@@ -788,14 +785,14 @@ pub fn create_render_pass(
             .unwrap()
     };
 
-    Ok(Arc::new(RenderPass {
+    Arc::new(RenderPass {
         raw: render_pass,
         framebuffer_cache: FramebufferCache::new(
             render_pass,
             desc.color_attachments,
             desc.depth_attachment,
         ),
-    }))
+    })
 }
 
 #[derive(Hash, PartialEq, Eq)]

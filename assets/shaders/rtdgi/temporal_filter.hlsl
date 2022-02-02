@@ -121,7 +121,7 @@ void main(uint2 px: SV_DispatchThreadID) {
             control_variate /= sample_count;
         #endif
     }
-    const float control_variate_luma = calculate_luma(control_variate);
+    const float control_variate_luma = srgb_to_luminance(control_variate);
 
     float history_dist = 1e5; {
         int2 history_px = int2((uv + reproj.xy) * output_tex_size.xy);
@@ -187,7 +187,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     // TODO: proper rejection (not "reproj_validity_dilated")
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / lerp(1.0, 4.0, reproj_validity_dilated * light_stability));
 
-    const float smoothed_dev = lerp(dev_history, calculate_luma(abs(dev.rgb)), 0.1);
+    const float smoothed_dev = lerp(dev_history, srgb_to_luminance(abs(dev.rgb)), 0.1);
 
     history_output_tex[px] = float4(res, control_variate_luma);
     cv_history_output_tex[px] = float4(control_variate, smoothed_dev);

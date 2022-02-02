@@ -77,34 +77,34 @@ pub fn raster_meshes(
         let instance_transforms_offset =
             api.dynamic_constants()
                 .push_from_iter(instances.iter().map(|inst| {
-                    let transform: [f32; 12] = [
-                        inst.rotation.x_axis.x,
-                        inst.rotation.y_axis.x,
-                        inst.rotation.z_axis.x,
-                        inst.position.x,
-                        inst.rotation.x_axis.y,
-                        inst.rotation.y_axis.y,
-                        inst.rotation.z_axis.y,
-                        inst.position.y,
-                        inst.rotation.x_axis.z,
-                        inst.rotation.y_axis.z,
-                        inst.rotation.z_axis.z,
-                        inst.position.z,
+                    let transform = [
+                        inst.transformation.x_axis.x,
+                        inst.transformation.y_axis.x,
+                        inst.transformation.z_axis.x,
+                        inst.transformation.translation.x,
+                        inst.transformation.x_axis.y,
+                        inst.transformation.y_axis.y,
+                        inst.transformation.z_axis.y,
+                        inst.transformation.translation.y,
+                        inst.transformation.x_axis.z,
+                        inst.transformation.y_axis.z,
+                        inst.transformation.z_axis.z,
+                        inst.transformation.translation.z,
                     ];
 
-                    let prev_transform: [f32; 12] = [
-                        inst.prev_rotation.x_axis.x,
-                        inst.prev_rotation.y_axis.x,
-                        inst.prev_rotation.z_axis.x,
-                        inst.prev_position.x,
-                        inst.prev_rotation.x_axis.y,
-                        inst.prev_rotation.y_axis.y,
-                        inst.prev_rotation.z_axis.y,
-                        inst.prev_position.y,
-                        inst.prev_rotation.x_axis.z,
-                        inst.prev_rotation.y_axis.z,
-                        inst.prev_rotation.z_axis.z,
-                        inst.prev_position.z,
+                    let prev_transform = [
+                        inst.prev_transformation.x_axis.x,
+                        inst.prev_transformation.y_axis.x,
+                        inst.prev_transformation.z_axis.x,
+                        inst.prev_transformation.translation.x,
+                        inst.prev_transformation.x_axis.y,
+                        inst.prev_transformation.y_axis.y,
+                        inst.prev_transformation.z_axis.y,
+                        inst.prev_transformation.translation.y,
+                        inst.prev_transformation.x_axis.z,
+                        inst.prev_transformation.y_axis.z,
+                        inst.prev_transformation.z_axis.z,
+                        inst.prev_transformation.translation.z,
                     ];
 
                     (transform, prev_transform)

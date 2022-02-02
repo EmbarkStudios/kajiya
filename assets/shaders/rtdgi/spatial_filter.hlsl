@@ -71,9 +71,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
             sum += float4(sample_val, 1) * wt;
             
-            float luma = calculate_luma(sample_val);
-            ex += luma * wt;
-            ex2 += luma * luma * wt;
+            float luminance = srgb_to_luminance(sample_val);
+            ex += luminance * wt;
+            ex2 += luminance * luminance * wt;
         }
 
         // Adaptive stopping

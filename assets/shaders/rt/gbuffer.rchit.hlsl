@@ -73,7 +73,10 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float2 uv = uv0 * barycentrics.x + uv1 * barycentrics.y + uv2 * barycentrics.z;
 
     const float cone_width = payload.ray_cone.width_at_t(hit_dist);
-    const float lod_triangle_constant = 0.5 * log2(twice_uv_area(uv0, uv1, uv2) / twice_triangle_area(v0.position, v1.position, v2.position));
+    const float3 v0_pos_ws = mul(ObjectToWorld3x4(), float4(v0.position, 1.0));
+    const float3 v1_pos_ws = mul(ObjectToWorld3x4(), float4(v1.position, 1.0));
+    const float3 v2_pos_ws = mul(ObjectToWorld3x4(), float4(v2.position, 1.0));
+    const float lod_triangle_constant = 0.5 * log2(twice_uv_area(uv0, uv1, uv2) / twice_triangle_area(v0_pos_ws, v1_pos_ws, v2_pos_ws));
 
     uint material_id = vertices.Load(ind.x * sizeof(uint) + mesh.vertex_mat_offset);
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + material_id * sizeof(MeshMaterial));

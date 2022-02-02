@@ -37,7 +37,7 @@ float3 sample_environment_light(float3 dir) {
     return atmosphere_default(dir, SUN_DIRECTION);
 
     float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
-    col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
+    col = lerp(col, 1.3.xxx * srgb_to_luminance(col), smoothstep(-0.2, 1.0, dir.y).xxx);
     return col;
 }
 
