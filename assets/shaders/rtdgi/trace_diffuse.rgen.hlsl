@@ -23,7 +23,7 @@
 #define USE_WORLD_RADIANCE_CACHE 0
 
 #define ROUGHNESS_BIAS 0.5
-#define USE_SCREEN_GI_REPROJECTION 0
+#define USE_SCREEN_GI_REPROJECTION 1
 #define USE_SWIZZLE_TILE_PIXELS 0
 
 #define USE_EMISSIVE 1
@@ -44,7 +44,7 @@ DEFINE_WRC_BINDINGS(12)
 [[vk::binding(15)]] Texture2D<float3> ray_orig_history_tex;
 [[vk::binding(16)]] RWTexture2D<float4> candidate_irradiance_out_tex;
 [[vk::binding(17)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(18)]] RWTexture2D<float> rt_history_validity_out_tex;
+[[vk::binding(18)]] RWTexture2D<float> rt_history_invalidity_out_tex;
 [[vk::binding(19)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
@@ -109,27 +109,28 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
         hit_normal_ws = gbuffer.normal;
 
         // Project the sample into clip space, and check if it's on-screen
-        /*const float3 primary_hit_cs = position_world_to_clip(primary_hit.position);
+        const float3 primary_hit_cs = position_world_to_sample(primary_hit.position);
         const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
         const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
-        const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
-        const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
-        bool is_on_screen =
-            all(abs(primary_hit_cs.xy) < 1.0)
+        //const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
+        //const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
+        bool is_on_screen = true
+            && all(abs(primary_hit_cs.xy) < 1.0)
             && inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3
-            && dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
-            && dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
-            ;*/
+            // TODO
+            //&& dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
+            //&& dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
+            ;
 
         // If it is on-screen, we'll try to use its reprojected radiance from the previous frame
-        /*float4 reprojected_radiance = 0;
+        float4 reprojected_radiance = 0;
         if (is_on_screen) {
             reprojected_radiance =
                 reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
 
             // Check if the temporal reprojection is valid.
             is_on_screen = reprojected_radiance.w > 0;
-        }*/
+        }
 
         gbuffer.roughness = lerp(gbuffer.roughness, 1.0, ROUGHNESS_BIAS);
         const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
@@ -164,9 +165,9 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
             total_radiance += gbuffer.emissive;
         }
 
-        /*if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
+        if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
             total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
-        } else */{
+        } else {
             if (USE_LIGHTS) {
                 float2 urand = float2(
                     uint_to_u01_float(hash1_mut(rng)),
@@ -261,12 +262,16 @@ void main() {
         uint2(0, 1),
     };
 
-    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    //const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    const int2 hi_px_offset = hi_px_subpixels[0];
     const uint2 hi_px = px * 2 + hi_px_offset;
     
     float depth = depth_tex[hi_px];
 
     if (0.0 == depth) {
+        candidate_irradiance_out_tex[px] = 0;
+        candidate_normal_out_tex[px] = float4(float3(0, 0, 1), SKY_DIST);
+        rt_history_invalidity_out_tex[px] = 1;
         return;
     }
 
@@ -292,8 +297,8 @@ void main() {
     const float3 prev_ray_orig = ray_orig_history_tex[reproj_px];
     const float3 prev_hit_pos = reservoir_ray_history_tex[reproj_px].xyz/* + get_prev_eye_position()*/;
 
-    bool is_prev_valid = true;
-    //float validity = 0.0;
+    //bool is_prev_valid = true;
+    float invalidity = 0.0;
 
     if (RESTIR_USE_PATH_VALIDATION) {
         const float3 prev_irradiance = max(0.0.xxx, irradiance_history_tex[reproj_px].rgb);
@@ -339,15 +344,17 @@ void main() {
                 const float3 check_radiance = max(0.0.xxx, check_result.out_value);
 
                 const float rad_diff = length(abs(prev_irradiance - check_radiance) / max(1e-3, prev_irradiance + check_radiance));
-                //validity = rad_diff;
+                invalidity = smoothstep(0.1, 0.5, rad_diff / length(1.0.xxx));
+                //invalidity = rad_diff < 0.1 * length(1.0.xxx) ? 0 : 1;
 
-                is_prev_valid = rad_diff < 0.5 * length(1.0.xxx);
+                //is_prev_valid = rad_diff < 0.1 * length(1.0.xxx);
             #endif
         }
     }
 
-    candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
+    //candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
+    candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
     candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
-    rt_history_validity_out_tex[px] = is_prev_valid ? 0.0 : 1.0;
-    //rt_history_validity_out_tex[px] = validity;
+    //rt_history_invalidity_out_tex[px] = is_prev_valid ? 0.0 : 1.0;
+    rt_history_invalidity_out_tex[px] = invalidity;
 }

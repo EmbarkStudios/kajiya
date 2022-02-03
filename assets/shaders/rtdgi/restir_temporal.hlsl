@@ -51,7 +51,7 @@ struct TraceResult {
     float3 hit_normal_ws;
     float hit_t;
     float inv_pdf;
-    bool prev_sample_valid;
+    //bool prev_sample_valid;
 };
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
@@ -62,7 +62,7 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
     float4 hit = candidate_hit_tex[px];
     result.hit_t = hit.w;
     result.hit_normal_ws = hit.xyz;
-    result.prev_sample_valid = candidate_irradiance_inv_pdf.a > 0;
+    //result.prev_sample_valid = candidate_irradiance_inv_pdf.a > 0;
     return result;
 }
 
@@ -107,7 +107,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
     uint sel_valid_sample_idx = 0;
-    bool prev_sample_valid = false;
+    //bool prev_sample_valid = false;
 
     Reservoir1spp reservoir = Reservoir1spp::create();
     const uint reservoir_payload = px.x | (px.y << 16);
@@ -136,7 +136,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         ray_orig_sel_ws = outgoing_ray.Origin;
         ray_hit_sel_ws = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
         hit_normal_sel = result.hit_normal_ws;
-        prev_sample_valid = result.prev_sample_valid;
+        //prev_sample_valid = result.prev_sample_valid;
 
         reservoir.payload = reservoir_payload;
         reservoir.w_sum = p_q * inv_pdf_q;
@@ -149,8 +149,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));
 
-    //const bool use_resampling = false;
-    const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
+    const bool use_resampling = rt_invalidity < 0.1 && DIFFUSE_GI_USE_RESTIR;
+    //const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
 
     // 1 (center) plus offset samples
     const uint MAX_RESOLVE_SAMPLE_COUNT = 5;

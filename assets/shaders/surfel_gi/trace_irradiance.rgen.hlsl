@@ -15,6 +15,7 @@
 #include "../inc/sh.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../wrc/bindings.hlsl"
+#include "../inc/color.hlsl"
 
 #define USE_WORLD_RADIANCE_CACHE 0
 
@@ -44,7 +45,9 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
-static const uint TARGET_SAMPLE_COUNT = 32;
+static const uint TARGET_SAMPLE_COUNT = 128;
+static const uint SHORT_ESTIMATOR_SAMPLE_COUNT = 4;
+static const bool USE_MSME = true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -71,7 +74,7 @@ struct SurfelTraceResult {
 SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent_to_world, uint sequence_idx) {
     uint rng = hash1(sequence_idx);
     //const float2 urand = r2_sequence(sequence_idx % (TARGET_SAMPLE_COUNT * 64));
-    const float2 urand = r2_sequence(sequence_idx % max(1024, TARGET_SAMPLE_COUNT));
+    const float2 urand = r2_sequence(sequence_idx % max(128, TARGET_SAMPLE_COUNT));
 
     RayDesc outgoing_ray;
     {
@@ -264,16 +267,7 @@ void main() {
     float3 irradiance_sum = 0;
     float valid_sample_count = 0;
 
-    const float4 prev_aux = surfel_aux_buf[surfel_idx * 2 + 1];
-    const float prev_sample0_luminance = prev_aux.x;
-    float relative_sample0_diff = 0;
-
-    {
-        const uint sequence_idx = hash1(surfel_idx) + 0 + (frame_constants.frame_index - 1) * sample_count;
-        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx);
-        const float lum = calculate_luma(traced.irradiance);
-        relative_sample0_diff = 2.0 * abs(lum - prev_sample0_luminance) / max(1e-10, lum + prev_sample0_luminance);
-    }
+    float sample0_luminance = 0;
 
     for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx) {
         valid_sample_count += 1.0;
@@ -283,34 +277,65 @@ void main() {
         irradiance_sum += traced.irradiance;
 
         if (0 == sample_idx) {
-            const float lum = calculate_luma(traced.irradiance);
-            float4 new_aux = float4(
-                lum,
-                lerp(prev_aux.y, lum, 1.0 / (1.0 + min(8, prev_total_radiance_packed.w))),
-                0.0.xx
-            );
-            surfel_aux_buf[surfel_idx * 2 + 1] = new_aux;
+            sample0_luminance = calculate_luma(traced.irradiance);
         }
     }
+    const float3 new_value = irradiance_sum / max(1.0, valid_sample_count);
+    const float irradiance_lum = calculate_luma(new_value);
 
-    irradiance_sum /= max(1.0, valid_sample_count);
+    const float4 prev_aux = surfel_aux_buf[surfel_idx * 2 + 1];
+    const float prev_sample0_luminance = prev_aux.x;
+    const float2 prev_ex_ex2 = prev_aux.zw;
+
+    float relative_sample0_diff = 0;
+    {
+        const uint sequence_idx = hash1(surfel_idx) + 0 + (frame_constants.frame_index - 1) * sample_count;
+        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx);
+        const float lum = calculate_luma(traced.irradiance);
+        relative_sample0_diff = 2.0 * abs(lum - prev_sample0_luminance) / max(1e-10, lum + prev_sample0_luminance);
+    }
+
+    const float2 sample_ex_ex2 = float2(irradiance_lum, irradiance_lum * irradiance_lum);
+    const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / (1.0 + clamp(prev_total_radiance_packed.w, 1, SHORT_ESTIMATOR_SAMPLE_COUNT)));
+
+    const float4 new_aux = float4(
+        sample0_luminance,
+        lerp(prev_aux.y, irradiance_lum, 1.0 / (1.0 + clamp(prev_total_radiance_packed.w, 2, 2 * SHORT_ESTIMATOR_SAMPLE_COUNT))),
+        ex_ex2
+    );
+    surfel_aux_buf[surfel_idx * 2 + 1] = new_aux;
+
+    const float lum_variance = max(0.0, ex_ex2.y - ex_ex2.x * ex_ex2.x);
+    const float lum_dev = sqrt(lum_variance);
 
     //float avg_dist = unpack_dist(hit_dist_wt.x / max(1, hit_dist_wt.y));
     //total_radiance.xyz = lerp(float3(1, 0, 0), float3(0.02, 1.0, 0.2), avg_dist) * total_radiance.w;
 
     float prev_sample_count = min(prev_total_radiance_packed.w, TARGET_SAMPLE_COUNT);
-    /*if (relative_sample0_diff > 0.25) {
-        prev_sample_count = 0.0;
-    }*/
+
+    // Hard suppress if the control sample had a large difference
     prev_sample_count *= (1.0 - relative_sample0_diff);
 
     const float total_sample_count = prev_sample_count + valid_sample_count;
     float blend_factor_new = valid_sample_count / max(1, total_sample_count);
 
-    float3 prev_value = prev_total_radiance_packed.rgb;
-    float3 new_value = irradiance_sum;
+    // Forecasting mean
+    const float quick_lum_ex = min(ex_ex2.x * 1.2, lerp(new_aux.y, ex_ex2.x, 1.5));
 
-    float3 blended_value = lerp(prev_value, new_value, blend_factor_new);
+    // Smoothed mean
+    //const float quick_lum_ex = ex_ex2.x;
+
+    // MSME clamp
+    const float3 prev_value = prev_total_radiance_packed.rgb;
+    const float3 prev_value_ycbcr = rgb_to_ycbcr(prev_value);
+    const float num_deviations = 1.0;
+    const float3 prev_value_clamped = ycbcr_to_rgb(clamp(
+        prev_value_ycbcr,
+        prev_value_ycbcr * (quick_lum_ex - lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x),
+        prev_value_ycbcr * (quick_lum_ex + lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x)
+    ));
+
+    const float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
 
     //surfel_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
     surfel_aux_buf[surfel_idx * 2 + 0] = max(0.0, float4(
