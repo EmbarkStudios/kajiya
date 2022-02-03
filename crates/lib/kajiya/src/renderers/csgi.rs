@@ -182,8 +182,7 @@ impl CsgiRenderer {
         rg: &mut rg::TemporalRenderGraph,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        #[cfg(feature = "ray-tracing")]
-        tlas: &rg::Handle<RayTracingAcceleration>,
+        #[cfg(feature = "ray-tracing")] tlas: &rg::Handle<RayTracingAcceleration>,
     ) -> CsgiVolume {
         let mut direct_cascades: [rg::Handle<Image>; CASCADE_COUNT] = array_init::array_init(|i| {
             rg.get_or_create_temporal(

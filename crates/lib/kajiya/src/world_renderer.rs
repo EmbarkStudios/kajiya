@@ -367,11 +367,7 @@ impl WorldRenderer {
             temporal_upscale_extent,
 
             debug_mode: RenderDebugMode::None,
-            debug_shading_mode: if cfg!(feature = "ray-tracing") {
-                0
-            } else {
-                4
-            },
+            debug_shading_mode: if cfg!(feature = "ray-tracing") { 0 } else { 4 },
             ev_shift: 0.0,
             world_gi_scale: 1.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth

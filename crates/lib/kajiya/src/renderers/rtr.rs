@@ -74,8 +74,7 @@ impl RtrRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        #[cfg(feature = "ray-tracing")]
-        tlas: &rg::Handle<RayTracingAcceleration>,
+        #[cfg(feature = "ray-tracing")] tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi::CsgiVolume,
         rtdgi: &rg::Handle<Image>,
     ) -> TracedRtr {
