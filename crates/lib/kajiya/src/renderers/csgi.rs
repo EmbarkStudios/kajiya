@@ -182,7 +182,8 @@ impl CsgiRenderer {
         rg: &mut rg::TemporalRenderGraph,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        //tlas: &rg::Handle<RayTracingAcceleration>,
+        #[cfg(feature = "ray-tracing")]
+        tlas: &rg::Handle<RayTracingAcceleration>,
     ) -> CsgiVolume {
         let mut direct_cascades: [rg::Handle<Image>; CASCADE_COUNT] = array_init::array_init(|i| {
             rg.get_or_create_temporal(
@@ -261,7 +262,8 @@ impl CsgiRenderer {
         //
         // Either is going to leave the GPU quite under-utilized though, and would be a nice fit for async compute.
 
-        /*for cascade_i in 0..CASCADE_COUNT {
+        #[cfg(feature = "ray-tracing")]
+        for cascade_i in 0..CASCADE_COUNT {
             if 0 == ((1 << cascade_i) & cascade_update_mask) {
                 continue;
             }
@@ -302,7 +304,7 @@ impl CsgiRenderer {
                     VOLUME_DIMS / sweep_vx_count,
                 ],
             );
-        }*/
+        }
 
         /*let mut direct_opacity = rg.create(ImageDesc::new_3d(
             vk::Format::R8_UNORM,

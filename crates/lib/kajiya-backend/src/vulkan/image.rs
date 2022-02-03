@@ -251,8 +251,24 @@ impl Device {
     ) -> Result<Image, BackendError> {
         log::info!("Creating an image: {:?}", desc);
 
-        // The max image width on macOS.
-        desc.extent[0] = desc.extent[0].min(2048);
+        let limits = self.pdevice.properties.limits;
+
+        let max_dimension = if desc.extent[2] > 1 {
+            limits.max_image_dimension1_d.min(limits.max_image_dimension2_d).min(limits.max_image_dimension3_d)
+        } else if desc.extent[1] > 1 {
+            limits.max_image_dimension1_d.min(limits.max_image_dimension2_d)
+        } else {
+            limits.max_image_dimension1_d
+        };
+
+        for i in 0 .. 3 {
+            let dimension = desc.extent[i];
+
+            if dimension > max_dimension {
+                log::warn!("Dimension {} ({}) exceeds max dimension {}. Adjusting to the max. {:?}", i, dimension, max_dimension, desc);
+                desc.extent[i] = max_dimension;
+            }
+        }
 
         let create_info = get_image_create_info(&desc, !initial_data.is_empty());
 

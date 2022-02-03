@@ -367,7 +367,11 @@ impl WorldRenderer {
             temporal_upscale_extent,
 
             debug_mode: RenderDebugMode::None,
-            debug_shading_mode: 4,
+            debug_shading_mode: if cfg!(feature = "ray-tracing") {
+                0
+            } else {
+                4
+            },
             ev_shift: 0.0,
             world_gi_scale: 1.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth
@@ -537,38 +541,41 @@ impl WorldRenderer {
             std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
         };
 
-        /*
+        #[cfg(feature = "ray-tracing")]
+        {
+            let base_da = vertex_buffer.device_address(&self.device);
+            let vertex_buffer_da = base_da + vertex_core_offset as u64;
+            let index_buffer_da = base_da + vertex_index_offset as u64;
 
-        let base_da = vertex_buffer.device_address(&self.device);
-        let vertex_buffer_da = base_da + vertex_core_offset as u64;
-        let index_buffer_da = base_da + vertex_index_offset as u64;
-
-        let blas = self
-            .device
-            .create_ray_tracing_bottom_acceleration(
-                &RayTracingBottomAccelerationDesc {
-                    geometries: vec![RayTracingGeometryDesc {
-                        geometry_type: RayTracingGeometryType::Triangle,
-                        vertex_buffer: vertex_buffer_da,
-                        index_buffer: index_buffer_da,
-                        vertex_format: vk::Format::R32G32B32_SFLOAT,
-                        vertex_stride: size_of::<PackedVertex>(),
-                        parts: vec![RayTracingGeometryPart {
-                            index_count: mesh.indices.len(),
-                            index_offset: 0,
-                            max_vertex: mesh
-                                .indices
-                                .as_slice()
-                                .iter()
-                                .copied()
-                                .max()
-                                .expect("mesh must not be empty"),
+            let blas = self
+                .device
+                .create_ray_tracing_bottom_acceleration(
+                    &RayTracingBottomAccelerationDesc {
+                        geometries: vec![RayTracingGeometryDesc {
+                            geometry_type: RayTracingGeometryType::Triangle,
+                            vertex_buffer: vertex_buffer_da,
+                            index_buffer: index_buffer_da,
+                            vertex_format: vk::Format::R32G32B32_SFLOAT,
+                            vertex_stride: size_of::<PackedVertex>(),
+                            parts: vec![RayTracingGeometryPart {
+                                index_count: mesh.indices.len(),
+                                index_offset: 0,
+                                max_vertex: mesh
+                                    .indices
+                                    .as_slice()
+                                    .iter()
+                                    .copied()
+                                    .max()
+                                    .expect("mesh must not be empty"),
+                            }],
                         }],
-                    }],
-                },
-                &self.accel_scratch,
-            )
-            .expect("blas");*/
+                    },
+                    &self.accel_scratch,
+                )
+                .expect("blas");
+
+            self.mesh_blas.push(Arc::new(blas));
+        }
 
         mesh_buffer_dst[mesh_idx] = GpuMesh {
             vertex_core_offset,
@@ -584,8 +591,6 @@ impl WorldRenderer {
             index_buffer_offset: vertex_index_offset as u64,
             index_count: mesh.indices.len() as _,
         });
-
-        //self.mesh_blas.push(Arc::new(blas));
 
         let mesh_lights = if opts.use_lights {
             let emissive_materials = mesh

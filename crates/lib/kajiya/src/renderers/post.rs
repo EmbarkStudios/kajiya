@@ -119,9 +119,9 @@ pub fn post_process(
     SimpleRenderPass::new_compute_rust(
         rg.add_pass("post combine"),
         "post_combine::post_combine_cs",
-    )/*
-    SimpleRenderPass::new_compute(
-        rg.add_pass("post combine hlsl"),
+    )
+    /*SimpleRenderPass::new_compute(
+        rg.add_pass("post combine"),
         "/shaders/post_combine.hlsl",
     )*/
     .read(input)

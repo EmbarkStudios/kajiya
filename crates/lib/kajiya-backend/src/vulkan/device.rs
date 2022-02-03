@@ -168,10 +168,16 @@ impl Device {
             vk::KhrImagelessFramebufferFn::name().as_ptr(),
             vk::KhrImageFormatListFn::name().as_ptr(),
             vk::KhrDescriptorUpdateTemplateFn::name().as_ptr(),
-            //vk::KhrDrawIndirectCountFn::name().as_ptr(),
+            #[cfg(feature = "ray-tracing")]
+            {
+                vk::KhrDrawIndirectCountFn::name().as_ptr()
+            },
             // Rust-GPU
             vk::KhrShaderFloat16Int8Fn::name().as_ptr(),
-            //vk::KhrVulkanMemoryModelFn::name().as_ptr(),
+            #[cfg(feature = "ray-tracing")]
+            {
+                vk::KhrVulkanMemoryModelFn::name().as_ptr()
+            },
             // DLSS
             #[cfg(feature = "dlss")]
             {
@@ -184,8 +190,6 @@ impl Device {
             #[cfg(feature = "dlss")]
             vk::NvxImageViewHandleFn::name().as_ptr(),
         ];
-
-        dbg!(cfg!(feature = "ray-tracing"));
 
         #[cfg(feature = "ray-tracing")]
         {
@@ -311,19 +315,17 @@ impl Device {
             {
                 assert!(scalar_block.scalar_block_layout != 0);
 
-                //assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
-                //assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
-                //assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
-                //assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
-                //assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
-                //assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
-                //assert!(descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0);
-                //assert!(descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing != 0);
-                //assert!(descriptor_indexing.descriptor_binding_sampled_image_update_after_bind != 0);
-                //assert!(descriptor_indexing.descriptor_binding_update_unused_while_pending != 0);
-                //assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
-                //assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
-                //assert!(descriptor_indexing.runtime_descriptor_array != 0);
+                assert!(descriptor_indexing.shader_uniform_texel_buffer_array_dynamic_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_texel_buffer_array_dynamic_indexing != 0);
+                assert!(descriptor_indexing.shader_sampled_image_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_image_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_uniform_texel_buffer_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.shader_storage_texel_buffer_array_non_uniform_indexing != 0);
+                assert!(descriptor_indexing.descriptor_binding_sampled_image_update_after_bind != 0);
+                assert!(descriptor_indexing.descriptor_binding_update_unused_while_pending != 0);
+                assert!(descriptor_indexing.descriptor_binding_partially_bound != 0);
+                assert!(descriptor_indexing.descriptor_binding_variable_descriptor_count != 0);
+                assert!(descriptor_indexing.runtime_descriptor_array != 0);
 
                 assert!(imageless_framebuffer.imageless_framebuffer != 0);
 
@@ -331,6 +333,9 @@ impl Device {
 
                 #[cfg(feature = "ray-tracing")]
                 {
+                    assert!(descriptor_indexing.shader_uniform_buffer_array_non_uniform_indexing != 0);
+                    assert!(descriptor_indexing.shader_storage_buffer_array_non_uniform_indexing != 0);
+
                     assert!(vulkan_memory_model.vulkan_memory_model != 0);
 
                     assert!(acceleration_structure_features.acceleration_structure != 0);
