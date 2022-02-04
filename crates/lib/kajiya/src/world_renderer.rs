@@ -367,7 +367,11 @@ impl WorldRenderer {
             temporal_upscale_extent,
 
             debug_mode: RenderDebugMode::None,
-            debug_shading_mode: if cfg!(feature = "ray-tracing") { 0 } else { 4 },
+            debug_shading_mode: if backend.device.ray_tracing_enabled() {
+                0
+            } else {
+                4
+            },
             ev_shift: 0.0,
             world_gi_scale: 1.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth
@@ -537,8 +541,7 @@ impl WorldRenderer {
             std::slice::from_raw_parts_mut(mesh_buffer_dst, MAX_GPU_MESHES)
         };
 
-        #[cfg(feature = "ray-tracing")]
-        {
+        if self.device.ray_tracing_enabled() {
             let base_da = vertex_buffer.device_address(&self.device);
             let vertex_buffer_da = base_da + vertex_core_offset as u64;
             let index_buffer_da = base_da + vertex_index_offset as u64;

@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kajiya-backend = { path = "../kajiya-backend", default-features = false }
+kajiya-backend = { path = "../kajiya-backend" }
 
 anyhow = "1.0"
 base64 = "0.12"
@@ -18,7 +18,3 @@ image = { version = "0.23.13", default-features = false, features = ["gif", "jpe
 log = "0.4"
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 urlencoding = "2.1"
-
-[features]
-default = ["ray-tracing"]
-ray-tracing = ["kajiya-backend/ray-tracing"]

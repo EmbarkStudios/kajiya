@@ -182,68 +182,14 @@ impl CsgiRenderer {
         rg: &mut rg::TemporalRenderGraph,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        #[cfg(feature = "ray-tracing")] tlas: &rg::Handle<RayTracingAcceleration>,
+        tlas: &rg::Handle<RayTracingAcceleration>,
     ) -> CsgiVolume {
-        let mut direct_cascades: [rg::Handle<Image>; CASCADE_COUNT] = array_init::array_init(|i| {
-            rg.get_or_create_temporal(
-                format!("csgi.direct_cascade{}", i),
-                ImageDesc::new_3d(
-                    //vk::Format::B10G11R11_UFLOAT_PACK32,
-                    vk::Format::R16G16B16A16_SFLOAT,
-                    [
-                        VOLUME_DIMS * CARDINAL_DIRECTION_COUNT as u32,
-                        VOLUME_DIMS,
-                        VOLUME_DIMS,
-                    ],
-                )
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            )
-            .unwrap()
-        });
-
-        let mut indirect_cascades: [rg::Handle<Image>; CASCADE_COUNT] =
-            array_init::array_init(|i| {
-                rg.get_or_create_temporal(
-                    format!("csgi.indirect_cascade{}", i),
-                    ImageDesc::new_3d(
-                        vk::Format::B10G11R11_UFLOAT_PACK32,
-                        //vk::Format::R16G16B16A16_SFLOAT,
-                        [
-                            VOLUME_DIMS * TOTAL_SUBRAY_COUNT as u32,
-                            VOLUME_DIMS,
-                            VOLUME_DIMS,
-                        ],
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                )
-                .unwrap()
-            });
-
-        let mut indirect_combined_cascades: [rg::Handle<Image>; CASCADE_COUNT] =
-            array_init::array_init(|i| {
-                rg.get_or_create_temporal(
-                    format!("csgi.indirect_cascade_combined{}", i),
-                    ImageDesc::new_3d(
-                        vk::Format::B10G11R11_UFLOAT_PACK32,
-                        //vk::Format::R16G16B16A16_SFLOAT,
-                        [
-                            VOLUME_DIMS * TOTAL_DIRECTION_COUNT as u32,
-                            VOLUME_DIMS,
-                            VOLUME_DIMS,
-                        ],
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                )
-                .unwrap()
-            });
-
-        let mut opacity_cascades: [rg::Handle<Image>; CASCADE_COUNT] =
-            array_init::array_init(|_| {
-                rg.create(ImageDesc::new_3d(
-                    vk::Format::R8_UNORM,
-                    [VOLUME_DIMS, VOLUME_DIMS, VOLUME_DIMS],
-                ))
-            });
+        let CsgiVolume {
+            direct: mut direct_cascades,
+            indirect: mut indirect_combined_cascades,
+            subray_indirect: mut indirect_cascades,
+            opacity: mut opacity_cascades,
+        } = self.create_volume(rg);
 
         // Stagger cascade updates over frames
         //let cascade_update_mask = 1usize << (self.frame_idx as usize % CASCADE_COUNT);
@@ -261,7 +207,6 @@ impl CsgiRenderer {
         //
         // Either is going to leave the GPU quite under-utilized though, and would be a nice fit for async compute.
 
-        #[cfg(feature = "ray-tracing")]
         for cascade_i in 0..CASCADE_COUNT {
             if 0 == ((1 << cascade_i) & cascade_update_mask) {
                 continue;
@@ -375,6 +320,76 @@ impl CsgiRenderer {
         .dispatch([VOLUME_DIMS * (TRACE_COUNT as u32), VOLUME_DIMS, VOLUME_DIMS]);*/
 
         self.frame_idx += 1;
+
+        CsgiVolume {
+            direct: direct_cascades,
+            indirect: indirect_combined_cascades,
+            subray_indirect: indirect_cascades,
+            opacity: opacity_cascades,
+        }
+    }
+
+    pub fn create_volume(&self, rg: &mut rg::TemporalRenderGraph) -> CsgiVolume {
+        let mut direct_cascades: [rg::Handle<Image>; CASCADE_COUNT] = array_init::array_init(|i| {
+            rg.get_or_create_temporal(
+                format!("csgi.direct_cascade{}", i),
+                ImageDesc::new_3d(
+                    //vk::Format::B10G11R11_UFLOAT_PACK32,
+                    vk::Format::R16G16B16A16_SFLOAT,
+                    [
+                        VOLUME_DIMS * CARDINAL_DIRECTION_COUNT as u32,
+                        VOLUME_DIMS,
+                        VOLUME_DIMS,
+                    ],
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            )
+            .unwrap()
+        });
+
+        let mut indirect_cascades: [rg::Handle<Image>; CASCADE_COUNT] =
+            array_init::array_init(|i| {
+                rg.get_or_create_temporal(
+                    format!("csgi.indirect_cascade{}", i),
+                    ImageDesc::new_3d(
+                        vk::Format::B10G11R11_UFLOAT_PACK32,
+                        //vk::Format::R16G16B16A16_SFLOAT,
+                        [
+                            VOLUME_DIMS * TOTAL_SUBRAY_COUNT as u32,
+                            VOLUME_DIMS,
+                            VOLUME_DIMS,
+                        ],
+                    )
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                )
+                .unwrap()
+            });
+
+        let mut indirect_combined_cascades: [rg::Handle<Image>; CASCADE_COUNT] =
+            array_init::array_init(|i| {
+                rg.get_or_create_temporal(
+                    format!("csgi.indirect_cascade_combined{}", i),
+                    ImageDesc::new_3d(
+                        vk::Format::B10G11R11_UFLOAT_PACK32,
+                        //vk::Format::R16G16B16A16_SFLOAT,
+                        [
+                            VOLUME_DIMS * TOTAL_DIRECTION_COUNT as u32,
+                            VOLUME_DIMS,
+                            VOLUME_DIMS,
+                        ],
+                    )
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                )
+                .unwrap()
+            });
+
+        let mut opacity_cascades: [rg::Handle<Image>; CASCADE_COUNT] =
+            array_init::array_init(|_| {
+                rg.create(ImageDesc::new_3d(
+                    vk::Format::R8_UNORM,
+                    [VOLUME_DIMS, VOLUME_DIMS, VOLUME_DIMS],
+                ))
+            });
 
         CsgiVolume {
             direct: direct_cascades,

@@ -6,6 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kajiya = { path = "../../lib/kajiya", default-features = false }
-kajiya-simple = { path = "../../lib/kajiya-simple", default-features = false }
+kajiya = { path = "../../lib/kajiya" }
+kajiya-simple = { path = "../../lib/kajiya-simple" }
 anyhow = "1.0"

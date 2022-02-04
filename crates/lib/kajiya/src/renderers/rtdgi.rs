@@ -130,13 +130,7 @@ impl RtdgiRenderer {
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
-        let mut temporal_filtered_tex = rg.create(
-            gbuffer_depth
-                .gbuffer
-                .desc()
-                .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        let mut temporal_filtered_tex = self.create_temporal_filtered_tex(rg, gbuffer_depth);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi temporal2"),
@@ -197,7 +191,7 @@ impl RtdgiRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        #[cfg(feature = "ray-tracing")] tlas: &rg::Handle<RayTracingAcceleration>,
+        tlas: &rg::Handle<RayTracingAcceleration>,
         csgi_volume: &csgi::CsgiVolume,
 
         // TODO: calculate specialized SSAO
@@ -242,7 +236,6 @@ impl RtdgiRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
-        #[cfg(feature = "ray-tracing")]
         SimpleRenderPass::new_rt(
             rg.add_pass("rtdgi trace"),
             ShaderSource::hlsl("/shaders/rtdgi/trace_diffuse.rgen.hlsl"),
@@ -320,5 +313,19 @@ impl RtdgiRenderer {
         );
 
         filtered_tex.into()
+    }
+
+    pub fn create_temporal_filtered_tex(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        gbuffer_depth: &GbufferDepth,
+    ) -> rg::Handle<Image> {
+        rg.create(
+            gbuffer_depth
+                .gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        )
     }
 }

@@ -46,8 +46,9 @@ impl WorldRenderer {
         }
 
         // Build an empty TLAS to create the resources. We'll update it at runtime.
-        #[cfg(feature = "ray-tracing")]
-        world_renderer.build_ray_tracing_top_level_acceleration();
+        if backend.device.ray_tracing_enabled() {
+            world_renderer.build_ray_tracing_top_level_acceleration();
+        }
 
         Ok(world_renderer)
     }

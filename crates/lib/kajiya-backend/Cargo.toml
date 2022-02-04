@@ -36,7 +36,5 @@ turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af
 vk-sync = { git = "https://github.com/h3r2tic/vk-sync-rs", rev = "cb5bbf2" }
 
 [features]
-default = ["ray-tracing"]
 #default = []
-ray-tracing = []
 dlss = []

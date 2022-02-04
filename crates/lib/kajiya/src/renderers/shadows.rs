@@ -10,12 +10,11 @@ use super::GbufferDepth;
 pub fn trace_sun_shadow_mask(
     rg: &mut RenderGraph,
     gbuffer_depth: &GbufferDepth,
-    #[cfg(feature = "ray-tracing")] tlas: &rg::Handle<RayTracingAcceleration>,
+    tlas: &rg::Handle<RayTracingAcceleration>,
     bindless_descriptor_set: vk::DescriptorSet,
 ) -> rg::Handle<Image> {
     let mut output_img = rg.create(gbuffer_depth.depth.desc().format(vk::Format::R8_UNORM));
 
-    #[cfg(feature = "ray-tracing")]
     SimpleRenderPass::new_rt(
         rg.add_pass("trace shadow mask"),
         ShaderSource::hlsl("/shaders/rt/trace_sun_shadow_mask.rgen.hlsl"),

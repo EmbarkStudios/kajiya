@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-kajiya = { path = "../kajiya", default-features = false }
+kajiya = { path = "../kajiya" }
 
 ash-imgui = { path = "../ash-imgui" }
 imgui = { version = "0.7" }
@@ -14,7 +14,3 @@ imgui-winit-support = { version = "0.7", default-features = false, features = ["
 log = "0.4"
 parking_lot = "0.11"
 winit = "0.25"
-
-[features]
-default = ["ray-tracing"]
-ray-tracing = ["kajiya/ray-tracing"]
