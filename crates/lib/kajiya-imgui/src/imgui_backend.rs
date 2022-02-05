@@ -43,7 +43,7 @@ impl ImGuiBackend {
         {
             use imgui::{FontConfig, FontGlyphRanges, FontSource};
 
-            let hidpi_factor = imgui_platform.hidpi_factor();
+            let hidpi_factor = window.scale_factor();
             let font_size = (13.0 * hidpi_factor) as f32;
             imgui.fonts().add_font(&[
                 FontSource::DefaultFontData {
@@ -62,8 +62,6 @@ impl ImGuiBackend {
                     }),
                 },
             ]);
-
-            imgui.io_mut().font_global_scale = (1.0 / hidpi_factor) as f32;
         }
 
         let imgui_renderer = {
