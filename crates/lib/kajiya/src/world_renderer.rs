@@ -370,6 +370,7 @@ impl WorldRenderer {
             debug_shading_mode: if backend.device.ray_tracing_enabled() {
                 0
             } else {
+                // RTX OFF; HACK: reflections buffers currently smear without ray tracing.
                 4
             },
             ev_shift: 0.0,

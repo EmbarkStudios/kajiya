@@ -21,6 +21,9 @@ use std::{
     sync::Arc,
 };
 
+/// Descriptor count to subtract from the max bindless descriptor count,
+/// so that we don't overflow the max when using bindless _and_ non-bindless descriptors
+/// in the same shader stage.
 pub const RESERVED_DESCRIPTOR_COUNT: u32 = 32;
 
 pub struct Queue {
@@ -229,7 +232,7 @@ impl Device {
         };
 
         if ray_tracing_enabled {
-            log::info!("All ray tracing extension are supported");
+            log::info!("All ray tracing extensions are supported");
 
             device_extension_names.extend(ray_tracing_extensions.iter());
         }
@@ -613,11 +616,13 @@ impl Device {
     }
 
     pub fn max_bindless_descriptor_count(&self) -> u32 {
-        self.pdevice
-            .properties
-            .limits
-            .max_per_stage_descriptor_sampled_images
-            - RESERVED_DESCRIPTOR_COUNT
+        (512 * 1024).min(
+            self.pdevice
+                .properties
+                .limits
+                .max_per_stage_descriptor_sampled_images
+                - RESERVED_DESCRIPTOR_COUNT,
+        )
     }
 
     pub fn ray_tracing_enabled(&self) -> bool {

@@ -130,7 +130,13 @@ impl RtdgiRenderer {
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
-        let mut temporal_filtered_tex = self.create_temporal_filtered_tex(rg, gbuffer_depth);
+        let mut temporal_filtered_tex = rg.create(
+            gbuffer_depth
+                .gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R16G16B16A16_SFLOAT),
+        );
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi temporal2"),
@@ -313,19 +319,5 @@ impl RtdgiRenderer {
         );
 
         filtered_tex.into()
-    }
-
-    pub fn create_temporal_filtered_tex(
-        &mut self,
-        rg: &mut rg::TemporalRenderGraph,
-        gbuffer_depth: &GbufferDepth,
-    ) -> rg::Handle<Image> {
-        rg.create(
-            gbuffer_depth
-                .gbuffer
-                .desc()
-                .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        )
     }
 }

@@ -137,8 +137,7 @@ impl WorldRenderer {
                 &ssgi_tex,
             )
         } else {
-            self.rtdgi
-                .create_temporal_filtered_tex(rg, &gbuffer_depth)
+            rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]))
                 .into()
         };
 
