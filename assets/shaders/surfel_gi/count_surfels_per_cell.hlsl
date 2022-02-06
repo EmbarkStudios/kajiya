@@ -4,7 +4,8 @@
 [[vk::binding(1)]] ByteAddressBuffer surfel_hash_key_buf;
 [[vk::binding(2)]] ByteAddressBuffer surfel_hash_value_buf;
 [[vk::binding(3)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(4)]] RWByteAddressBuffer cell_index_offset_buf;
+[[vk::binding(4)]] StructuredBuffer<uint> surfel_life_buf;
+[[vk::binding(5)]] RWByteAddressBuffer cell_index_offset_buf;
 
 #include "surfel_grid_hash.hlsl"
 #include "surfel_binning_shared.hlsl"
@@ -12,7 +13,7 @@
 [numthreads(64, 1, 1)]
 void main(uint surfel_idx: SV_DispatchThreadID) {
     const uint total_surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
-    if (surfel_idx >= total_surfel_count) {
+    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surfel_life_buf[surfel_idx])) {
         return;
     }
 

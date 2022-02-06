@@ -10,8 +10,10 @@
 [[vk::binding(4)]] ByteAddressBuffer surfel_hash_value_buf;
 [[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(7)]] Texture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(8)]] cbuffer _ {
+[[vk::binding(7)]] RWStructuredBuffer<uint> surfel_life_buf;
+[[vk::binding(8)]] RWStructuredBuffer<uint> surfel_pool_buf;
+[[vk::binding(9)]] Texture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -23,12 +25,6 @@ void main(
     uint2 group_id: SV_GroupID,
     uint2 tile_px_within_group: SV_GroupThreadID
 ) {
-#if 0
-    // Clear
-    surfel_meta_buf.Store(SURFEL_META_SURFEL_COUNT, 0);
-    return;
-#endif
-
     const uint2 tile_surfel_alloc_packed = tile_surfel_alloc_tex[tile_px];
     if (tile_surfel_alloc_packed.x == 0) {
         return;
@@ -56,8 +52,14 @@ void main(
     // TODO: proper packing
     surfel.data0 = float4(pt_ws.xyz, gbuffer_packed.y);
 
-    uint surfel_idx;
-    surfel_meta_buf.InterlockedAdd(SURFEL_META_SURFEL_COUNT, 1, surfel_idx);
+    uint surfel_alloc_idx;
+    surfel_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, surfel_alloc_idx);
+
+    const uint surfel_idx = surfel_pool_buf[surfel_alloc_idx];
+    surfel_meta_buf.InterlockedMax(SURFEL_META_SURFEL_COUNT, surfel_idx + 1);
+
+    // Clear dead state, mark used.
+    surfel_life_buf[surfel_idx] = 0;
 
     surfel_spatial_buf[surfel_idx] = surfel;
 }

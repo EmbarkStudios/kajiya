@@ -32,6 +32,9 @@ pub struct SurfelGiRenderState {
     surfel_irradiance_buf: rg::Handle<Buffer>,
     surfel_aux_buf: rg::Handle<Buffer>,
 
+    surfel_life_buf: rg::Handle<Buffer>,
+    surfel_pool_buf: rg::Handle<Buffer>,
+
     pub debug_out: rg::Handle<Image>,
 }
 
@@ -61,102 +64,134 @@ fn temporal_storage_buffer(
     .unwrap()
 }
 
-pub fn allocate_surfels(
-    rg: &mut rg::TemporalRenderGraph,
-    bent_normals: &rg::Handle<Image>,
-    gbuffer_depth: &GbufferDepth,
-) -> SurfelGiRenderState {
-    let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+#[derive(Default)]
+pub struct SurfelGiRenderer {
+    initialized: bool,
+}
 
-    let mut state = SurfelGiRenderState {
-        // 0: hash grid cell count
-        // 1: surfel count
-        surfel_meta_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_meta_buf",
-            size_of::<u32>() * 8,
-        ),
-        surfel_hash_key_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_hash_key_buf",
-            size_of::<u32>() * MAX_SURFEL_CELLS,
-        ),
-        surfel_hash_value_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_hash_value_buf",
-            size_of::<u32>() * MAX_SURFEL_CELLS,
-        ),
-        cell_index_offset_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.cell_index_offset_buf",
-            size_of::<u32>() * (MAX_SURFEL_CELLS + 1),
-        ),
-        surfel_index_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_index_buf",
-            size_of::<u32>() * MAX_SURFEL_CELLS * MAX_SURFELS_PER_CELL,
-        ),
-        surfel_spatial_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_spatial_buf",
-            size_of::<[f32; 4]>() * MAX_SURFELS,
-        ),
-        surfel_irradiance_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_irradiance_buf",
-            size_of::<[f32; 4]>() * MAX_SURFELS,
-        ),
-        surfel_aux_buf: temporal_storage_buffer(
-            rg,
-            "surfel_gi.surfel_aux_buf",
-            3 * size_of::<[f32; 4]>() * MAX_SURFELS,
-        ),
-        debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
-    };
+impl SurfelGiRenderer {
+    pub fn allocate_surfels(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        bent_normals: &rg::Handle<Image>,
+        gbuffer_depth: &GbufferDepth,
+    ) -> SurfelGiRenderState {
+        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
-    let mut tile_surfel_alloc_tex = rg.create(
-        gbuffer_desc
-            .div_up_extent([8, 8, 1])
-            .format(vk::Format::R32G32_UINT),
-    );
+        let mut state = SurfelGiRenderState {
+            // 0: hash grid cell count
+            // 1: surfel count
+            surfel_meta_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_meta_buf",
+                size_of::<u32>() * 8,
+            ),
+            surfel_hash_key_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_hash_key_buf",
+                size_of::<u32>() * MAX_SURFEL_CELLS,
+            ),
+            surfel_hash_value_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_hash_value_buf",
+                size_of::<u32>() * MAX_SURFEL_CELLS,
+            ),
+            cell_index_offset_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.cell_index_offset_buf",
+                size_of::<u32>() * (MAX_SURFEL_CELLS + 1),
+            ),
+            surfel_index_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_index_buf",
+                size_of::<u32>() * MAX_SURFEL_CELLS * MAX_SURFELS_PER_CELL,
+            ),
+            surfel_spatial_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_spatial_buf",
+                size_of::<[f32; 4]>() * MAX_SURFELS,
+            ),
+            surfel_irradiance_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_irradiance_buf",
+                size_of::<[f32; 4]>() * MAX_SURFELS,
+            ),
+            surfel_aux_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_aux_buf",
+                3 * size_of::<[f32; 4]>() * MAX_SURFELS,
+            ),
+            surfel_life_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_life_buf",
+                size_of::<u32>() * MAX_SURFELS,
+            ),
+            surfel_pool_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_pool_buf",
+                size_of::<u32>() * MAX_SURFELS,
+            ),
+            debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
+        };
 
-    SimpleRenderPass::new_compute(
-        rg.add_pass("find missing surfels"),
-        "/shaders/surfel_gi/find_missing_surfels.hlsl",
-    )
-    .read(&gbuffer_depth.gbuffer)
-    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-    .read(bent_normals)
-    .write(&mut state.surfel_meta_buf)
-    .write(&mut state.surfel_hash_key_buf)
-    .write(&mut state.surfel_hash_value_buf)
-    .read(&state.cell_index_offset_buf)
-    .read(&state.surfel_index_buf)
-    .read(&state.surfel_spatial_buf)
-    .read(&state.surfel_irradiance_buf)
-    .write(&mut state.debug_out)
-    .write(&mut tile_surfel_alloc_tex)
-    .constants(gbuffer_desc.extent_inv_extent_2d())
-    .dispatch(gbuffer_desc.extent);
+        if !self.initialized {
+            SimpleRenderPass::new_compute(
+                rg.add_pass("clear surfel pool"),
+                "/shaders/surfel_gi/clear_surfel_pool.hlsl",
+            )
+            .write(&mut state.surfel_pool_buf)
+            .dispatch([MAX_SURFELS as _, 1, 1]);
 
-    SimpleRenderPass::new_compute(
-        rg.add_pass("allocate surfels"),
-        "/shaders/surfel_gi/allocate_surfels.hlsl",
-    )
-    .read(&gbuffer_depth.gbuffer)
-    .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-    .read(&state.surfel_meta_buf)
-    .read(&state.surfel_hash_key_buf)
-    .read(&state.surfel_hash_value_buf)
-    .read(&state.surfel_index_buf)
-    .write(&mut state.surfel_spatial_buf)
-    .read(&tile_surfel_alloc_tex)
-    .constants(gbuffer_desc.extent_inv_extent_2d())
-    .dispatch(tile_surfel_alloc_tex.desc().extent);
+            self.initialized = true;
+        }
 
-    state.assign_surfels_to_grid_cells(rg);
+        let mut tile_surfel_alloc_tex = rg.create(
+            gbuffer_desc
+                .div_up_extent([8, 8, 1])
+                .format(vk::Format::R32G32_UINT),
+        );
 
-    state
+        SimpleRenderPass::new_compute(
+            rg.add_pass("find missing surfels"),
+            "/shaders/surfel_gi/find_missing_surfels.hlsl",
+        )
+        .read(&gbuffer_depth.gbuffer)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(bent_normals)
+        .write(&mut state.surfel_meta_buf)
+        .write(&mut state.surfel_hash_key_buf)
+        .write(&mut state.surfel_hash_value_buf)
+        .read(&state.cell_index_offset_buf)
+        .read(&state.surfel_index_buf)
+        .read(&state.surfel_spatial_buf)
+        .read(&state.surfel_irradiance_buf)
+        .write(&mut state.debug_out)
+        .write(&mut tile_surfel_alloc_tex)
+        .write(&mut state.surfel_life_buf)
+        .constants(gbuffer_desc.extent_inv_extent_2d())
+        .dispatch(gbuffer_desc.extent);
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("allocate surfels"),
+            "/shaders/surfel_gi/allocate_surfels.hlsl",
+        )
+        .read(&gbuffer_depth.gbuffer)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&state.surfel_meta_buf)
+        .read(&state.surfel_hash_key_buf)
+        .read(&state.surfel_hash_value_buf)
+        .read(&state.surfel_index_buf)
+        .write(&mut state.surfel_spatial_buf)
+        .write(&mut state.surfel_life_buf)
+        .write(&mut state.surfel_pool_buf)
+        .read(&tile_surfel_alloc_tex)
+        .constants(gbuffer_desc.extent_inv_extent_2d())
+        .dispatch(tile_surfel_alloc_tex.desc().extent);
+
+        state.assign_surfels_to_grid_cells(rg);
+
+        state
+    }
 }
 
 impl SurfelGiRenderState {
@@ -186,6 +221,15 @@ impl SurfelGiRenderState {
         .dispatch_indirect(&indirect_args_buf, 0);
 
         SimpleRenderPass::new_compute(
+            rg.add_pass("age surfels"),
+            "/shaders/surfel_gi/age_surfels.hlsl",
+        )
+        .write(&mut self.surfel_meta_buf)
+        .write(&mut self.surfel_life_buf)
+        .write(&mut self.surfel_pool_buf)
+        .dispatch_indirect(&indirect_args_buf, 16);
+
+        SimpleRenderPass::new_compute(
             rg.add_pass("count surfels per cell"),
             "/shaders/surfel_gi/count_surfels_per_cell.hlsl",
         )
@@ -193,6 +237,7 @@ impl SurfelGiRenderState {
         .read(&self.surfel_hash_key_buf)
         .read(&self.surfel_hash_value_buf)
         .read(&self.surfel_spatial_buf)
+        .read(&self.surfel_life_buf)
         .write(&mut self.cell_index_offset_buf)
         // Thread per surfel
         .dispatch_indirect(&indirect_args_buf, 16);
@@ -208,6 +253,7 @@ impl SurfelGiRenderState {
         .read(&self.surfel_hash_key_buf)
         .read(&self.surfel_hash_value_buf)
         .read(&self.surfel_spatial_buf)
+        .read(&self.surfel_life_buf)
         .write(&mut self.cell_index_offset_buf)
         .write(&mut self.surfel_index_buf)
         // Thread per surfel
@@ -254,7 +300,9 @@ impl SurfelGiRenderState {
         .read(&self.surfel_hash_value_buf)
         .read(&self.cell_index_offset_buf)
         .read(&self.surfel_index_buf)
+        .read(&self.surfel_life_buf)
         .bind(wrc)
+        .write(&mut self.surfel_meta_buf)
         .write(&mut self.surfel_irradiance_buf)
         .write(&mut self.surfel_aux_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)

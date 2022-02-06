@@ -28,9 +28,11 @@
 [[vk::binding(3)]] ByteAddressBuffer surfel_hash_value_buf;
 [[vk::binding(4)]] ByteAddressBuffer cell_index_offset_buf;
 [[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
-DEFINE_WRC_BINDINGS(6)
-[[vk::binding(7)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(8)]] RWStructuredBuffer<float4> surfel_aux_buf;
+[[vk::binding(6)]] StructuredBuffer<uint> surfel_life_buf;
+DEFINE_WRC_BINDINGS(7)
+[[vk::binding(8)]] RWByteAddressBuffer surfel_meta_buf;
+[[vk::binding(9)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(10)]] RWStructuredBuffer<float4> surfel_aux_buf;
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
@@ -253,7 +255,12 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
 
 [shader("raygeneration")]
 void main() {
+    const uint total_surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
     const uint surfel_idx = DispatchRaysIndex().x;
+    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surfel_life_buf[surfel_idx])) {
+        return;
+    }   
+
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
     const float4 prev_total_radiance_packed = surfel_aux_buf[surfel_idx * 2 + 0];

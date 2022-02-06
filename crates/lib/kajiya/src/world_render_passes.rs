@@ -73,11 +73,9 @@ impl WorldRenderer {
             (gbuffer_depth, velocity_img)
         };
 
-        let mut surfel_state = crate::renderers::surfel_gi::allocate_surfels(
-            rg,
-            &gbuffer_depth.geometric_normal,
-            &gbuffer_depth,
-        );
+        let mut surfel_state =
+            self.surfel_gi
+                .allocate_surfels(rg, &gbuffer_depth.geometric_normal, &gbuffer_depth);
 
         let wrc = crate::renderers::wrc::wrc_trace(
             rg,

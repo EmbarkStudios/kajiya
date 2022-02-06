@@ -26,8 +26,9 @@
 [[vk::binding(9)]] StructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
 [[vk::binding(11)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(12)]] RWStructuredBuffer<uint> surfel_life_buf;
 
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -118,6 +119,25 @@ void main(
         tile_surfel_alloc_tex[group_id] = uint2(0, 0);
     }
 
+    if (USE_DEBUG_OUT && px.y < 50) {
+        const uint surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
+        const uint surfel_alloc_count = surfel_meta_buf.Load(SURFEL_META_ALLOC_COUNT);
+        
+        const float u = float(px.x + 0.5) * gbuffer_tex_size.z;
+
+        if (px.y < 25) {
+            if (surfel_alloc_count > u * 256 * 1024) {
+                debug_out_tex[px] = float4(0.05, 1, .2, 1);
+                return;
+            }
+        } else {
+            if (surfel_count > u * 256 * 1024) {
+                debug_out_tex[px] = float4(1, 0.1, 0.05, 1);
+                return;
+            }
+        }
+    }
+
     GroupMemoryBarrierWithGroupSync();
 
     uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
@@ -178,6 +198,9 @@ void main(
 
         for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
             const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
+            
+            // Mark used
+            surfel_life_buf[surfel_idx] = 0;
 
             Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
             const float surfel_radius = surfel_radius_for_pos(surfel.position);

@@ -5,7 +5,8 @@ use crate::{
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
         lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
-        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
+        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, surfel_gi::SurfelGiRenderer,
+        taa::TaaRenderer,
     },
 };
 use glam::{Mat3, Quat, Vec2, Vec3};
@@ -162,6 +163,7 @@ pub struct WorldRenderer {
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub lighting: LightingRenderer,
+    pub surfel_gi: SurfelGiRenderer,
     pub rtdgi: RtdgiRenderer,
     pub taa: TaaRenderer,
     pub shadow_denoise: ShadowDenoiseRenderer,
@@ -358,6 +360,7 @@ impl WorldRenderer {
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             lighting: LightingRenderer::new(),
+            surfel_gi: SurfelGiRenderer::default(),
             rtdgi: RtdgiRenderer::new(),
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
