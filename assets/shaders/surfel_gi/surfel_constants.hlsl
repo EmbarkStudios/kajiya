@@ -1,0 +1,7 @@
+#ifndef SURFEL_CONSTANTS_HLSL
+#define SURFEL_CONSTANTS_HLSL
+
+#define SURFEL_META_CELL_COUNT (0 * sizeof(uint))
+#define SURFEL_META_SURFEL_COUNT (1 * sizeof(uint))
+
+#endif // SURFEL_CONSTANTS_HLSL

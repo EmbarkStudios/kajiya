@@ -6,13 +6,13 @@
 #include "../inc/gbuffer.hlsl"
 #include "../inc/color.hlsl"
 #include "../inc/sh.hlsl"
-#include "directional_basis.hlsl"
 
 #define VISUALIZE_SURFELS 1
-#define VISUALIZE_SURFELS_AS_NORMALS 0
+#define VISUALIZE_SURFELS_AS_NORMALS 1
 #define VISUALIZE_CELL_SURFEL_COUNT 0
+#define VISUALIZE_CASCADES 0
 #define USE_GEOMETRIC_NORMALS 1
-#define USE_DEBUG_OUT 0
+#define USE_DEBUG_OUT 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -32,6 +32,7 @@
 };
 
 #include "surfel_grid_hash_mut.hlsl"
+#include "surfel_binning_shared.hlsl"
 
 groupshared uint gs_px_score_loc_packed;
 
@@ -179,6 +180,7 @@ void main(
             const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
 
             Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+            const float surfel_radius = surfel_radius_for_pos(surfel.position);
             //surfel_color = (surfel.normal * 0.5 + 0.5) * 0.3;
 
             float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
@@ -207,12 +209,12 @@ void main(
             static const float RADIUS_OVERSCALE = 1.25;
 
             float weight = smoothstep(
-                SURFEL_RADIUS * RADIUS_OVERSCALE,
+                surfel_radius * RADIUS_OVERSCALE,
                 0.0,
                 mahalanobis_dist) * directional_weight;
 
             const float scoring_weight = smoothstep(
-                SURFEL_RADIUS,
+                surfel_radius,
                 0.0,
                 mahalanobis_dist) * directional_weight;
 
@@ -221,7 +223,7 @@ void main(
             //weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
             total_weight += weight;
             scoring_total_weight += scoring_weight;
-            total_color += surfel_color * weight * (VISUALIZE_SURFELS ? (dist < 0.05 ? 1 : 0.1) : 1);
+            total_color += surfel_color * weight * (VISUALIZE_SURFELS ? (dist < surfel_radius * 0.2 ? 1 : 0.1) : 1);
         }
 
         total_color /= max(0.1, total_weight);
@@ -230,12 +232,38 @@ void main(
             total_color = cost_color_map(cell_surfel_count / 32.0);
         #endif
 
+        #if VISUALIZE_CASCADES
+            Vertex surfel;
+            surfel.position = pt_ws.xyz;
+            SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
+
+            total_color = cost_color_map(
+                (surfel_grid_coord_to_cascade(surfel_pos_to_grid_coord(pt_ws.xyz)) + 1) / 8.0
+            );
+
+            total_color = cost_color_map(
+                (box.c4_min[0].w + 1) / 8.0
+            );
+
+            /*total_color = cost_color_map(
+                (surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz)) % 32 + 1) / 32.0
+            );*/
+
+            total_color = cost_color_map(
+                (box.c4_min[0].x % 32 + 1) / 32.0
+            );
+
+            if (box.cascade_count > 1) {
+                total_color = 1;
+            }
+        #endif
+
         #if 0
             total_color = lerp(float3(1, 0, 0), float3(0, 1, 0), useful_surfel_count / 10.0);
         #endif
 
         if (cell_surfel_count > 128) {
-            total_color = float3(1, 0, 1);
+            total_color = float3(1, 0, 0);
         }
 
         //total_color = uint_id_to_color(cell_idx) * 0.3;
@@ -254,7 +282,7 @@ void main(
         if (entry.vacant) {
             //if (uint_to_u01_float(hash1_mut(seed)) < 0.001) {
                 if (entry.acquire()) {
-                    surfel_meta_buf.InterlockedAdd(0 * sizeof(uint), 1, cell_idx);
+                    surfel_meta_buf.InterlockedAdd(SURFEL_META_CELL_COUNT, 1, cell_idx);
                     surfel_hash_value_buf.Store(entry.idx * 4, cell_idx);
                 } else {
                     // Allocating the cell
@@ -275,8 +303,14 @@ void main(
 
     // Execution only survives here if we would like to allocate a surfel in this tile
 
+    float prob_mult = 2000;
+    if ((frame_constants.frame_index & 3) != ((group_id.x & 1) + 2 * (group_id.y & 1))) {
+        // HACK! do this early instead.
+        prob_mult = 0;
+    }
+
     uint px_score_loc_packed = 0;
-    if (uint_to_u01_float(hash1_mut(seed)) < 2000.0 * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
+    if (uint_to_u01_float(hash1_mut(seed)) < prob_mult * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
         px_score_loc_packed = (asuint(px_score) & (0xffffffff - 63)) | (px_within_group.y * 8 + px_within_group.x);
     }
     

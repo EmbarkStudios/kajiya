@@ -23,6 +23,12 @@ void main(
     uint2 group_id: SV_GroupID,
     uint2 tile_px_within_group: SV_GroupThreadID
 ) {
+#if 0
+    // Clear
+    surfel_meta_buf.Store(SURFEL_META_SURFEL_COUNT, 0);
+    return;
+#endif
+
     const uint2 tile_surfel_alloc_packed = tile_surfel_alloc_tex[tile_px];
     if (tile_surfel_alloc_packed.x == 0) {
         return;
@@ -51,7 +57,7 @@ void main(
     surfel.data0 = float4(pt_ws.xyz, gbuffer_packed.y);
 
     uint surfel_idx;
-    surfel_meta_buf.InterlockedAdd(1 * sizeof(uint), 1, surfel_idx);
+    surfel_meta_buf.InterlockedAdd(SURFEL_META_SURFEL_COUNT, 1, surfel_idx);
 
     surfel_spatial_buf[surfel_idx] = surfel;
 }

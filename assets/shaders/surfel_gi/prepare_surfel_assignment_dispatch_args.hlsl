@@ -1,9 +1,11 @@
+#include "surfel_constants.hlsl"
+
 [[vk::binding(0)]] ByteAddressBuffer surfel_meta_buf;
 [[vk::binding(1)]] RWByteAddressBuffer dispatch_args;
 
 [numthreads(1, 1, 1)]
 void main() {
-    const uint cell_count = surfel_meta_buf.Load(sizeof(uint) * 0);
+    const uint cell_count = surfel_meta_buf.Load(SURFEL_META_CELL_COUNT);
 
     // Cell clearing args
     {

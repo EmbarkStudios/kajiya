@@ -12,35 +12,38 @@
 
 [numthreads(64, 1, 1)]
 void main(uint surfel_idx: SV_DispatchThreadID) {
-    const uint total_surfel_count = surfel_meta_buf.Load(1 * sizeof(uint));
+    const uint total_surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
     if (surfel_idx >= total_surfel_count) {
         return;
     }
 
     const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
 
-    int3 box_min;
-    int3 box_max;
-    get_surfel_grid_box_min_max(surfel, box_min, box_max);
+    SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
+    for (uint ci = 0; ci < box.cascade_count; ++ci) {
+        for (uint z = box.c4_min[ci].z; z <= box.c4_max[ci].z; ++z) {
+            for (uint y = box.c4_min[ci].y; y <= box.c4_max[ci].y; ++y) {
+                for (uint x = box.c4_min[ci].x; x <= box.c4_max[ci].x; ++x) {
+                    const uint4 c4 = uint4(x, y, z, box.c4_min[ci].w);
 
-    for (int z = box_min.z; z <= box_max.z; ++z) {
-        for (int y = box_min.y; y <= box_max.y; ++y) {
-            for (int x = box_min.x; x <= box_max.x; ++x) {
-                if (!surfel_intersects_grid_coord(surfel, int3(x, y, z))) {
-                    continue;
+                    if (!surfel_intersects_grid_coord(surfel, c4)) {
+                        continue;
+                    }
+
+                    //const SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(int3(x, y, z));
+                    const uint entry_idx = surfel_grid_c4_to_hash(c4);
+     
+                     //if (entry.found)
+                     {
+                        const uint cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry_idx);
+
+                        uint cell_index_loc_plus_one;
+                        cell_index_offset_buf.InterlockedAdd(sizeof(uint) * cell_idx, -1, cell_index_loc_plus_one);
+
+                        surfel_index_buf.Store(sizeof(uint) * (cell_index_loc_plus_one - 1), surfel_idx);
+                    }
                 }
-
-                const SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(int3(x, y, z));
- 
-                 if (entry.found) {
-                    const uint cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
-
-                    uint cell_index_loc_plus_one;
-                    cell_index_offset_buf.InterlockedAdd(sizeof(uint) * cell_idx, -1, cell_index_loc_plus_one);
-
-                    surfel_index_buf.Store(sizeof(uint) * (cell_index_loc_plus_one - 1), surfel_idx);
-                }
-           }
+            }
         }
     }
 }
