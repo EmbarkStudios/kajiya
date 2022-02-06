@@ -27,14 +27,15 @@ SurfelGridMinMax get_surfel_grid_box_min_max(Vertex surfel) {
         const float3 box_max_pos = surfel.position + surfel_radius;
     #endif
 
-    const float fc = surfel_grid_coord_to_cascade_float(surfel_pos_to_grid_coord(surfel.position));
+    const float3 eye_pos = get_eye_position();
+    const float fc = surfel_grid_coord_to_cascade_float(surfel_pos_to_grid_coord(surfel.position, eye_pos));
 
     // TODO: bounds
     const uint c0 = surfel_cascade_float_to_cascade(fc - 0.2);
     const uint c1 = surfel_cascade_float_to_cascade(fc + 0.2);
 
-    const int3 min_coord = surfel_pos_to_grid_coord(box_min_pos);
-    const int3 max_coord = surfel_pos_to_grid_coord(box_max_pos);
+    const int3 min_coord = surfel_pos_to_grid_coord(box_min_pos, eye_pos);
+    const int3 max_coord = surfel_pos_to_grid_coord(box_max_pos, eye_pos);
 
     SurfelGridMinMax result;
 
@@ -62,7 +63,7 @@ SurfelGridMinMax get_surfel_grid_box_min_max(Vertex surfel) {
 bool surfel_intersects_grid_coord(Vertex surfel, uint4 grid_coord) {
     const float surfel_radius = surfel_radius_for_pos(surfel.position);
 
-    const float3 cell_center = surfel_grid_coord_center(grid_coord);
+    const float3 cell_center = surfel_grid_coord_center(grid_coord, get_eye_position());
     const float grid_cell_radius = (SURFEL_GRID_CELL_DIAMETER * 0.5) * (1u << grid_coord.w);
 
     const float3 cell_local_surfel_pos = surfel.position - cell_center;

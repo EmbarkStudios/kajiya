@@ -37,15 +37,15 @@
 [[vk::binding(3)]] Texture2D<float4> reservoir_ray_history_tex;
 [[vk::binding(4)]] Texture2D<float> ssao_tex;
 [[vk::binding(5)]] Texture2D<float4> reprojection_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
-DEFINE_WRC_BINDINGS(12)
-[[vk::binding(13)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(14)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(15)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(16)]] RWTexture2D<float4> candidate_irradiance_out_tex;
-[[vk::binding(17)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(18)]] RWTexture2D<float> rt_history_invalidity_out_tex;
-[[vk::binding(19)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11, 12)
+DEFINE_WRC_BINDINGS(13)
+[[vk::binding(14)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(15)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(16)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(17)]] RWTexture2D<float4> candidate_irradiance_out_tex;
+[[vk::binding(18)]] RWTexture2D<float4> candidate_normal_out_tex;
+[[vk::binding(19)]] RWTexture2D<float> rt_history_invalidity_out_tex;
+[[vk::binding(20)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 

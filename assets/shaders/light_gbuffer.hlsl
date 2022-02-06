@@ -30,13 +30,13 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;  // TODO: nuke
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11)
-DEFINE_WRC_BINDINGS(12)
-[[vk::binding(13)]] RWTexture2D<float4> temporal_output_tex;
-[[vk::binding(14)]] RWTexture2D<float4> output_tex;
-[[vk::binding(15)]] TextureCube<float4> unconvolved_sky_cube_tex;
-[[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(17)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11, 12)
+DEFINE_WRC_BINDINGS(13)
+[[vk::binding(14)]] RWTexture2D<float4> temporal_output_tex;
+[[vk::binding(15)]] RWTexture2D<float4> output_tex;
+[[vk::binding(16)]] TextureCube<float4> unconvolved_sky_cube_tex;
+[[vk::binding(17)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(18)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
     uint debug_show_wrc;

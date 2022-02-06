@@ -12,7 +12,7 @@ pub fn light_gbuffer(
     ssgi: &rg::Handle<Image>,
     rtr: &rg::Handle<Image>,
     rtdgi: &rg::Handle<Image>,
-    surfel_gi: &SurfelGiRenderState,
+    surfel_gi: &mut SurfelGiRenderState,
     wrc: &WrcRenderState,
     temporal_output: &mut rg::Handle<Image>,
     output: &mut rg::Handle<Image>,
@@ -29,7 +29,7 @@ pub fn light_gbuffer(
         .read(ssgi)
         .read(rtr)
         .read(rtdgi)
-        .bind(surfel_gi)
+        .bind_mut(surfel_gi)
         .bind(wrc)
         .write(temporal_output)
         .write(output)

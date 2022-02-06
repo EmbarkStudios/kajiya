@@ -94,7 +94,7 @@ impl RtrRenderer {
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         rtdgi: &rg::Handle<Image>,
-        surfel_gi: &SurfelGiRenderState,
+        surfel_gi: &mut SurfelGiRenderState,
         wrc: &WrcRenderState,
     ) -> TracedRtr {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
@@ -143,7 +143,7 @@ impl RtrRenderer {
         .read(&sobol_buf)
         .read(rtdgi)
         .read(sky_cube)
-        .bind(surfel_gi)
+        .bind_mut(surfel_gi)
         .bind(wrc)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)

@@ -21,9 +21,10 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6)
-[[vk::binding(7)]] RWTexture2D<float4> radiance_atlas_out_tex;
+DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6, 7)
+[[vk::binding(8)]] RWTexture2D<float4> radiance_atlas_out_tex;
 
+#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "../surfel_gi/lookup.hlsl"
 #include "../inc/sun.hlsl"
 

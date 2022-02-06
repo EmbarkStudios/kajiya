@@ -11,7 +11,7 @@ use kajiya_backend::{
     },
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
-use rg::BindToSimpleRenderPass;
+use rg::BindMutToSimpleRenderPass;
 use vk::BufferUsageFlags;
 
 use super::{wrc::WrcRenderState, GbufferDepth};
@@ -38,9 +38,11 @@ pub struct SurfelGiRenderState {
     pub debug_out: rg::Handle<Image>,
 }
 
-impl<'rg, RgPipelineHandle> BindToSimpleRenderPass<'rg, RgPipelineHandle> for SurfelGiRenderState {
-    fn bind(
-        &self,
+impl<'rg, RgPipelineHandle> BindMutToSimpleRenderPass<'rg, RgPipelineHandle>
+    for SurfelGiRenderState
+{
+    fn bind_mut(
+        &mut self,
         pass: SimpleRenderPass<'rg, RgPipelineHandle>,
     ) -> SimpleRenderPass<'rg, RgPipelineHandle> {
         pass.read(&self.surfel_hash_key_buf)
@@ -49,6 +51,7 @@ impl<'rg, RgPipelineHandle> BindToSimpleRenderPass<'rg, RgPipelineHandle> for Su
             .read(&self.surfel_index_buf)
             .read(&self.surfel_spatial_buf)
             .read(&self.surfel_irradiance_buf)
+            .write(&mut self.surfel_life_buf)
     }
 }
 
@@ -151,6 +154,12 @@ impl SurfelGiRenderer {
                 .format(vk::Format::R32G32_UINT),
         );
 
+        let mut tile_surfel_irradiance_tex = rg.create(
+            gbuffer_desc
+                .div_up_extent([8, 8, 1])
+                .format(vk::Format::R32G32B32A32_SFLOAT),
+        );
+
         SimpleRenderPass::new_compute(
             rg.add_pass("find missing surfels"),
             "/shaders/surfel_gi/find_missing_surfels.hlsl",
@@ -167,9 +176,36 @@ impl SurfelGiRenderer {
         .read(&state.surfel_irradiance_buf)
         .write(&mut state.debug_out)
         .write(&mut tile_surfel_alloc_tex)
+        .write(&mut tile_surfel_irradiance_tex)
         .write(&mut state.surfel_life_buf)
         .constants(gbuffer_desc.extent_inv_extent_2d())
         .dispatch(gbuffer_desc.extent);
+
+        let indirect_args_buf = {
+            let mut indirect_args_buf = rg.create(BufferDesc::new(
+                (size_of::<u32>() * 4) * 2,
+                vk::BufferUsageFlags::empty(),
+            ));
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass("surfel dispatch args"),
+                "/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
+            )
+            .read(&state.surfel_meta_buf)
+            .write(&mut indirect_args_buf)
+            .dispatch([1, 1, 1]);
+
+            indirect_args_buf
+        };
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("age surfels"),
+            "/shaders/surfel_gi/age_surfels.hlsl",
+        )
+        .write(&mut state.surfel_meta_buf)
+        .write(&mut state.surfel_life_buf)
+        .write(&mut state.surfel_pool_buf)
+        .dispatch_indirect(&indirect_args_buf, 16);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("allocate surfels"),
@@ -182,52 +218,36 @@ impl SurfelGiRenderer {
         .read(&state.surfel_hash_value_buf)
         .read(&state.surfel_index_buf)
         .write(&mut state.surfel_spatial_buf)
+        .write(&mut state.surfel_aux_buf)
+        .write(&mut state.surfel_irradiance_buf)
         .write(&mut state.surfel_life_buf)
         .write(&mut state.surfel_pool_buf)
         .read(&tile_surfel_alloc_tex)
+        .read(&tile_surfel_irradiance_tex)
         .constants(gbuffer_desc.extent_inv_extent_2d())
         .dispatch(tile_surfel_alloc_tex.desc().extent);
 
-        state.assign_surfels_to_grid_cells(rg);
+        state.assign_surfels_to_grid_cells(rg, indirect_args_buf);
 
         state
     }
 }
 
 impl SurfelGiRenderState {
-    fn assign_surfels_to_grid_cells(&mut self, rg: &mut rg::RenderGraph) {
-        let indirect_args_buf = {
-            let mut indirect_args_buf = rg.create(BufferDesc::new(
-                (size_of::<u32>() * 4) * 2,
-                vk::BufferUsageFlags::empty(),
-            ));
-
-            SimpleRenderPass::new_compute(
-                rg.add_pass("surfel dispatch args"),
-                "/shaders/surfel_gi/prepare_surfel_assignment_dispatch_args.hlsl",
-            )
-            .read(&self.surfel_meta_buf)
-            .write(&mut indirect_args_buf)
-            .dispatch([1, 1, 1]);
-
-            indirect_args_buf
-        };
-
+    // TODO: also ages surfels
+    fn assign_surfels_to_grid_cells(
+        &mut self,
+        rg: &mut rg::RenderGraph,
+        indirect_args_buf: rg::Handle<Buffer>,
+    ) {
         SimpleRenderPass::new_compute(
             rg.add_pass("clear surfel cells"),
             "/shaders/surfel_gi/clear_cells.hlsl",
         )
         .write(&mut self.cell_index_offset_buf)
-        .dispatch_indirect(&indirect_args_buf, 0);
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("age surfels"),
-            "/shaders/surfel_gi/age_surfels.hlsl",
-        )
-        .write(&mut self.surfel_meta_buf)
-        .write(&mut self.surfel_life_buf)
-        .write(&mut self.surfel_pool_buf)
-        .dispatch_indirect(&indirect_args_buf, 16);
+        //.dispatch_indirect(&indirect_args_buf, 0);
+        // Clearing four enties at the same time
+        .dispatch([(MAX_SURFEL_CELLS as u32 + 3) / 4, 1, 1]);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("count surfels per cell"),
@@ -243,7 +263,6 @@ impl SurfelGiRenderState {
         .dispatch_indirect(&indirect_args_buf, 16);
 
         inclusive_prefix_scan_u32_1m(rg, &mut self.cell_index_offset_buf);
-        // TODO: prefix-scan
 
         SimpleRenderPass::new_compute(
             rg.add_pass("slot surfels into cells"),

@@ -376,11 +376,25 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
     {
         binding.bind(self)
     }
+
+    pub fn bind_mut<Binding>(self, binding: &mut Binding) -> Self
+    where
+        Binding: BindMutToSimpleRenderPass<'rg, RgPipelineHandle>,
+    {
+        binding.bind_mut(self)
+    }
 }
 
 pub trait BindToSimpleRenderPass<'rg, RgPipelineHandle> {
     fn bind(
         &self,
+        pass: SimpleRenderPass<'rg, RgPipelineHandle>,
+    ) -> SimpleRenderPass<'rg, RgPipelineHandle>;
+}
+
+pub trait BindMutToSimpleRenderPass<'rg, RgPipelineHandle> {
+    fn bind_mut(
+        &mut self,
         pass: SimpleRenderPass<'rg, RgPipelineHandle>,
     ) -> SimpleRenderPass<'rg, RgPipelineHandle>;
 }

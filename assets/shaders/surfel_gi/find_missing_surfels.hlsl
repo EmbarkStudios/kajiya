@@ -11,7 +11,7 @@
 #define VISUALIZE_SURFELS_AS_NORMALS 1
 #define VISUALIZE_CELL_SURFEL_COUNT 0
 #define VISUALIZE_CASCADES 0
-#define USE_GEOMETRIC_NORMALS 1
+#define USE_GEOMETRIC_NORMALS 0
 #define USE_DEBUG_OUT 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -26,9 +26,10 @@
 [[vk::binding(9)]] StructuredBuffer<float4> surfel_irradiance_buf;
 [[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
 [[vk::binding(11)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(12)]] RWStructuredBuffer<uint> surfel_life_buf;
+[[vk::binding(12)]] RWTexture2D<float4> tile_surfel_irradiance_tex;
+[[vk::binding(13)]] RWStructuredBuffer<uint> surfel_life_buf;
 
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(14)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -119,6 +120,8 @@ void main(
         tile_surfel_alloc_tex[group_id] = uint2(0, 0);
     }
 
+    const float3 prev_eye_pos = get_prev_eye_position();
+
     if (USE_DEBUG_OUT && px.y < 50) {
         const uint surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
         const uint surfel_alloc_count = surfel_meta_buf.Load(SURFEL_META_ALLOC_COUNT);
@@ -169,7 +172,9 @@ void main(
 
     const float pt_depth = -pt_vs.z / pt_vs.w;
 
-    SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(surfel_pos_to_grid_coord(pt_ws.xyz));
+    SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(
+        surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos)
+    );
 
     const float2 group_center_offset = float2(px_within_group) - 3.5;
 
@@ -177,10 +182,13 @@ void main(
 
     uint cell_idx = 0xffffffff;
 
-    if (entry.found) {
+    float3 total_color = 0.0.xxx;
+    float total_weight = 0.0;
+
+    {
         px_score = 0.0;
 
-        cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
+        cell_idx = entry.idx;//surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
         float3 surfel_color = 0;//uint_id_to_color(cell_idx) * 0.3;
 
         // Calculate px score based on surrounding surfels
@@ -191,16 +199,22 @@ void main(
         // TEMP HACK: Make sure we're not iterating over tons of surfels out of bounds
         surfel_idx_loc_range.y = min(surfel_idx_loc_range.y, surfel_idx_loc_range.x + 128);
 
-        float3 total_color = 0.0.xxx;
-        float total_weight = 0.0;
+        float3 debug_color = 0.0.xxx;
         float scoring_total_weight = 0.0;
         uint useful_surfel_count = 0;
 
         for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
             const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
             
-            // Mark used
-            surfel_life_buf[surfel_idx] = 0;
+            if (cell_surfel_count <= 32) {
+                // Mark used
+                surfel_life_buf[surfel_idx] = 0;
+            } else if (cell_surfel_count > MAX_SURFELS_PER_CELL) {
+                // Recycle
+                // TODO: something smarter, deriving the recycling
+                // chance based on local density and coverage
+                surfel_life_buf[surfel_idx] = SURFEL_LIFE_RECYCLE;
+            }
 
             Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
             const float surfel_radius = surfel_radius_for_pos(surfel.position);
@@ -215,11 +229,10 @@ void main(
             float3 shading_normal = gbuffer.normal;
         #endif
 
+            float3 surfel_debug_color = surfel_color;
             #if VISUALIZE_SURFELS && VISUALIZE_SURFELS_AS_NORMALS
-                surfel_color = surfel.normal * 0.5 + 0.5;
+                surfel_debug_color = surfel.normal * 0.5 + 0.5;
             #endif
-
-            //surfel_color = geometric_normal_ws * 0.5 + 0.5;
 
             const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
             const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
@@ -246,13 +259,15 @@ void main(
             //weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
             total_weight += weight;
             scoring_total_weight += scoring_weight;
-            total_color += surfel_color * weight * (VISUALIZE_SURFELS ? (dist < surfel_radius * 0.2 ? 1 : 0.1) : 1);
+            total_color += surfel_color * weight;
+            debug_color += surfel_debug_color * weight * (VISUALIZE_SURFELS ? (dist < surfel_radius * 0.2 ? 1 : 0.1) : 1);
         }
 
-        total_color /= max(0.1, total_weight);
+        total_color /= max(1e-5, total_weight);
+        debug_color /= max(0.1, total_weight);
 
         #if VISUALIZE_CELL_SURFEL_COUNT
-            total_color = cost_color_map(cell_surfel_count / 32.0);
+            debug_color = cost_color_map(cell_surfel_count / 32.0);
         #endif
 
         #if VISUALIZE_CASCADES
@@ -260,40 +275,37 @@ void main(
             surfel.position = pt_ws.xyz;
             SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
 
-            total_color = cost_color_map(
-                (surfel_grid_coord_to_cascade(surfel_pos_to_grid_coord(pt_ws.xyz)) + 1) / 8.0
+            debug_color = cost_color_map((
+                surfel_grid_coord_to_cascade(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos))
+                + 1) / 8.0
             );
 
-            total_color = cost_color_map(
+            debug_color = cost_color_map(
                 (box.c4_min[0].w + 1) / 8.0
             );
 
-            /*total_color = cost_color_map(
-                (surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz)) % 32 + 1) / 32.0
-            );*/
-
-            total_color = cost_color_map(
+            debug_color = cost_color_map(
                 (box.c4_min[0].x % 32 + 1) / 32.0
             );
 
             if (box.cascade_count > 1) {
-                total_color = 1;
+                debug_color = 1;
             }
         #endif
 
         #if 0
-            total_color = lerp(float3(1, 0, 0), float3(0, 1, 0), useful_surfel_count / 10.0);
+            debug_color = lerp(float3(1, 0, 0), float3(0, 1, 0), useful_surfel_count / 10.0);
         #endif
 
         if (cell_surfel_count > 128) {
-            total_color = float3(1, 0, 0);
+            debug_color = float3(1, 1, 0);
         }
 
-        //total_color = uint_id_to_color(cell_idx) * 0.3;
-        //total_color = saturate(1.0 - length(pt_ws.xyz));
+        //debug_color = uint_id_to_color(cell_idx) * 0.3;
+        //debug_color = saturate(1.0 - length(pt_ws.xyz));
 
         #if USE_DEBUG_OUT
-            debug_out_tex[px] = float4(total_color, 1);
+            debug_out_tex[px] = float4(debug_color, 1);
         #endif
 
         if (cell_surfel_count >= 32 || useful_surfel_count > 2 || scoring_total_weight > 0.2) {
@@ -301,36 +313,15 @@ void main(
         }
 
         px_score = 1.0 / (1.0 + total_weight);
-    } else {
-        if (entry.vacant) {
-            //if (uint_to_u01_float(hash1_mut(seed)) < 0.001) {
-                if (entry.acquire()) {
-                    surfel_meta_buf.InterlockedAdd(SURFEL_META_CELL_COUNT, 1, cell_idx);
-                    surfel_hash_value_buf.Store(entry.idx * 4, cell_idx);
-                } else {
-                    // Allocating the cell
-                    #if USE_DEBUG_OUT
-                        //debug_out_tex[px] = float4(10, 0, 0, 1);
-                    #endif
-                    return;
-                }
-            //}
-        } else {
-            // Too many conflicts; cannot insert a new entry.
-            #if USE_DEBUG_OUT
-                debug_out_tex[px] = float4(10, 0, 10, 1);
-            #endif
-            return;
-        }
     }
 
     // Execution only survives here if we would like to allocate a surfel in this tile
 
     float prob_mult = 2000;
-    if ((frame_constants.frame_index & 3) != ((group_id.x & 1) + 2 * (group_id.y & 1))) {
+    /*if ((frame_constants.frame_index & 3) != ((group_id.x & 1) + 2 * (group_id.y & 1))) {
         // HACK! do this early instead.
         prob_mult = 0;
-    }
+    }*/
 
     uint px_score_loc_packed = 0;
     if (uint_to_u01_float(hash1_mut(seed)) < prob_mult * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
@@ -345,9 +336,10 @@ void main(
 
     if (gs_px_score_loc_packed == px_score_loc_packed && px_score_loc_packed != 0) {
         #if USE_DEBUG_OUT
-            debug_out_tex[px] = float4(10, 0, 0, 1);
+            debug_out_tex[px] = float4(0, 0, 1, 1);
         #endif
         tile_surfel_alloc_tex[group_id] = uint2(px_score_loc_packed, cell_idx);
+        tile_surfel_irradiance_tex[group_id] = float4(total_color, total_weight);
     } else {
         //debug_out_tex[px] = float4(0, 0, 10, 1);
     }

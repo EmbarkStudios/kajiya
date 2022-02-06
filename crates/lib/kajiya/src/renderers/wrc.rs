@@ -27,7 +27,7 @@ impl<'rg, RgPipelineHandle> BindToSimpleRenderPass<'rg, RgPipelineHandle> for Wr
 
 pub fn wrc_trace(
     rg: &mut rg::TemporalRenderGraph,
-    surfel_gi: &SurfelGiRenderState,
+    surfel_gi: &mut SurfelGiRenderState,
     sky_cube: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
     tlas: &rg::Handle<RayTracingAcceleration>,
@@ -53,7 +53,7 @@ pub fn wrc_trace(
         [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
     )
     .read(sky_cube)
-    .bind(surfel_gi)
+    .bind_mut(surfel_gi)
     .write(&mut radiance_atlas)
     .raw_descriptor_set(1, bindless_descriptor_set)
     .trace_rays(tlas, [total_pixel_count as _, 1, 1]);
@@ -66,7 +66,7 @@ impl WrcRenderState {
         &self,
         rg: &mut rg::TemporalRenderGraph,
         sky_cube: &rg::Handle<Image>,
-        surfel_gi: &SurfelGiRenderState,
+        surfel_gi: &mut SurfelGiRenderState,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         output_img: &mut rg::Handle<Image>,
@@ -82,7 +82,7 @@ impl WrcRenderState {
         )
         .bind(self)
         .read(sky_cube)
-        .bind(surfel_gi)
+        .bind_mut(surfel_gi)
         .write(output_img)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, output_img.desc().extent);

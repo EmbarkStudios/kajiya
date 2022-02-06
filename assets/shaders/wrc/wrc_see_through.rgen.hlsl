@@ -21,8 +21,8 @@
 
 DEFINE_WRC_BINDINGS(0)
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5, 6, 7)
-[[vk::binding(8)]] RWTexture2D<float4> output_tex;
+DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5, 6, 7, 8)
+[[vk::binding(9)]] RWTexture2D<float4> output_tex;
 
 #include "lookup.hlsl"
 #include "../surfel_gi/lookup.hlsl"

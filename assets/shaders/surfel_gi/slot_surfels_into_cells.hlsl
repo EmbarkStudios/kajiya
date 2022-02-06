@@ -1,4 +1,5 @@
 #include "../inc/mesh.hlsl" // for VertexPacked
+#include "../inc/frame_constants.hlsl"
 
 [[vk::binding(0)]] ByteAddressBuffer surfel_meta_buf;
 [[vk::binding(1)]] ByteAddressBuffer surfel_hash_key_buf;
@@ -36,7 +37,7 @@ void main(uint surfel_idx: SV_DispatchThreadID) {
      
                      //if (entry.found)
                      {
-                        const uint cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry_idx);
+                        const uint cell_idx = entry_idx;//surfel_hash_value_buf.Load(sizeof(uint) * entry_idx);
 
                         uint cell_index_loc_plus_one;
                         cell_index_offset_buf.InterlockedAdd(sizeof(uint) * cell_idx, -1, cell_index_loc_plus_one);

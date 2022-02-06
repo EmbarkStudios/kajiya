@@ -79,7 +79,7 @@ impl WorldRenderer {
 
         let wrc = crate::renderers::wrc::wrc_trace(
             rg,
-            &surfel_state,
+            &mut surfel_state,
             &sky_cube,
             self.bindless_descriptor_set,
             &tlas,
@@ -118,7 +118,7 @@ impl WorldRenderer {
             &reprojection_map,
             &sky_cube,
             self.bindless_descriptor_set,
-            &surfel_state,
+            &mut surfel_state,
             &wrc,
             &tlas,
             &ssgi_tex,
@@ -138,7 +138,7 @@ impl WorldRenderer {
             self.bindless_descriptor_set,
             &tlas,
             &rtdgi,
-            &surfel_state,
+            &mut surfel_state,
             &wrc,
         );
 
@@ -167,7 +167,7 @@ impl WorldRenderer {
             &ssgi_tex,
             &rtr,
             &rtdgi,
-            &surfel_state,
+            &mut surfel_state,
             &wrc,
             &mut accum_img,
             &mut debug_out_tex,
@@ -214,7 +214,7 @@ impl WorldRenderer {
             wrc.see_through(
                 rg,
                 &sky_cube,
-                &surfel_state,
+                &mut surfel_state,
                 self.bindless_descriptor_set,
                 &tlas,
                 &mut final_post_input,

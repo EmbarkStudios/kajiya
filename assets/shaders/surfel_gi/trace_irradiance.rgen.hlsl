@@ -37,6 +37,7 @@ DEFINE_WRC_BINDINGS(7)
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
 
+#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
@@ -321,7 +322,7 @@ void main() {
     float prev_sample_count = min(prev_total_radiance_packed.w, TARGET_SAMPLE_COUNT);
 
     // Hard suppress if the control sample had a large difference
-    prev_sample_count *= (1.0 - relative_sample0_diff);
+    //prev_sample_count *= (1.0 - relative_sample0_diff);
 
     const float total_sample_count = prev_sample_count + valid_sample_count;
     float blend_factor_new = valid_sample_count / max(1, total_sample_count);

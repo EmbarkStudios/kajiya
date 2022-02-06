@@ -130,7 +130,7 @@ impl RtdgiRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        surfel_gi: &SurfelGiRenderState,
+        surfel_gi: &mut SurfelGiRenderState,
         wrc: &WrcRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
         ssao_img: &rg::Handle<Image>,
@@ -251,7 +251,7 @@ impl RtdgiRenderer {
             .read(&ray_history_tex)
             .read(ssao_img)
             .read(reprojection_map)
-            .bind(surfel_gi)
+            .bind_mut(surfel_gi)
             .bind(wrc)
             .read(sky_cube)
             .read(&irradiance_history_tex)
