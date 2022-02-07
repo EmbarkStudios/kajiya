@@ -36,7 +36,8 @@
 #include "surfel_grid_hash_mut.hlsl"
 #include "surfel_binning_shared.hlsl"
 
-groupshared uint gs_px_score_loc_packed;
+groupshared uint gs_px_min_score_loc_packed;
+groupshared uint gs_px_max_score_loc_packed;
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -102,6 +103,10 @@ float eval_sh_geometrics(float4 sh, float3 normal)
 	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p)) * M_PI;
 }
 
+uint pack_score_and_px_within_group(float score, uint2 px_within_group) {
+    return (asuint(score) & (0xffffffffu - 63)) | (px_within_group.y * 8 + px_within_group.x);
+}
+
 #if 1
     #define eval_surfel_sh eval_sh_simplified
 #else
@@ -116,7 +121,8 @@ void main(
     uint2 px_within_group: SV_GroupThreadID
 ) {
     if (0 == idx_within_group) {
-        gs_px_score_loc_packed = 0;
+        gs_px_min_score_loc_packed = 0xffffffffu;
+        gs_px_max_score_loc_packed = 0u;
         tile_surfel_alloc_tex[group_id] = uint2(0, 0);
     }
 
@@ -178,26 +184,25 @@ void main(
 
     const float2 group_center_offset = float2(px_within_group) - 3.5;
 
-    float px_score = 1e10 / (1.0 + dot(group_center_offset, group_center_offset));
+    float px_score = 0.0;
 
-    uint cell_idx = 0xffffffff;
+    uint cell_idx = entry.idx;
 
     float3 total_color = 0.0.xxx;
     float total_weight = 0.0;
 
+    float highest_weight = 0.0;
+    float second_highest_weight = 0.0;
+
+    uint2 surfel_idx_loc_range = cell_index_offset_buf.Load2(sizeof(uint) * cell_idx);
+    
+    // TEMP HACK: Make sure we're not iterating over tons of surfels out of bounds
+    surfel_idx_loc_range.y = min(surfel_idx_loc_range.y, surfel_idx_loc_range.x + 128);
+
+    const uint cell_surfel_count = surfel_idx_loc_range.y - surfel_idx_loc_range.x;
+
     {
-        px_score = 0.0;
-
-        cell_idx = entry.idx;//surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
         float3 surfel_color = 0;//uint_id_to_color(cell_idx) * 0.3;
-
-        // Calculate px score based on surrounding surfels
-
-        uint2 surfel_idx_loc_range = cell_index_offset_buf.Load2(sizeof(uint) * cell_idx);
-        const uint cell_surfel_count = surfel_idx_loc_range.y - surfel_idx_loc_range.x;
-
-        // TEMP HACK: Make sure we're not iterating over tons of surfels out of bounds
-        surfel_idx_loc_range.y = min(surfel_idx_loc_range.y, surfel_idx_loc_range.x + 128);
 
         float3 debug_color = 0.0.xxx;
         float scoring_total_weight = 0.0;
@@ -206,14 +211,11 @@ void main(
         for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
             const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
             
-            if (cell_surfel_count <= 32) {
+            if (cell_surfel_count <= MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE) {
                 // Mark used
-                surfel_life_buf[surfel_idx] = 0;
-            } else if (cell_surfel_count > MAX_SURFELS_PER_CELL) {
-                // Recycle
-                // TODO: something smarter, deriving the recycling
-                // chance based on local density and coverage
-                surfel_life_buf[surfel_idx] = SURFEL_LIFE_RECYCLE;
+                if (surfel_life_buf[surfel_idx] != SURFEL_LIFE_RECYCLE) {
+                    surfel_life_buf[surfel_idx] = 0;
+                }
             }
 
             Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
@@ -254,6 +256,11 @@ void main(
                 0.0,
                 mahalanobis_dist) * directional_weight;
 
+            if (weight > highest_weight) {
+                second_highest_weight = highest_weight;
+                highest_weight = weight;
+            }
+
             useful_surfel_count += scoring_weight > 1e-5 ? 1 : 0;
 
             //weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
@@ -265,6 +272,59 @@ void main(
 
         total_color /= max(1e-5, total_weight);
         debug_color /= max(0.1, total_weight);
+
+        // Despawn surfels
+        {
+            uint px_max_score_loc_packed = 0u;
+
+            // Despawn if the coverage is high" and the second highest scoring
+            // surfel has a high weight (indicating surfel overlap),
+            if (total_weight > 2.5 && second_highest_weight > 0.8) {
+                px_max_score_loc_packed = pack_score_and_px_within_group(px_score, px_within_group);
+                InterlockedMax(gs_px_max_score_loc_packed, px_max_score_loc_packed);
+            }
+
+            GroupMemoryBarrierWithGroupSync();
+
+            uint surfel_to_despawn = 0xffffffffu;
+            float surfel_to_despawn_weight = 0;
+
+            if (gs_px_max_score_loc_packed == px_max_score_loc_packed && px_max_score_loc_packed != 0) {
+                for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
+                    const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
+
+                    Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+                    const float surfel_radius = surfel_radius_for_pos(surfel.position);
+
+                #if USE_GEOMETRIC_NORMALS
+                    float3 shading_normal = geometric_normal_ws;
+                #else
+                    float3 shading_normal = gbuffer.normal;
+                #endif
+
+                    const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
+                    const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
+                    const float dist = length(pos_offset);
+                    const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
+
+                    static const float RADIUS_OVERSCALE = 1.25;
+
+                    float weight = smoothstep(
+                        surfel_radius * RADIUS_OVERSCALE,
+                        0.0,
+                        mahalanobis_dist) * directional_weight;
+
+                    if (weight > surfel_to_despawn_weight) {
+                        surfel_to_despawn_weight = weight;
+                        surfel_to_despawn = surfel_idx;
+                    }
+                }
+            }
+
+            if (surfel_to_despawn != 0xffffffffu) {
+                surfel_life_buf[surfel_to_despawn] = SURFEL_LIFE_RECYCLE;
+            }
+        }
 
         #if VISUALIZE_CELL_SURFEL_COUNT
             debug_color = cost_color_map(cell_surfel_count / 32.0);
@@ -312,33 +372,33 @@ void main(
             return;
         }
 
-        px_score = 1.0 / (1.0 + total_weight);
+        px_score = total_weight;
     }
 
     // Execution only survives here if we would like to allocate a surfel in this tile
 
-    float prob_mult = 2000;
+    float prob_mult = 4000;
     /*if ((frame_constants.frame_index & 3) != ((group_id.x & 1) + 2 * (group_id.y & 1))) {
         // HACK! do this early instead.
         prob_mult = 0;
     }*/
 
-    uint px_score_loc_packed = 0;
+    uint px_min_score_loc_packed = 0xffffffffu;
     if (uint_to_u01_float(hash1_mut(seed)) < prob_mult * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
-        px_score_loc_packed = (asuint(px_score) & (0xffffffff - 63)) | (px_within_group.y * 8 + px_within_group.x);
+        px_min_score_loc_packed = pack_score_and_px_within_group(px_score, px_within_group);
+        InterlockedMin(gs_px_min_score_loc_packed, px_min_score_loc_packed);
     }
-    
-    InterlockedMax(gs_px_score_loc_packed, px_score_loc_packed);
+
     GroupMemoryBarrierWithGroupSync();
 
     uint group_id_hash = hash2(group_id);
     //out_color = uint_id_to_color(group_id_hash) * 0.1;
 
-    if (gs_px_score_loc_packed == px_score_loc_packed && px_score_loc_packed != 0) {
+    if (gs_px_min_score_loc_packed == px_min_score_loc_packed && px_min_score_loc_packed != 0xffffffffu) {
         #if USE_DEBUG_OUT
             debug_out_tex[px] = float4(0, 0, 1, 1);
         #endif
-        tile_surfel_alloc_tex[group_id] = uint2(px_score_loc_packed, cell_idx);
+        tile_surfel_alloc_tex[group_id] = uint2(px_min_score_loc_packed, cell_idx);
         tile_surfel_irradiance_tex[group_id] = float4(total_color, total_weight);
     } else {
         //debug_out_tex[px] = float4(0, 0, 10, 1);

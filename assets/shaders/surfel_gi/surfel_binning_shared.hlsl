@@ -9,23 +9,9 @@ struct SurfelGridMinMax {
 SurfelGridMinMax get_surfel_grid_box_min_max(Vertex surfel) {
     const float surfel_radius = surfel_radius_for_pos(surfel.position);
 
-    #if 0
-        float3x3 xform = abs(build_orthonormal_basis(surfel.normal));
-
-        zmax = (r23 + sqrt(pow(r23,2) - (r33*r22)) ) / r33; 
-      	zmin = (r23 - sqrt(pow(r23,2) - (r33*r22)) ) / r33; 
-
-      	ymax = (r13 + sqrt(pow(r13,2) - (r33*r11)) ) / r33; 
-      	ymin = (r13 - sqrt(pow(r13,2) - (r33*r11)) ) / r33; 
-      	xmax = (r03 + sqrt(pow(r03,2) - (r33*r00)) ) / r33; 
-      	xmin = (r03 - sqrt(pow(r03,2) - (r33*r00)) ) / r33; 
-
-        const float3 box_min_pos = surfel.position - obb_extent;
-        const float3 box_max_pos = surfel.position + obb_extent;
-    #else
-        const float3 box_min_pos = surfel.position - surfel_radius;
-        const float3 box_max_pos = surfel.position + surfel_radius;
-    #endif
+    // TODO: OBB around normal?
+    const float3 box_min_pos = surfel.position - surfel_radius;
+    const float3 box_max_pos = surfel.position + surfel_radius;
 
     const float3 eye_pos = get_eye_position();
     const float fc = surfel_grid_coord_to_cascade_float(surfel_pos_to_grid_coord(surfel.position, eye_pos));

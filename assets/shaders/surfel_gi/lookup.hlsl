@@ -25,7 +25,9 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws) {
         const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
 
         #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
-            surfel_life_buf[surfel_idx] = 0;
+            if (cell_surfel_count <= MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE) {
+                surfel_life_buf[surfel_idx] = 0;
+            }
         #endif
 
         Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);

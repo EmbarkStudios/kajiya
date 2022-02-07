@@ -2,6 +2,7 @@
 #define SURFEL_CONSTANTS_HLSL
 
 #define MAX_SURFELS_PER_CELL 128
+#define MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE 32
 
 //#define SURFEL_META_CELL_COUNT (0 * sizeof(uint))
 #define SURFEL_META_SURFEL_COUNT (1 * sizeof(uint))
