@@ -44,7 +44,7 @@ impl WorldRenderer {
                 tlas,
             )
         } else {
-            self.csgi.create_volume(rg)
+            self.csgi.create_dummy_volume(rg)
         };
 
         let (gbuffer_depth, velocity_img) = {

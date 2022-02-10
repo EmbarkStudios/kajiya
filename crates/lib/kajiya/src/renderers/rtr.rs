@@ -192,24 +192,23 @@ impl RtrRenderer {
     ) -> TracedRtr {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
-        let mut resolved_tex = rg.create(
+        let resolved_tex = rg.create(
             gbuffer_depth
                 .gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R16G16B16A16_SFLOAT),
+                .format(vk::Format::R8G8B8A8_UNORM),
         );
 
         let (temporal_output_tex, history_tex) = self
             .temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
 
-        let (mut ray_len_output_tex, ray_len_history_tex) =
-            self.ray_len_tex.get_output_and_history(
-                rg,
-                ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, gbuffer_desc.extent_2d())
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            );
+        let (ray_len_output_tex, _ray_len_history_tex) = self.ray_len_tex.get_output_and_history(
+            rg,
+            ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, gbuffer_desc.extent_2d())
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        );
 
         TracedRtr {
             resolved_tex,
