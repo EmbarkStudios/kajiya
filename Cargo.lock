@@ -1404,6 +1404,7 @@ dependencies = [
  "image",
  "kajiya-backend",
  "log",
+ "mikktspace",
  "turbosloth",
  "urlencoding",
 ]
@@ -1616,6 +1617,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59accc507f1338036a0477ef61afdae33cde60840f4dfe481319ce3ad116ddf9"
 dependencies = [
  "autocfg",
+]
+
+[[package]]
+name = "mikktspace"
+version = "0.2.0"
+source = "git+https://github.com/h3r2tic/mikktspace.git?rev=f2d0412b91de385861664e54951ae7dcaaf63f2d#f2d0412b91de385861664e54951ae7dcaaf63f2d"
+dependencies = [
+ "glam",
 ]
 
 [[package]]
