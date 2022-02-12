@@ -17,9 +17,6 @@
 #include "../wrc/bindings.hlsl"
 #include "../inc/color.hlsl"
 
-#define USE_WORLD_RADIANCE_CACHE 0
-
-
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
@@ -29,16 +26,25 @@
 [[vk::binding(4)]] ByteAddressBuffer cell_index_offset_buf;
 [[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(6)]] StructuredBuffer<uint> surfel_life_buf;
-DEFINE_WRC_BINDINGS(7)
-[[vk::binding(8)]] RWByteAddressBuffer surfel_meta_buf;
-[[vk::binding(9)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(10)]] RWStructuredBuffer<float4> surfel_aux_buf;
+[[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_reposition_proposal_buf;
+DEFINE_WRC_BINDINGS(8)
+[[vk::binding(9)]] RWByteAddressBuffer surfel_meta_buf;
+[[vk::binding(10)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(11)]] RWStructuredBuffer<float4> surfel_aux_buf;
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
 
 #define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
+
+#define USE_WORLD_RADIANCE_CACHE 0
+
+// Reduces leaks and spatial artifacts,
+// but increases temporal fluctuation.
+#define USE_DYNAMIC_TRACE_ORIGIN 1
+
+#define USE_BLEND_RESULT 1
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following
@@ -262,7 +268,11 @@ void main() {
         return;
     }   
 
-    const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+    #if USE_DYNAMIC_TRACE_ORIGIN
+        const Vertex surfel = unpack_vertex(surfel_reposition_proposal_buf[surfel_idx]);
+    #else
+        const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+    #endif
 
     const float4 prev_total_radiance_packed = surfel_aux_buf[surfel_idx * 2 + 0];
 
@@ -355,14 +365,18 @@ void main() {
     const float k = 0.5;
 
     surfel_irradiance_buf[surfel_idx] = max(0.0, float4(
-        pow(
-            lerp(
-                pow(max(0.0, prev_irrad), k),
-                pow(max(0.0, blended_value), k),
-                0.25
+        #if USE_BLEND_RESULT
+            pow(
+                lerp(
+                    pow(max(0.0, prev_irrad), k),
+                    pow(max(0.0, blended_value), k),
+                    0.25
+                ),
+                1.0 / k
             ),
-            1.0 / k
-        ),
+        #else
+            blended_value,
+        #endif
         //lerp(prev_irrad, blended_value, 0.25),
         total_sample_count
     ));

@@ -97,7 +97,7 @@ void main() {
 
         // ----
 
-        float roughness_bias = 0.0;
+        float roughness_bias = 0.5;
 
         {
             const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)

@@ -65,6 +65,9 @@ struct WrcFarField {
 WrcFarField WrcFarFieldQuery::query() {
     WrcFarField res;
     res.probe_t = -1;
+    res.approx_surface_t = -1;
+    res.inv_pdf = 1;
+    res.radiance = 0;
     res.inv_pdf = 1;
 
     Aabb wrc_grid_box = Aabb::from_center_half_extent(wrc_grid_center(), WRC_GRID_WORLD_SIZE * 0.5);
@@ -74,61 +77,88 @@ WrcFarField WrcFarFieldQuery::query() {
         const float3 origin_in_box = ray_origin + ray_direction * max(0.0, wrc_grid_intersection.t_min);
         uint rng = hash4(uint4(ray_origin, frame_constants.frame_index));
 
-        // Stochastic interpolation
         const float interpolation_extent = 1.0;
-        const float3 probe_offset = (interpolation_urand - 0.5) * interpolation_extent;
+        float total_weight = 0;
 
-        const uint3 probe_coord = clamp(
-            wrc_world_pos_to_coord(origin_in_box + probe_offset),
-            int3(0, 0, 0),
-            WRC_GRID_DIMS - 1
-        );
-        const float3 probe_center = wrc_probe_center(probe_coord);
-        
-        const Sphere probe_sphere = Sphere::from_center_radius(probe_center, WRC_MIN_TRACE_DIST);
-        RaySphereIntersection parallax = probe_sphere.intersect_ray_inside(ray_origin, ray_direction);
-        if (parallax.is_hit()) {
-            float4 out_value = lookup_wrc(probe_coord, parallax.normal);
+        #define WRC_USE_STOCHASTIC_INTERPOLATION 1
 
-            // With parallax correction, the query ray origin essentially moves
-            // within a sphere centered around the probe. As the query center
-            // does that, some texels of the probe will shrink, and others expand.
-            // Here we adjust for this expansion, making sure energy does not get
-            // biased towards the texels we're moving towards.
-            const float distance_to_box = length(origin_in_box - ray_origin);
-            const float3 parallax_pos = ray_origin + ray_direction * parallax.t;
-            const float3 offset_from_query_pt = parallax_pos - ray_origin;
-            const float3 offset_from_probe_center = parallax_pos - probe_center;
-            const float parallax_dist2 = dot(offset_from_query_pt, offset_from_query_pt);
+    #if WRC_USE_STOCHASTIC_INTERPOLATION
+        // Stochastic interpolation
+        //const float3 probe_offset = (interpolation_urand - 0.5) * interpolation_extent;
+        const float3 probe_offset = 0;
+        {
+            const float interp_weight = 1;
+    #else
+        for (int iz = 0; iz < 2; ++iz)
+        for (int iy = 0; iy < 2; ++iy)
+        for (int ix = 0; ix < 2; ++ix) {            
+            const float3 probe_offset = float3(ix, iy, iz);
+            const float3 interp_frac = lerp(1 - probe_offset, probe_offset, wrc_world_pos_to_interp_frac(origin_in_box));
+            const float interp_weight = interp_frac.x * interp_frac.y * interp_frac.z;
+    #endif
 
-            // TODO: check all this
-            float jacobian = 1;
-            if (all(query_normal) != 0) {
-                jacobian *=
-                    parallax_dist2 / pow(distance_to_box + WRC_MIN_TRACE_DIST, 2)
-                    / dot(ray_direction, normalize(offset_from_probe_center));
+            const uint3 probe_coord = clamp(
+                wrc_world_pos_to_coord(origin_in_box + probe_offset),
+                int3(0, 0, 0),
+                WRC_GRID_DIMS - 1
+            );
+            const float3 probe_center = wrc_probe_center(probe_coord);
+            
+            const Sphere probe_sphere = Sphere::from_center_radius(probe_center, WRC_MIN_TRACE_DIST);
+            RaySphereIntersection parallax = probe_sphere.intersect_ray_inside(ray_origin, ray_direction);
+            if (parallax.is_hit()) {
+                total_weight += interp_weight;
+            
+                float4 out_value = lookup_wrc(probe_coord, parallax.normal);
 
-                // Also account for the change in the PDF being used in lighting.
-                // TODO: might want to move out to a place which knows the BRDF.
-                jacobian *=
-                    dot(query_normal, normalize(offset_from_probe_center))
-                    / dot(query_normal, ray_direction);
+                // With parallax correction, the query ray origin essentially moves
+                // within a sphere centered around the probe. As the query center
+                // does that, some texels of the probe will shrink, and others expand.
+                // Here we adjust for this expansion, making sure energy does not get
+                // biased towards the texels we're moving towards.
+                const float distance_to_box = length(origin_in_box - ray_origin);
+                const float3 parallax_pos = ray_origin + ray_direction * parallax.t;
+                const float3 offset_from_query_pt = parallax_pos - ray_origin;
+                const float3 offset_from_probe_center = parallax_pos - probe_center;
+                const float parallax_dist2 = dot(offset_from_query_pt, offset_from_query_pt);
+
+                // TODO: check all this
+                float jacobian = 1;
+                if (all(query_normal) != 0) {
+                    jacobian *=
+                        parallax_dist2 / pow(distance_to_box + WRC_MIN_TRACE_DIST, 2)
+                        / dot(ray_direction, normalize(offset_from_probe_center));
+
+                    // Also account for the change in the PDF being used in lighting.
+                    // TODO: might want to move out to a place which knows the BRDF.
+                    jacobian *=
+                        dot(query_normal, normalize(offset_from_probe_center))
+                        / dot(query_normal, ray_direction);
+                }
+
+                #if WRC_USE_STOCHASTIC_INTERPOLATION
+                    res.radiance = out_value.rgb;
+                    res.inv_pdf = max(0.0, jacobian);
+                #else
+                    // Olde. Not quite right by pushing the jacobian into radiance,
+                    // but seems to work. Thought reservoir calculations would be affected...
+                    res.radiance += out_value.rgb * max(0.0, jacobian) * interp_weight;
+                    res.inv_pdf = 1;
+                #endif
+
+                #if WRC_USE_STOCHASTIC_INTERPOLATION
+                    const float texel_footprint_fudge = 0.5;
+                #else
+                    const float texel_footprint_fudge = 0.25;
+                #endif
+
+                res.probe_t = max(res.probe_t, parallax.t + texel_footprint_fudge);
+                res.approx_surface_t += parallax.t + out_value.a - WRC_MIN_TRACE_DIST * interp_weight;
             }
-
-            #if 1
-                res.radiance = out_value.rgb;
-                res.inv_pdf = max(0.0, jacobian);
-            #else
-                // Olde. Not quite right by pushing the jacobian into radiance,
-                // but seems to work. Thought reservoir calculations would be affected...
-                res.radiance = out_value.rgb * max(0.0, jacobian);
-                res.inv_pdf = 1;
-            #endif
-
-            const float texel_footprint_fudge = 0.5;
-            res.probe_t = parallax.t + texel_footprint_fudge;
-            res.approx_surface_t = parallax.t + out_value.a - WRC_MIN_TRACE_DIST;
         }
+
+        res.radiance /= total_weight;
+        res.approx_surface_t /= total_weight;
     }
 
     return res;

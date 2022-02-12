@@ -35,6 +35,8 @@ pub struct SurfelGiRenderState {
     surfel_life_buf: rg::Handle<Buffer>,
     surfel_pool_buf: rg::Handle<Buffer>,
 
+    surfel_reposition_proposal_buf: rg::Handle<Buffer>,
+
     pub debug_out: rg::Handle<Image>,
 }
 
@@ -134,6 +136,11 @@ impl SurfelGiRenderer {
                 "surfel_gi.surfel_pool_buf",
                 size_of::<u32>() * MAX_SURFELS,
             ),
+            surfel_reposition_proposal_buf: temporal_storage_buffer(
+                rg,
+                "surfel_gi.surfel_reposition_proposal_buf",
+                size_of::<[f32; 4]>() * MAX_SURFELS,
+            ),
             debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
         };
 
@@ -178,6 +185,7 @@ impl SurfelGiRenderer {
         .write(&mut tile_surfel_alloc_tex)
         .write(&mut tile_surfel_irradiance_tex)
         .write(&mut state.surfel_life_buf)
+        .write(&mut state.surfel_reposition_proposal_buf)
         .constants(gbuffer_desc.extent_inv_extent_2d())
         .dispatch(gbuffer_desc.extent);
 
@@ -205,6 +213,8 @@ impl SurfelGiRenderer {
         .write(&mut state.surfel_meta_buf)
         .write(&mut state.surfel_life_buf)
         .write(&mut state.surfel_pool_buf)
+        .write(&mut state.surfel_spatial_buf)
+        .write(&mut state.surfel_reposition_proposal_buf)
         .dispatch_indirect(&indirect_args_buf, 16);
 
         SimpleRenderPass::new_compute(
@@ -218,6 +228,7 @@ impl SurfelGiRenderer {
         .read(&state.surfel_hash_value_buf)
         .read(&state.surfel_index_buf)
         .write(&mut state.surfel_spatial_buf)
+        .write(&mut state.surfel_reposition_proposal_buf)
         .write(&mut state.surfel_aux_buf)
         .write(&mut state.surfel_irradiance_buf)
         .write(&mut state.surfel_life_buf)
@@ -320,6 +331,7 @@ impl SurfelGiRenderState {
         .read(&self.cell_index_offset_buf)
         .read(&self.surfel_index_buf)
         .read(&self.surfel_life_buf)
+        .read(&self.surfel_reposition_proposal_buf)
         .bind(wrc)
         .write(&mut self.surfel_meta_buf)
         .write(&mut self.surfel_irradiance_buf)

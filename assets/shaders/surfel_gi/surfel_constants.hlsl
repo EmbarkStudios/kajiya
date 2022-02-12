@@ -4,6 +4,10 @@
 #define MAX_SURFELS_PER_CELL 128
 #define MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE 32
 
+static const float SURFEL_GRID_CELL_DIAMETER = 0.2;
+static const float SURFEL_BASE_RADIUS = 0.24;
+static const float SURFEl_RADIUS_OVERSCALE = 1.25;
+
 //#define SURFEL_META_CELL_COUNT (0 * sizeof(uint))
 #define SURFEL_META_SURFEL_COUNT (1 * sizeof(uint))
 #define SURFEL_META_ALLOC_COUNT (2 * sizeof(uint))

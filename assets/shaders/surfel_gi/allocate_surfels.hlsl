@@ -10,13 +10,14 @@
 [[vk::binding(4)]] ByteAddressBuffer surfel_hash_value_buf;
 [[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
 [[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(7)]] RWStructuredBuffer<float4> surfel_aux_buf;
-[[vk::binding(8)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(9)]] RWStructuredBuffer<uint> surfel_life_buf;
-[[vk::binding(10)]] RWStructuredBuffer<uint> surfel_pool_buf;
-[[vk::binding(11)]] Texture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(12)]] Texture2D<float4> tile_surfel_irradiance_tex;
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(7)]] RWStructuredBuffer<VertexPacked> surfel_reposition_proposal_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> surfel_aux_buf;
+[[vk::binding(9)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
+[[vk::binding(10)]] RWStructuredBuffer<uint> surfel_life_buf;
+[[vk::binding(11)]] RWStructuredBuffer<uint> surfel_pool_buf;
+[[vk::binding(12)]] Texture2D<uint2> tile_surfel_alloc_tex;
+[[vk::binding(13)]] Texture2D<float4> tile_surfel_irradiance_tex;
+[[vk::binding(14)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -65,6 +66,7 @@ void main(
     surfel_life_buf[surfel_idx] = 0;
 
     surfel_spatial_buf[surfel_idx] = surfel;
+    surfel_reposition_proposal_buf[surfel_idx] = surfel;
 
     // Irradiance at the interpolated surfel position
     const float4 source_irradiance = tile_surfel_irradiance_tex[tile_px];

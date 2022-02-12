@@ -8,12 +8,10 @@
 //      4*k: checksum
 
 static const uint MAX_SURFEL_GRID_CELLS = 1024 * 256;
-static const float SURFEL_GRID_CELL_DIAMETER = 0.25;
 static const uint SURFEL_CS = 32;
 static const float SURFEL_GRID_CASCADE_DIAMETER = SURFEL_GRID_CELL_DIAMETER * SURFEL_CS;
 static const float SURFEL_GRID_CASCADE_RADIUS = SURFEL_GRID_CASCADE_DIAMETER * 0.5;
 
-static const float SURFEL_BASE_RADIUS = 0.3;
 static const float SURFEL_NORMAL_DIRECTION_SQUISH = 2.0;
 
 int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {

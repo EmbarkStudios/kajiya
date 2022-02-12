@@ -11,8 +11,10 @@ static const float WRC_MIN_TRACE_DIST = M_CBRT_2;
 float3 wrc_grid_center() {
     //return float3(0, 0.4 + sin(frame_constants.frame_index * 0.015) * 0.5, 0);
     //return float3(0, 1.5, 0);
-    return float3(0, -0.5, 0);
+    //return float3(0, -0.5, 0);
     //return float3(0, 1, -15);
+
+    return float3(0, 0.0, 8);
 }
 
 float3 wrc_probe_center(int3 probe_idx) {
@@ -41,6 +43,11 @@ uint probe_coord_to_idx(uint3 probe_coord) {
 int3 wrc_world_pos_to_coord(float3 pos) {
     // TODO: scaling
     return int3(floor(pos - wrc_grid_center() + WRC_GRID_DIMS * 0.5));
+}
+
+float3 wrc_world_pos_to_interp_frac(float3 pos) {
+    // TODO: scaling
+    return frac(pos - wrc_grid_center() + WRC_GRID_DIMS * 0.5);
 }
 
 /*

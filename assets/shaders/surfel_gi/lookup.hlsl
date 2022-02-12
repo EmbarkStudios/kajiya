@@ -40,11 +40,9 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws) {
         const float dist = length(pos_offset);
         const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
 
-        static const float RADIUS_OVERSCALE = 1.25;
-
         const float surfel_radius = surfel_radius_for_pos(surfel.position);
         float weight = smoothstep(
-            surfel_radius * RADIUS_OVERSCALE,
+            surfel_radius * SURFEl_RADIUS_OVERSCALE,
             0.0,
             mahalanobis_dist) * directional_weight;
 
