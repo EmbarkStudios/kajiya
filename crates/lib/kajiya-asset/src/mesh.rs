@@ -317,7 +317,7 @@ impl LazyWorker for LoadGltfScene {
                         let mut indices: Vec<u32>;
                         {
                             if let Some(indices_reader) = reader.read_indices() {
-                                indices = indices_reader.into_u32().map(|i| i).collect();
+                                indices = indices_reader.into_u32().collect();
                             } else {
                                 indices = (0..positions.len() as u32).collect();
                             }
