@@ -16,5 +16,6 @@ glam = "0.18"
 gltf = { git = "https://github.com/h3r2tic/gltf.git", rev = "83826e3", features = ["KHR_texture_transform"] } # u8 color import fix
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
 log = "0.4"
+mikktspace = { git = "https://github.com/h3r2tic/mikktspace.git", rev = "f2d0412b91de385861664e54951ae7dcaaf63f2d", default-features = false, features = ["glam"] }
 turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }
 urlencoding = "2.1"
