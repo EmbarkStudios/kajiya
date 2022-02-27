@@ -1,7 +1,6 @@
 #include "inc/samplers.hlsl"
 #include "inc/frame_constants.hlsl"
 #include "inc/pack_unpack.hlsl"
-#include "inc/tonemap.hlsl"
 #include "inc/rt.hlsl"
 #include "inc/brdf.hlsl"
 #include "inc/brdf_lut.hlsl"

@@ -54,7 +54,7 @@ struct InputRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(rgb_to_ycbcr(decode_rgb(v.rgb)), 1);
+        return float4(sRGB_to_YCbCr(decode_rgb(v.rgb)), 1);
     }
 };
 
@@ -70,8 +70,8 @@ float4 fetch_blurred_history(int2 px, int k, float sigma) {
             float2 offset = float2(x, y) * sigma;
             float w = exp(-dot(offset, offset));
             float color_diff =
-                linear_to_perceptual(srgb_to_luminance(c.rgb))
-                - linear_to_perceptual(srgb_to_luminance(center));
+                linear_to_perceptual(sRGB_to_luminance(c.rgb))
+                - linear_to_perceptual(sRGB_to_luminance(center));
             csum += c * w;
             wsum += w;
         }
@@ -87,7 +87,7 @@ struct HistoryRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(rgb_to_ycbcr(v.rgb), 1);
+        return float4(sRGB_to_YCbCr(v.rgb), 1);
     }
 };
 
@@ -125,8 +125,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 bhistory = bhistory_packed.rgb;
     float3 bhistory_coverage = bhistory_packed.a;
 
-    history = rgb_to_ycbcr(history);
-    bhistory = rgb_to_ycbcr(bhistory);
+    history = sRGB_to_YCbCr(history);
+    bhistory = sRGB_to_YCbCr(bhistory);
 
     const float4 reproj = reprojection_tex[reproj_px];
     const float2 reproj_xy = closest_velocity_tex[px];
@@ -154,7 +154,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float3 center = center_sample.color.rgb;
     coverage = center_sample.coverage;
 #else
-    float3 center = rgb_to_ycbcr(decode_rgb(INPUT_TEX[px].rgb));
+    float3 center = sRGB_to_YCbCr(decode_rgb(INPUT_TEX[px].rgb));
 #endif
 
     float3 bcenter = bcenter_sample.color.rgb / bcenter_sample.coverage;
@@ -318,7 +318,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     smooth_var_output_tex[px] = smooth_var;
 
-    temporal_result = ycbcr_to_rgb(temporal_result);
+    temporal_result = YCbCr_to_sRGB(temporal_result);
 	temporal_result = encode_rgb(temporal_result);
     temporal_result = max(0.0, temporal_result);
     

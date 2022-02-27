@@ -126,7 +126,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 result += sample_val * wt;
                 w_sum += wt;
 
-                const float luminance = srgb_to_luminance(sample_val.rgb);
+                const float luminance = sRGB_to_luminance(sample_val.rgb);
                 ex += luminance * wt;
                 ex2 += luminance * luminance * wt;
                 w_sum2 += wt;

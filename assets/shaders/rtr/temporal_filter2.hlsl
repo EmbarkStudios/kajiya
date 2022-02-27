@@ -51,21 +51,21 @@ float4 working_to_linear(float4 x) {
 
 #if 3 == ENCODING_SCHEME
 float4 linear_to_working(float4 v) {
-    return float4(ycbcr_to_rgb(v.rgb), v.a);
+    return float4(YCbCr_to_sRGB(v.rgb), v.a);
 }
 float4 working_to_linear(float4 v) {
-    return float4(rgb_to_ycbcr(v.rgb), v.a);
+    return float4(sRGB_to_YCbCr(v.rgb), v.a);
 }
 #endif
 
 #if 4 == ENCODING_SCHEME
 float4 linear_to_working(float4 v) {
     v.rgb = sqrt(max(0.0, v.rgb));
-    v.rgb = rgb_to_ycbcr(v.rgb);
+    v.rgb = sRGB_to_YCbCr(v.rgb);
     return v;
 }
 float4 working_to_linear(float4 v) {
-    v.rgb = ycbcr_to_rgb(v.rgb);
+    v.rgb = YCbCr_to_sRGB(v.rgb);
     v.rgb *= v.rgb;
     return v;
 }

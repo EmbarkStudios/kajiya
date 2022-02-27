@@ -29,7 +29,7 @@ struct InputRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(rgb_to_ycbcr(decode_rgb(v.rgb)), 1);
+        return float4(sRGB_to_YCbCr(decode_rgb(v.rgb)), 1);
     }
 };
 
@@ -40,7 +40,7 @@ struct HistoryRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(rgb_to_ycbcr(v.rgb), 1);
+        return float4(sRGB_to_YCbCr(v.rgb), 1);
     }
 };
 

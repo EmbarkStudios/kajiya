@@ -46,7 +46,9 @@ impl LazyWorker for CompileShader {
                     &mut ShaderIncludeProvider { ctx },
                     String::new(),
                 );
-                let source = source.map_err(|err| anyhow!("{}", err))?;
+                let source = source
+                    .map_err(|err| anyhow!("{}", err))
+                    .with_context(|| format!("shader path: {:?}", self.path))?;
                 let target_profile = format!("{}_6_4", self.profile);
                 let spirv = compile_generic_shader_hlsl_impl(&name, &source, &target_profile)?;
 

@@ -71,7 +71,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
             sum += float4(sample_val, 1) * wt;
             
-            float luminance = srgb_to_luminance(sample_val);
+            float luminance = sRGB_to_luminance(sample_val);
             ex += luminance * wt;
             ex2 += luminance * luminance * wt;
         }

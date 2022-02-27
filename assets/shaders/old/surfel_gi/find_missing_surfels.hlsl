@@ -154,7 +154,7 @@ void main(
         px_score = 0.0;
 
         cell_idx = surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
-        float3 surfel_color = 0;//uint_id_to_color(cell_idx) * 0.3;
+        float3 surfel_color = 0;//uint_id_to_sRGB(cell_idx) * 0.3;
 
         // Calculate px score based on surrounding surfels
 
@@ -261,7 +261,7 @@ void main(
             total_color = float3(1, 0, 1);
         }
 
-        //total_color = uint_id_to_color(cell_idx) * 0.3;
+        //total_color = uint_id_to_sRGB(cell_idx) * 0.3;
         //total_color = saturate(1.0 - length(pt_ws.xyz));
 
         debug_out_tex[px] = float4(total_color, 1);
@@ -301,7 +301,7 @@ void main(
     GroupMemoryBarrierWithGroupSync();
 
     uint group_id_hash = hash2(group_id);
-    //out_color = uint_id_to_color(group_id_hash) * 0.1;
+    //out_color = uint_id_to_sRGB(group_id_hash) * 0.1;
 
     if (gs_px_score_loc_packed == px_score_loc_packed && px_score_loc_packed != 0) {
         debug_out_tex[px] = float4(10, 0, 0, 1);

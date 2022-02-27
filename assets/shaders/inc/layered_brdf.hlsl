@@ -129,8 +129,8 @@ struct LayeredBrdf {
         // and reflect with the complement of that. However since we use a single ray,
         // we toss a coin, and choose between reflection and transmission.
 
-        const float spec_wt = srgb_to_luminance(energy_preservation.preintegrated_reflection);
-        const float diffuse_wt = srgb_to_luminance(energy_preservation.preintegrated_transmission_fraction * diffuse_brdf.albedo);
+        const float spec_wt = sRGB_to_luminance(energy_preservation.preintegrated_reflection);
+        const float diffuse_wt = sRGB_to_luminance(energy_preservation.preintegrated_transmission_fraction * diffuse_brdf.albedo);
         const float transmission_p = diffuse_wt / (spec_wt + diffuse_wt);
 
         const float lobe_xi = urand.z;

@@ -22,13 +22,13 @@ struct InputRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(rgb_to_ycbcr(decode_rgb(v.rgb)), 1);
+        return float4(sRGB_to_YCbCr(decode_rgb(v.rgb)), 1);
     }
 };
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
-    const float3 input = rgb_to_ycbcr(decode_rgb(input_tex[px].rgb));
+    const float3 input = sRGB_to_YCbCr(decode_rgb(input_tex[px].rgb));
     
     float3 iex = 0;
     float3 iex2 = 0;
@@ -37,7 +37,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         int k = 1;
         for (int y = -k; y <= k; ++y) {
             for (int x = -k; x <= k; ++x) {
-                float3 s = rgb_to_ycbcr(decode_rgb(input_tex[px + int2(x, y)].rgb));
+                float3 s = sRGB_to_YCbCr(decode_rgb(input_tex[px + int2(x, y)].rgb));
                 float w = 1;
                 iwsum += w;
                 iex += s * w;

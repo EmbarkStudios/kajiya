@@ -8,4 +8,6 @@ static const uint BINDLESS_LUT_BRDF_FG = 0;
 
 static const uint BINDLESS_LUT_BLUE_NOISE_256_LDR_RGBA_0 = 1;
 
+static const uint BINDLESS_LUT_BEZOLD_BRUCKE = 2;
+
 #endif
