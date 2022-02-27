@@ -1,8 +1,16 @@
 #include "inc/samplers.hlsl"
 #include "inc/uv.hlsl"
-#include "inc/tonemap.hlsl"
 #include "inc/frame_constants.hlsl"
 #include "inc/bindless_textures.hlsl"
+
+#define DECLARE_BEZOLD_BRUCKE_LUT
+static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
+    return bindless_textures[BINDLESS_LUT_BEZOLD_BRUCKE].SampleLevel(sampler_llr, float2(coord, 0.5), 0).xy;
+}
+
+#include "inc/color/display_transform.hlsl"
+#define calculate_luma sRGB_to_luminance
+
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 //[[vk::binding(1)]] Texture2D<float4> debug_input_tex;
@@ -15,8 +23,8 @@
     float ev_shift;
 };
 
-#define USE_GRADE 1
-#define USE_TONEMAP 1
+#define USE_GRADE 0
+#define USE_DISPLAY_TRANSFORM 1
 #define USE_DITHER 1
 #define USE_SHARPEN 1
 #define USE_VIGNETTE 1
@@ -116,10 +124,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = push_down_black_point(col, 0.2, 1.25);
 #endif
 
-#if USE_TONEMAP
-    // Apply a perceptually neutral shoulder
-    col = neutral_tonemap(col);
+#if USE_DISPLAY_TRANSFORM
+    // Apply a perceptually neutral display transform
+    col = display_transform_sRGB(col);
 #endif
+
+    // Crank up the contrast
+    //col = pow(col, 1.1);
 
     // Dither
 #if USE_DITHER

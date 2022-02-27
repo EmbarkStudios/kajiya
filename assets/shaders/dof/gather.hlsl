@@ -1,6 +1,5 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/samplers.hlsl"
-#include "../inc/tonemap.hlsl"
 
 [[vk::binding(0)]] Texture2D<float> depth_tex;
 [[vk::binding(1)]] Texture2D<float3> color_tex;

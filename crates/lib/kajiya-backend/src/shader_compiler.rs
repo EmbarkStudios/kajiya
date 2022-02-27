@@ -1,5 +1,5 @@
 use crate::file::LoadFile;
-use anyhow::{anyhow, bail, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use bytes::Bytes;
 use relative_path::RelativePathBuf;
 use std::{path::PathBuf, sync::Arc};
@@ -46,7 +46,9 @@ impl LazyWorker for CompileShader {
                     &mut ShaderIncludeProvider { ctx },
                     String::new(),
                 );
-                let source = source.map_err(|err| anyhow!("{}", err))?;
+                let source = source
+                    .map_err(|err| anyhow!("{}", err))
+                    .with_context(|| format!("shader path: {:?}", self.path))?;
                 let target_profile = format!("{}_6_4", self.profile);
                 let spirv = compile_generic_shader_hlsl_impl(&name, &source, &target_profile)?;
 

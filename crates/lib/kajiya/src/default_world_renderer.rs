@@ -45,6 +45,9 @@ impl WorldRenderer {
             assert_eq!(handle.0, 1);
         }
 
+        // BINDLESS_LUT_BEZOLD_BRUCKE
+        world_renderer.add_image_lut(crate::lut_renderers::BezoldBruckeLutComputer, 2);
+
         // Build an empty TLAS to create the resources. We'll update it at runtime.
         world_renderer.build_ray_tracing_top_level_acceleration();
 
