@@ -1,5 +1,5 @@
-#ifndef ICTCP_HLSL
-#define ICTCP_HLSL
+#ifndef NOTORIOUS6_ICTCP_HLSL
+#define NOTORIOUS6_ICTCP_HLSL
 
 // From https://www.shadertoy.com/view/ldKcz3
 
@@ -182,4 +182,4 @@ float3 ICtCp_to_BT709( float3 ICtCp )
 	return linearBT709;
 }
 
-#endif  // ICTCP_HLSL
+#endif  // NOTORIOUS6_ICTCP_HLSL

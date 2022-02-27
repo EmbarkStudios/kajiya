@@ -1,5 +1,5 @@
-#ifndef SRGB_HLSL
-#define SRGB_HLSL
+#ifndef NOTORIOUS6_SRGB_HLSL
+#define NOTORIOUS6_SRGB_HLSL
 
 float sRGB_to_luminance(float3 col) {
     return dot(col, float3(0.2126, 0.7152, 0.0722));
@@ -43,4 +43,4 @@ float3 sRGB_OETF(float3 a) {
 	return float3(sRGB_OETF(a.r), sRGB_OETF(a.g), sRGB_OETF(a.b));
 }
 
-#endif  // SRGB_HLSL
+#endif  // NOTORIOUS6_SRGB_HLSL
