@@ -15,7 +15,11 @@ impl WorldRenderer {
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
     ) -> rg::Handle<Image> {
-        let tlas = self.prepare_top_level_acceleration(rg);
+        let tlas = if rg.device().ray_tracing_enabled() {
+            Some(self.prepare_top_level_acceleration(rg))
+        } else {
+            None
+        };
 
         let mut accum_img = rg
             .get_or_create_temporal(
@@ -31,13 +35,17 @@ impl WorldRenderer {
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
-        let csgi_volume = self.csgi.render(
-            frame_desc.camera_matrices.eye_position(),
-            rg,
-            &convolved_sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
+        let csgi_volume = if let Some(tlas) = tlas.as_ref() {
+            self.csgi.render(
+                frame_desc.camera_matrices.eye_position(),
+                rg,
+                &convolved_sky_cube,
+                self.bindless_descriptor_set,
+                tlas,
+            )
+        } else {
+            self.csgi.create_dummy_volume(rg)
+        };
 
         let (gbuffer_depth, velocity_img) = {
             let mut gbuffer_depth = {
@@ -104,8 +112,11 @@ impl WorldRenderer {
             .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
-        let sun_shadow_mask =
-            trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
+        let sun_shadow_mask = if let Some(tlas) = tlas.as_ref() {
+            trace_sun_shadow_mask(rg, &gbuffer_depth, tlas, self.bindless_descriptor_set)
+        } else {
+            rg.create(gbuffer_depth.depth.desc().format(vk::Format::R8_UNORM))
+        };
 
         let denoised_shadow_mask = if self.sun_size_multiplier > 0.0f32 {
             self.shadow_denoise
@@ -114,16 +125,21 @@ impl WorldRenderer {
             sun_shadow_mask.into()
         };
 
-        let rtdgi = self.rtdgi.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &csgi_volume,
-            &ssgi_tex,
-        );
+        let rtdgi = if let Some(tlas) = tlas.as_ref() {
+            self.rtdgi.render(
+                rg,
+                &gbuffer_depth,
+                &reprojection_map,
+                &sky_cube,
+                self.bindless_descriptor_set,
+                tlas,
+                &csgi_volume,
+                &ssgi_tex,
+            )
+        } else {
+            rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]))
+                .into()
+        };
 
         // TODO: don't iter over all the things
         let any_triangle_lights = self
@@ -131,26 +147,32 @@ impl WorldRenderer {
             .iter()
             .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
 
-        let mut rtr = self.rtr.trace(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &csgi_volume,
-            &rtdgi,
-        );
-
-        if any_triangle_lights {
-            // Render specular lighting into the RTR image so they can be jointly filtered
-            self.lighting.render_specular(
-                &mut rtr.resolved_tex,
+        let mut rtr = if let Some(tlas) = tlas.as_ref() {
+            self.rtr.trace(
                 rg,
                 &gbuffer_depth,
+                &reprojection_map,
+                &sky_cube,
                 self.bindless_descriptor_set,
-                &tlas,
-            );
+                tlas,
+                &csgi_volume,
+                &rtdgi,
+            )
+        } else {
+            self.rtr.create_dummy_output(rg, &gbuffer_depth)
+        };
+
+        if any_triangle_lights {
+            if let Some(tlas) = tlas.as_ref() {
+                // Render specular lighting into the RTR image so they can be jointly filtered
+                self.lighting.render_specular(
+                    &mut rtr.resolved_tex,
+                    rg,
+                    &gbuffer_depth,
+                    self.bindless_descriptor_set,
+                    tlas,
+                );
+            }
         }
 
         let rtr = rtr.filter_temporal(rg, &gbuffer_depth, &reprojection_map);
@@ -241,9 +263,11 @@ impl WorldRenderer {
             rg::imageops::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
-        let tlas = self.prepare_top_level_acceleration(rg);
+        if rg.device().ray_tracing_enabled() {
+            let tlas = self.prepare_top_level_acceleration(rg);
 
-        reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
+            reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
+        }
 
         post_process(
             rg,

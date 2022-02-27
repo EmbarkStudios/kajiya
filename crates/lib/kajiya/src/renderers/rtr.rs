@@ -184,6 +184,40 @@ impl RtrRenderer {
             temporal2_tex: &mut self.temporal2_tex,
         }
     }
+
+    pub fn create_dummy_output(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        gbuffer_depth: &GbufferDepth,
+    ) -> TracedRtr {
+        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+
+        let resolved_tex = rg.create(
+            gbuffer_depth
+                .gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R8G8B8A8_UNORM),
+        );
+
+        let (temporal_output_tex, history_tex) = self
+            .temporal_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+        let (ray_len_output_tex, _ray_len_history_tex) = self.ray_len_tex.get_output_and_history(
+            rg,
+            ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, gbuffer_desc.extent_2d())
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        );
+
+        TracedRtr {
+            resolved_tex,
+            temporal_output_tex,
+            history_tex,
+            ray_len_tex: ray_len_output_tex,
+            temporal2_tex: &mut self.temporal2_tex,
+        }
+    }
 }
 
 impl<'a> TracedRtr<'a> {

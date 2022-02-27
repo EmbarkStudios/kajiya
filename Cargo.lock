@@ -1183,13 +1183,14 @@ dependencies = [
 
 [[package]]
 name = "hassle-rs"
-version = "0.4.0"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08839e15d5d12dbe4eeded38d6986175baf24b1bd8baeef32c52e19ce2a05283"
+checksum = "cd67699699f525438e8de6635d65739157d4dbe69e763242e4b07b2b3673a829"
 dependencies = [
  "bitflags",
  "com-rs",
- "libloading 0.6.7",
+ "libc",
+ "libloading 0.7.1",
  "thiserror",
  "widestring",
  "winapi 0.3.9",
@@ -2921,9 +2922,9 @@ dependencies = [
 
 [[package]]
 name = "widestring"
-version = "0.4.3"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c168940144dd21fd8046987c16a46a33d5fc84eec29ef9dcddc2ac9e31526b7c"
+checksum = "17882f045410753661207383517a6f62ec3dbeb6a4ed2acce01f0728238d1983"
 
 [[package]]
 name = "winapi"

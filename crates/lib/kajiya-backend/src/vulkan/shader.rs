@@ -19,7 +19,6 @@ use std::{
 };
 
 pub const MAX_DESCRIPTOR_SETS: usize = 4;
-pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 512 * 1024;
 
 type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
 type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
@@ -196,7 +195,7 @@ pub fn create_descriptor_set_layouts(
                             rspirv_reflect::DescriptorDimensionality::Single => 1,
                             rspirv_reflect::DescriptorDimensionality::Array(size) => size,
                             rspirv_reflect::DescriptorDimensionality::RuntimeArray => {
-                                MAX_BINDLESS_DESCRIPTOR_COUNT as u32
+                                device.max_bindless_descriptor_count()
                             }
                         };
 

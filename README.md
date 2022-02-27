@@ -73,6 +73,10 @@ Operating systems:
 * `uuid-dev`
 * In case the bundled `libdxcompiler.so` doesn't work: https://github.com/microsoft/DirectXShaderCompiler#downloads
 
+### (Some) MacOS dependencies
+
+* `ossp-uuid` (`brew install ossp-uuid`)
+
 ## Building and running
 
 To build `kajiya` and its tools, [you need Rust](https://www.rust-lang.org/tools/install).

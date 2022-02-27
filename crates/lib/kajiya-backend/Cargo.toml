@@ -17,7 +17,7 @@ derive_builder = { version = "0.9", default-features = false }
 futures = "0.3"
 glam = "0.18"
 gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", rev = "e66d062cbd73a6c98834fc3e3acef98318097156" }
-hassle-rs = "0.4"
+hassle-rs = "0.5"
 hotwatch = "0.4"
 lazy_static = "1.4"
 log = "0.4"
@@ -36,7 +36,5 @@ turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af
 vk-sync = { git = "https://github.com/h3r2tic/vk-sync-rs", rev = "cb5bbf2" }
 
 [features]
-default = ["ray-tracing"]
 #default = []
-ray-tracing = []
 dlss = []

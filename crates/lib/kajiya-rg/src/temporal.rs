@@ -131,6 +131,10 @@ impl TemporalRenderGraph {
             temporal_state: state,
         }
     }
+
+    pub fn device(&self) -> &Device {
+        self.device.as_ref()
+    }
 }
 
 pub trait GetOrCreateTemporal<Desc: ResourceDesc> {
