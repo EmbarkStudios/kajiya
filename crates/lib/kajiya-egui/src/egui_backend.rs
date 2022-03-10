@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash_egui::egui::{self, vec2, CtxRef};
+use ash_egui::egui::{self, vec2, CtxRef, RawInput};
 use kajiya::{
     backend::{
         ash::{self, vk},
@@ -27,6 +27,15 @@ pub struct EguiBackend {
     inner: Arc<Mutex<EguiBackendInner>>,
     device: Arc<Device>,
     pub raw_input: ash_egui::egui::RawInput,
+}
+
+#[derive(Clone)]
+pub struct EguiState {
+    pub egui_context: CtxRef,
+    pub raw_input: RawInput,
+    pub window_size_scale: (u32, u32, f64),
+    pub last_mouse_pos: Option<(f32, f32)>,
+    pub last_dt: f64,
 }
 
 impl EguiBackend {
@@ -107,15 +116,20 @@ impl EguiBackend {
     ) {
     }
 
-    pub fn prepare_frame(&mut self, context: &mut CtxRef, dt: f32) {
-        // update time
-        if let Some(time) = self.raw_input.time {
-            self.raw_input.time = Some(time + dt as f64);
-        } else {
-            self.raw_input.time = Some(0.0);
-        }
+    pub fn prepare_context_frame(state: &mut EguiState) {
 
-        context.begin_frame(self.raw_input.take());
+        // Update time
+        if let Some(time) = state.raw_input.time {
+            state.raw_input.time = Some(time + state.last_dt);
+        } else {
+            state.raw_input.time = Some(0.0);
+        }
+    
+        // Begin frame for the context
+        state.egui_context.begin_frame(state.raw_input.clone());
+    
+        // Clear events to prevent repeated events in next frame
+        state.raw_input.events.clear();
     }
 
     pub fn finish_frame(
