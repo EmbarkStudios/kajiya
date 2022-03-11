@@ -77,10 +77,14 @@ impl<'a> EguiContext<'a> {
     }
 
     fn process_input(&mut self, mouse: &MouseState) {
-        let mouse_position = (
+        let mut mouse_position = (
             mouse.physical_position.x as f32,
             mouse.physical_position.y as f32,
         );
+        
+        mouse_position.0 /= self.egui.raw_input.pixels_per_point.unwrap();
+        mouse_position.1 /= self.egui.raw_input.pixels_per_point.unwrap();
+
         self.egui.last_mouse_pos = Some(mouse_position);
 
         self.egui
