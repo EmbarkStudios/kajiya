@@ -345,7 +345,7 @@ impl Renderer {
             //     .collect::<Vec<_>>();
             let srgba_pixels: Vec<u8> = texture
                 .srgba_pixels(0.24)
-                .flat_map(|srgba| vec![srgba.r()])
+                .flat_map(|srgba| vec![srgba.r(), srgba.g(), srgba.b(), srgba.a()])
                 .collect();
             unsafe {
                 image_base.copy_from_nonoverlapping(srgba_pixels.as_ptr(), srgba_pixels.len())
