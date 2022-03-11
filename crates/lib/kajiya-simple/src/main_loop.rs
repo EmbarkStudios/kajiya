@@ -1,9 +1,8 @@
 use std::collections::VecDeque;
 
 #[cfg(feature = "use-egui")]
-use egui::Context;
+use egui::{Context, Modifiers, Vec2};
 
-use egui::Modifiers;
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     frame_desc::WorldFrameDesc,
@@ -78,8 +77,10 @@ impl<'a> EguiContext<'a> {
     }
 
     fn process_input(&mut self, mouse: &MouseState) {
-
-        let mouse_position = (mouse.physical_position.x as f32, mouse.physical_position.y as f32);
+        let mouse_position = (
+            mouse.physical_position.x as f32,
+            mouse.physical_position.y as f32,
+        );
         self.egui.last_mouse_pos = Some(mouse_position);
 
         self.egui
@@ -93,33 +94,33 @@ impl<'a> EguiContext<'a> {
         let pos = egui::pos2(mouse_position.0, mouse_position.1);
 
         if mouse.buttons_pressed == MOUSE_BUTTON_LEFT_PRESSED {
-            self.egui
-                .raw_input
-                .events
-                .push(egui::Event::PointerButton {
-                    pos,
-                    button: egui::PointerButton::Primary,
-                    pressed: true,
-                    modifiers: Modifiers::default(),
-                });
+            self.egui.raw_input.events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::default(),
+            });
         }
 
         if mouse.buttons_released == MOUSE_BUTTON_LEFT_RELEASED {
+            self.egui.raw_input.events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            });
+        }
+
+        if mouse.wheel_delta != 0.0 {
+            let scroll_delta = Vec2::new(0.0, mouse.wheel_delta);
             self.egui
                 .raw_input
                 .events
-                .push(egui::Event::PointerButton {
-                    pos,
-                    button: egui::PointerButton::Primary,
-                    pressed: false,
-                    modifiers: Modifiers::default(),
-                });
+                .push(egui::Event::Scroll(scroll_delta));
         }
-
     }
 
     pub fn frame(&mut self, mouse: &MouseState, callback: impl FnOnce(&Context)) {
-
         self.process_input(mouse);
 
         callback(&self.egui.egui_context);
@@ -368,7 +369,11 @@ impl SimpleMainLoop {
         let mut egui = egui::Context::default();
 
         #[cfg(feature = "use-egui")]
-        let window_size_scale = (window.inner_size().width, window.inner_size().height, window.scale_factor());
+        let window_size_scale = (
+            window.inner_size().width,
+            window.inner_size().height,
+            window.scale_factor(),
+        );
 
         #[cfg(feature = "use-egui")]
         let mut egui_backend = kajiya_egui::EguiBackend::new(

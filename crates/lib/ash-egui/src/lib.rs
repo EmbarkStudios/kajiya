@@ -193,8 +193,8 @@ impl Renderer {
                 );
 
                 image
-            },
-            _ => panic!("Egui font texture could not be loaded")
+            }
+            _ => panic!("Egui font texture could not be loaded"),
         };
 
         let (image_buffer, image_mem_offset) = {
@@ -337,15 +337,19 @@ impl Renderer {
             let image_base =
                 unsafe { (host_mapping as *mut u8).add(image_mem_offset) } as *mut c_uchar;
 
-            // assert_eq!(texture.pixels.len(), texture.width * texture.height);
+            // TOOD: need srgba, what texture format???
+            // let data = texture
+            //     .pixels
+            //     .iter()
+            //     .flat_map(|&r| vec![r, r, r, r])
+            //     .collect::<Vec<_>>();
             let srgba_pixels: Vec<u8> = texture
                 .srgba_pixels(0.24)
-                .flat_map(|srgba| vec![srgba.r(), srgba.g(), srgba.b(), srgba.a()])
+                .flat_map(|srgba| vec![srgba.r()])
                 .collect();
             unsafe {
                 image_base.copy_from_nonoverlapping(srgba_pixels.as_ptr(), srgba_pixels.len())
             };
-
         }
 
         Self {

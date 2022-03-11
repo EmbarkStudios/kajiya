@@ -3,7 +3,10 @@
 use glam::Vec2;
 use std::collections::HashMap;
 pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
-use winit::{dpi::PhysicalPosition, event::WindowEvent};
+use winit::{
+    dpi::PhysicalPosition,
+    event::{MouseScrollDelta, WindowEvent},
+};
 
 #[derive(Clone)]
 pub struct KeyState {
@@ -54,6 +57,7 @@ pub struct MouseState {
     pub buttons_held: u32,
     pub buttons_pressed: u32,
     pub buttons_released: u32,
+    pub wheel_delta: f32,
 }
 
 impl Default for MouseState {
@@ -64,6 +68,7 @@ impl Default for MouseState {
             buttons_held: 0,
             buttons_pressed: 0,
             buttons_released: 0,
+            wheel_delta: 0.0,
         }
     }
 }
@@ -73,6 +78,7 @@ impl MouseState {
         let prev_physical_position = self.physical_position;
         self.buttons_pressed = 0;
         self.buttons_released = 0;
+        self.wheel_delta = 0.0;
 
         for event in events {
             match event {
@@ -93,6 +99,11 @@ impl MouseState {
                     } else {
                         self.buttons_held &= !(1 << button_id);
                         self.buttons_released |= 1 << button_id;
+                    }
+                }
+                WindowEvent::MouseWheel { delta, .. } => {
+                    if let MouseScrollDelta::LineDelta(_, delta_y) = delta {
+                        self.wheel_delta = *delta_y * 24.0;
                     }
                 }
                 _ => (),

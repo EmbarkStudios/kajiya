@@ -117,17 +117,16 @@ impl EguiBackend {
     }
 
     pub fn prepare_context_frame(state: &mut EguiState) {
-
         // Update time
         if let Some(time) = state.raw_input.time {
             state.raw_input.time = Some(time + state.last_dt);
         } else {
             state.raw_input.time = Some(0.0);
         }
-    
+
         // Begin frame for the context
         state.egui_context.begin_frame(state.raw_input.clone());
-    
+
         // Clear events to prevent repeated events in next frame
         state.raw_input.events.clear();
     }

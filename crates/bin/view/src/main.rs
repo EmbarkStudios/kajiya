@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use dolly::prelude::*;
 #[cfg(feature = "use-egui")]
-use egui::CollapsingHeader;
+use egui::{CollapsingHeader, ScrollArea, TextStyle};
 #[cfg(feature = "dear-imgui")]
 use imgui::im_str;
 use kajiya::{rg::GraphDebugHook, world_renderer::AddMeshOptions};
@@ -232,7 +232,7 @@ fn main() -> anyhow::Result<()> {
         let mut locked_rg_debug_hook: Option<GraphDebugHook> = None;
 
         #[cfg(feature = "use-egui")]
-        let mut egui_ui_state = EguiUIState::default();
+        let mut current_render_scope_name = String::new();
 
         kajiya.run(move |mut ctx| {
             // Limit framerate. Not particularly precise.
@@ -404,7 +404,6 @@ fn main() -> anyhow::Result<()> {
 
             #[cfg(feature = "dear-imgui")]
             if show_gui {
-
                 ctx.imgui.take().unwrap().frame(|ui| {
                     if imgui::CollapsingHeader::new(im_str!("Tweaks"))
                         .default_open(true)
@@ -584,43 +583,232 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                 });
-
             }
 
             #[cfg(feature = "use-egui")]
-            if !show_gui {
-
+            if show_gui {
                 let egui = ctx.egui.as_mut().unwrap();
                 egui.frame(&mouse, |egui_ctx| {
                     egui::Window::new("Debug")
-                    .resizable(true)
-                    .show(egui_ctx, |ui| {
-                        CollapsingHeader::new("Tweaks")
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            ui.add(egui::Slider::new(&mut state.ev_shift, -8.0..=8.0).smallest_positive(0.01));
+                        .resizable(true)
+                        .min_height(500.0)
+                        .show(egui_ctx, |ui| {
+                            let text_style = TextStyle::Body;
+                            let row_height = ui.text_style_height(&text_style);
+                            let num_rows = 3;
+                            ScrollArea::vertical()
+                                .auto_shrink([false; 2])
+                                .show(ui, |ui| {
+                                    CollapsingHeader::new("Tweaks").default_open(true).show(
+                                        ui,
+                                        |ui| {
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::Slider::new(
+                                                        &mut state.ev_shift,
+                                                        -8.0..=8.0,
+                                                    )
+                                                    .clamp_to_range(false)
+                                                    .smart_aim(false)
+                                                    .step_by(0.01),
+                                                );
+                                                ui.label("EV shift");
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::Slider::new(
+                                                        &mut state.emissive_multiplier,
+                                                        0.0..=10.0,
+                                                    )
+                                                    .clamp_to_range(false)
+                                                    .smart_aim(false)
+                                                    .step_by(0.01),
+                                                );
+                                                ui.label("Emissive multiplier");
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::Slider::new(
+                                                        &mut state.lights.multiplier,
+                                                        0.0..=1000.0,
+                                                    )
+                                                    .clamp_to_range(false)
+                                                    .smart_aim(false)
+                                                    .step_by(0.01),
+                                                );
+                                                ui.label("Light intensity multiplier");
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::Slider::new(
+                                                        &mut state.vertical_fov,
+                                                        0.0..=120.0,
+                                                    )
+                                                    .clamp_to_range(false)
+                                                    .smart_aim(false)
+                                                    .step_by(0.01),
+                                                );
+                                                ui.label("Field of view");
+                                            });
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::Slider::new(
+                                                        &mut ctx.world_renderer.sun_size_multiplier,
+                                                        0.0..=10.0,
+                                                    )
+                                                    .clamp_to_range(false)
+                                                    .smart_aim(false)
+                                                    .step_by(0.01),
+                                                );
+                                                ui.label("Sun size");
+                                            });
+                                        },
+                                    );
+
+                                    CollapsingHeader::new("Debug").default_open(false).show(
+                                        ui,
+                                        |ui| {
+                                            ui.radio_value(
+                                                &mut ctx.world_renderer.debug_mode,
+                                                RenderDebugMode::None,
+                                                "Scene geometry",
+                                            );
+                                            ui.radio_value(
+                                                &mut ctx.world_renderer.debug_mode,
+                                                RenderDebugMode::CsgiVoxelGrid {
+                                                    cascade_idx: debug_gi_cascade_idx as usize,
+                                                },
+                                                "GI voxel grid",
+                                            );
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::DragValue::new(&mut debug_gi_cascade_idx)
+                                                        .clamp_range(0..=3),
+                                                );
+                                                if debug_gi_cascade_idx > 0 {
+                                                    ctx.world_renderer.debug_mode =
+                                                        RenderDebugMode::CsgiVoxelGrid {
+                                                            cascade_idx: debug_gi_cascade_idx
+                                                                as usize,
+                                                        };
+                                                }
+                                                ui.label("Cascade index");
+                                            });
+                                            ui.radio_value(
+                                                &mut ctx.world_renderer.debug_mode,
+                                                RenderDebugMode::CsgiRadiance,
+                                                "GI voxel radiance",
+                                            );
+
+                                            egui::ComboBox::from_label("Shading")
+                                                .selected_text(format!(
+                                                    "{}",
+                                                    match ctx.world_renderer.debug_shading_mode {
+                                                        0 => "Default",
+                                                        1 => "No base color",
+                                                        2 => "Diffuse GI",
+                                                        3 => "Reflections",
+                                                        4 => "RTX OFF",
+                                                        _ => "None",
+                                                    }
+                                                ))
+                                                .show_ui(ui, |ui| {
+                                                    ui.selectable_value(
+                                                        &mut ctx.world_renderer.debug_shading_mode,
+                                                        0,
+                                                        "Default",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut ctx.world_renderer.debug_shading_mode,
+                                                        1,
+                                                        "No base color",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut ctx.world_renderer.debug_shading_mode,
+                                                        2,
+                                                        "Diffuse GI",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut ctx.world_renderer.debug_shading_mode,
+                                                        3,
+                                                        "Reflections",
+                                                    );
+                                                    ui.selectable_value(
+                                                        &mut ctx.world_renderer.debug_shading_mode,
+                                                        4,
+                                                        "RTX OFF",
+                                                    );
+                                                });
+
+                                            ui.horizontal(|ui| {
+                                                ui.add(
+                                                    egui::DragValue::new(&mut max_fps)
+                                                        .clamp_range(1..=MAX_FPS_LIMIT),
+                                                );
+                                                ui.label("Max FPS");
+                                            });
+                                        },
+                                    );
+
+                                    CollapsingHeader::new("GPU Passes").default_open(true).show(
+                                        ui,
+                                        |ui| {
+                                            let gpu_stats = gpu_profiler::get_stats();
+                                            ui.label(format!(
+                                                "CPU frame time: {:.3}ms",
+                                                ctx.dt_filtered * 1000.0
+                                            ));
+
+                                            let ordered_scopes = gpu_stats.get_ordered();
+                                            let gpu_time_ms: f64 =
+                                                ordered_scopes.iter().map(|(_, ms)| ms).sum();
+
+                                            ui.label(format!(
+                                                "GPU frame time: {:.3}ms",
+                                                gpu_time_ms
+                                            ));
+                                            for (scope, ms) in ordered_scopes {
+                                                if scope.name == "debug"
+                                                    || scope.name.starts_with('_')
+                                                {
+                                                    continue;
+                                                }
+
+                                                let label = ui.selectable_label(
+                                                    scope.name == current_render_scope_name,
+                                                    format!("{}: {:.3}ms", scope.name, ms),
+                                                );
+
+                                                if label.hovered() {
+                                                    ctx.world_renderer.rg_debug_hook =
+                                                        Some(kajiya::rg::GraphDebugHook {
+                                                            render_scope: scope.clone(),
+                                                        });
+
+                                                    if label.clicked() {
+                                                        if current_render_scope_name == scope.name {
+                                                            current_render_scope_name.clear();
+                                                        } else {
+                                                            current_render_scope_name = scope.name;
+                                                        }
+                                                        if locked_rg_debug_hook
+                                                            == ctx.world_renderer.rg_debug_hook
+                                                        {
+                                                            locked_rg_debug_hook = None;
+                                                        } else {
+                                                            locked_rg_debug_hook = ctx
+                                                                .world_renderer
+                                                                .rg_debug_hook
+                                                                .clone();
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                    );
+                                });
                         });
-
-                        CollapsingHeader::new("Debug")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            ui.label("Hello egui!");
-                        });
-
-                        CollapsingHeader::new("GPU Passes")
-                        .default_open(true)
-                        .show(ui, |ui| {
-                            ui.vertical(|ui| {
-                                ui.checkbox(&mut egui_ui_state.debug_scope_checked, "debug_a");
-                                ui.checkbox(&mut egui_ui_state.debug_scope_checked, "debug_b");
-                                ui.checkbox(&mut egui_ui_state.debug_scope_checked, "debug_c");
-                            });
-                        });
-                    });
-
-
                 });
-
             }
 
             ctx.world_renderer.ev_shift = state.ev_shift;
