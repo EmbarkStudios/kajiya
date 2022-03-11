@@ -7,7 +7,7 @@ publish = false
 
 [dependencies]
 ash = "0.33"
-egui = "0.16.1"
+egui = "0.17.0"
 arrayvec = "0.5"
 memoffset = "0.6"
 bytemuck = "1.5.0"

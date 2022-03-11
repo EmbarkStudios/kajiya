@@ -1,6 +1,9 @@
 use anyhow::Context;
 
 use dolly::prelude::*;
+#[cfg(feature = "use-egui")]
+use egui::CollapsingHeader;
+#[cfg(feature = "dear-imgui")]
 use imgui::im_str;
 use kajiya::{rg::GraphDebugHook, world_renderer::AddMeshOptions};
 use kajiya_simple::*;
@@ -54,6 +57,12 @@ struct SceneInstanceDesc {
 struct SunState {
     theta: f32,
     phi: f32,
+}
+
+#[cfg(feature = "use-egui")]
+#[derive(Default)]
+pub struct EguiUIState {
+    debug_scope_checked: bool,
 }
 
 impl SunState {
@@ -221,6 +230,9 @@ fn main() -> anyhow::Result<()> {
         let mut debug_gi_cascade_idx: u32 = 0;
 
         let mut locked_rg_debug_hook: Option<GraphDebugHook> = None;
+
+        #[cfg(feature = "use-egui")]
+        let mut egui_ui_state = EguiUIState::default();
 
         kajiya.run(move |mut ctx| {
             // Limit framerate. Not particularly precise.
@@ -390,7 +402,9 @@ fn main() -> anyhow::Result<()> {
 
             ctx.world_renderer.rg_debug_hook = locked_rg_debug_hook.clone();
 
+            #[cfg(feature = "dear-imgui")]
             if show_gui {
+
                 ctx.imgui.take().unwrap().frame(|ui| {
                     if imgui::CollapsingHeader::new(im_str!("Tweaks"))
                         .default_open(true)
@@ -570,6 +584,43 @@ fn main() -> anyhow::Result<()> {
                         }
                     }
                 });
+
+            }
+
+            #[cfg(feature = "use-egui")]
+            if !show_gui {
+
+                let egui = ctx.egui.as_mut().unwrap();
+                egui.frame(&mouse, |egui_ctx| {
+                    egui::Window::new("Debug")
+                    .resizable(true)
+                    .show(egui_ctx, |ui| {
+                        CollapsingHeader::new("Tweaks")
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.add(egui::Slider::new(&mut state.ev_shift, -8.0..=8.0).smallest_positive(0.01));
+                        });
+
+                        CollapsingHeader::new("Debug")
+                        .default_open(false)
+                        .show(ui, |ui| {
+                            ui.label("Hello egui!");
+                        });
+
+                        CollapsingHeader::new("GPU Passes")
+                        .default_open(true)
+                        .show(ui, |ui| {
+                            ui.vertical(|ui| {
+                                ui.checkbox(&mut egui_ui_state.debug_scope_checked, "debug_a");
+                                ui.checkbox(&mut egui_ui_state.debug_scope_checked, "debug_b");
+                                ui.checkbox(&mut egui_ui_state.debug_scope_checked, "debug_c");
+                            });
+                        });
+                    });
+
+
+                });
+
             }
 
             ctx.world_renderer.ev_shift = state.ev_shift;

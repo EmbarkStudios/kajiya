@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash_egui::egui::{self, vec2, CtxRef, RawInput};
+use ash_egui::egui::{self, vec2, Context, RawInput};
 use kajiya::{
     backend::{
         ash::{self, vk},
@@ -31,7 +31,7 @@ pub struct EguiBackend {
 
 #[derive(Clone)]
 pub struct EguiState {
-    pub egui_context: CtxRef,
+    pub egui_context: Context,
     pub raw_input: RawInput,
     pub window_size_scale: (u32, u32, f64),
     pub last_mouse_pos: Option<(f32, f32)>,
@@ -42,7 +42,7 @@ impl EguiBackend {
     pub fn new(
         device: Arc<Device>,
         window_settings: (u32, u32, f64),
-        context: &mut CtxRef,
+        context: &mut Context,
     ) -> Self {
         let (window_width, window_height, window_scale_factor) = window_settings;
 
@@ -134,7 +134,7 @@ impl EguiBackend {
 
     pub fn finish_frame(
         &mut self,
-        context: &mut CtxRef,
+        context: &mut Context,
         gui_render_extent: (u32, u32),
         ui_renderer: &mut UiRenderer,
     ) {
@@ -143,7 +143,8 @@ impl EguiBackend {
         let inner = self.inner.clone();
         let device = self.device.clone();
 
-        let (_, clipped_shapes) = context.end_frame();
+        let full_output = context.end_frame();
+        let clipped_shapes = full_output.shapes;
         let clipped_meshes = context.tessellate(clipped_shapes);
 
         ui_renderer.ui_frame = Some((

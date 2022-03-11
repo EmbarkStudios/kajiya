@@ -1,5 +1,9 @@
 use std::collections::VecDeque;
 
+#[cfg(feature = "use-egui")]
+use egui::Context;
+
+use egui::Modifiers;
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     frame_desc::WorldFrameDesc,
@@ -11,6 +15,9 @@ use kajiya::{
 #[cfg(feature = "dear-imgui")]
 use kajiya_imgui::ImGuiBackend;
 
+#[cfg(feature = "use-egui")]
+use kajiya_egui::{EguiBackend, EguiState};
+
 use turbosloth::*;
 
 use winit::{
@@ -20,6 +27,13 @@ use winit::{
     window::{Fullscreen, WindowBuilder},
 };
 
+use crate::MouseState;
+
+#[cfg(feature = "use-egui")]
+const MOUSE_BUTTON_LEFT_PRESSED: u32 = 1;
+#[cfg(feature = "use-egui")]
+const MOUSE_BUTTON_LEFT_RELEASED: u32 = 1;
+
 pub struct FrameContext<'a> {
     pub dt_filtered: f32,
     pub render_extent: [u32; 2],
@@ -28,6 +42,9 @@ pub struct FrameContext<'a> {
 
     #[cfg(feature = "dear-imgui")]
     pub imgui: Option<ImguiContext<'a>>,
+
+    #[cfg(feature = "use-egui")]
+    pub egui: Option<EguiContext<'a>>,
 }
 
 impl<'a> FrameContext<'a> {
@@ -43,6 +60,85 @@ pub struct ImguiContext<'a> {
     ui_renderer: &'a mut UiRenderer,
     window: &'a winit::window::Window,
     dt_filtered: f32,
+}
+
+#[cfg(feature = "use-egui")]
+pub struct EguiContext<'a> {
+    egui: &'a mut EguiState,
+    egui_backend: &'a mut EguiBackend,
+    ui_renderer: &'a mut UiRenderer,
+    window: &'a winit::window::Window,
+    dt_filtered: f32,
+}
+
+#[cfg(feature = "use-egui")]
+impl<'a> EguiContext<'a> {
+    pub fn ctx(&self) -> &Context {
+        &self.egui.egui_context
+    }
+
+    fn process_input(&mut self, mouse: &MouseState) {
+
+        let mouse_position = (mouse.physical_position.x as f32, mouse.physical_position.y as f32);
+        self.egui.last_mouse_pos = Some(mouse_position);
+
+        self.egui
+            .raw_input
+            .events
+            .push(egui::Event::PointerMoved(egui::pos2(
+                mouse_position.0,
+                mouse_position.1,
+            )));
+
+        let pos = egui::pos2(mouse_position.0, mouse_position.1);
+
+        if mouse.buttons_pressed == MOUSE_BUTTON_LEFT_PRESSED {
+            self.egui
+                .raw_input
+                .events
+                .push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Modifiers::default(),
+                });
+        }
+
+        if mouse.buttons_released == MOUSE_BUTTON_LEFT_RELEASED {
+            self.egui
+                .raw_input
+                .events
+                .push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: Modifiers::default(),
+                });
+        }
+
+    }
+
+    pub fn frame(&mut self, mouse: &MouseState, callback: impl FnOnce(&Context)) {
+
+        self.process_input(mouse);
+
+        callback(&self.egui.egui_context);
+
+        // Update delta time
+        self.egui.last_dt = self.dt_filtered as f64;
+
+        // Prepare the egui context's frame so that the renderer can finish frame
+        EguiBackend::prepare_context_frame(&mut self.egui);
+
+        let (width, height, _) = self.egui.window_size_scale;
+
+        // (Update input)...
+        self.egui_backend.finish_frame(
+            &mut self.egui.egui_context,
+            (width, height),
+            self.ui_renderer,
+        );
+    }
 }
 
 #[cfg(feature = "dear-imgui")]
@@ -63,6 +159,12 @@ struct MainLoopOptional {
 
     #[cfg(feature = "dear-imgui")]
     imgui: imgui::Context,
+
+    #[cfg(feature = "use-egui")]
+    egui_backend: EguiBackend,
+
+    #[cfg(feature = "use-egui")]
+    egui: EguiState,
 
     #[cfg(feature = "puffin-server")]
     _puffin_server: puffin_http::Server,
@@ -262,6 +364,31 @@ impl SimpleMainLoop {
         #[cfg(feature = "dear-imgui")]
         imgui_backend.create_graphics_resources(swapchain_extent);
 
+        #[cfg(feature = "use-egui")]
+        let mut egui = egui::Context::default();
+
+        #[cfg(feature = "use-egui")]
+        let window_size_scale = (window.inner_size().width, window.inner_size().height, window.scale_factor());
+
+        #[cfg(feature = "use-egui")]
+        let mut egui_backend = kajiya_egui::EguiBackend::new(
+            rg_renderer.device().clone(),
+            window_size_scale,
+            &mut egui,
+        );
+
+        #[cfg(feature = "use-egui")]
+        egui_backend.create_graphics_resources([window_size_scale.0, window_size_scale.1]);
+
+        #[cfg(feature = "use-egui")]
+        let egui = EguiState {
+            egui_context: egui,
+            raw_input: egui_backend.raw_input.clone(),
+            window_size_scale,
+            last_mouse_pos: None,
+            last_dt: 0.0,
+        };
+
         #[cfg(feature = "puffin-server")]
         let puffin_server = {
             let server_addr = format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT);
@@ -276,6 +403,10 @@ impl SimpleMainLoop {
             imgui_backend,
             #[cfg(feature = "dear-imgui")]
             imgui,
+            #[cfg(feature = "use-egui")]
+            egui_backend,
+            #[cfg(feature = "use-egui")]
+            egui,
             #[cfg(feature = "puffin-server")]
             _puffin_server: puffin_server,
         };
@@ -413,6 +544,15 @@ impl SimpleMainLoop {
                     ui_renderer: &mut ui_renderer,
                     dt_filtered,
                     window: &window,
+                }),
+
+                #[cfg(feature = "use-egui")]
+                egui: Some(EguiContext {
+                    egui: &mut optional.egui,
+                    egui_backend: &mut optional.egui_backend,
+                    ui_renderer: &mut ui_renderer,
+                    window: &window,
+                    dt_filtered,
                 }),
             });
 

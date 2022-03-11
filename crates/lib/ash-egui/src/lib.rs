@@ -4,7 +4,7 @@
 use arrayvec::ArrayVec;
 use ash::{vk, Device};
 use bytemuck::bytes_of;
-use egui::{epaint::Vertex, CtxRef, RawInput};
+use egui::{epaint::Vertex, Context, RawInput};
 use memoffset::offset_of;
 use std::{
     ffi::CStr,
@@ -84,7 +84,7 @@ impl Renderer {
         device: &Device,
         physical_device_properties: &vk::PhysicalDeviceProperties,
         physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
-        egui: &mut CtxRef,
+        egui: &mut Context,
         raw_input: RawInput,
     ) -> Self {
         let vertex_shader = load_shader_module(device, include_bytes!("egui.vert.spv"));
@@ -181,12 +181,25 @@ impl Renderer {
             )
         };
 
-        let (_, _) = egui.run(raw_input, |_ctx| {});
-        let texture = egui.font_image();
+        let full_output = egui.run(raw_input, |_ctx| {});
+        let texture_size = egui.fonts().font_image_size();
+        let texture_delta = full_output.textures_delta.set.iter().next().unwrap();
+        let texture = match &texture_delta.1.image {
+            egui::ImageData::Alpha(image) => {
+                assert_eq!(
+                    image.width() * image.height(),
+                    image.pixels.len(),
+                    "Mismatch between texture size and texel count"
+                );
+
+                image
+            },
+            _ => panic!("Egui font texture could not be loaded")
+        };
 
         let (image_buffer, image_mem_offset) = {
             let buffer_create_info = vk::BufferCreateInfo {
-                size: vk::DeviceSize::from(texture.width as u64 * texture.height as u64 * 4),
+                size: vk::DeviceSize::from(texture_size[0] as u64 * texture_size[1] as u64 * 4),
                 usage: vk::BufferUsageFlags::TRANSFER_SRC,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
@@ -241,8 +254,8 @@ impl Renderer {
                 .mip_levels(1)
                 .array_layers(1)
                 .extent(vk::Extent3D {
-                    width: texture.width as u32,
-                    height: texture.height as u32,
+                    width: texture_size[0] as u32,
+                    height: texture_size[1] as u32,
                     depth: 1,
                 });
             unsafe { device.create_image(&image_create_info, None) }.unwrap()
@@ -324,11 +337,11 @@ impl Renderer {
             let image_base =
                 unsafe { (host_mapping as *mut u8).add(image_mem_offset) } as *mut c_uchar;
 
-            assert_eq!(texture.pixels.len(), texture.width * texture.height);
+            // assert_eq!(texture.pixels.len(), texture.width * texture.height);
             let srgba_pixels: Vec<u8> = texture
-                .srgba_pixels(0.25)
+                .srgba_pixels(0.24)
                 .flat_map(|srgba| vec![srgba.r(), srgba.g(), srgba.b(), srgba.a()])
-                .collect::<Vec<_>>();
+                .collect();
             unsafe {
                 image_base.copy_from_nonoverlapping(srgba_pixels.as_ptr(), srgba_pixels.len())
             };
@@ -350,8 +363,8 @@ impl Renderer {
             image_buffer,
             host_mem,
             host_mapping,
-            image_width: texture.width as u32,
-            image_height: texture.height as u32,
+            image_width: texture_size[0] as u32,
+            image_height: texture_size[1] as u32,
             image,
             _local_mem: local_mem,
             descriptor_set,
