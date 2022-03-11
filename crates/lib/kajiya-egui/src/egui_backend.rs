@@ -287,7 +287,7 @@ fn create_egui_framebuffer(
 ) -> (vk::Framebuffer, Arc<Image>) {
     let tex = device
         .create_image(
-            ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, surface_resolution)
+            ImageDesc::new_2d(vk::Format::R8G8B8A8_SRGB, surface_resolution)
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::COLOR_ATTACHMENT),
             vec![],
         )

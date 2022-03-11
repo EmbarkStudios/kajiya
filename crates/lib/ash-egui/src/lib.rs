@@ -96,9 +96,8 @@ impl Renderer {
                 .address_mode_v(vk::SamplerAddressMode::CLAMP_TO_EDGE)
                 .address_mode_w(vk::SamplerAddressMode::CLAMP_TO_EDGE)
                 .anisotropy_enable(false)
-                .min_filter(vk::Filter::LINEAR)
-                .mag_filter(vk::Filter::LINEAR)
-                .mipmap_mode(vk::SamplerMipmapMode::LINEAR)
+                .min_filter(vk::Filter::NEAREST)
+                .mag_filter(vk::Filter::NEAREST)
                 .min_lod(0.0)
                 .max_lod(vk::LOD_CLAMP_NONE);
             unsafe { device.create_sampler(&sampler_create_info, None) }.unwrap()
@@ -304,7 +303,7 @@ impl Renderer {
         let image_view = {
             let image_view_create_info = vk::ImageViewCreateInfo::builder()
                 .image(image)
-                .format(vk::Format::R8G8B8A8_UNORM)
+                .format(vk::Format::R8G8B8A8_SRGB)
                 .view_type(vk::ImageViewType::TYPE_2D)
                 .subresource_range(
                     vk::ImageSubresourceRange::builder()
@@ -618,9 +617,6 @@ impl Renderer {
         device: &Device,
         command_buffer: vk::CommandBuffer,
     ) {
-        // TODO: NEED???
-        // update font texture
-        // self.upload_font_texture(command_buffer, &self.egui.fonts().texture());
         {
             let vertex_buffer = self.vertex_buffers[self.frame_index];
             let vertex_mem_offset = self.vertex_mem_offsets[self.frame_index];
