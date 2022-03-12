@@ -105,15 +105,7 @@ impl EguiBackend {
         }
     }
 
-    pub fn handle_event(
-        &mut self,
-        _window: &winit::window::Window,
-        _egui: &mut ash_egui::egui::Context,
-        _event: &winit::event::Event<'_, ()>,
-    ) {
-    }
-
-    pub fn prepare_context_frame(state: &mut EguiState) {
+    pub fn prepare_frame(state: &mut EguiState) {
         // Update time
         if let Some(time) = state.raw_input.time {
             state.raw_input.time = Some(time + state.last_dt);

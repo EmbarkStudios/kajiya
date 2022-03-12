@@ -135,7 +135,7 @@ impl<'a> EguiContext<'a> {
         self.egui.last_dt = self.dt_filtered as f64;
 
         // Prepare the egui context's frame so that the renderer can finish frame
-        EguiBackend::prepare_context_frame(&mut self.egui);
+        EguiBackend::prepare_frame(&mut self.egui);
 
         let (width, height, _) = self.egui.window_size_scale;
 
