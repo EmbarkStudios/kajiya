@@ -2,7 +2,7 @@ use anyhow::Context;
 
 use dolly::prelude::*;
 #[cfg(feature = "use-egui")]
-use egui::{CollapsingHeader, ScrollArea, TextStyle};
+use egui::{CollapsingHeader, ScrollArea};
 #[cfg(feature = "dear-imgui")]
 use imgui::im_str;
 use kajiya::{rg::GraphDebugHook, world_renderer::AddMeshOptions};
@@ -57,12 +57,6 @@ struct SceneInstanceDesc {
 struct SunState {
     theta: f32,
     phi: f32,
-}
-
-#[cfg(feature = "use-egui")]
-#[derive(Default)]
-pub struct EguiUIState {
-    debug_scope_checked: bool,
 }
 
 impl SunState {
@@ -593,9 +587,6 @@ fn main() -> anyhow::Result<()> {
                         .resizable(true)
                         .min_height(500.0)
                         .show(egui_ctx, |ui| {
-                            let text_style = TextStyle::Body;
-                            let row_height = ui.text_style_height(&text_style);
-                            let num_rows = 3;
                             ScrollArea::vertical()
                                 .auto_shrink([false; 2])
                                 .show(ui, |ui| {

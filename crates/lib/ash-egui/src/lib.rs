@@ -336,14 +336,8 @@ impl Renderer {
             let image_base =
                 unsafe { (host_mapping as *mut u8).add(image_mem_offset) } as *mut c_uchar;
 
-            // TOOD: need srgba, what texture format???
-            // let data = texture
-            //     .pixels
-            //     .iter()
-            //     .flat_map(|&r| vec![r, r, r, r])
-            //     .collect::<Vec<_>>();
             let srgba_pixels: Vec<u8> = texture
-                .srgba_pixels(0.24)
+                .srgba_pixels(0.5)
                 .flat_map(|srgba| vec![srgba.r(), srgba.g(), srgba.b(), srgba.a()])
                 .collect();
             unsafe {

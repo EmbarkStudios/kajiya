@@ -1,7 +1,10 @@
 use std::collections::VecDeque;
 
 #[cfg(feature = "use-egui")]
-use egui::{Context, Modifiers, Vec2};
+use egui::{
+    style::{Selection, WidgetVisuals, Widgets},
+    Color32, Context, Modifiers, Rounding, Stroke, TextStyle, Vec2,
+};
 
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
@@ -66,7 +69,6 @@ pub struct EguiContext<'a> {
     egui: &'a mut EguiState,
     egui_backend: &'a mut EguiBackend,
     ui_renderer: &'a mut UiRenderer,
-    window: &'a winit::window::Window,
     dt_filtered: f32,
 }
 
@@ -81,7 +83,7 @@ impl<'a> EguiContext<'a> {
             mouse.physical_position.x as f32,
             mouse.physical_position.y as f32,
         );
-        
+
         mouse_position.0 /= self.egui.raw_input.pixels_per_point.unwrap();
         mouse_position.1 /= self.egui.raw_input.pixels_per_point.unwrap();
 
@@ -373,6 +375,64 @@ impl SimpleMainLoop {
         let mut egui = egui::Context::default();
 
         #[cfg(feature = "use-egui")]
+        let visuals = egui::style::Visuals {
+            widgets: Widgets {
+                noninteractive: WidgetVisuals {
+                    bg_fill: Color32::from_rgba_unmultiplied(13, 13, 37, 150), // window background
+                    bg_stroke: Stroke::new(1.0, Color32::from_rgba_unmultiplied(37, 85, 136, 255)), // separators, indentation lines, windows outlines
+                    fg_stroke: Stroke::new(
+                        1.0,
+                        Color32::from_rgba_unmultiplied(255, 255, 255, 255),
+                    ), // normal text color
+                    rounding: Rounding::same(2.0),
+                    expansion: 0.0,
+                },
+                inactive: WidgetVisuals {
+                    bg_fill: Color32::from_rgba_unmultiplied(67, 0, 108, 142), // button background
+                    bg_stroke: Default::default(),
+                    fg_stroke: Stroke::new(
+                        1.0,
+                        Color32::from_rgba_unmultiplied(206, 206, 206, 255),
+                    ), // button text
+                    rounding: Rounding::same(2.0),
+                    expansion: 0.0,
+                },
+                hovered: WidgetVisuals {
+                    bg_fill: Color32::from_rgba_unmultiplied(104, 0, 98, 255),
+                    bg_stroke: Stroke::new(1.0, Color32::from_gray(150)), // e.g. hover over window edge or button
+                    fg_stroke: Stroke::new(1.5, Color32::from_gray(240)),
+                    rounding: Rounding::same(3.0),
+                    expansion: 1.0,
+                },
+                active: WidgetVisuals {
+                    bg_fill: Color32::from_rgba_unmultiplied(140, 0, 148, 255),
+                    bg_stroke: Stroke::new(1.0, Color32::WHITE),
+                    fg_stroke: Stroke::new(2.0, Color32::WHITE),
+                    rounding: Rounding::same(2.0),
+                    expansion: 1.0,
+                },
+                ..Widgets::dark()
+            },
+            selection: Selection {
+                bg_fill: Color32::from_rgba_unmultiplied(140, 0, 148, 255),
+                ..Selection::default()
+            },
+            hyperlink_color: Color32::from_rgba_unmultiplied(255, 0, 220, 255),
+            faint_bg_color: Color32::from_rgba_unmultiplied(13, 13, 37, 131),
+            extreme_bg_color: Color32::from_rgba_unmultiplied(11, 11, 17, 255), // e.g. TextEdit background
+            code_bg_color: Color32::from_rgba_unmultiplied(11, 11, 17, 255),
+            ..egui::style::Visuals::dark()
+        };
+
+        #[cfg(feature = "use-egui")]
+        {
+            egui.set_visuals(visuals);
+            let mut style: egui::Style = (*egui.style()).clone();
+            style.override_text_style = Some(TextStyle::Monospace);
+            egui.set_style(style);
+        }
+
+        #[cfg(feature = "use-egui")]
         let window_size_scale = (
             window.inner_size().width,
             window.inner_size().height,
@@ -560,7 +620,6 @@ impl SimpleMainLoop {
                     egui: &mut optional.egui,
                     egui_backend: &mut optional.egui_backend,
                     ui_renderer: &mut ui_renderer,
-                    window: &window,
                     dt_filtered,
                 }),
             });
