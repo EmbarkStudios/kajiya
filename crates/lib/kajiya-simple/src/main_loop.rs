@@ -388,7 +388,7 @@ impl SimpleMainLoop {
                     expansion: 0.0,
                 },
                 inactive: WidgetVisuals {
-                    bg_fill: Color32::from_rgba_unmultiplied(67, 0, 108, 142), // button background
+                    bg_fill: Color32::from_rgba_unmultiplied(89, 57, 87, 255), // button background
                     bg_stroke: Default::default(),
                     fg_stroke: Stroke::new(
                         1.0,
@@ -414,10 +414,10 @@ impl SimpleMainLoop {
                 ..Widgets::dark()
             },
             selection: Selection {
-                bg_fill: Color32::from_rgba_unmultiplied(140, 0, 148, 255),
+                bg_fill: Color32::from_rgba_unmultiplied(89, 57, 87, 255),
                 ..Selection::default()
             },
-            hyperlink_color: Color32::from_rgba_unmultiplied(255, 0, 220, 255),
+            hyperlink_color: Color32::from_rgba_unmultiplied(140, 0, 148, 255),
             faint_bg_color: Color32::from_rgba_unmultiplied(13, 13, 37, 131),
             extreme_bg_color: Color32::from_rgba_unmultiplied(11, 11, 17, 255), // e.g. TextEdit background
             code_bg_color: Color32::from_rgba_unmultiplied(11, 11, 17, 255),
