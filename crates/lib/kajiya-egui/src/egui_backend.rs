@@ -46,6 +46,16 @@ impl EguiBackend {
     ) -> Self {
         let (window_width, window_height, window_scale_factor) = window_settings;
 
+        let egui_renderer = ash_egui::Renderer::new(
+            window_width,
+            window_height,
+            window_scale_factor,
+            &device.raw,
+            &device.physical_device().properties,
+            &device.physical_device().memory_properties,
+            context,
+        );
+
         // Create raw_input
         let raw_input = egui::RawInput {
             pixels_per_point: Some(window_scale_factor as f32),
@@ -55,19 +65,6 @@ impl EguiBackend {
             )),
             time: Some(0.0),
             ..Default::default()
-        };
-
-        let egui_renderer = {
-            ash_egui::Renderer::new(
-                window_width,
-                window_height,
-                window_scale_factor,
-                &device.raw,
-                &device.physical_device().properties,
-                &device.physical_device().memory_properties,
-                context,
-                raw_input.clone(),
-            )
         };
 
         Self {

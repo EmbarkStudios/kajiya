@@ -388,7 +388,7 @@ impl SimpleMainLoop {
                     expansion: 0.0,
                 },
                 inactive: WidgetVisuals {
-                    bg_fill: Color32::from_rgba_unmultiplied(89, 57, 87, 255), // button background
+                    bg_fill: Color32::from_rgba_unmultiplied(82, 42, 69, 255), // button, sliders background
                     bg_stroke: Default::default(),
                     fg_stroke: Stroke::new(
                         1.0,

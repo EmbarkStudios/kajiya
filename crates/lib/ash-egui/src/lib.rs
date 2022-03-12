@@ -4,7 +4,7 @@
 use arrayvec::ArrayVec;
 use ash::{vk, Device};
 use bytemuck::bytes_of;
-use egui::{epaint::Vertex, Context, RawInput};
+use egui::{epaint::Vertex, vec2, Context, RawInput};
 use memoffset::offset_of;
 use std::{
     ffi::CStr,
@@ -85,7 +85,6 @@ impl Renderer {
         physical_device_properties: &vk::PhysicalDeviceProperties,
         physical_device_memory_properties: &vk::PhysicalDeviceMemoryProperties,
         egui: &mut Context,
-        raw_input: RawInput,
     ) -> Self {
         let vertex_shader = load_shader_module(device, include_bytes!("egui.vert.spv"));
         let fragment_shader = load_shader_module(device, include_bytes!("egui.frag.spv"));
@@ -180,7 +179,18 @@ impl Renderer {
             )
         };
 
-        let full_output = egui.run(raw_input, |_ctx| {});
+        let full_output = egui.run(
+            egui::RawInput {
+                pixels_per_point: Some(scale_factor as f32),
+                screen_rect: Some(egui::Rect::from_min_size(
+                    Default::default(),
+                    vec2(physical_width as f32, physical_height as f32) / scale_factor as f32,
+                )),
+                time: Some(0.0),
+                ..Default::default()
+            },
+            |_ctx| {},
+        );
         let texture_size = egui.fonts().font_image_size();
         let texture_delta = full_output.textures_delta.set.iter().next().unwrap();
         let texture = match &texture_delta.1.image {
