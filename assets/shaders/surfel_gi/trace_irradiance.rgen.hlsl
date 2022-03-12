@@ -346,10 +346,10 @@ void main() {
     const float3 prev_value = prev_total_radiance_packed.rgb;
     const float3 prev_value_ycbcr = rgb_to_ycbcr(prev_value);
     const float num_deviations = 1.0;
-    const float3 prev_value_clamped = ycbcr_to_rgb(clamp(
-        prev_value_ycbcr,
-        prev_value_ycbcr * (quick_lum_ex - lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x),
-        prev_value_ycbcr * (quick_lum_ex + lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x)
+    const float3 prev_value_clamped = ycbcr_to_rgb(sign(prev_value_ycbcr) * clamp(
+        abs(prev_value_ycbcr),
+        abs(prev_value_ycbcr) * (quick_lum_ex - lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x),
+        abs(prev_value_ycbcr) * (quick_lum_ex + lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x)
     ));
 
     const float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
