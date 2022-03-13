@@ -7,11 +7,12 @@ edition = "2021"
 
 [dependencies]
 kajiya = { path = "../../lib/kajiya" }
-kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
+kajiya-simple = { path = "../../lib/kajiya-simple" }
 
 anyhow = "1.0"
 dolly = "0.1"
-imgui = "0.7"
+imgui = { version = "0.7", optional = true }
+egui = { version = "0.17.0", optional = true }
 log = "0.4"
 ron = "0.6.2"
 serde = { version = "1.0", features = ["derive"] }
@@ -19,3 +20,6 @@ structopt = "0.3"
 
 [features]
 dlss = ["kajiya/dlss"]
+use-egui = ["kajiya-simple/use-egui", "egui" ]
+dear-imgui = ["kajiya-simple/dear-imgui", "imgui" ]
+default = ["use-egui"]

@@ -1,5 +1,11 @@
 use std::collections::VecDeque;
 
+#[cfg(feature = "use-egui")]
+use egui::{
+    style::{Selection, WidgetVisuals, Widgets},
+    Color32, Context, Modifiers, Rounding, Stroke, TextStyle, Vec2,
+};
+
 use kajiya::{
     backend::{vulkan::RenderBackendConfig, *},
     frame_desc::WorldFrameDesc,
@@ -11,6 +17,9 @@ use kajiya::{
 #[cfg(feature = "dear-imgui")]
 use kajiya_imgui::ImGuiBackend;
 
+#[cfg(feature = "use-egui")]
+use kajiya_egui::{EguiBackend, EguiState};
+
 use turbosloth::*;
 
 use winit::{
@@ -20,6 +29,14 @@ use winit::{
     window::{Fullscreen, WindowBuilder},
 };
 
+#[cfg(feature = "use-egui")]
+use crate::MouseState;
+
+#[cfg(feature = "use-egui")]
+const MOUSE_BUTTON_LEFT_PRESSED: u32 = 1;
+#[cfg(feature = "use-egui")]
+const MOUSE_BUTTON_LEFT_RELEASED: u32 = 1;
+
 pub struct FrameContext<'a> {
     pub dt_filtered: f32,
     pub render_extent: [u32; 2],
@@ -28,6 +45,9 @@ pub struct FrameContext<'a> {
 
     #[cfg(feature = "dear-imgui")]
     pub imgui: Option<ImguiContext<'a>>,
+
+    #[cfg(feature = "use-egui")]
+    pub egui: Option<EguiContext<'a>>,
 }
 
 impl<'a> FrameContext<'a> {
@@ -43,6 +63,148 @@ pub struct ImguiContext<'a> {
     ui_renderer: &'a mut UiRenderer,
     window: &'a winit::window::Window,
     dt_filtered: f32,
+}
+
+#[cfg(feature = "use-egui")]
+pub struct EguiContext<'a> {
+    egui: &'a mut EguiState,
+    egui_backend: &'a mut EguiBackend,
+    ui_renderer: &'a mut UiRenderer,
+    dt_filtered: f32,
+}
+
+#[cfg(feature = "use-egui")]
+impl<'a> EguiContext<'a> {
+    pub fn ctx(&self) -> &Context {
+        &self.egui.egui_context
+    }
+
+    fn process_input(&mut self, mouse: &MouseState) {
+        let mut mouse_position = (
+            mouse.physical_position.x as f32,
+            mouse.physical_position.y as f32,
+        );
+
+        mouse_position.0 /= self.egui.raw_input.pixels_per_point.unwrap();
+        mouse_position.1 /= self.egui.raw_input.pixels_per_point.unwrap();
+
+        self.egui.last_mouse_pos = Some(mouse_position);
+
+        self.egui
+            .raw_input
+            .events
+            .push(egui::Event::PointerMoved(egui::pos2(
+                mouse_position.0,
+                mouse_position.1,
+            )));
+
+        let pos = egui::pos2(mouse_position.0, mouse_position.1);
+
+        if mouse.buttons_pressed == MOUSE_BUTTON_LEFT_PRESSED {
+            self.egui.raw_input.events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Modifiers::default(),
+            });
+        }
+
+        if mouse.buttons_released == MOUSE_BUTTON_LEFT_RELEASED {
+            self.egui.raw_input.events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::default(),
+            });
+        }
+
+        if mouse.wheel_delta != 0.0 {
+            let scroll_delta = Vec2::new(0.0, mouse.wheel_delta);
+            self.egui
+                .raw_input
+                .events
+                .push(egui::Event::Scroll(scroll_delta));
+        }
+    }
+
+    pub fn frame(&mut self, mouse: &MouseState, callback: impl FnOnce(&Context)) {
+        self.process_input(mouse);
+
+        callback(&self.egui.egui_context);
+
+        // Update delta time
+        self.egui.last_dt = self.dt_filtered as f64;
+
+        // Prepare the egui context's frame so that the renderer can finish frame
+        EguiBackend::prepare_frame(&mut self.egui);
+
+        // (Update input)...
+        self.egui_backend.finish_frame(
+            &mut self.egui.egui_context,
+            self.egui.window_size,
+            self.ui_renderer,
+        );
+    }
+
+    pub fn get_theme_visuals() -> egui::style::Visuals {
+        const WINDOW_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(13, 13, 37, 150);
+        const WINDOW_OUTLINE_COLOR: Color32 = Color32::from_rgba_premultiplied(37, 85, 136, 255);
+        const WIDGET_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(82, 42, 69, 255);
+        const WIDGET_STROKE_FG_COLOR: Color32 = Color32::from_gray(240);
+        const WIDGET_STROKE_BG_COLOR: Color32 = Color32::from_gray(150);
+        const WIGDET_TEXT_COLOR: Color32 = Color32::from_rgba_premultiplied(206, 206, 206, 255);
+        const WIGDET_HOVERED_COLOR: Color32 = Color32::from_rgba_premultiplied(104, 0, 98, 255);
+        const ACTIVE_SELECTED_COLOR: Color32 = Color32::from_rgba_premultiplied(140, 0, 148, 255);
+        const TEXT_EDIT_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(11, 11, 17, 255);
+        const SELECTED_ITEM_COLOR: Color32 = Color32::from_rgba_premultiplied(89, 57, 87, 255);
+        const NORMAL_TEXT_COLOR: Color32 = Color32::WHITE;
+
+        #[cfg(feature = "use-egui")]
+        let visuals = egui::style::Visuals {
+            widgets: Widgets {
+                noninteractive: WidgetVisuals {
+                    bg_fill: WINDOW_BG_COLOR,                          // window background
+                    bg_stroke: Stroke::new(1.0, WINDOW_OUTLINE_COLOR), // separators, indentation lines, windows outlines
+                    fg_stroke: Stroke::new(1.0, NORMAL_TEXT_COLOR),    // normal text color
+                    rounding: Rounding::same(2.0),
+                    expansion: 0.0,
+                },
+                inactive: WidgetVisuals {
+                    bg_fill: WIDGET_BG_COLOR, // button, sliders background
+                    bg_stroke: Default::default(),
+                    fg_stroke: Stroke::new(1.0, WIGDET_TEXT_COLOR), // button text
+                    rounding: Rounding::same(2.0),
+                    expansion: 0.0,
+                },
+                hovered: WidgetVisuals {
+                    bg_fill: WIGDET_HOVERED_COLOR,
+                    bg_stroke: Stroke::new(1.0, WIDGET_STROKE_BG_COLOR), // e.g. hover over window edge or button
+                    fg_stroke: Stroke::new(1.5, WIDGET_STROKE_FG_COLOR),
+                    rounding: Rounding::same(3.0),
+                    expansion: 1.0,
+                },
+                active: WidgetVisuals {
+                    bg_fill: ACTIVE_SELECTED_COLOR,
+                    bg_stroke: Stroke::new(1.0, NORMAL_TEXT_COLOR),
+                    fg_stroke: Stroke::new(2.0, NORMAL_TEXT_COLOR),
+                    rounding: Rounding::same(2.0),
+                    expansion: 1.0,
+                },
+                ..Widgets::dark()
+            },
+            selection: Selection {
+                bg_fill: SELECTED_ITEM_COLOR,
+                ..Selection::default()
+            },
+            hyperlink_color: ACTIVE_SELECTED_COLOR,
+            faint_bg_color: WINDOW_BG_COLOR,
+            extreme_bg_color: TEXT_EDIT_BG_COLOR, // e.g. TextEdit background
+            code_bg_color: TEXT_EDIT_BG_COLOR,
+            ..egui::style::Visuals::dark()
+        };
+
+        visuals
+    }
 }
 
 #[cfg(feature = "dear-imgui")]
@@ -63,6 +225,12 @@ struct MainLoopOptional {
 
     #[cfg(feature = "dear-imgui")]
     imgui: imgui::Context,
+
+    #[cfg(feature = "use-egui")]
+    egui_backend: EguiBackend,
+
+    #[cfg(feature = "use-egui")]
+    egui: EguiState,
 
     #[cfg(feature = "puffin-server")]
     _puffin_server: puffin_http::Server,
@@ -262,6 +430,44 @@ impl SimpleMainLoop {
         #[cfg(feature = "dear-imgui")]
         imgui_backend.create_graphics_resources(swapchain_extent);
 
+        #[cfg(feature = "use-egui")]
+        let mut egui = egui::Context::default();
+
+        #[cfg(feature = "use-egui")]
+        {
+            egui.set_visuals(EguiContext::get_theme_visuals());
+            let mut style: egui::Style = (*egui.style()).clone();
+            style.override_text_style = Some(TextStyle::Monospace);
+            egui.set_style(style);
+        }
+
+        #[cfg(feature = "use-egui")]
+        let (window_size, window_scale_factor) = (
+            (window.inner_size().width, window.inner_size().height),
+            window.scale_factor(),
+        );
+
+        #[cfg(feature = "use-egui")]
+        let mut egui_backend = kajiya_egui::EguiBackend::new(
+            rg_renderer.device().clone(),
+            window_size,
+            window_scale_factor,
+            &mut egui,
+        );
+
+        #[cfg(feature = "use-egui")]
+        egui_backend.create_graphics_resources([window_size.0, window_size.1]);
+
+        #[cfg(feature = "use-egui")]
+        let egui = EguiState {
+            egui_context: egui,
+            raw_input: egui_backend.raw_input.clone(),
+            window_size,
+            window_scale_factor,
+            last_mouse_pos: None,
+            last_dt: 0.0,
+        };
+
         #[cfg(feature = "puffin-server")]
         let puffin_server = {
             let server_addr = format!("0.0.0.0:{}", puffin_http::DEFAULT_PORT);
@@ -276,6 +482,10 @@ impl SimpleMainLoop {
             imgui_backend,
             #[cfg(feature = "dear-imgui")]
             imgui,
+            #[cfg(feature = "use-egui")]
+            egui_backend,
+            #[cfg(feature = "use-egui")]
+            egui,
             #[cfg(feature = "puffin-server")]
             _puffin_server: puffin_server,
         };
@@ -413,6 +623,14 @@ impl SimpleMainLoop {
                     ui_renderer: &mut ui_renderer,
                     dt_filtered,
                     window: &window,
+                }),
+
+                #[cfg(feature = "use-egui")]
+                egui: Some(EguiContext {
+                    egui: &mut optional.egui,
+                    egui_backend: &mut optional.egui_backend,
+                    ui_renderer: &mut ui_renderer,
+                    dt_filtered,
                 }),
             });
 

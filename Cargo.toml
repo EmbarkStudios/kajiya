@@ -6,6 +6,7 @@ members = [
 
     "crates/lib/kajiya-asset",
     "crates/lib/kajiya-backend",
+    "crates/lib/kajiya-egui",
     "crates/lib/kajiya-imgui",
     "crates/lib/kajiya-rg",
     "crates/lib/kajiya-simple",
@@ -13,6 +14,7 @@ members = [
     "crates/lib/rust-shaders",
     "crates/lib/rust-shaders-shared",
 
+    "crates/lib/ash-egui",
     "crates/lib/ash-imgui",
 ]
 

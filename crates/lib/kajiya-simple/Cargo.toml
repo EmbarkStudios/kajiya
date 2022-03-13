@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 kajiya = { path = "../kajiya" }
 kajiya-imgui = { path = "../kajiya-imgui", optional = true }
+kajiya-egui = { path = "../kajiya-egui", optional = true }
 
 anyhow = "1.0"
 glam = { version = "0.18", features = ["serde"] }
@@ -18,12 +19,19 @@ winit = "0.25"
 
 puffin_http = { version = "0.8.0", optional = true }
 imgui = { version = "0.7", optional = true }
+egui = { version = "0.17.0", optional = true }
 
 [features]
 dear-imgui = [
     "imgui",
     "kajiya-imgui",
 ]
+
+use-egui = [
+    "egui",
+    "kajiya-egui",
+]
+
 puffin-server = [
     "puffin_http",
 ]
