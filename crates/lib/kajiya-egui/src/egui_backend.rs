@@ -33,7 +33,8 @@ pub struct EguiBackend {
 pub struct EguiState {
     pub egui_context: Context,
     pub raw_input: RawInput,
-    pub window_size_scale: (u32, u32, f64),
+    pub window_size: (u32, u32),
+    pub window_scale_factor: f64,
     pub last_mouse_pos: Option<(f32, f32)>,
     pub last_dt: f64,
 }
@@ -41,14 +42,14 @@ pub struct EguiState {
 impl EguiBackend {
     pub fn new(
         device: Arc<Device>,
-        window_settings: (u32, u32, f64),
+        window_size: (u32, u32),
+        window_scale_factor: f64,
         context: &mut Context,
     ) -> Self {
-        let (window_width, window_height, window_scale_factor) = window_settings;
 
         let egui_renderer = ash_egui::Renderer::new(
-            window_width,
-            window_height,
+            window_size.0,
+            window_size.1,
             window_scale_factor,
             &device.raw,
             &device.physical_device().properties,
@@ -61,7 +62,7 @@ impl EguiBackend {
             pixels_per_point: Some(window_scale_factor as f32),
             screen_rect: Some(egui::Rect::from_min_size(
                 Default::default(),
-                vec2(window_width as f32, window_height as f32) / window_scale_factor as f32,
+                vec2(window_size.0 as f32, window_size.1 as f32) / window_scale_factor as f32,
             )),
             time: Some(0.0),
             ..Default::default()

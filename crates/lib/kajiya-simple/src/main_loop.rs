@@ -137,12 +137,10 @@ impl<'a> EguiContext<'a> {
         // Prepare the egui context's frame so that the renderer can finish frame
         EguiBackend::prepare_frame(&mut self.egui);
 
-        let (width, height, _) = self.egui.window_size_scale;
-
         // (Update input)...
         self.egui_backend.finish_frame(
             &mut self.egui.egui_context,
-            (width, height),
+            self.egui.window_size,
             self.ui_renderer,
         );
     }
@@ -433,27 +431,28 @@ impl SimpleMainLoop {
         }
 
         #[cfg(feature = "use-egui")]
-        let window_size_scale = (
-            window.inner_size().width,
-            window.inner_size().height,
+        let (window_size, window_scale_factor) = (
+            (window.inner_size().width, window.inner_size().height),
             window.scale_factor(),
         );
 
         #[cfg(feature = "use-egui")]
         let mut egui_backend = kajiya_egui::EguiBackend::new(
             rg_renderer.device().clone(),
-            window_size_scale,
+            window_size,
+            window_scale_factor,
             &mut egui,
         );
 
         #[cfg(feature = "use-egui")]
-        egui_backend.create_graphics_resources([window_size_scale.0, window_size_scale.1]);
+        egui_backend.create_graphics_resources([window_size.0, window_size.1]);
 
         #[cfg(feature = "use-egui")]
         let egui = EguiState {
             egui_context: egui,
             raw_input: egui_backend.raw_input.clone(),
-            window_size_scale,
+            window_size,
+            window_scale_factor,
             last_mouse_pos: None,
             last_dt: 0.0,
         };

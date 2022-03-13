@@ -77,6 +77,9 @@ impl Renderer {
     const PUSH_CONSTANT_SIZE: usize = 8;
     const FRAME_COUNT: usize = 2;
 
+    const INDEX_BUFFER_SIZE: usize = Renderer::INDEX_COUNT_PER_FRAME * mem::size_of::<u32>();
+    const VERTEX_BUFFER_SIZE: usize = Renderer::VERTEX_COUNT_PER_FRAME * mem::size_of::<Vertex>();
+
     pub fn new(
         physical_width: u32,
         physical_height: u32,
@@ -712,11 +715,11 @@ impl Renderer {
 
                 let next_vertex_offset = vertex_offset + mesh.vertices.len();
                 let next_index_offset = index_offset + mesh.indices.len();
-                // if next_vertex_offset > Renderer::VERTEX_COUNT_PER_FRAME
-                //     || next_index_offset > Renderer::INDEX_COUNT_PER_FRAME
-                // {
-                //     break;
-                // }
+                if next_vertex_offset >= Renderer::VERTEX_BUFFER_SIZE
+                    || next_index_offset >= Renderer::INDEX_BUFFER_SIZE
+                {
+                    break;
+                }
 
                 unsafe {
                     vertex_base
