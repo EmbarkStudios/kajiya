@@ -29,6 +29,7 @@ use winit::{
     window::{Fullscreen, WindowBuilder},
 };
 
+#[cfg(feature = "use-egui")]
 use crate::MouseState;
 
 #[cfg(feature = "use-egui")]
@@ -143,6 +144,66 @@ impl<'a> EguiContext<'a> {
             self.egui.window_size,
             self.ui_renderer,
         );
+    }
+
+    pub fn get_theme_visuals() -> egui::style::Visuals {
+        const WINDOW_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(13, 13, 37, 150);
+        const WINDOW_OUTLINE_COLOR: Color32 = Color32::from_rgba_premultiplied(37, 85, 136, 255);
+        const WIDGET_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(82, 42, 69, 255);
+        const WIDGET_STROKE_FG_COLOR: Color32 = Color32::from_gray(240);
+        const WIDGET_STROKE_BG_COLOR: Color32 = Color32::from_gray(150);
+        const WIGDET_TEXT_COLOR: Color32 = Color32::from_rgba_premultiplied(206, 206, 206, 255);
+        const WIGDET_HOVERED_COLOR: Color32 = Color32::from_rgba_premultiplied(104, 0, 98, 255);
+        const ACTIVE_SELECTED_COLOR: Color32 = Color32::from_rgba_premultiplied(140, 0, 148, 255);
+        const TEXT_EDIT_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(11, 11, 17, 255);
+        const SELECTED_ITEM_COLOR: Color32 = Color32::from_rgba_premultiplied(89, 57, 87, 255);
+        const NORMAL_TEXT_COLOR: Color32 = Color32::WHITE;
+
+        #[cfg(feature = "use-egui")]
+        let visuals = egui::style::Visuals {
+            widgets: Widgets {
+                noninteractive: WidgetVisuals {
+                    bg_fill: WINDOW_BG_COLOR,                          // window background
+                    bg_stroke: Stroke::new(1.0, WINDOW_OUTLINE_COLOR), // separators, indentation lines, windows outlines
+                    fg_stroke: Stroke::new(1.0, NORMAL_TEXT_COLOR),    // normal text color
+                    rounding: Rounding::same(2.0),
+                    expansion: 0.0,
+                },
+                inactive: WidgetVisuals {
+                    bg_fill: WIDGET_BG_COLOR, // button, sliders background
+                    bg_stroke: Default::default(),
+                    fg_stroke: Stroke::new(1.0, WIGDET_TEXT_COLOR), // button text
+                    rounding: Rounding::same(2.0),
+                    expansion: 0.0,
+                },
+                hovered: WidgetVisuals {
+                    bg_fill: WIGDET_HOVERED_COLOR,
+                    bg_stroke: Stroke::new(1.0, WIDGET_STROKE_BG_COLOR), // e.g. hover over window edge or button
+                    fg_stroke: Stroke::new(1.5, WIDGET_STROKE_FG_COLOR),
+                    rounding: Rounding::same(3.0),
+                    expansion: 1.0,
+                },
+                active: WidgetVisuals {
+                    bg_fill: ACTIVE_SELECTED_COLOR,
+                    bg_stroke: Stroke::new(1.0, NORMAL_TEXT_COLOR),
+                    fg_stroke: Stroke::new(2.0, NORMAL_TEXT_COLOR),
+                    rounding: Rounding::same(2.0),
+                    expansion: 1.0,
+                },
+                ..Widgets::dark()
+            },
+            selection: Selection {
+                bg_fill: SELECTED_ITEM_COLOR,
+                ..Selection::default()
+            },
+            hyperlink_color: ACTIVE_SELECTED_COLOR,
+            faint_bg_color: WINDOW_BG_COLOR,
+            extreme_bg_color: TEXT_EDIT_BG_COLOR, // e.g. TextEdit background
+            code_bg_color: TEXT_EDIT_BG_COLOR,
+            ..egui::style::Visuals::dark()
+        };
+
+        visuals
     }
 }
 
@@ -373,58 +434,8 @@ impl SimpleMainLoop {
         let mut egui = egui::Context::default();
 
         #[cfg(feature = "use-egui")]
-        let visuals = egui::style::Visuals {
-            widgets: Widgets {
-                noninteractive: WidgetVisuals {
-                    bg_fill: Color32::from_rgba_unmultiplied(13, 13, 37, 150), // window background
-                    bg_stroke: Stroke::new(1.0, Color32::from_rgba_unmultiplied(37, 85, 136, 255)), // separators, indentation lines, windows outlines
-                    fg_stroke: Stroke::new(
-                        1.0,
-                        Color32::from_rgba_unmultiplied(255, 255, 255, 255),
-                    ), // normal text color
-                    rounding: Rounding::same(2.0),
-                    expansion: 0.0,
-                },
-                inactive: WidgetVisuals {
-                    bg_fill: Color32::from_rgba_unmultiplied(82, 42, 69, 255), // button, sliders background
-                    bg_stroke: Default::default(),
-                    fg_stroke: Stroke::new(
-                        1.0,
-                        Color32::from_rgba_unmultiplied(206, 206, 206, 255),
-                    ), // button text
-                    rounding: Rounding::same(2.0),
-                    expansion: 0.0,
-                },
-                hovered: WidgetVisuals {
-                    bg_fill: Color32::from_rgba_unmultiplied(104, 0, 98, 255),
-                    bg_stroke: Stroke::new(1.0, Color32::from_gray(150)), // e.g. hover over window edge or button
-                    fg_stroke: Stroke::new(1.5, Color32::from_gray(240)),
-                    rounding: Rounding::same(3.0),
-                    expansion: 1.0,
-                },
-                active: WidgetVisuals {
-                    bg_fill: Color32::from_rgba_unmultiplied(140, 0, 148, 255),
-                    bg_stroke: Stroke::new(1.0, Color32::WHITE),
-                    fg_stroke: Stroke::new(2.0, Color32::WHITE),
-                    rounding: Rounding::same(2.0),
-                    expansion: 1.0,
-                },
-                ..Widgets::dark()
-            },
-            selection: Selection {
-                bg_fill: Color32::from_rgba_unmultiplied(89, 57, 87, 255),
-                ..Selection::default()
-            },
-            hyperlink_color: Color32::from_rgba_unmultiplied(140, 0, 148, 255),
-            faint_bg_color: Color32::from_rgba_unmultiplied(13, 13, 37, 131),
-            extreme_bg_color: Color32::from_rgba_unmultiplied(11, 11, 17, 255), // e.g. TextEdit background
-            code_bg_color: Color32::from_rgba_unmultiplied(11, 11, 17, 255),
-            ..egui::style::Visuals::dark()
-        };
-
-        #[cfg(feature = "use-egui")]
         {
-            egui.set_visuals(visuals);
+            egui.set_visuals(EguiContext::get_theme_visuals());
             let mut style: egui::Style = (*egui.style()).clone();
             style.override_text_style = Some(TextStyle::Monospace);
             egui.set_style(style);

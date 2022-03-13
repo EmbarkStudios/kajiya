@@ -35,5 +35,3 @@ use-egui = [
 puffin-server = [
     "puffin_http",
 ]
-
-default = [ "egui" ]

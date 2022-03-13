@@ -4,7 +4,7 @@
 use arrayvec::ArrayVec;
 use ash::{vk, Device};
 use bytemuck::bytes_of;
-use egui::{epaint::Vertex, vec2, Context, RawInput};
+use egui::{epaint::Vertex, vec2, Context};
 use memoffset::offset_of;
 use std::{
     ffi::CStr,
