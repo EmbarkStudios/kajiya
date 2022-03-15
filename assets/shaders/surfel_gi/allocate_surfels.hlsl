@@ -51,10 +51,15 @@ void main(
     }
 
     float4 gbuffer_packed = gbuffer_tex[px];
+
+    const float3 eye_pos = get_eye_position();
+    const uint4 c4_coord = surfel_grid_coord_to_c4(surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos));
+    const float3 c4_center = surfel_grid_coord_center(c4_coord, eye_pos);
     
     VertexPacked surfel;
     // TODO: proper packing
-    surfel.data0 = float4(pt_ws.xyz, gbuffer_packed.y);
+    //surfel.data0 = float4(pt_ws.xyz, gbuffer_packed.y);
+    surfel.data0 = float4(c4_center, gbuffer_packed.y);
 
     uint surfel_alloc_idx;
     surfel_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, surfel_alloc_idx);
