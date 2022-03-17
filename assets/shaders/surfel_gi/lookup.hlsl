@@ -4,54 +4,59 @@
 #include "surfel_grid_hash.hlsl"
 
 float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws) {
-    const SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(
-        surfel_pos_to_grid_coord(pt_ws, get_eye_position())
-    );
-    if (!entry.found) {
-        return 0.0.xxx;
-    }
+    const float3 eye_pos = get_eye_position();
 
-    const uint cell_idx = entry.idx;//surfel_hash_value_buf.Load(sizeof(uint) * entry.idx);
-    uint2 surfel_idx_loc_range = cell_index_offset_buf.Load2(sizeof(uint) * cell_idx);
-    const uint cell_surfel_count = surfel_idx_loc_range.y - surfel_idx_loc_range.x;
+    const int3 grid_coord = surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos);
+    const uint4 grid_c4 = surfel_grid_coord_to_c4(grid_coord);
+    const uint cascade = grid_c4.w;
 
-    // TEMP HACK: Make sure we're not iterating over tons of surfels out of bounds
-    surfel_idx_loc_range.y = min(surfel_idx_loc_range.y, surfel_idx_loc_range.x + MAX_SURFELS_PER_CELL);
+#if 1
+    // Manual trilinear
 
-    float3 total_color = 0.0.xxx;
-    float total_weight = 0.0;
+    const int3 coord_within_cascade = surfel_grid_coord_within_cascade(grid_coord, cascade);
+    const float3 center_cell_offset = pt_ws - surfel_grid_coord_center(grid_c4, eye_pos);
+    const float cell_diameter = surfel_grid_cell_diameter_in_cascade(cascade);
+    const int3 c0 = coord_within_cascade + (center_cell_offset > 0.0.xxx ? (0).xxx : (-1).xxx);
+    const float3 interp_t0 = center_cell_offset > 0.0.xxx ? 0.0.xxx : 1.0.xxx;
 
-    for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
-        const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
+    float3 irradiance_sum = 0.0.xxx;
+    float weight_sum = 0.0;
 
-        #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
-            if (cell_surfel_count <= MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE) {
-                surfel_life_buf[surfel_idx] = 0;
+    for (int z = 0; z < 2; ++z) {
+        for (int y = 0; y < 2; ++y) {
+            for (int x = 0; x < 2; ++x) {
+                const int3 sample_within_cascade = c0 + int3(x, y, z);
+                const uint4 sample_c4 = uint4(
+                    clamp(sample_within_cascade, (int3)0, (int3)(SURFEL_CS - 1)),
+                    cascade);
+    
+                const uint cell_idx = surfel_grid_c4_to_hash(sample_c4);
+                const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
+                const uint entry_idx = cell_meta.x;
+
+                if (cell_meta.y & SURF_RCACHE_ENTRY_META_OCCUPIED) {
+                    float3 interp = center_cell_offset / cell_diameter + interp_t0;
+                    interp = saturate((int3(x, y, z) == 0 ? ((1).xxx - interp) : interp));
+
+                    const float3 irradiance = surf_rcache_irradiance_buf[entry_idx].xyz;
+                    const float weight = interp.x * interp.y * interp.z;
+                    irradiance_sum += irradiance * weight;
+                    weight_sum += weight;
+                }
             }
-        #endif
-
-        Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
-
-        const float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
-        float3 surfel_color = surfel_irradiance_packed.xyz;
-
-        const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-        const float directional_weight = max(0.0, dot(surfel.normal, normal_ws));
-        const float dist = length(pos_offset);
-        const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
-
-        const float surfel_radius = surfel_radius_for_pos(surfel.position);
-        float weight = smoothstep(
-            surfel_radius * SURFEl_RADIUS_OVERSCALE,
-            0.0,
-            mahalanobis_dist) * directional_weight;
-
-        total_weight += weight;
-        total_color += surfel_color * weight;
+        }
     }
 
-    total_color /= max(0.1, total_weight);
-    return total_color;
+    return irradiance_sum / max(1e-10, weight_sum);
+#else
+
+    const uint cell_idx = surfel_grid_coord_to_hash(grid_coord);
+    const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
+    const uint entry_idx = cell_meta.x;
+
+    float4 surfel_irradiance_packed = surf_rcache_irradiance_buf[entry_idx];
+    return surfel_irradiance_packed.xyz;
+#endif
 }
 
 #endif // SURFEL_GI_LOOKUP_HLSL

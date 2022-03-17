@@ -1,12 +1,6 @@
 #include "../inc/hash.hlsl"
 #include "surfel_constants.hlsl"
 
-// Assumes the existence of the following globals:
-// surfel_meta_buf
-//      0: uint: number of cells allocated
-// surfel_hash_key_buf
-//      4*k: checksum
-
 static const uint MAX_SURFEL_GRID_CELLS = 1024 * 256;
 static const uint SURFEL_CS = 32;
 static const float SURFEL_GRID_CASCADE_DIAMETER = SURFEL_GRID_CELL_DIAMETER * SURFEL_CS;
@@ -14,12 +8,24 @@ static const float SURFEL_GRID_CASCADE_RADIUS = SURFEL_GRID_CASCADE_DIAMETER * 0
 
 static const float SURFEL_NORMAL_DIRECTION_SQUISH = 2.0;
 
+static const bool SURFEL_GRID_SCROLL = !true;
+
 int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {
+    if (!SURFEL_GRID_SCROLL) {
+        eye_pos = 0.0.xxx;
+    }
     return int3(floor((pos - eye_pos) / SURFEL_GRID_CELL_DIAMETER));
 }
 
 float3 surfel_grid_coord_center(uint4 coord, float3 eye_pos) {
+    if (!SURFEL_GRID_SCROLL) {
+        eye_pos = 0.0.xxx;
+    }
     return eye_pos + ((coord.xyz + 0.5.xxx - SURFEL_CS / 2) * SURFEL_GRID_CELL_DIAMETER) * (1u << uint(coord.w));
+}
+
+float surfel_grid_cell_diameter_in_cascade(uint cascade) {
+    return SURFEL_GRID_CELL_DIAMETER * (1u << uint(cascade));
 }
 
 float surfel_grid_coord_to_cascade_float(int3 coord) {
@@ -103,7 +109,7 @@ SurfelGridHashEntry surfel_hash_lookup_by_grid_coord(int3 grid_coord) {
     static const uint MAX_PROBE_COUNT = 1;
     //for (uint i = 0; i < MAX_PROBE_COUNT; ++i, ++idx)
     {
-        //const uint entry_checksum = surfel_hash_key_buf.Load(idx * 4);
+        //const uint entry_checksum = surf_rcache_grid_meta_buf.Load(idx * 4);
 
         /*if (0 == entry_checksum) {
             SurfelGridHashEntry res;

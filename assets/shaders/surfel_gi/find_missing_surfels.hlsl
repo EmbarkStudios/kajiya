@@ -7,12 +7,10 @@
 #include "../inc/color.hlsl"
 #include "../inc/sh.hlsl"
 
-#define VISUALIZE_SURFELS 1
-#define VISUALIZE_SURFELS_AS_NORMALS 1
-#define VISUALIZE_CELL_SURFEL_COUNT 0
+#define VISUALIZE_ENTRIES 0
 #define VISUALIZE_CASCADES 0
-#define VISUALIZE_SURFEL_AGE 1
-#define VISUALIZE_CELLS 1
+#define VISUALIZE_SURFEL_AGE 0
+#define VISUALIZE_CELLS 0
 #define USE_GEOMETRIC_NORMALS 1
 #define FREEZE_SURFEL_SET 0
 #define USE_DEBUG_OUT 1
@@ -20,24 +18,20 @@
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> geometric_normals_tex;
-[[vk::binding(3)]] RWByteAddressBuffer surfel_meta_buf;
-[[vk::binding(4)]] RWByteAddressBuffer surfel_hash_key_buf;
-[[vk::binding(5)]] RWByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(6)]] ByteAddressBuffer cell_index_offset_buf;
-[[vk::binding(7)]] ByteAddressBuffer surfel_index_buf;
-[[vk::binding(8)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(9)]] StructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(10)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(11)]] RWTexture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(12)]] RWTexture2D<float4> tile_surfel_irradiance_tex;
-[[vk::binding(13)]] RWStructuredBuffer<uint> surfel_life_buf;
-[[vk::binding(14)]] RWStructuredBuffer<VertexPacked> surfel_reposition_proposal_buf;
+[[vk::binding(3)]] RWByteAddressBuffer surf_rcache_meta_buf;
+[[vk::binding(4)]] RWByteAddressBuffer surf_rcache_grid_meta_buf;
+[[vk::binding(5)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
+[[vk::binding(6)]] StructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(8)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
+[[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_life_buf;
+[[vk::binding(10)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
 
-[[vk::binding(15)]] cbuffer _ {
+[[vk::binding(11)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
-#include "surfel_grid_hash_mut.hlsl"
+#include "lookup.hlsl"
 #include "surfel_binning_shared.hlsl"
 
 groupshared uint gs_px_min_score_loc_packed;
@@ -124,17 +118,11 @@ void main(
     uint2 group_id: SV_GroupID,
     uint2 px_within_group: SV_GroupThreadID
 ) {
-    if (0 == idx_within_group) {
-        gs_px_min_score_loc_packed = 0xffffffffu;
-        gs_px_max_score_loc_packed = 0u;
-        tile_surfel_alloc_tex[group_id] = uint2(0, 0);
-    }
-
     const float3 prev_eye_pos = get_prev_eye_position();
 
     if (USE_DEBUG_OUT && px.y < 50) {
-        const uint surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
-        const uint surfel_alloc_count = surfel_meta_buf.Load(SURFEL_META_ALLOC_COUNT);
+        const uint surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
+        const uint surfel_alloc_count = surf_rcache_meta_buf.Load(SURFEL_META_ALLOC_COUNT);
         
         const float u = float(px.x + 0.5) * gbuffer_tex_size.z;
 
@@ -182,260 +170,162 @@ void main(
 
     const float pt_depth = -pt_vs.z / pt_vs.w;
 
-    SurfelGridHashEntry entry = surfel_hash_lookup_by_grid_coord(
-        surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos)
-    );
+    const uint cell_idx = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos));
 
     const uint4 pt_c4 = surfel_grid_coord_to_c4(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos));
     const uint pt_c4_hash = surfel_grid_c4_to_hash(pt_c4);
 
-    const float2 group_center_offset = float2(px_within_group) - 3.5;
-
-    float px_score = 0.0;
-
-    uint cell_idx = entry.idx;
-
-    float3 total_color = 0.0.xxx;
-    float total_weight = 0.0;
-
-    float highest_weight = 0.0;
-    float second_highest_weight = 0.0;
-
-    uint2 surfel_idx_loc_range = cell_index_offset_buf.Load2(sizeof(uint) * cell_idx);
-    
-    // TEMP HACK: Make sure we're not iterating over tons of surfels out of bounds
-    surfel_idx_loc_range.y = min(surfel_idx_loc_range.y, surfel_idx_loc_range.x + 128);
-
-    const uint cell_surfel_count = surfel_idx_loc_range.y - surfel_idx_loc_range.x;
-
-    {
-        float3 surfel_color = 0;//uint_id_to_color(cell_idx) * 0.3;
-
-        float3 debug_color = 0.0.xxx;
-        float scoring_total_weight = 0.0;
-        uint useful_surfel_count = 0;
-
-        for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
-            const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
-            
-            Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
-            const float surfel_radius = surfel_radius_for_pos(surfel.position);
-            //surfel_color = (surfel.normal * 0.5 + 0.5) * 0.3;
-
-            float4 surfel_irradiance_packed = surfel_irradiance_buf[surfel_idx];
-            surfel_color = surfel_irradiance_packed.xyz;
-
-        #if USE_GEOMETRIC_NORMALS
-            float3 shading_normal = geometric_normal_ws;
-        #else
-            float3 shading_normal = gbuffer.normal;
-        #endif
-
-            const uint surfel_c4_hash = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(surfel.position, prev_eye_pos));
-            if (surfel_c4_hash == pt_c4_hash && dot(shading_normal, surfel.normal) > 0.8) {
-                if (uint_to_u01_float(hash1_mut(seed)) < 2000 * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
-                    Vertex new_surfel;
-                    new_surfel.position = pt_ws.xyz;
-                    new_surfel.normal = shading_normal;
-                    surfel_reposition_proposal_buf[surfel_idx] = pack_vertex(new_surfel);
-                }
-
-                if (cell_surfel_count <= MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE) {
-                    // Mark used
-                    if (surfel_life_buf[surfel_idx] != SURFEL_LIFE_RECYCLE) {
-                        surfel_life_buf[surfel_idx] = 0;
-                    }
-                }
-            }
-
-            float3 surfel_debug_color = surfel_color;
-            #if VISUALIZE_SURFELS && VISUALIZE_SURFELS_AS_NORMALS
-                surfel_debug_color = surfel.normal * 0.5 + 0.5;
-            #endif
-
-            #if VISUALIZE_SURFEL_AGE
-                surfel_debug_color = cost_color_map(1.4 - min(1.0, pow(surfel_irradiance_packed.w / 128.0, 8.0)));
-            #endif
-
-            const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-            const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
-            //const float directional_weight = pow(max(0.0, dot(surfel.normal, gbuffer.normal)), 2);
-            //const float directional_weight = 1;
-            //const float directional_weight = pow(max(0.0, 0.5 + 0.5 * dot(surfel.normal, gbuffer.normal)), 2);
-            const float dist = length(pos_offset);
-            const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
-
-            float weight = smoothstep(
-                surfel_radius * SURFEl_RADIUS_OVERSCALE,
-                0.0,
-                mahalanobis_dist) * directional_weight;
-
-            const float scoring_weight = smoothstep(
-                surfel_radius,
-                0.0,
-                mahalanobis_dist) * directional_weight;
-
-            if (weight > highest_weight) {
-                second_highest_weight = highest_weight;
-                highest_weight = weight;
-            }
-
-            useful_surfel_count += scoring_weight > 1e-5 ? 1 : 0;
-
-            //weight *= saturate(inverse_lerp(31.0, 128.0, surfel_irradiance_packed.w));
-            total_weight += weight;
-            scoring_total_weight += scoring_weight;
-            total_color += surfel_color * weight;
-            debug_color += surfel_debug_color * weight * (VISUALIZE_SURFELS ? (dist < surfel_radius * 0.2 ? 1 : 0.1) : 1);
-        }
-
-        total_color /= max(1e-5, total_weight);
-        debug_color /= max(0.1, total_weight);
-
-        // Despawn surfels
-        if (!FREEZE_SURFEL_SET) {
-            uint px_max_score_loc_packed = 0u;
-
-            const float cell_fullness = smoothstep(
-                MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE * 0.75,
-                MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE * 1.0,
-                float(cell_surfel_count));
-
-            // Be more fussy about high coverage if the surfel count is getting high
-            const float despawn_weight_threshold = lerp(3.5, 3.0, cell_fullness);
-            const float second_highest_weight_threshold = lerp(0.9, 0.8, cell_fullness);
-
-            // Despawn if the coverage is high" and the second highest scoring
-            // surfel has a high weight (indicating surfel overlap),
-            if (scoring_total_weight > despawn_weight_threshold && second_highest_weight > second_highest_weight_threshold) {
-                px_max_score_loc_packed = pack_score_and_px_within_group(px_score, px_within_group);
-                InterlockedMax(gs_px_max_score_loc_packed, px_max_score_loc_packed);
-            }
-
-            GroupMemoryBarrierWithGroupSync();
-
-            uint surfel_to_despawn = 0xffffffffu;
-            float surfel_to_despawn_weight = 0;
-
-            if (gs_px_max_score_loc_packed == px_max_score_loc_packed && px_max_score_loc_packed != 0) {
-                for (uint surfel_idx_loc = surfel_idx_loc_range.x; surfel_idx_loc < surfel_idx_loc_range.y; ++surfel_idx_loc) {
-                    const uint surfel_idx = surfel_index_buf.Load(sizeof(uint) * surfel_idx_loc);
-
-                    Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
-                    const float surfel_radius = surfel_radius_for_pos(surfel.position);
-
-                #if USE_GEOMETRIC_NORMALS
-                    float3 shading_normal = geometric_normal_ws;
-                #else
-                    float3 shading_normal = gbuffer.normal;
-                #endif
-
-                    const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-                    const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
-                    const float dist = length(pos_offset);
-                    const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
-
-                    float weight = smoothstep(
-                        surfel_radius * SURFEl_RADIUS_OVERSCALE,
-                        0.0,
-                        mahalanobis_dist) * directional_weight;
-
-                    if (weight > surfel_to_despawn_weight) {
-                        surfel_to_despawn_weight = weight;
-                        surfel_to_despawn = surfel_idx;
-                    }
-                }
-            }
-
-            if (surfel_to_despawn != 0xffffffffu) {
-                surfel_life_buf[surfel_to_despawn] = SURFEL_LIFE_RECYCLE;
-            }
-        }
-
-        #if VISUALIZE_CELL_SURFEL_COUNT
-            debug_color = cost_color_map(cell_surfel_count / 32.0);
-        #endif
-
-        #if VISUALIZE_CASCADES
-            Vertex surfel;
-            surfel.position = pt_ws.xyz;
-            SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
-
-            debug_color = cost_color_map((
-                surfel_grid_coord_to_cascade(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos))
-                + 1) / 8.0
-            );
-
-            debug_color = cost_color_map(
-                (box.c4_min[0].w + 1) / 8.0
-            );
-
-            debug_color = cost_color_map(
-                (box.c4_min[0].x % 32 + 1) / 32.0
-            );
-
-            if (box.cascade_count > 1) {
-                debug_color = 1;
-            }
-        #endif
-
-        if (VISUALIZE_CELLS) {
-            const uint h = hash4(pt_c4);
-            debug_color += 0.1 * cost_color_map(float(h % 37) / 37.0);
-        }
-
-        #if 0
-            debug_color = lerp(float3(1, 0, 0), float3(0, 1, 0), useful_surfel_count / 10.0);
-        #endif
-
-        if (cell_surfel_count > 128) {
-            debug_color = float3(1, 1, 0);
-        }
-
-        //debug_color = uint_id_to_color(cell_idx) * 0.3;
-        //debug_color = saturate(1.0 - length(pt_ws.xyz));
-
-        #if USE_DEBUG_OUT
-            debug_out_tex[px] = float4(debug_color, 1);
-        #endif
-
-        if (cell_surfel_count >= MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE || second_highest_weight > 0.4 || scoring_total_weight > 0.1) {
-            return;
-        }
-
-        px_score = total_weight;
-    }
-
-    #if FREEZE_SURFEL_SET
-        return;
+   #if USE_GEOMETRIC_NORMALS
+        const float3 shading_normal = geometric_normal_ws;
+    #else
+        const float3 shading_normal = gbuffer.normal;
     #endif
 
-    // Execution only survives here if we would like to allocate a surfel in this tile
+    float3 surfel_color = 0.0.xxx;
+    float3 debug_color = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal);
 
-    float prob_mult = 4000;
-    /*if ((frame_constants.frame_index & 3) != ((group_id.x & 1) + 2 * (group_id.y & 1))) {
-        // HACK! do this early instead.
-        prob_mult = 0;
+    {
+        const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
+        uint entry_idx = cell_meta.x;
+        const uint entry_flags = cell_meta.y;
+
+        if ((entry_flags & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
+            // Allocate
+
+            uint prev = 0;
+            surf_rcache_grid_meta_buf.InterlockedOr(sizeof(uint4) * cell_idx + sizeof(uint), SURF_RCACHE_ENTRY_META_OCCUPIED, prev);
+
+            if ((prev & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
+                // We've allocated it!
+
+                uint alloc_idx;
+                surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, alloc_idx);
+
+                entry_idx = surf_rcache_pool_buf[alloc_idx];
+                surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
+
+                // Clear dead state, mark used.
+                surf_rcache_life_buf[entry_idx] = 0;
+
+                surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
+            } else {
+                // We did not allocate it, so read the entry index from whoever did.
+                
+                entry_idx = surf_rcache_grid_meta_buf.Load(sizeof(uint4) * cell_idx + 0);
+            }
+        }
+
+        // TODO: reservoir-based selection, factor in vertex ordinals
+        {
+            Vertex new_surfel;
+            new_surfel.position = pt_ws.xyz;
+            new_surfel.normal = shading_normal;
+            surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+        }
+        
+        float4 surfel_irradiance_packed = surf_rcache_irradiance_buf[entry_idx];
+        surfel_color = surfel_irradiance_packed.xyz;
+
+        #if VISUALIZE_ENTRIES
+            debug_color = surfel_color;
+        #endif
+   
+        #if VISUALIZE_SURFEL_AGE
+            //debug_color = cost_color_map(1.4 - min(1.0, pow(surfel_irradiance_packed.w / 128.0, 8.0)));
+        #endif
+    }
+
+    // Despawn surfels
+    /*if (!FREEZE_SURFEL_SET) {
+        uint px_max_score_loc_packed = 0u;
+
+        const float cell_fullness = smoothstep(
+            MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE * 0.75,
+            MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE * 1.0,
+            float(cell_surfel_count));
+
+        // Be more fussy about high coverage if the surfel count is getting high
+        const float despawn_weight_threshold = lerp(3.5, 3.0, cell_fullness);
+        const float second_highest_weight_threshold = lerp(0.9, 0.8, cell_fullness);
+
+        // Despawn if the coverage is high" and the second highest scoring
+        // surfel has a high weight (indicating surfel overlap),
+        if (scoring_total_weight > despawn_weight_threshold && second_highest_weight > second_highest_weight_threshold) {
+            px_max_score_loc_packed = pack_score_and_px_within_group(px_score, px_within_group);
+            InterlockedMax(gs_px_max_score_loc_packed, px_max_score_loc_packed);
+        }
+
+        GroupMemoryBarrierWithGroupSync();
+
+        uint surfel_to_despawn = 0xffffffffu;
+        float surfel_to_despawn_weight = 0;
+
+        if (gs_px_max_score_loc_packed == px_max_score_loc_packed && px_max_score_loc_packed != 0) {
+            for (uint entry_idx_loc = entry_idx_loc_range.x; entry_idx_loc < entry_idx_loc_range.y; ++entry_idx_loc) {
+                const uint entry_idx = surfel_index_buf.Load(sizeof(uint) * entry_idx_loc);
+
+                Vertex surfel = unpack_vertex(surf_rcache_spatial_buf[entry_idx]);
+                const float surfel_radius = surfel_radius_for_pos(surfel.position);
+
+            #if USE_GEOMETRIC_NORMALS
+                float3 shading_normal = geometric_normal_ws;
+            #else
+                float3 shading_normal = gbuffer.normal;
+            #endif
+
+                const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
+                const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
+                const float dist = length(pos_offset);
+                const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
+
+                float weight = smoothstep(
+                    surfel_radius * SURFEl_RADIUS_OVERSCALE,
+                    0.0,
+                    mahalanobis_dist) * directional_weight;
+
+                if (weight > surfel_to_despawn_weight) {
+                    surfel_to_despawn_weight = weight;
+                    surfel_to_despawn = entry_idx;
+                }
+            }
+        }
+
+        if (surfel_to_despawn != 0xffffffffu) {
+            surf_rcache_life_buf[surfel_to_despawn] = SURFEL_LIFE_RECYCLE;
+        }
     }*/
 
-    uint px_min_score_loc_packed = 0xffffffffu;
-    if (uint_to_u01_float(hash1_mut(seed)) < prob_mult * pt_depth / 64.0 * gbuffer_tex_size.z * gbuffer_tex_size.w) {
-        px_min_score_loc_packed = pack_score_and_px_within_group(px_score, px_within_group);
-        InterlockedMin(gs_px_min_score_loc_packed, px_min_score_loc_packed);
+    #if VISUALIZE_CASCADES
+        Vertex surfel;
+        surfel.position = pt_ws.xyz;
+        SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
+
+        debug_color = cost_color_map((
+            surfel_grid_coord_to_cascade(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos))
+            + 1) / 8.0
+        );
+
+        debug_color = cost_color_map(
+            (box.c4_min[0].w + 1) / 8.0
+        );
+
+        debug_color = cost_color_map(
+            (box.c4_min[0].x % 32 + 1) / 32.0
+        );
+
+        if (box.cascade_count > 1) {
+            debug_color = 1;
+        }
+    #endif
+
+    if (VISUALIZE_CELLS) {
+        const uint h = hash4(pt_c4);
+        debug_color = uint_id_to_color(h);
     }
+    //debug_color = uint_id_to_color(cell_idx) * 0.3;
+    //debug_color = saturate(1.0 - length(pt_ws.xyz));
 
-    GroupMemoryBarrierWithGroupSync();
-
-    uint group_id_hash = hash2(group_id);
-    //out_color = uint_id_to_color(group_id_hash) * 0.1;
-
-    if (gs_px_min_score_loc_packed == px_min_score_loc_packed && px_min_score_loc_packed != 0xffffffffu) {
-        #if USE_DEBUG_OUT
-            debug_out_tex[px] = float4(0, 0, 1, 1);
-        #endif
-        tile_surfel_alloc_tex[group_id] = uint2(px_min_score_loc_packed, cell_idx);
-        tile_surfel_irradiance_tex[group_id] = float4(total_color, total_weight);
-    } else {
-        //debug_out_tex[px] = float4(0, 0, 10, 1);
-    }
+    #if USE_DEBUG_OUT
+        debug_out_tex[px] = float4(debug_color, 1);
+    #endif
 }

@@ -1,11 +1,11 @@
 #include "../inc/mesh.hlsl" // for VertexPacked
 #include "../inc/frame_constants.hlsl"
 
-[[vk::binding(0)]] ByteAddressBuffer surfel_meta_buf;
-[[vk::binding(1)]] ByteAddressBuffer surfel_hash_key_buf;
+[[vk::binding(0)]] ByteAddressBuffer surf_rcache_meta_buf;
+[[vk::binding(1)]] ByteAddressBuffer surf_rcache_grid_meta_buf;
 [[vk::binding(2)]] ByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(3)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(4)]] StructuredBuffer<uint> surfel_life_buf;
+[[vk::binding(3)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
+[[vk::binding(4)]] StructuredBuffer<uint> surf_rcache_life_buf;
 [[vk::binding(5)]] RWByteAddressBuffer cell_index_offset_buf;
 [[vk::binding(6)]] RWByteAddressBuffer surfel_index_buf;
 
@@ -14,12 +14,12 @@
 
 [numthreads(64, 1, 1)]
 void main(uint surfel_idx: SV_DispatchThreadID) {
-    const uint total_surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
-    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surfel_life_buf[surfel_idx])) {
+    const uint total_surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
+    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surf_rcache_life_buf[surfel_idx])) {
         return;
     }
 
-    const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+    const Vertex surfel = unpack_vertex(surf_rcache_spatial_buf[surfel_idx]);
 
     SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
     for (uint ci = 0; ci < box.cascade_count; ++ci) {

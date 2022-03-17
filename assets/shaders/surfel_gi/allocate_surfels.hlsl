@@ -5,18 +5,14 @@
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] RWByteAddressBuffer surfel_meta_buf;
-[[vk::binding(3)]] ByteAddressBuffer surfel_hash_key_buf;
-[[vk::binding(4)]] ByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
-[[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surfel_spatial_buf;
-[[vk::binding(7)]] RWStructuredBuffer<VertexPacked> surfel_reposition_proposal_buf;
-[[vk::binding(8)]] RWStructuredBuffer<float4> surfel_aux_buf;
-[[vk::binding(9)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(10)]] RWStructuredBuffer<uint> surfel_life_buf;
-[[vk::binding(11)]] RWStructuredBuffer<uint> surfel_pool_buf;
-[[vk::binding(12)]] Texture2D<uint2> tile_surfel_alloc_tex;
-[[vk::binding(13)]] Texture2D<float4> tile_surfel_irradiance_tex;
+[[vk::binding(2)]] RWByteAddressBuffer surf_rcache_meta_buf;
+[[vk::binding(3)]] RWByteAddressBuffer surf_rcache_grid_meta_buf;
+[[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
+[[vk::binding(7)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> surf_rcache_aux_buf;
+[[vk::binding(9)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_life_buf;
+[[vk::binding(11)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
 [[vk::binding(14)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
@@ -57,16 +53,16 @@ void main(
     surfel.data0 = float4(pt_ws.xyz, gbuffer_packed.y);
 
     uint surfel_alloc_idx;
-    surfel_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, surfel_alloc_idx);
+    surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, surfel_alloc_idx);
 
-    const uint surfel_idx = surfel_pool_buf[surfel_alloc_idx];
-    surfel_meta_buf.InterlockedMax(SURFEL_META_SURFEL_COUNT, surfel_idx + 1);
+    const uint surfel_idx = surf_rcache_pool_buf[surfel_alloc_idx];
+    surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, surfel_idx + 1);
 
     // Clear dead state, mark used.
-    surfel_life_buf[surfel_idx] = 0;
+    surf_rcache_life_buf[surfel_idx] = 0;
 
-    surfel_spatial_buf[surfel_idx] = surfel;
-    surfel_reposition_proposal_buf[surfel_idx] = surfel;
+    surf_rcache_spatial_buf[surfel_idx] = surfel;
+    surf_rcache_reposition_proposal_buf[surfel_idx] = surfel;
 
     // Irradiance at the interpolated surfel position
     const float4 source_irradiance = tile_surfel_irradiance_tex[tile_px];
@@ -78,6 +74,6 @@ void main(
         min(64, 32 * source_irradiance.a)
     ));
 
-    surfel_aux_buf[surfel_idx * 2 + 0] = start_irradiance_and_sample_count;
-    surfel_irradiance_buf[surfel_idx] = start_irradiance_and_sample_count;
+    surf_rcache_aux_buf[surfel_idx * 2 + 0] = start_irradiance_and_sample_count;
+    surf_rcache_irradiance_buf[surfel_idx] = start_irradiance_and_sample_count;
 }

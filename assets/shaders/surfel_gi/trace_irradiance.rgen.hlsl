@@ -18,18 +18,15 @@
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
-[[vk::binding(0)]] StructuredBuffer<VertexPacked> surfel_spatial_buf;
+[[vk::binding(0)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] ByteAddressBuffer surfel_hash_key_buf;
-[[vk::binding(3)]] ByteAddressBuffer surfel_hash_value_buf;
-[[vk::binding(4)]] ByteAddressBuffer cell_index_offset_buf;
-[[vk::binding(5)]] ByteAddressBuffer surfel_index_buf;
-[[vk::binding(6)]] StructuredBuffer<uint> surfel_life_buf;
-[[vk::binding(7)]] StructuredBuffer<VertexPacked> surfel_reposition_proposal_buf;
-DEFINE_WRC_BINDINGS(8)
-[[vk::binding(9)]] RWByteAddressBuffer surfel_meta_buf;
-[[vk::binding(10)]] RWStructuredBuffer<float4> surfel_irradiance_buf;
-[[vk::binding(11)]] RWStructuredBuffer<float4> surfel_aux_buf;
+[[vk::binding(2)]] ByteAddressBuffer surf_rcache_grid_meta_buf;
+[[vk::binding(3)]] StructuredBuffer<uint> surf_rcache_life_buf;
+[[vk::binding(4)]] StructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
+DEFINE_WRC_BINDINGS(5)
+[[vk::binding(6)]] RWByteAddressBuffer surf_rcache_meta_buf;
+[[vk::binding(7)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> surf_rcache_aux_buf;
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
@@ -37,7 +34,7 @@ DEFINE_WRC_BINDINGS(8)
 #define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
 
-#define USE_WORLD_RADIANCE_CACHE 0
+#define USE_WORLD_RADIANCE_CACHE 1
 
 // Reduces leaks and spatial artifacts,
 // but increases temporal fluctuation.
@@ -51,7 +48,7 @@ DEFINE_WRC_BINDINGS(8)
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
-static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
+static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = !true;
 static const uint MAX_PATH_LENGTH = 1;
 static const uint TARGET_SAMPLE_COUNT = 128;
 static const uint SHORT_ESTIMATOR_SAMPLE_COUNT = 4;
@@ -261,19 +258,19 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
 
 [shader("raygeneration")]
 void main() {
-    const uint total_surfel_count = surfel_meta_buf.Load(SURFEL_META_SURFEL_COUNT);
+    const uint total_surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
     const uint surfel_idx = DispatchRaysIndex().x;
-    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surfel_life_buf[surfel_idx])) {
+    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surf_rcache_life_buf[surfel_idx])) {
         return;
     }   
 
     #if USE_DYNAMIC_TRACE_ORIGIN
-        const Vertex surfel = unpack_vertex(surfel_reposition_proposal_buf[surfel_idx]);
+        const Vertex surfel = unpack_vertex(surf_rcache_reposition_proposal_buf[surfel_idx]);
     #else
-        const Vertex surfel = unpack_vertex(surfel_spatial_buf[surfel_idx]);
+        const Vertex surfel = unpack_vertex(surf_rcache_spatial_buf[surfel_idx]);
     #endif
 
-    const float4 prev_total_radiance_packed = surfel_aux_buf[surfel_idx * 2 + 0];
+    const float4 prev_total_radiance_packed = surf_rcache_aux_buf[surfel_idx * 2 + 0];
 
     DiffuseBrdf brdf;
     const float3x3 tangent_to_world = build_orthonormal_basis(surfel.normal);
@@ -300,17 +297,21 @@ void main() {
     const float3 new_value = irradiance_sum / max(1.0, valid_sample_count);
     const float irradiance_lum = calculate_luma(new_value);
 
-    const float4 prev_aux = surfel_aux_buf[surfel_idx * 2 + 1];
+    const float4 prev_aux = surf_rcache_aux_buf[surfel_idx * 2 + 1];
     const float prev_sample0_luminance = prev_aux.x;
     const float2 prev_ex_ex2 = prev_aux.zw;
 
     float relative_sample0_diff = 0;
+
+    // TODO: fix for USE_DYNAMIC_TRACE_ORIGIN. prev ray is going to change with it, so can't quite compare
+    #if !USE_DYNAMIC_TRACE_ORIGIN
     {
         const uint sequence_idx = hash1(surfel_idx) + 0 + (frame_constants.frame_index - 1) * sample_count;
         SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx);
         const float lum = calculate_luma(traced.irradiance);
         relative_sample0_diff = 2.0 * abs(lum - prev_sample0_luminance) / max(1e-10, lum + prev_sample0_luminance);
     }
+    #endif
 
     const float2 sample_ex_ex2 = float2(irradiance_lum, irradiance_lum * irradiance_lum);
     const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / (1.0 + clamp(prev_total_radiance_packed.w, 1, SHORT_ESTIMATOR_SAMPLE_COUNT)));
@@ -320,7 +321,7 @@ void main() {
         lerp(prev_aux.y, irradiance_lum, 1.0 / (1.0 + clamp(prev_total_radiance_packed.w, 2, 2 * SHORT_ESTIMATOR_SAMPLE_COUNT))),
         ex_ex2
     );
-    surfel_aux_buf[surfel_idx * 2 + 1] = new_aux;
+    surf_rcache_aux_buf[surfel_idx * 2 + 1] = new_aux;
 
     const float lum_variance = max(0.0, ex_ex2.y - ex_ex2.x * ex_ex2.x);
     const float lum_dev = sqrt(lum_variance);
@@ -354,16 +355,16 @@ void main() {
 
     const float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
 
-    //surfel_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
-    surfel_aux_buf[surfel_idx * 2 + 0] = max(0.0, float4(
+    //surf_rcache_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
+    surf_rcache_aux_buf[surfel_idx * 2 + 0] = max(0.0, float4(
         blended_value,
         total_sample_count
     ));
 
-    float3 prev_irrad = surfel_irradiance_buf[surfel_idx].xyz;
+    float3 prev_irrad = surf_rcache_irradiance_buf[surfel_idx].xyz;
     const float k = 0.5;
 
-    surfel_irradiance_buf[surfel_idx] = max(0.0, float4(
+    surf_rcache_irradiance_buf[surfel_idx] = max(0.0, float4(
         #if USE_BLEND_RESULT
             pow(
                 lerp(
