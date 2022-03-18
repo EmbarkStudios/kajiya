@@ -157,7 +157,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
-    gbuffer.roughness = 1;//roughness;
+    gbuffer.roughness = roughness;
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
