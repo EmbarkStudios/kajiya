@@ -12,7 +12,6 @@
 #define VISUALIZE_SURFEL_AGE 0
 #define VISUALIZE_CELLS 0
 #define USE_GEOMETRIC_NORMALS 1
-#define FREEZE_SURFEL_SET 0
 #define USE_DEBUG_OUT 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -183,8 +182,9 @@ void main(
     #endif
 
     float3 surfel_color = 0.0.xxx;
-    float3 debug_color = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal);
+    float3 debug_color = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal, 0);
 
+#if 0
     {
         const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
         uint entry_idx = cell_meta.x;
@@ -217,20 +217,20 @@ void main(
             }
         }
 
-        // TODO: reservoir-based selection, factor in vertex ordinals
-        if (true) {
-            SurfRcacheLookup trilin = surf_rcache_trilinear_lookup(pt_ws.xyz);
+        // TODO: reservoir-based selection, factor in vertex ranks
+        if (!true) {
+            SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws.xyz);
             Vertex new_surfel;
             new_surfel.position = pt_ws.xyz;
             new_surfel.normal = shading_normal;
 
             #if 0
-            for (uint i = 0; i < trilin.count; ++i) {
-                const uint entry_idx = trilin.entry_idx[i];
+            for (uint i = 0; i < lookup.count; ++i) {
+                const uint entry_idx = lookup.entry_idx[i];
 
                 // HACK; TODO: only accept trilinear footprint proposals if no direct proposals found
-                // or direct proposals are from a lower ordinal
-                const float prob = pow(trilin.weight[i], 3);
+                // or direct proposals are from a lower rank
+                const float prob = pow(lookup.weight[i], 3);
                 if (uint_to_u01_float(hash1_mut(seed)) > prob) {
                     continue;
                 }
@@ -258,66 +258,7 @@ void main(
             //debug_color = cost_color_map(1.4 - min(1.0, pow(surfel_irradiance_packed.w / 128.0, 8.0)));
         #endif
     }
-
-    // Despawn surfels
-    /*if (!FREEZE_SURFEL_SET) {
-        uint px_max_score_loc_packed = 0u;
-
-        const float cell_fullness = smoothstep(
-            MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE * 0.75,
-            MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE * 1.0,
-            float(cell_surfel_count));
-
-        // Be more fussy about high coverage if the surfel count is getting high
-        const float despawn_weight_threshold = lerp(3.5, 3.0, cell_fullness);
-        const float second_highest_weight_threshold = lerp(0.9, 0.8, cell_fullness);
-
-        // Despawn if the coverage is high" and the second highest scoring
-        // surfel has a high weight (indicating surfel overlap),
-        if (scoring_total_weight > despawn_weight_threshold && second_highest_weight > second_highest_weight_threshold) {
-            px_max_score_loc_packed = pack_score_and_px_within_group(px_score, px_within_group);
-            InterlockedMax(gs_px_max_score_loc_packed, px_max_score_loc_packed);
-        }
-
-        GroupMemoryBarrierWithGroupSync();
-
-        uint surfel_to_despawn = 0xffffffffu;
-        float surfel_to_despawn_weight = 0;
-
-        if (gs_px_max_score_loc_packed == px_max_score_loc_packed && px_max_score_loc_packed != 0) {
-            for (uint entry_idx_loc = entry_idx_loc_range.x; entry_idx_loc < entry_idx_loc_range.y; ++entry_idx_loc) {
-                const uint entry_idx = surfel_index_buf.Load(sizeof(uint) * entry_idx_loc);
-
-                Vertex surfel = unpack_vertex(surf_rcache_spatial_buf[entry_idx]);
-                const float surfel_radius = surfel_radius_for_pos(surfel.position);
-
-            #if USE_GEOMETRIC_NORMALS
-                float3 shading_normal = geometric_normal_ws;
-            #else
-                float3 shading_normal = gbuffer.normal;
-            #endif
-
-                const float3 pos_offset = pt_ws.xyz - surfel.position.xyz;
-                const float directional_weight = max(0.0, dot(surfel.normal, shading_normal));
-                const float dist = length(pos_offset);
-                const float mahalanobis_dist = length(pos_offset) * (1 + abs(dot(pos_offset, surfel.normal)) * SURFEL_NORMAL_DIRECTION_SQUISH);
-
-                float weight = smoothstep(
-                    surfel_radius * SURFEl_RADIUS_OVERSCALE,
-                    0.0,
-                    mahalanobis_dist) * directional_weight;
-
-                if (weight > surfel_to_despawn_weight) {
-                    surfel_to_despawn_weight = weight;
-                    surfel_to_despawn = entry_idx;
-                }
-            }
-        }
-
-        if (surfel_to_despawn != 0xffffffffu) {
-            surf_rcache_life_buf[surfel_to_despawn] = SURFEL_LIFE_RECYCLE;
-        }
-    }*/
+#endif
 
     #if VISUALIZE_CASCADES
         Vertex surfel;

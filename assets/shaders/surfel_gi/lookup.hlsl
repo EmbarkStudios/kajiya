@@ -83,13 +83,58 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
     return result;
 }
 
-
-float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws) {
-#if 0
-    SurfRcacheLookup lookup = surf_rcache_trilinear_lookup(pt_ws);
+#if SURF_RCACHE_USE_TRILINEAR
+    #define surf_rcache_lookup surf_rcache_trilinear_lookup
 #else
-    SurfRcacheLookup lookup = surf_rcache_nearest_lookup(pt_ws);
+    #define surf_rcache_lookup surf_rcache_nearest_lookup
 #endif
+
+float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank) {
+#ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
+    if (!FREEZE_SURFEL_SET) {
+        // TODO: should be prev eye pos for the find_missing_surfels shader
+        const float3 eye_pos = get_eye_position();
+
+        const uint cell_idx = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos));
+
+        const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
+        uint entry_idx = cell_meta.x;
+        const uint entry_flags = cell_meta.y;
+
+        if ((entry_flags & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
+            // Allocate
+
+            uint prev = 0;
+            surf_rcache_grid_meta_buf.InterlockedOr(sizeof(uint4) * cell_idx + sizeof(uint), SURF_RCACHE_ENTRY_META_OCCUPIED, prev);
+
+            if ((prev & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
+                // We've allocated it!
+
+                uint alloc_idx;
+                surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, alloc_idx);
+
+                entry_idx = surf_rcache_pool_buf[alloc_idx];
+                surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
+
+                // Clear dead state, mark used.
+                surf_rcache_life_buf[entry_idx] = surfel_life_for_rank(query_rank);
+                surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
+
+                surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
+            } else {
+                // We did not allocate it, so read the entry index from whoever did.
+                
+                entry_idx = surf_rcache_grid_meta_buf.Load(sizeof(uint4) * cell_idx + 0);
+            }
+        }
+    }
+#endif
+
+    SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws);
+
+    Vertex new_surfel;
+    new_surfel.position = pt_ws.xyz;
+    new_surfel.normal = normal_ws;
 
     float3 irradiance_sum = 0.0.xxx;
 
@@ -98,11 +143,19 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws) {
         const float3 irradiance = surf_rcache_irradiance_buf[entry_idx].xyz;
         irradiance_sum += irradiance * lookup.weight[i];
 
-        #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
-            if (surf_rcache_life_buf[entry_idx] < SURFEL_LIFE_RECYCLE) {
-                surf_rcache_life_buf[entry_idx] = 0;
-            }
-        #endif
+        if (!FREEZE_SURFEL_SET) {
+            #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
+                if (surf_rcache_life_buf[entry_idx] < SURFEL_LIFE_RECYCLE) {
+                    uint prev_life;
+                    InterlockedMin(surf_rcache_life_buf[entry_idx], surfel_life_for_rank(query_rank), prev_life);
+
+                    const uint prev_rank = surfel_life_to_rank(prev_life);
+                    if (query_rank <= prev_rank) {
+                        surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+                    }
+                }
+            #endif
+        }
     }
 
     return irradiance_sum;

@@ -35,7 +35,9 @@ void age_surfel(uint entry_idx) {
 
 [numthreads(64, 1, 1)]
 void main(uint surfel_idx: SV_DispatchThreadID) {
-    return;
+    if (FREEZE_SURFEL_SET) {
+        return;
+    }
 
     const uint total_surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
     

@@ -20,18 +20,18 @@
 
 [[vk::binding(0)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(2)]] ByteAddressBuffer surf_rcache_grid_meta_buf;
+[[vk::binding(2)]] RWByteAddressBuffer surf_rcache_grid_meta_buf;
 [[vk::binding(3)]] StructuredBuffer<uint> surf_rcache_life_buf;
 [[vk::binding(4)]] StructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
 DEFINE_WRC_BINDINGS(5)
 [[vk::binding(6)]] RWByteAddressBuffer surf_rcache_meta_buf;
 [[vk::binding(7)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
 [[vk::binding(8)]] RWStructuredBuffer<float4> surf_rcache_aux_buf;
+[[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
+[[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_entry_cell_buf;
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
-
-#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
 
 #define USE_WORLD_RADIANCE_CACHE 0
@@ -76,7 +76,7 @@ struct SurfelTraceResult {
     float3 irradiance;
 };
 
-SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent_to_world, uint sequence_idx) {
+SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent_to_world, uint sequence_idx, uint life) {
     uint rng = hash1(sequence_idx);
     //const float2 urand = r2_sequence(sequence_idx % (TARGET_SAMPLE_COUNT * 64));
     const float2 urand = r2_sequence(sequence_idx % max(128, TARGET_SAMPLE_COUNT));
@@ -216,7 +216,7 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
             }
             
             if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
-                irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal) * throughput * gbuffer.albedo;
+                irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, 1 + surfel_life_to_rank(life)) * throughput * gbuffer.albedo;
             }
 
             const float3 urand = float3(
@@ -260,7 +260,9 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
 void main() {
     const uint total_surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
     const uint surfel_idx = DispatchRaysIndex().x;
-    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(surf_rcache_life_buf[surfel_idx])) {
+    const uint life = surf_rcache_life_buf[surfel_idx];
+
+    if (surfel_idx >= total_surfel_count || !is_surfel_life_valid(life)) {
         return;
     }   
 
@@ -287,7 +289,7 @@ void main() {
         valid_sample_count += 1.0;
         const uint sequence_idx = hash1(surfel_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
-        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx);
+        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx, life);
         irradiance_sum += traced.irradiance;
 
         if (0 == sample_idx) {
@@ -307,7 +309,7 @@ void main() {
     #if !USE_DYNAMIC_TRACE_ORIGIN
     {
         const uint sequence_idx = hash1(surfel_idx) + 0 + (frame_constants.frame_index - 1) * sample_count;
-        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx);
+        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx, life);
         const float lum = calculate_luma(traced.irradiance);
         relative_sample0_diff = 2.0 * abs(lum - prev_sample0_luminance) / max(1e-10, lum + prev_sample0_luminance);
     }

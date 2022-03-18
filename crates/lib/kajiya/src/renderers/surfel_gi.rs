@@ -44,7 +44,10 @@ impl<'rg, RgPipelineHandle> BindMutToSimpleRenderPass<'rg, RgPipelineHandle>
         &mut self,
         pass: SimpleRenderPass<'rg, RgPipelineHandle>,
     ) -> SimpleRenderPass<'rg, RgPipelineHandle> {
-        pass.write(&mut self.surf_rcache_grid_meta_buf)
+        pass.write(&mut self.surf_rcache_meta_buf)
+            .write(&mut self.surf_rcache_pool_buf)
+            .write(&mut self.surf_rcache_reposition_proposal_buf)
+            .write(&mut self.surf_rcache_grid_meta_buf)
             .write(&mut self.surf_rcache_entry_cell_buf)
             .read(&self.surf_rcache_spatial_buf)
             .read(&self.surf_rcache_irradiance_buf)
@@ -232,13 +235,15 @@ impl SurfelGiRenderState {
         )
         .read(&self.surf_rcache_spatial_buf)
         .read(sky_cube)
-        .read(&self.surf_rcache_grid_meta_buf)
+        .write(&mut self.surf_rcache_grid_meta_buf)
         .read(&self.surf_rcache_life_buf)
         .read(&self.surf_rcache_reposition_proposal_buf)
         .bind(wrc)
         .write(&mut self.surf_rcache_meta_buf)
         .write(&mut self.surf_rcache_irradiance_buf)
         .write(&mut self.surf_rcache_aux_buf)
+        .write(&mut self.surf_rcache_pool_buf)
+        .write(&mut self.surf_rcache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays_indirect(tlas, &indirect_args_buf, 0);
     }
