@@ -19,7 +19,7 @@
 #define USE_SOFT_SHADOWS 0
 
 #define USE_SURFEL_GI 1
-#define USE_WORLD_RADIANCE_CACHE 1
+#define USE_WORLD_RADIANCE_CACHE 0
 
 #define ROUGHNESS_BIAS 0.5
 #define USE_SCREEN_GI_REPROJECTION 0
@@ -36,15 +36,15 @@
 [[vk::binding(3)]] Texture2D<float4> reservoir_ray_history_tex;
 [[vk::binding(4)]] Texture2D<float> ssao_tex;
 [[vk::binding(5)]] Texture2D<float4> reprojection_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9)
-DEFINE_WRC_BINDINGS(10)
-[[vk::binding(11)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(12)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(13)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(14)]] RWTexture2D<float4> candidate_irradiance_out_tex;
-[[vk::binding(15)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(16)]] RWTexture2D<float> rt_history_invalidity_out_tex;
-[[vk::binding(17)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10)
+DEFINE_WRC_BINDINGS(11)
+[[vk::binding(12)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(13)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(14)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(15)]] RWTexture2D<float4> candidate_irradiance_out_tex;
+[[vk::binding(16)]] RWTexture2D<float4> candidate_normal_out_tex;
+[[vk::binding(17)]] RWTexture2D<float> rt_history_invalidity_out_tex;
+[[vk::binding(18)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -90,7 +90,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     float hit_t = outgoing_ray.TMax;
     float inv_pdf = 1.0;
 
-    const float reflected_cone_spread_angle = 0.2;
+    const float reflected_cone_spread_angle = 0.03;
     const RayCone ray_cone =
         pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
         .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));

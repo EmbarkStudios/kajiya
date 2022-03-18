@@ -29,13 +29,13 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;  // TODO: nuke
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9)
-DEFINE_WRC_BINDINGS(10)
-[[vk::binding(11)]] RWTexture2D<float4> temporal_output_tex;
-[[vk::binding(12)]] RWTexture2D<float4> output_tex;
-[[vk::binding(13)]] TextureCube<float4> unconvolved_sky_cube_tex;
-[[vk::binding(14)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(15)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10)
+DEFINE_WRC_BINDINGS(11)
+[[vk::binding(12)]] RWTexture2D<float4> temporal_output_tex;
+[[vk::binding(13)]] RWTexture2D<float4> output_tex;
+[[vk::binding(14)]] TextureCube<float4> unconvolved_sky_cube_tex;
+[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(16)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
     uint debug_show_wrc;
@@ -164,7 +164,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
         #endif
         ;
 
-    if (USE_RTR && debug_shading_mode != SHADING_MODE_RTX_OFF) {
+    if (USE_RTR && !LAYERED_BRDF_FORCE_DIFFUSE_ONLY && debug_shading_mode != SHADING_MODE_RTX_OFF) {
         float3 rtr_radiance;
 
         #if !RTR_RENDER_SCALED_BY_FG

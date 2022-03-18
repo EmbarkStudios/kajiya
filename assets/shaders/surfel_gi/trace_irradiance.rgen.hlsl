@@ -34,7 +34,7 @@ DEFINE_WRC_BINDINGS(5)
 #define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
 
-#define USE_WORLD_RADIANCE_CACHE 1
+#define USE_WORLD_RADIANCE_CACHE 0
 
 // Reduces leaks and spatial artifacts,
 // but increases temporal fluctuation.
@@ -48,7 +48,7 @@ DEFINE_WRC_BINDINGS(5)
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
-static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = !true;
+static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
 static const uint TARGET_SAMPLE_COUNT = 128;
 static const uint SHORT_ESTIMATOR_SAMPLE_COUNT = 4;
@@ -122,7 +122,7 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
     [loop]
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
         const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-            .with_cone(RayCone::from_spread_angle(0.5))
+            .with_cone(RayCone::from_spread_angle(0.03))
             .with_cull_back_faces(true)
             .with_path_length(path_length + 1)  // +1 because this is indirect light
             .trace(acceleration_structure);
@@ -331,6 +331,17 @@ void main() {
 
     float prev_sample_count = min(prev_total_radiance_packed.w, TARGET_SAMPLE_COUNT);
 
+    const float4 prev_irrad_sample_count_packed = surf_rcache_irradiance_buf[surfel_idx];
+    const float3 prev_irrad = prev_irrad_sample_count_packed.xyz;
+
+    // When cache points are despawned, their irradiance is cleared to zero
+    // If we encounter one with such, it's a reused cache point. Clear its state then.
+    const bool should_reset = 0 == prev_irrad_sample_count_packed.w;
+
+    if (should_reset) {
+        prev_sample_count = 0;
+    }
+
     // Hard suppress if the control sample had a large difference
     //prev_sample_count *= (1.0 - relative_sample0_diff);
 
@@ -361,7 +372,6 @@ void main() {
         total_sample_count
     ));
 
-    float3 prev_irrad = surf_rcache_irradiance_buf[surfel_idx].xyz;
     const float k = 0.5;
 
     surf_rcache_irradiance_buf[surfel_idx] = max(0.0, float4(

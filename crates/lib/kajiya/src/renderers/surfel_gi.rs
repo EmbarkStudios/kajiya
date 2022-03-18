@@ -24,6 +24,7 @@ pub struct SurfelGiRenderState {
 
     surf_rcache_grid_meta_buf: rg::Handle<Buffer>,
 
+    surf_rcache_entry_cell_buf: rg::Handle<Buffer>,
     surf_rcache_spatial_buf: rg::Handle<Buffer>,
     surf_rcache_irradiance_buf: rg::Handle<Buffer>,
     surf_rcache_aux_buf: rg::Handle<Buffer>,
@@ -44,6 +45,7 @@ impl<'rg, RgPipelineHandle> BindMutToSimpleRenderPass<'rg, RgPipelineHandle>
         pass: SimpleRenderPass<'rg, RgPipelineHandle>,
     ) -> SimpleRenderPass<'rg, RgPipelineHandle> {
         pass.write(&mut self.surf_rcache_grid_meta_buf)
+            .write(&mut self.surf_rcache_entry_cell_buf)
             .read(&self.surf_rcache_spatial_buf)
             .read(&self.surf_rcache_irradiance_buf)
             .write(&mut self.surf_rcache_life_buf)
@@ -89,6 +91,11 @@ impl SurfelGiRenderer {
                 "surf_rcache.grid_meta_buf",
                 size_of::<[u32; 4]>() * MAX_SURFEL_CELLS,
             ),
+            surf_rcache_entry_cell_buf: temporal_storage_buffer(
+                rg,
+                "surf_rcache.entry_cell_buf",
+                size_of::<u32>() * MAX_SURFELS,
+            ),
             surf_rcache_spatial_buf: temporal_storage_buffer(
                 rg,
                 "surf_rcache.spatial_buf",
@@ -128,6 +135,7 @@ impl SurfelGiRenderer {
                 "/shaders/surfel_gi/clear_surfel_pool.hlsl",
             )
             .write(&mut state.surf_rcache_pool_buf)
+            .write(&mut state.surf_rcache_life_buf)
             .dispatch([MAX_SURFELS as _, 1, 1]);
 
             self.initialized = true;
@@ -142,6 +150,7 @@ impl SurfelGiRenderer {
         .read(bent_normals)
         .write(&mut state.surf_rcache_meta_buf)
         .write(&mut state.surf_rcache_grid_meta_buf)
+        .write(&mut state.surf_rcache_entry_cell_buf)
         .read(&state.surf_rcache_spatial_buf)
         .read(&state.surf_rcache_irradiance_buf)
         .write(&mut state.debug_out)
@@ -173,10 +182,13 @@ impl SurfelGiRenderer {
             "/shaders/surfel_gi/age_surfels.hlsl",
         )
         .write(&mut state.surf_rcache_meta_buf)
+        .write(&mut state.surf_rcache_grid_meta_buf)
+        .write(&mut state.surf_rcache_entry_cell_buf)
         .write(&mut state.surf_rcache_life_buf)
         .write(&mut state.surf_rcache_pool_buf)
         .write(&mut state.surf_rcache_spatial_buf)
         .write(&mut state.surf_rcache_reposition_proposal_buf)
+        .write(&mut state.surf_rcache_irradiance_buf)
         .dispatch_indirect(&indirect_args_buf, 0);
 
         state

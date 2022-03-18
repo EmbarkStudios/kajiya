@@ -20,8 +20,8 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4)
-[[vk::binding(5)]] RWTexture2D<float4> radiance_atlas_out_tex;
+DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5)
+[[vk::binding(6)]] RWTexture2D<float4> radiance_atlas_out_tex;
 
 #define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "../surfel_gi/lookup.hlsl"
@@ -100,7 +100,7 @@ void main() {
 
         {
             const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-                .with_cone(RayCone::from_spread_angle(0.1))
+                .with_cone(RayCone::from_spread_angle(0.03))
                 .with_cull_back_faces(true)
                 .with_path_length(1)  // +1 because this is indirect light
                 .trace(acceleration_structure);

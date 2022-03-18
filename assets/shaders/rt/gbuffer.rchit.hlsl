@@ -57,7 +57,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
 
     const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
-    normal = surf_normal;
+    //normal = surf_normal;
 
     float4 v_color = 1.0.xxxx;
     if (mesh.vertex_aux_offset != 0) {
@@ -157,7 +157,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
-    gbuffer.roughness = roughness;
+    gbuffer.roughness = 1;//roughness;
     //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;

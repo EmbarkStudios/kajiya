@@ -20,14 +20,15 @@
 [[vk::binding(2)]] Texture2D<float4> geometric_normals_tex;
 [[vk::binding(3)]] RWByteAddressBuffer surf_rcache_meta_buf;
 [[vk::binding(4)]] RWByteAddressBuffer surf_rcache_grid_meta_buf;
-[[vk::binding(5)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
-[[vk::binding(6)]] StructuredBuffer<float4> surf_rcache_irradiance_buf;
-[[vk::binding(7)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(8)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
-[[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_life_buf;
-[[vk::binding(10)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
+[[vk::binding(5)]] RWStructuredBuffer<uint> surf_rcache_entry_cell_buf;
+[[vk::binding(6)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
+[[vk::binding(7)]] StructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
+[[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
+[[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_life_buf;
+[[vk::binding(11)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
 
-[[vk::binding(11)]] cbuffer _ {
+[[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -206,6 +207,7 @@ void main(
 
                 // Clear dead state, mark used.
                 surf_rcache_life_buf[entry_idx] = 0;
+                surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
 
                 surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
             } else {
@@ -216,11 +218,33 @@ void main(
         }
 
         // TODO: reservoir-based selection, factor in vertex ordinals
-        {
+        if (true) {
+            SurfRcacheLookup trilin = surf_rcache_trilinear_lookup(pt_ws.xyz);
             Vertex new_surfel;
             new_surfel.position = pt_ws.xyz;
             new_surfel.normal = shading_normal;
-            surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+
+            #if 0
+            for (uint i = 0; i < trilin.count; ++i) {
+                const uint entry_idx = trilin.entry_idx[i];
+
+                // HACK; TODO: only accept trilinear footprint proposals if no direct proposals found
+                // or direct proposals are from a lower ordinal
+                const float prob = pow(trilin.weight[i], 3);
+                if (uint_to_u01_float(hash1_mut(seed)) > prob) {
+                    continue;
+                }
+
+            #else
+            if (true) {
+            #endif
+                surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+
+                // Mark used
+                if (surf_rcache_life_buf[entry_idx] < SURFEL_LIFE_RECYCLE) {
+                    surf_rcache_life_buf[entry_idx] = 0;
+                }
+            }
         }
         
         float4 surfel_irradiance_packed = surf_rcache_irradiance_buf[entry_idx];

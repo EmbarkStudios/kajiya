@@ -1,7 +1,7 @@
 #include "gbuffer.hlsl"
 #include "color.hlsl"
 
-#define LAYERED_BRDF_FORCE_DIFFUSE_ONLY 0
+#define LAYERED_BRDF_FORCE_DIFFUSE_ONLY 1
 #define LAYERED_BRDF_FORCE_SPECULAR_ONLY 0
 
 // Metalness other than 0.0 and 1.0 loses energy due to the way diffuse albedo
@@ -30,6 +30,11 @@ void apply_metalness_to_brdfs(inout SpecularBrdf specular_brdf, inout DiffuseBrd
     const float3 albedo_boost = metalness_albedo_boost(metalness, albedo);
     specular_brdf.albedo = min(1.0, specular_brdf.albedo * albedo_boost);
     diffuse_brdf.albedo = min(1.0, diffuse_brdf.albedo * albedo_boost);
+
+    #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
+        diffuse_brdf.albedo = albedo;
+        specular_brdf.albedo = 0.0.xxx;
+    #endif
 }
 
 struct LayeredBrdf {

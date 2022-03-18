@@ -20,8 +20,8 @@
 
 DEFINE_WRC_BINDINGS(0)
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5)
-[[vk::binding(6)]] RWTexture2D<float4> output_tex;
+DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5, 6)
+[[vk::binding(7)]] RWTexture2D<float4> output_tex;
 
 #include "lookup.hlsl"
 #include "../surfel_gi/lookup.hlsl"
@@ -52,7 +52,7 @@ void main() {
     const float2 pixel_center = px + 0.5;
     const float2 uv = pixel_center / DispatchRaysDimensions().xy;
 
-    RayCone ray_cone = RayCone::from_spread_angle(0.2);
+    RayCone ray_cone = RayCone::from_spread_angle(0.03);
     RayDesc outgoing_ray;
     {
         const ViewRayContext view_ray_context = ViewRayContext::from_uv(uv);
