@@ -867,7 +867,7 @@ pub fn create_ray_tracing_pipeline(
                     .build()],
                 None,
             )
-            .unwrap()[0];
+            .context("create_ray_tracing_pipelines")?[0];
 
         let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
         for bindings in set_layout_info.iter() {

@@ -117,7 +117,13 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout u
                 surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
 
                 // Clear dead state, mark used.
-                surf_rcache_life_buf[entry_idx] = surfel_life_for_rank(query_rank);
+
+                // TODO: this fails to compile on AMD:
+                //surf_rcache_life_buf[entry_idx] = surfel_life_for_rank(query_rank);
+
+                // ... but this works:
+                InterlockedMin(surf_rcache_life_buf[entry_idx], surfel_life_for_rank(query_rank));
+
                 surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
 
                 surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
