@@ -89,9 +89,9 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
     #define surf_rcache_lookup surf_rcache_nearest_lookup
 #endif
 
-float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank) {
+float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
 #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
-    if (!FREEZE_SURFEL_SET) {
+    if (!SURF_RCACHE_FREEZE) {
         // TODO: should be prev eye pos for the find_missing_surfels shader
         const float3 eye_pos = get_eye_position();
 
@@ -143,7 +143,7 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank) {
         const float3 irradiance = surf_rcache_irradiance_buf[entry_idx].xyz;
         irradiance_sum += irradiance * lookup.weight[i];
 
-        if (!FREEZE_SURFEL_SET) {
+        if (!SURF_RCACHE_FREEZE) {
             #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
                 if (surf_rcache_life_buf[entry_idx] < SURFEL_LIFE_RECYCLE) {
                     uint prev_life;
@@ -151,7 +151,15 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank) {
 
                     const uint prev_rank = surfel_life_to_rank(prev_life);
                     if (query_rank <= prev_rank) {
-                        surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+                        uint prev_vote_count;
+                        InterlockedAdd(surf_rcache_reposition_proposal_count_buf[entry_idx], 1, prev_vote_count);
+
+                        const float dart = uint_to_u01_float(hash1_mut(rng));
+                        const float prob = 1.0 / (prev_vote_count + 1.0);
+
+                        if (!SURF_RCACHE_USE_UNIFORM_VOTING || dart <= prob) {
+                            surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+                        }
                     }
                 }
             #endif

@@ -20,8 +20,8 @@
 
 DEFINE_WRC_BINDINGS(0)
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5, 6, 7, 8, 9)
-[[vk::binding(10)]] RWTexture2D<float4> output_tex;
+DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5, 6, 7, 8, 9, 10)
+[[vk::binding(11)]] RWTexture2D<float4> output_tex;
 
 #include "lookup.hlsl"
 #include "../surfel_gi/lookup.hlsl"
@@ -171,7 +171,8 @@ void main() {
                 float3 gi = lookup_surfel_gi(
                     primary_hit.position,
                     gbuffer.normal,
-                    0
+                    0,
+                    rng
                 );
 
                 total_radiance += gi * gbuffer.albedo;

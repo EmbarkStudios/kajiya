@@ -22,13 +22,14 @@
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(2)]] RWByteAddressBuffer surf_rcache_grid_meta_buf;
 [[vk::binding(3)]] StructuredBuffer<uint> surf_rcache_life_buf;
-[[vk::binding(4)]] StructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
-DEFINE_WRC_BINDINGS(5)
-[[vk::binding(6)]] RWByteAddressBuffer surf_rcache_meta_buf;
-[[vk::binding(7)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
-[[vk::binding(8)]] RWStructuredBuffer<float4> surf_rcache_aux_buf;
-[[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
-[[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_entry_cell_buf;
+[[vk::binding(4)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
+[[vk::binding(5)]] RWStructuredBuffer<uint> surf_rcache_reposition_proposal_count_buf;
+DEFINE_WRC_BINDINGS(6)
+[[vk::binding(7)]] RWByteAddressBuffer surf_rcache_meta_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(9)]] RWStructuredBuffer<float4> surf_rcache_aux_buf;
+[[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
+[[vk::binding(11)]] RWStructuredBuffer<uint> surf_rcache_entry_cell_buf;
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
@@ -215,15 +216,16 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
                 }
             }
             
-            if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
-                irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, 1 + surfel_life_to_rank(life)) * throughput * gbuffer.albedo;
-            }
-
             const float3 urand = float3(
                 uint_to_u01_float(hash1_mut(rng)),
                 uint_to_u01_float(hash1_mut(rng)),
                 uint_to_u01_float(hash1_mut(rng))
             );
+
+            if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
+                irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, 1 + surfel_life_to_rank(life), rng) * throughput * gbuffer.albedo;
+            }
+
             BrdfSample brdf_sample = brdf.sample(wo, urand);
 
             // TODO: investigate NaNs here.
@@ -258,6 +260,10 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
 
 [shader("raygeneration")]
 void main() {
+    if (SURF_RCACHE_FREEZE) {
+        return;
+    }
+
     const uint total_surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
     const uint surfel_idx = DispatchRaysIndex().x;
     const uint life = surf_rcache_life_buf[surfel_idx];

@@ -20,8 +20,8 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6, 7, 8)
-[[vk::binding(9)]] RWTexture2D<float4> radiance_atlas_out_tex;
+DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6, 7, 8, 9)
+[[vk::binding(10)]] RWTexture2D<float4> radiance_atlas_out_tex;
 
 #define SURFEL_LOOKUP_DONT_KEEP_ALIVE   // TODO
 #include "../surfel_gi/lookup.hlsl"
@@ -193,7 +193,7 @@ void main() {
 
                 if (USE_SURFEL_GI) {
                     const uint rank = 0;    // TODO: how the heck...
-                    irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, rank) * gbuffer.albedo;
+                    irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, rank, rng) * gbuffer.albedo;
                 }
                 
                 hit_count += 1.0;

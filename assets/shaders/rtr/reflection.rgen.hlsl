@@ -57,12 +57,12 @@
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(2, 3, 4)
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(7, 8, 9, 10, 11, 12, 13, 14)
-DEFINE_WRC_BINDINGS(15)
-[[vk::binding(16)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(17)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(18)]] RWTexture2D<float4> out2_tex;
-[[vk::binding(19)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(7, 8, 9, 10, 11, 12, 13, 14, 15)
+DEFINE_WRC_BINDINGS(16)
+[[vk::binding(17)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(18)]] RWTexture2D<float4> out1_tex;
+[[vk::binding(19)]] RWTexture2D<float4> out2_tex;
+[[vk::binding(20)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -304,7 +304,8 @@ void main() {
                         float3 gi = lookup_surfel_gi(
                             primary_hit.position,
                             gbuffer.normal,
-                            0
+                            0,
+                            rng
                         );
 
                         total_radiance += gi * gbuffer.albedo;

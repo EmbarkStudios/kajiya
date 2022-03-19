@@ -26,13 +26,14 @@
 [[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
 [[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_life_buf;
 [[vk::binding(11)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
+[[vk::binding(12)]] RWStructuredBuffer<uint> surf_rcache_reposition_proposal_count_buf;
 
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
 // TODO: figure out which one actually works better
-//#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
+#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 
 #include "lookup.hlsl"
 #include "surfel_binning_shared.hlsl"
@@ -144,7 +145,7 @@ void main(
 
     GroupMemoryBarrierWithGroupSync();
 
-    uint seed = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
+    uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);
     const float2 uv = get_uv(px, gbuffer_tex_size);
 
     #if USE_DEBUG_OUT
@@ -185,7 +186,7 @@ void main(
     #endif
 
     float3 surfel_color = 0.0.xxx;
-    float3 debug_color = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal, 0);
+    float3 debug_color = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal, 0, rng);
 
 #if 0
     {
@@ -234,7 +235,7 @@ void main(
                 // HACK; TODO: only accept trilinear footprint proposals if no direct proposals found
                 // or direct proposals are from a lower rank
                 const float prob = pow(lookup.weight[i], 3);
-                if (uint_to_u01_float(hash1_mut(seed)) > prob) {
+                if (uint_to_u01_float(hash1_mut(rng)) > prob) {
                     continue;
                 }
 

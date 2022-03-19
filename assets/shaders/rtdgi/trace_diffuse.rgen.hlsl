@@ -36,15 +36,15 @@
 [[vk::binding(3)]] Texture2D<float4> reservoir_ray_history_tex;
 [[vk::binding(4)]] Texture2D<float> ssao_tex;
 [[vk::binding(5)]] Texture2D<float4> reprojection_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13)
-DEFINE_WRC_BINDINGS(14)
-[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(16)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(17)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(18)]] RWTexture2D<float4> candidate_irradiance_out_tex;
-[[vk::binding(19)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(20)]] RWTexture2D<float> rt_history_invalidity_out_tex;
-[[vk::binding(21)]] cbuffer _ {
+DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13, 14)
+DEFINE_WRC_BINDINGS(15)
+[[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(17)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(18)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(19)]] RWTexture2D<float4> candidate_irradiance_out_tex;
+[[vk::binding(20)]] RWTexture2D<float4> candidate_normal_out_tex;
+[[vk::binding(21)]] RWTexture2D<float> rt_history_invalidity_out_tex;
+[[vk::binding(22)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -215,7 +215,8 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
                 float3 gi = lookup_surfel_gi(
                     primary_hit.position,
                     gbuffer.normal,
-                    0
+                    0,
+                    rng
                 );
 
                 total_radiance += gi * gbuffer.albedo;

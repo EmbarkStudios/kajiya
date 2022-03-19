@@ -38,6 +38,7 @@ pub struct SurfelGiRenderState {
     surf_rcache_pool_buf: rg::Handle<Buffer>,
 
     surf_rcache_reposition_proposal_buf: rg::Handle<Buffer>,
+    surf_rcache_reposition_proposal_count_buf: rg::Handle<Buffer>,
 
     pub debug_out: rg::Handle<Image>,
 }
@@ -52,6 +53,7 @@ impl<'rg, RgPipelineHandle> BindMutToSimpleRenderPass<'rg, RgPipelineHandle>
         pass.write(&mut self.surf_rcache_meta_buf)
             .write(&mut self.surf_rcache_pool_buf)
             .write(&mut self.surf_rcache_reposition_proposal_buf)
+            .write(&mut self.surf_rcache_reposition_proposal_count_buf)
             .write(&mut self.surf_rcache_grid_meta_buf)
             .write(&mut self.surf_rcache_entry_cell_buf)
             .read(&self.surf_rcache_spatial_buf)
@@ -153,6 +155,11 @@ impl SurfelGiRenderer {
                 "surf_rcache.reposition_proposal_buf",
                 size_of::<[f32; 4]>() * MAX_SURFELS,
             ),
+            surf_rcache_reposition_proposal_count_buf: temporal_storage_buffer(
+                rg,
+                "surf_rcache.reposition_proposal_count_buf",
+                size_of::<u32>() * MAX_SURFELS,
+            ),
             debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
         };
 
@@ -184,6 +191,7 @@ impl SurfelGiRenderer {
         .write(&mut state.surf_rcache_pool_buf)
         .write(&mut state.surf_rcache_life_buf)
         .write(&mut state.surf_rcache_reposition_proposal_buf)
+        .write(&mut state.surf_rcache_reposition_proposal_count_buf)
         .constants(gbuffer_desc.extent_inv_extent_2d())
         .dispatch(gbuffer_desc.extent);
 
@@ -217,6 +225,7 @@ impl SurfelGiRenderer {
         .write(&mut state.surf_rcache_pool_buf)
         .write(&mut state.surf_rcache_spatial_buf)
         .write(&mut state.surf_rcache_reposition_proposal_buf)
+        .write(&mut state.surf_rcache_reposition_proposal_count_buf)
         .write(&mut state.surf_rcache_irradiance_buf)
         .dispatch_indirect(&indirect_args_buf, 0);
 
@@ -263,7 +272,8 @@ impl SurfelGiRenderState {
         .read(sky_cube)
         .write(&mut self.surf_rcache_grid_meta_buf)
         .read(&self.surf_rcache_life_buf)
-        .read(&self.surf_rcache_reposition_proposal_buf)
+        .write(&mut self.surf_rcache_reposition_proposal_buf)
+        .write(&mut self.surf_rcache_reposition_proposal_count_buf)
         .bind(wrc)
         .write(&mut self.surf_rcache_meta_buf)
         .write(&mut self.surf_rcache_irradiance_buf)
@@ -295,7 +305,8 @@ impl SurfelGiRenderState {
             ],
             RasterPipelineDesc::builder()
                 .render_pass(render_pass.clone())
-                .face_cull(true),
+                .face_cull(true)
+                .depth_write(false),
         );
 
         let depth_ref = pass.raster(
@@ -310,6 +321,10 @@ impl SurfelGiRenderState {
         );
         let surf_rcache_grid_meta_buf_ref = pass.read(
             &self.surf_rcache_grid_meta_buf,
+            AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let surf_rcache_life_buf_ref = pass.read(
+            &self.surf_rcache_life_buf,
             AccessType::AnyShaderReadSampledImageOrUniformTexelBuffer,
         );
         let surf_rcache_spatial_buf_ref = pass.read(
@@ -341,6 +356,7 @@ impl SurfelGiRenderState {
                 &[
                     surf_rcache_meta_buf_ref.bind(),
                     surf_rcache_grid_meta_buf_ref.bind(),
+                    surf_rcache_life_buf_ref.bind(),
                     surf_rcache_spatial_buf_ref.bind(),
                     //rg::RenderPassBinding::DynamicConstants(constants_offset),
                 ],

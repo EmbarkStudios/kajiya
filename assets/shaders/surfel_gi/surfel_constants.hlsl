@@ -9,6 +9,8 @@ static const float SURFEL_BASE_RADIUS = SURFEL_GRID_CELL_DIAMETER * 1.2;
 static const float SURFEl_RADIUS_OVERSCALE = 1.25;
 
 #define SURF_RCACHE_USE_TRILINEAR 0
+#define SURF_RCACHE_USE_UNIFORM_VOTING 1
+#define SURF_RCACHE_FREEZE 0
 
 //#define SURFEL_META_CELL_COUNT (0 * sizeof(uint))
 #define SURFEL_META_ENTRY_COUNT (1 * sizeof(uint))
@@ -21,8 +23,6 @@ static const uint SURF_RCACHE_ENTRY_META_OCCUPIED = 1;
 
 static const uint SURF_RCACHE_ENTRY_LIFE_PER_RANK = 32;
 static const uint SURF_RCACHE_ENTRY_MAX_RANK = 3;
-
-#define FREEZE_SURFEL_SET 0
 
 bool is_surfel_life_valid(uint life) {
     return life < SURF_RCACHE_ENTRY_LIFE_PER_RANK * SURF_RCACHE_ENTRY_MAX_RANK;

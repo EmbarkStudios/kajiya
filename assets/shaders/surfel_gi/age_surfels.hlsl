@@ -7,7 +7,8 @@
 [[vk::binding(4)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
 [[vk::binding(5)]] RWStructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
 [[vk::binding(6)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
-[[vk::binding(7)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(7)]] RWStructuredBuffer<uint> surf_rcache_reposition_proposal_count_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> surf_rcache_irradiance_buf;
 
 #include "surfel_constants.hlsl"
 
@@ -34,26 +35,28 @@ void age_surfel(uint entry_idx) {
 }
 
 [numthreads(64, 1, 1)]
-void main(uint surfel_idx: SV_DispatchThreadID) {
-    if (FREEZE_SURFEL_SET) {
+void main(uint entry_idx: SV_DispatchThreadID) {
+    if (SURF_RCACHE_FREEZE) {
         return;
     }
 
     const uint total_surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
     
-    if (surfel_idx < total_surfel_count) {
-        if (surfel_life_needs_aging(surf_rcache_life_buf[surfel_idx])) {
-            age_surfel(surfel_idx);
+    if (entry_idx < total_surfel_count) {
+        if (surfel_life_needs_aging(surf_rcache_life_buf[entry_idx])) {
+            age_surfel(entry_idx);
         }
 
         #if 1
             // Flush the reposition proposal
-            VertexPacked proposal = surf_rcache_reposition_proposal_buf[surfel_idx];
-            surf_rcache_spatial_buf[surfel_idx] = proposal;
+            VertexPacked proposal = surf_rcache_reposition_proposal_buf[entry_idx];
+            surf_rcache_spatial_buf[entry_idx] = proposal;
         #endif
+
+        surf_rcache_reposition_proposal_count_buf[entry_idx] = 0;
     } else {
         VertexPacked invalid;
         invalid.data0 = asfloat(0);
-        surf_rcache_spatial_buf[surfel_idx] = invalid;
+        surf_rcache_spatial_buf[entry_idx] = invalid;
     }
 }
