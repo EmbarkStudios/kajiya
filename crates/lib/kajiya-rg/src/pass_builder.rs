@@ -178,6 +178,32 @@ impl<'rg> PassBuilder<'rg> {
         }
     }
 
+    pub fn raster_read<Res: Resource>(
+        &mut self,
+        handle: &Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> Ref<Res, GpuRt> {
+        match access_type {
+            AccessType::ColorAttachmentRead | AccessType::DepthStencilAttachmentRead => {}
+            _ => {
+                panic!("Invalid access type: {:?}", access_type);
+            }
+        }
+
+        let pass = self.pass.as_mut().unwrap();
+
+        pass.read.push(PassResourceRef {
+            handle: handle.raw,
+            access: PassResourceAccessType::new(access_type),
+        });
+
+        Ref {
+            desc: handle.desc.clone(),
+            handle: handle.raw,
+            marker: PhantomData,
+        }
+    }
+
     pub fn register_compute_pipeline(&mut self, path: impl AsRef<Path>) -> RgComputePipelineHandle {
         let desc = ComputePipelineDesc::builder()
             .compute_hlsl(path.as_ref().to_owned())

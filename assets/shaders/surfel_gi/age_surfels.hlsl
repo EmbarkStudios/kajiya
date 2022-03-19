@@ -46,13 +46,14 @@ void main(uint surfel_idx: SV_DispatchThreadID) {
             age_surfel(surfel_idx);
         }
 
-        #if 0
+        #if 1
+            // Flush the reposition proposal
             VertexPacked proposal = surf_rcache_reposition_proposal_buf[surfel_idx];
-            if (asuint(proposal.data0.x) != 0) {
-                surf_rcache_spatial_buf[surfel_idx] = proposal;
-                
-                surf_rcache_reposition_proposal_buf[surfel_idx].data0.x = asfloat(0);
-            }
+            surf_rcache_spatial_buf[surfel_idx] = proposal;
         #endif
+    } else {
+        VertexPacked invalid;
+        invalid.data0 = asfloat(0);
+        surf_rcache_spatial_buf[surfel_idx] = invalid;
     }
 }

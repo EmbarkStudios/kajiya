@@ -360,7 +360,7 @@ impl WorldRenderer {
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref()),
             lighting: LightingRenderer::new(),
-            surfel_gi: SurfelGiRenderer::default(),
+            surfel_gi: SurfelGiRenderer::new(backend.device.as_ref())?,
             rtdgi: RtdgiRenderer::new(),
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),

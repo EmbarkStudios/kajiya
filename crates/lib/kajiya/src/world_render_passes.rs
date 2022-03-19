@@ -31,7 +31,7 @@ impl WorldRenderer {
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
-        let (gbuffer_depth, velocity_img) = {
+        let (mut gbuffer_depth, velocity_img) = {
             let mut gbuffer_depth = {
                 let normal = rg.create(ImageDesc::new_2d(
                     vk::Format::A2R10G10B10_UNORM_PACK32,
@@ -73,9 +73,7 @@ impl WorldRenderer {
             (gbuffer_depth, velocity_img)
         };
 
-        let mut surfel_state =
-            self.surfel_gi
-                .allocate_surfels(rg, &gbuffer_depth.geometric_normal, &gbuffer_depth);
+        let mut surfel_state = self.surfel_gi.allocate_surfels(rg, &mut gbuffer_depth);
 
         let wrc = crate::renderers::wrc::wrc_trace(
             rg,

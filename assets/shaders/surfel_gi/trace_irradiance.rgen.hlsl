@@ -38,7 +38,7 @@ DEFINE_WRC_BINDINGS(5)
 
 // Reduces leaks and spatial artifacts,
 // but increases temporal fluctuation.
-#define USE_DYNAMIC_TRACE_ORIGIN 1
+#define USE_DYNAMIC_TRACE_ORIGIN 0
 
 #define USE_BLEND_RESULT 1
 
