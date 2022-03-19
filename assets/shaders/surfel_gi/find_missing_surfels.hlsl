@@ -33,7 +33,7 @@
 };
 
 // TODO: figure out which one actually works better
-#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
+//#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 
 #include "lookup.hlsl"
 #include "surfel_binning_shared.hlsl"
