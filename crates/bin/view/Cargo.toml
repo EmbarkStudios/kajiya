@@ -19,3 +19,4 @@ structopt = "0.3"
 
 [features]
 dlss = ["kajiya/dlss"]
+puffin-server = ['kajiya-simple/puffin-server']
