@@ -21,8 +21,8 @@ use vk::BufferUsageFlags;
 
 use super::{wrc::WrcRenderState, GbufferDepth};
 
-const MAX_SURFEL_CELLS: usize = 1024 * 256;
-const MAX_SURFELS: usize = MAX_SURFEL_CELLS;
+const MAX_SURFEL_CELLS: usize = 1024 * 1024 * 2;
+const MAX_SURFELS: usize = 1024 * 256;
 
 pub struct SurfelGiRenderState {
     surf_rcache_meta_buf: rg::Handle<Buffer>,

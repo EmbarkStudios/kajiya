@@ -48,6 +48,9 @@ DEFINE_WRC_BINDINGS(15)
     float4 gbuffer_tex_size;
 };
 
+//#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
+//#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.125
+
 #include "../surfel_gi/lookup.hlsl"
 #include "../wrc/lookup.hlsl"
 #include "candidate_ray_dir.hlsl"

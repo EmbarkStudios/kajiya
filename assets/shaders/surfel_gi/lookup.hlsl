@@ -77,7 +77,7 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
         const uint entry_idx = cell_meta.x;
         result.entry_idx[result.count] = entry_idx;
         result.weight[result.count] = 1;
-        result.count += 1;
+        result.count = 1;
     }
 
     return result;
@@ -85,8 +85,10 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
 
 #if SURF_RCACHE_USE_TRILINEAR
     #define surf_rcache_lookup surf_rcache_trilinear_lookup
+    static const uint SURF_CACHE_LOOKUP_MAX = 8;
 #else
     #define surf_rcache_lookup surf_rcache_nearest_lookup
+    static const uint SURF_CACHE_LOOKUP_MAX = 1;
 #endif
 
 float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
@@ -144,12 +146,19 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout u
 
     float3 irradiance_sum = 0.0.xxx;
 
-    for (uint i = 0; i < lookup.count; ++i) {
+#ifdef SURFEL_LOOKUP_KEEP_ALIVE_PROB
+    const bool should_propose_position = uint_to_u01_float(hash1_mut(rng)) < SURFEL_LOOKUP_KEEP_ALIVE_PROB;
+#else
+    const bool should_propose_position = true;
+#endif
+
+    [unroll]
+    for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.count) {
         const uint entry_idx = lookup.entry_idx[i];
         const float3 irradiance = surf_rcache_irradiance_buf[entry_idx].xyz;
         irradiance_sum += irradiance * lookup.weight[i];
 
-        if (!SURF_RCACHE_FREEZE) {
+        if (!SURF_RCACHE_FREEZE && should_propose_position) {
             #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
                 if (surf_rcache_life_buf[entry_idx] < SURFEL_LIFE_RECYCLE) {
                     uint prev_life;

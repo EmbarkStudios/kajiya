@@ -41,6 +41,7 @@ DEFINE_WRC_BINDINGS(15)
     uint debug_show_wrc;
 };
 
+#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "surfel_gi/lookup.hlsl"
 #include "wrc/lookup.hlsl"
 #include "wrc/wrc_intersect_probe_grid.hlsl"

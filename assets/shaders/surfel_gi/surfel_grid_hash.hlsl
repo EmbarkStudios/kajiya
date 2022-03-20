@@ -9,17 +9,18 @@ static const float SURFEL_GRID_CASCADE_RADIUS = SURFEL_GRID_CASCADE_DIAMETER * 0
 static const float SURFEL_NORMAL_DIRECTION_SQUISH = 2.0;
 
 static const bool SURFEL_GRID_SCROLL = !true;
+static const float3 SURFEL_GRID_CENTER = float3(-1.5570648, -1.2360737, 9.283543);
 
 int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {
     if (!SURFEL_GRID_SCROLL) {
-        eye_pos = 0.0.xxx;
+        eye_pos = SURFEL_GRID_CENTER;
     }
     return int3(floor((pos - eye_pos) / SURFEL_GRID_CELL_DIAMETER));
 }
 
 float3 surfel_grid_coord_center(uint4 coord, float3 eye_pos) {
     if (!SURFEL_GRID_SCROLL) {
-        eye_pos = 0.0.xxx;
+        eye_pos = SURFEL_GRID_CENTER;
     }
     return eye_pos + ((coord.xyz + 0.5.xxx - SURFEL_CS / 2) * SURFEL_GRID_CELL_DIAMETER) * (1u << uint(coord.w));
 }

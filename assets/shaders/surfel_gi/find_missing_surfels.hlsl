@@ -34,6 +34,7 @@
 
 // TODO: figure out which one actually works better
 //#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
+#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.05
 
 #include "lookup.hlsl"
 #include "surfel_binning_shared.hlsl"
@@ -122,6 +123,8 @@ void main(
     uint2 group_id: SV_GroupID,
     uint2 px_within_group: SV_GroupThreadID
 ) {
+    //return;
+    
     const float3 prev_eye_pos = get_prev_eye_position();
 
     if (USE_DEBUG_OUT && px.y < 50) {
@@ -228,8 +231,9 @@ void main(
             new_surfel.position = pt_ws.xyz;
             new_surfel.normal = shading_normal;
 
-            #if 0
-            for (uint i = 0; i < lookup.count; ++i) {
+            #if 1
+            [unroll]
+            for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.count) {
                 const uint entry_idx = lookup.entry_idx[i];
 
                 // HACK; TODO: only accept trilinear footprint proposals if no direct proposals found
