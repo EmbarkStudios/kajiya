@@ -256,7 +256,7 @@ impl Renderer {
 
         let image = {
             let image_create_info = vk::ImageCreateInfo::builder()
-                .format(vk::Format::R8G8B8A8_UNORM)
+                .format(vk::Format::R8G8B8A8_SRGB)
                 .initial_layout(vk::ImageLayout::UNDEFINED)
                 .samples(vk::SampleCountFlags::TYPE_1)
                 .tiling(vk::ImageTiling::OPTIMAL)
@@ -350,7 +350,7 @@ impl Renderer {
                 unsafe { (host_mapping as *mut u8).add(image_mem_offset) } as *mut c_uchar;
 
             let srgba_pixels: Vec<u8> = texture
-                .srgba_pixels(0.5)
+                .srgba_pixels(1.0)
                 .flat_map(|srgba| vec![srgba.r(), srgba.g(), srgba.b(), srgba.a()])
                 .collect();
             unsafe {
@@ -576,7 +576,7 @@ impl Renderer {
                 src_alpha_blend_factor: vk::BlendFactor::ONE,
                 dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
                 alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::all(),
+                color_write_mask: vk::ColorComponentFlags::RGBA,
             }];
 
             let color_blend_info = vk::PipelineColorBlendStateCreateInfo::builder()

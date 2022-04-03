@@ -2,7 +2,7 @@ use super::device::Device;
 use anyhow::{Context, Result};
 use ash::vk;
 use derive_builder::Builder;
-use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
+use gpu_allocator::{vulkan::AllocationCreateDesc, MemoryLocation};
 use parking_lot::Mutex;
 use std::collections::HashMap;
 
@@ -162,7 +162,7 @@ pub struct Image {
     pub raw: vk::Image,
     pub desc: ImageDesc,
     pub views: Mutex<HashMap<ImageViewDesc, vk::ImageView>>,
-    //allocation: gpu_allocator::SubAllocation,
+    //allocation: Allocation,
 }
 unsafe impl Send for Image {}
 unsafe impl Sync for Image {}

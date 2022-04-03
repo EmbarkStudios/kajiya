@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 #[cfg(feature = "use-egui")]
 use egui::{
     style::{Selection, WidgetVisuals, Widgets},
-    Color32, Context, Modifiers, Rounding, Stroke, TextStyle, Vec2,
+    Color32, Context, Rounding, Stroke, TextStyle,
 };
 
 use kajiya::{
@@ -28,14 +28,6 @@ use winit::{
     platform::run_return::EventLoopExtRunReturn,
     window::{Fullscreen, WindowBuilder},
 };
-
-#[cfg(feature = "use-egui")]
-use crate::MouseState;
-
-#[cfg(feature = "use-egui")]
-const MOUSE_BUTTON_LEFT_PRESSED: u32 = 1;
-#[cfg(feature = "use-egui")]
-const MOUSE_BUTTON_LEFT_RELEASED: u32 = 1;
 
 pub struct FrameContext<'a> {
     pub dt_filtered: f32,
@@ -70,7 +62,7 @@ pub struct EguiContext<'a> {
     egui: &'a mut EguiState,
     egui_backend: &'a mut EguiBackend,
     ui_renderer: &'a mut UiRenderer,
-    dt_filtered: f32,
+    window: &'a winit::window::Window,
 }
 
 #[cfg(feature = "use-egui")]
@@ -79,64 +71,11 @@ impl<'a> EguiContext<'a> {
         &self.egui.egui_context
     }
 
-    fn process_input(&mut self, mouse: &MouseState) {
-        let mut mouse_position = (
-            mouse.physical_position.x as f32,
-            mouse.physical_position.y as f32,
-        );
-
-        mouse_position.0 /= self.egui.raw_input.pixels_per_point.unwrap();
-        mouse_position.1 /= self.egui.raw_input.pixels_per_point.unwrap();
-
-        self.egui.last_mouse_pos = Some(mouse_position);
-
-        self.egui
-            .raw_input
-            .events
-            .push(egui::Event::PointerMoved(egui::pos2(
-                mouse_position.0,
-                mouse_position.1,
-            )));
-
-        let pos = egui::pos2(mouse_position.0, mouse_position.1);
-
-        if mouse.buttons_pressed == MOUSE_BUTTON_LEFT_PRESSED {
-            self.egui.raw_input.events.push(egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: true,
-                modifiers: Modifiers::default(),
-            });
-        }
-
-        if mouse.buttons_released == MOUSE_BUTTON_LEFT_RELEASED {
-            self.egui.raw_input.events.push(egui::Event::PointerButton {
-                pos,
-                button: egui::PointerButton::Primary,
-                pressed: false,
-                modifiers: Modifiers::default(),
-            });
-        }
-
-        if mouse.wheel_delta != 0.0 {
-            let scroll_delta = Vec2::new(0.0, mouse.wheel_delta);
-            self.egui
-                .raw_input
-                .events
-                .push(egui::Event::Scroll(scroll_delta));
-        }
-    }
-
-    pub fn frame(&mut self, mouse: &MouseState, callback: impl FnOnce(&Context)) {
-        self.process_input(mouse);
-
+    pub fn frame(&mut self, callback: impl FnOnce(&Context)) {
         callback(&self.egui.egui_context);
 
-        // Update delta time
-        self.egui.last_dt = self.dt_filtered as f64;
-
         // Prepare the egui context's frame so that the renderer can finish frame
-        EguiBackend::prepare_frame(&mut self.egui);
+        EguiBackend::prepare_frame(self.window, &mut self.egui);
 
         // (Update input)...
         self.egui_backend.finish_frame(
@@ -147,59 +86,47 @@ impl<'a> EguiContext<'a> {
     }
 
     pub fn get_theme_visuals() -> egui::style::Visuals {
-        const WINDOW_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(13, 13, 37, 150);
-        const WINDOW_OUTLINE_COLOR: Color32 = Color32::from_rgba_premultiplied(37, 85, 136, 255);
-        const WIDGET_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(82, 42, 69, 255);
-        const WIDGET_STROKE_FG_COLOR: Color32 = Color32::from_gray(240);
-        const WIDGET_STROKE_BG_COLOR: Color32 = Color32::from_gray(150);
-        const WIGDET_TEXT_COLOR: Color32 = Color32::from_rgba_premultiplied(206, 206, 206, 255);
-        const WIGDET_HOVERED_COLOR: Color32 = Color32::from_rgba_premultiplied(104, 0, 98, 255);
-        const ACTIVE_SELECTED_COLOR: Color32 = Color32::from_rgba_premultiplied(140, 0, 148, 255);
-        const TEXT_EDIT_BG_COLOR: Color32 = Color32::from_rgba_premultiplied(11, 11, 17, 255);
-        const SELECTED_ITEM_COLOR: Color32 = Color32::from_rgba_premultiplied(89, 57, 87, 255);
-        const NORMAL_TEXT_COLOR: Color32 = Color32::WHITE;
-
         #[cfg(feature = "use-egui")]
         let visuals = egui::style::Visuals {
             widgets: Widgets {
                 noninteractive: WidgetVisuals {
-                    bg_fill: WINDOW_BG_COLOR,                          // window background
-                    bg_stroke: Stroke::new(1.0, WINDOW_OUTLINE_COLOR), // separators, indentation lines, windows outlines
-                    fg_stroke: Stroke::new(1.0, NORMAL_TEXT_COLOR),    // normal text color
+                    bg_fill: Color32::from_rgba_premultiplied(0x2c, 0x14, 0x33, 190), // window background
+                    bg_stroke: Stroke::new(1.0, Color32::from_rgba_premultiplied(0x43, 0x2a, 0x5b, 180)), // separators, indentation lines, windows outlines
+                    fg_stroke: Stroke::new(1.0, Color32::from_rgba_premultiplied(0xd7, 0xd7, 0xd7, 255)), // normal text color
                     rounding: Rounding::same(2.0),
                     expansion: 0.0,
                 },
                 inactive: WidgetVisuals {
-                    bg_fill: WIDGET_BG_COLOR, // button, sliders background
+                    bg_fill: Color32::from_rgba_premultiplied(18, 20, 36, 128), // button, sliders background
                     bg_stroke: Default::default(),
-                    fg_stroke: Stroke::new(1.0, WIGDET_TEXT_COLOR), // button text
+                    fg_stroke: Stroke::new(1.0, Color32::from_rgba_premultiplied(0xcb, 0xcb, 0xcb, 255)), // button text
                     rounding: Rounding::same(2.0),
                     expansion: 0.0,
                 },
                 hovered: WidgetVisuals {
-                    bg_fill: WIGDET_HOVERED_COLOR,
-                    bg_stroke: Stroke::new(1.0, WIDGET_STROKE_BG_COLOR), // e.g. hover over window edge or button
-                    fg_stroke: Stroke::new(1.5, WIDGET_STROKE_FG_COLOR),
+                    bg_fill: Color32::from_rgba_premultiplied(49, 39, 61, 128),
+                    bg_stroke: Stroke::new(1.0, Color32::from_rgba_unmultiplied(0xa9, 0x68, 0x83, 0x67)), // e.g. hover over window edge or button
+                    fg_stroke: Stroke::new(1.5, Color32::from_rgba_premultiplied(0xf0, 0xf0, 0xf0, 255)),
                     rounding: Rounding::same(3.0),
                     expansion: 1.0,
                 },
                 active: WidgetVisuals {
-                    bg_fill: ACTIVE_SELECTED_COLOR,
-                    bg_stroke: Stroke::new(1.0, NORMAL_TEXT_COLOR),
-                    fg_stroke: Stroke::new(2.0, NORMAL_TEXT_COLOR),
+                    bg_fill: Color32::from_rgba_premultiplied(0x37, 0x37, 0x37, 180),
+                    bg_stroke: Stroke::new(1.0, Color32::from_rgba_premultiplied(0xff, 0xff, 0xff, 180)),
+                    fg_stroke: Stroke::new(2.0, Color32::from_rgba_premultiplied(0xff, 0xff, 0xff, 255)),
                     rounding: Rounding::same(2.0),
                     expansion: 1.0,
                 },
                 ..Widgets::dark()
             },
             selection: Selection {
-                bg_fill: SELECTED_ITEM_COLOR,
-                ..Selection::default()
+                bg_fill: Color32::from_rgba_premultiplied(0xa2, 0x32, 0x6a, 180),
+                stroke: Stroke::new(1.0, Color32::from_rgba_premultiplied(0xe6, 0xe6, 0xe6, 255)),
             },
-            hyperlink_color: ACTIVE_SELECTED_COLOR,
-            faint_bg_color: WINDOW_BG_COLOR,
-            extreme_bg_color: TEXT_EDIT_BG_COLOR, // e.g. TextEdit background
-            code_bg_color: TEXT_EDIT_BG_COLOR,
+            faint_bg_color: Color32::from_rgba_premultiplied(0x30, 0x16, 0x37, 255),
+            extreme_bg_color: Color32::from_rgba_premultiplied(0x1f, 0x0c, 0x24, 255),
+            code_bg_color: Color32::from_rgba_premultiplied(0x2c, 0x14, 0x33, 255),
+            window_shadow: egui::epaint::Shadow::small_light(),
             ..egui::style::Visuals::dark()
         };
 
@@ -459,14 +386,7 @@ impl SimpleMainLoop {
         egui_backend.create_graphics_resources([window_size.0, window_size.1]);
 
         #[cfg(feature = "use-egui")]
-        let egui = EguiState {
-            egui_context: egui,
-            raw_input: egui_backend.raw_input.clone(),
-            window_size,
-            window_scale_factor,
-            last_mouse_pos: None,
-            last_dt: 0.0,
-        };
+        let egui = EguiState::new(egui, &window);
 
         #[cfg(feature = "puffin-server")]
         let puffin_server = {
@@ -552,11 +472,21 @@ impl SimpleMainLoop {
                     .imgui_backend
                     .handle_event(&window, &mut optional.imgui, &event);
 
-                #[cfg(feature = "dear-imgui")]
-                let ui_wants_mouse = optional.imgui.io().want_capture_mouse;
+                #[cfg(feature = "use-egui")]
+                optional.egui.handle_event(&event);
 
-                #[cfg(not(feature = "dear-imgui"))]
-                let ui_wants_mouse = false;
+                #[allow(unused_assignments)]
+                let mut ui_wants_mouse = false;
+
+                #[cfg(feature = "dear-imgui")]
+                {
+                    ui_wants_mouse = optional.imgui.io().want_capture_mouse;
+                }
+
+                #[cfg(feature = "use-egui")]
+                {
+                    ui_wants_mouse = optional.egui.egui_context.wants_pointer_input();
+                }
 
                 *control_flow = ControlFlow::Poll;
 
@@ -630,7 +560,7 @@ impl SimpleMainLoop {
                     egui: &mut optional.egui,
                     egui_backend: &mut optional.egui_backend,
                     ui_renderer: &mut ui_renderer,
-                    dt_filtered,
+                    window: &window,
                 }),
             });
 
@@ -652,7 +582,7 @@ impl SimpleMainLoop {
                         "/shaders/final_blit.hlsl",
                     )
                     .read(&main_img)
-                    .read(&ui_img)
+                    .read_view(&ui_img, ImageViewDesc::builder().format(ash::vk::Format::R8G8B8A8_UNORM))
                     .write(&mut swap_chain)
                     .constants((
                         main_img.desc().extent_inv_extent_2d(),

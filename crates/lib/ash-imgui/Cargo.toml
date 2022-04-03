@@ -6,7 +6,7 @@ edition = "2021"
 publish = false
 
 [dependencies]
-ash = "0.33"
-imgui = "0.7"
+ash = "0.37"
+imgui = "0.8.2"
 arrayvec = "0.5"
 memoffset = "0.6"

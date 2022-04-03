@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use ash_egui::egui::{self, vec2, Context, RawInput};
+use ash_egui::egui::{Context};
 use kajiya::{
     backend::{
         ash::{self, vk},
@@ -26,17 +26,43 @@ pub struct EguiBackendInner {
 pub struct EguiBackend {
     inner: Arc<Mutex<EguiBackendInner>>,
     device: Arc<Device>,
-    pub raw_input: ash_egui::egui::RawInput,
 }
 
-#[derive(Clone)]
 pub struct EguiState {
     pub egui_context: Context,
-    pub raw_input: RawInput,
+    pub egui_winit: egui_winit::State,
     pub window_size: (u32, u32),
     pub window_scale_factor: f64,
-    pub last_mouse_pos: Option<(f32, f32)>,
-    pub last_dt: f64,
+}
+
+impl EguiState {
+    pub fn new(egui_context: Context, window: &winit::window::Window) -> Self {
+        let (window_size, window_scale_factor) = (
+            (window.inner_size().width, window.inner_size().height),
+            window.scale_factor(),
+        );
+
+        let egui_winit = egui_winit::State::new(2 * 1024, window);
+
+        Self {
+            egui_context,
+            egui_winit,
+            window_size,
+            window_scale_factor,
+        }
+    }
+
+    /// Returns true if egui wants exclusive use of this event (e.g. a mouse click on an egui window,
+    /// or entering text into a text field). For instance, if you use egui for a game, you want to first
+    /// call this and only when this returns false pass on the events to your game.
+    pub fn handle_event(&mut self, event: &winit::event::Event<'_, ()>) -> bool {
+        match event {
+            winit::event::Event::WindowEvent { event, .. } => {
+                self.egui_winit.on_event(&self.egui_context, event)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl EguiBackend {
@@ -46,7 +72,6 @@ impl EguiBackend {
         window_scale_factor: f64,
         context: &mut Context,
     ) -> Self {
-
         let egui_renderer = ash_egui::Renderer::new(
             window_size.0,
             window_size.1,
@@ -57,24 +82,12 @@ impl EguiBackend {
             context,
         );
 
-        // Create raw_input
-        let raw_input = egui::RawInput {
-            pixels_per_point: Some(window_scale_factor as f32),
-            screen_rect: Some(egui::Rect::from_min_size(
-                Default::default(),
-                vec2(window_size.0 as f32, window_size.1 as f32) / window_scale_factor as f32,
-            )),
-            time: Some(0.0),
-            ..Default::default()
-        };
-
         Self {
             device,
             inner: Arc::new(Mutex::new(EguiBackendInner {
                 egui_renderer,
                 gfx: None,
             })),
-            raw_input,
         }
     }
 
@@ -106,19 +119,11 @@ impl EguiBackend {
         }
     }
 
-    pub fn prepare_frame(state: &mut EguiState) {
-        // Update time
-        if let Some(time) = state.raw_input.time {
-            state.raw_input.time = Some(time + state.last_dt);
-        } else {
-            state.raw_input.time = Some(0.0);
-        }
+    pub fn prepare_frame(window: &winit::window::Window, state: &mut EguiState) {
+        let raw_input = state.egui_winit.take_egui_input(window);
 
         // Begin frame for the context
-        state.egui_context.begin_frame(state.raw_input.clone());
-
-        // Clear events to prevent repeated events in next frame
-        state.raw_input.events.clear();
+        state.egui_context.begin_frame(raw_input);
     }
 
     pub fn finish_frame(
@@ -233,7 +238,7 @@ impl EguiBackendInner {
 
 fn create_egui_render_pass(device: &ash::Device) -> vk::RenderPass {
     let renderpass_attachments = [vk::AttachmentDescription {
-        format: vk::Format::R8G8B8A8_UNORM,
+        format: vk::Format::R8G8B8A8_SRGB,
         samples: vk::SampleCountFlags::TYPE_1,
         load_op: vk::AttachmentLoadOp::CLEAR,
         store_op: vk::AttachmentStoreOp::STORE,
@@ -278,7 +283,8 @@ fn create_egui_framebuffer(
     let tex = device
         .create_image(
             ImageDesc::new_2d(vk::Format::R8G8B8A8_SRGB, surface_resolution)
-                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::COLOR_ATTACHMENT),
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                .flags(vk::ImageCreateFlags::MUTABLE_FORMAT),
             vec![],
         )
         .unwrap();

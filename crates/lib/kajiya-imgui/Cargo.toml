@@ -9,8 +9,8 @@ edition = "2021"
 kajiya = { path = "../kajiya" }
 
 ash-imgui = { path = "../ash-imgui" }
-imgui = { version = "0.7" }
-imgui-winit-support = { version = "0.7", default-features = false, features = ["winit-25"] }
+imgui = { version = "0.8.2" }
+imgui-winit-support = { version = "0.8.2", default-features = false, features = ["winit-26"] }
 log = "0.4"
 parking_lot = "0.11"
-winit = "0.25"
+winit = "0.26.1"

@@ -11,7 +11,7 @@ kajiya-simple = { path = "../../lib/kajiya-simple" }
 
 anyhow = "1.0"
 dolly = "0.1"
-imgui = { version = "0.7", optional = true }
+imgui = { version = "0.8.2", optional = true }
 egui = { version = "0.17.0", optional = true }
 log = "0.4"
 ron = "0.6.2"

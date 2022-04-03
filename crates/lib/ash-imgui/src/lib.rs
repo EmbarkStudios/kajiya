@@ -522,7 +522,7 @@ impl Renderer {
                 src_alpha_blend_factor: vk::BlendFactor::ONE,
                 dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
                 alpha_blend_op: vk::BlendOp::ADD,
-                color_write_mask: vk::ColorComponentFlags::all(),
+                color_write_mask: vk::ColorComponentFlags::RGBA,
             };
             let color_blend_state_create_info = vk::PipelineColorBlendStateCreateInfo::builder()
                 .attachments(slice::from_ref(&color_blend_attachment_state));

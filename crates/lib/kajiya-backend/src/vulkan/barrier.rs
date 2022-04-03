@@ -21,7 +21,7 @@ pub fn record_image_barrier(device: &Device, cb: vk::CommandBuffer, barrier: Ima
     };
 
     vk_sync::cmd::pipeline_barrier(
-        device.raw.fp_v1_0(),
+        &device.raw,
         cb,
         None,
         &[],
@@ -329,6 +329,14 @@ pub fn get_access_info(access_type: AccessType) -> AccessInfo {
             access_mask: vk::AccessFlags::MEMORY_READ | vk::AccessFlags::MEMORY_WRITE,
             image_layout: vk::ImageLayout::GENERAL,
         },
+        AccessType::RayTracingShaderReadSampledImageOrUniformTexelBuffer => todo!(),
+        AccessType::RayTracingShaderReadColorInputAttachment => todo!(),
+        AccessType::RayTracingShaderReadDepthStencilInputAttachment => todo!(),
+        AccessType::RayTracingShaderReadAccelerationStructure => todo!(),
+        AccessType::RayTracingShaderReadOther => todo!(),
+        AccessType::AccelerationStructureBuildWrite => todo!(),
+        AccessType::AccelerationStructureBuildRead => todo!(),
+        AccessType::AccelerationStructureBufferWrite => todo!(),
     }
 }
 

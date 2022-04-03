@@ -7,7 +7,10 @@ use ash::{
     extensions::{ext::DebugUtils, khr},
     vk,
 };
-use gpu_allocator::{AllocatorDebugSettings, VulkanAllocator, VulkanAllocatorCreateDesc};
+use gpu_allocator::{
+    vulkan::{Allocator, AllocatorCreateDesc},
+    AllocatorDebugSettings,
+};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -102,7 +105,7 @@ impl CommandBuffer {
 impl DeviceFrame {
     pub fn new(
         device: &ash::Device,
-        global_allocator: &mut VulkanAllocator,
+        global_allocator: &mut Allocator,
         queue_family: &QueueFamily,
     ) -> Self {
         Self {
@@ -128,7 +131,7 @@ pub struct Device {
     pub(crate) pdevice: Arc<PhysicalDevice>,
     pub(crate) instance: Arc<super::instance::Instance>,
     pub universal_queue: Queue,
-    pub(crate) global_allocator: Arc<Mutex<VulkanAllocator>>,
+    pub(crate) global_allocator: Arc<Mutex<Allocator>>,
     pub(crate) immutable_samplers: HashMap<SamplerDesc, vk::Sampler>,
     pub(crate) setup_cb: Mutex<CommandBuffer>,
 
@@ -279,9 +282,7 @@ impl Device {
 
             let mut features2 = features2.build();
 
-            instance
-                .fp_v1_1()
-                .get_physical_device_features2(pdevice.raw, &mut features2);
+            instance.get_physical_device_features2(pdevice.raw, &mut features2);
 
             debug!("{:#?}", &scalar_block);
             debug!("{:#?}", &descriptor_indexing);
@@ -340,7 +341,7 @@ impl Device {
 
             info!("Created a Vulkan device");
 
-            let mut global_allocator = VulkanAllocator::new(&VulkanAllocatorCreateDesc {
+            let mut global_allocator = Allocator::new(&AllocatorCreateDesc {
                 instance: instance.clone(),
                 device: device.clone(),
                 physical_device: pdevice.raw,
@@ -351,7 +352,8 @@ impl Device {
                     ..Default::default()
                 },
                 buffer_device_address: true,
-            });
+            })
+            .expect("global allocator");
 
             let universal_queue = Queue {
                 raw: device.get_device_queue(universal_queue.index, 0),

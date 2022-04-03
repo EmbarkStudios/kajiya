@@ -1,12 +1,15 @@
 use ash::vk;
-use gpu_allocator::{AllocationCreateDesc, MemoryLocation, SubAllocation, VulkanAllocator};
+use gpu_allocator::{
+    vulkan::{Allocation, AllocationCreateDesc, Allocator},
+    MemoryLocation,
+};
 
 use crate::{gpu_profiler::GpuProfilerQueryId, Device};
 
 pub struct VkProfilerData {
     pub query_pool: vk::QueryPool,
     buffer: vk::Buffer,
-    allocation: SubAllocation,
+    allocation: Allocation,
     next_query_id: std::sync::atomic::AtomicU32,
     gpu_profiler_query_ids: Vec<std::cell::Cell<GpuProfilerQueryId>>,
 }
@@ -37,7 +40,7 @@ pub struct VkProfilerData {
 const MAX_QUERY_COUNT: usize = 1024;
 
 impl VkProfilerData {
-    pub fn new(device: &ash::Device, allocator: &mut VulkanAllocator) -> Self {
+    pub fn new(device: &ash::Device, allocator: &mut Allocator) -> Self {
         let (buffer, allocation) = {
             let size = MAX_QUERY_COUNT * 8 * 2;
             let usage = vk::BufferUsageFlags::TRANSFER_DST;

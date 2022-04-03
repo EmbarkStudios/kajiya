@@ -996,7 +996,7 @@ fn global_barrier(
     next_accesses: &[vk_sync::AccessType],
 ) {
     vk_sync::cmd::pipeline_barrier(
-        device.raw.fp_v1_0(),
+        &device.raw,
         cb.raw,
         Some(vk_sync::GlobalBarrier {
             previous_accesses,

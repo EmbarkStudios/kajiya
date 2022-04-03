@@ -1,12 +1,15 @@
 use super::device::Device;
 use anyhow::Result;
 use ash::vk;
-use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
+use gpu_allocator::{
+    vulkan::{Allocation, AllocationCreateDesc},
+    MemoryLocation,
+};
 
 pub struct Buffer {
     pub raw: vk::Buffer,
     pub desc: BufferDesc,
-    pub allocation: gpu_allocator::SubAllocation,
+    pub allocation: Allocation,
 }
 
 impl Buffer {

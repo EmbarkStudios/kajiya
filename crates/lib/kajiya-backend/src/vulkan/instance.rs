@@ -10,7 +10,7 @@ use std::{
 
 #[derive(Default)]
 pub struct DeviceBuilder {
-    pub required_extensions: Vec<&'static CStr>,
+    pub required_extensions: Vec<*const c_char>,
     pub graphics_debugging: bool,
 }
 
@@ -19,7 +19,7 @@ impl DeviceBuilder {
         Ok(Arc::new(Instance::create(self)?))
     }
 
-    pub fn required_extensions(mut self, required_extensions: Vec<&'static CStr>) -> Self {
+    pub fn required_extensions(mut self, required_extensions: Vec<*const c_char>) -> Self {
         self.required_extensions = required_extensions;
         self
     }
@@ -67,11 +67,11 @@ impl Instance {
     }
 
     fn create(builder: DeviceBuilder) -> Result<Self> {
-        let entry = unsafe { ash::Entry::new()? };
+        let entry = unsafe { ash::Entry::load()? };
         let instance_extensions = builder
             .required_extensions
             .iter()
-            .map(|ext| ext.as_ptr())
+            .copied()
             .chain(Self::extension_names(&builder).into_iter())
             .collect::<Vec<_>>();
 

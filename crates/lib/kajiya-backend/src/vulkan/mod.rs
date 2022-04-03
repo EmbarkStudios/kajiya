@@ -48,7 +48,11 @@ impl RenderBackend {
         config: RenderBackendConfig,
     ) -> anyhow::Result<Self> {
         let instance = instance::Instance::builder()
-            .required_extensions(ash_window::enumerate_required_extensions(window).unwrap())
+            .required_extensions(
+                ash_window::enumerate_required_extensions(window)
+                    .unwrap()
+                    .to_vec(),
+            )
             .graphics_debugging(config.graphics_debugging)
             .build()?;
         let surface = surface::Surface::create(&instance, window)?;

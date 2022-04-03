@@ -11,4 +11,5 @@ kajiya = { path = "../kajiya" }
 ash-egui = { path = "../ash-egui" }
 log = "0.4"
 parking_lot = "0.11"
-winit = "0.25"
+winit = "0.26.1"
+egui-winit = "0.17.0"

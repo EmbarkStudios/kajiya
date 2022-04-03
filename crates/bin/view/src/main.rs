@@ -582,10 +582,10 @@ fn main() -> anyhow::Result<()> {
             #[cfg(feature = "use-egui")]
             if show_gui {
                 let egui = ctx.egui.as_mut().unwrap();
-                egui.frame(&mouse, |egui_ctx| {
+                egui.frame(|egui_ctx| {
                     egui::Window::new("Debug")
                         .resizable(true)
-                        .min_height(500.0)
+                        .min_height(300.0)
                         .show(egui_ctx, |ui| {
                             ScrollArea::vertical()
                                 .auto_shrink([false; 2])
