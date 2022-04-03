@@ -74,6 +74,11 @@ void main(
         min(64, 32 * source_irradiance.a)
     ));
 
-    surf_rcache_aux_buf[surfel_idx * 2 + 0] = start_irradiance_and_sample_count;
-    surf_rcache_irradiance_buf[surfel_idx] = start_irradiance_and_sample_count;
+    for (uint i = 0; i < SURF_RCACHE_IRRADIANCE_STRIDE; ++i) {
+        surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE + i] = start_irradiance_and_sample_count;
+    }
+
+    for (uint i = 0; i < SURF_RCACHE_AUX_STRIDE; ++i) {
+        surf_rcache_aux_buf[surfel_idx * SURF_RCACHE_AUX_STRIDE + i] = start_irradiance_and_sample_count;
+    }
 }

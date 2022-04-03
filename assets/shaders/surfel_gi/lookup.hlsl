@@ -2,6 +2,7 @@
 #define SURFEL_GI_LOOKUP_HLSL
 
 #include "surfel_grid_hash.hlsl"
+#include "../inc/sh.hlsl"
 
 struct SurfRcacheLookup {
     uint entry_idx[8];
@@ -91,7 +92,35 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
     static const uint SURF_CACHE_LOOKUP_MAX = 1;
 #endif
 
-float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
+float eval_sh_simplified(float4 sh, float3 normal) {
+    float4 lobe_sh = float4(0.8862, 1.0233 * normal);
+    return dot(sh, lobe_sh) * M_PI;
+}
+
+float eval_sh_geometrics(float4 sh, float3 normal)
+{
+	// http://www.geomerics.com/wp-content/uploads/2015/08/CEDEC_Geomerics_ReconstructingDiffuseLighting1.pdf
+
+	float R0 = sh.x;
+
+	float3 R1 = 0.5f * float3(sh.y, sh.z, sh.w);
+	float lenR1 = length(R1);
+
+	float q = 0.5f * (1.0f + dot(R1 / lenR1, normal));
+
+	float p = 1.0f + 2.0f * lenR1 / R0;
+	float a = (1.0f - lenR1 / R0) / (1.0f + lenR1 / R0);
+
+	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p)) * M_PI;
+}
+
+#if 1
+    #define eval_surfel_sh eval_sh_simplified
+#else
+    #define eval_surfel_sh eval_sh_geometrics
+#endif
+
+float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
 #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
     if (!SURF_RCACHE_FREEZE) {
         // TODO: should be prev eye pos for the find_missing_surfels shader
@@ -140,9 +169,20 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout u
 
     SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws);
 
+    const int3 grid_coord = surfel_pos_to_grid_coord(pt_ws.xyz, get_eye_position());
+    const uint cascade = surfel_cascade_float_to_cascade(surfel_grid_coord_to_cascade_float(grid_coord));
+    const float cell_diameter = surfel_grid_cell_diameter_in_cascade(cascade);
+
+    float3 to_eye = normalize(get_eye_position() - pt_ws.xyz);
+    float3 offset_towards_query = query_from_ws - pt_ws.xyz;
+    const float MAX_OFFSET = cell_diameter;   // world units
+    const float MAX_OFFSET_AS_FRAC = 0.5;   // fraction of the distance from query point
+    offset_towards_query *= MAX_OFFSET / max(MAX_OFFSET / MAX_OFFSET_AS_FRAC, length(offset_towards_query));
+
     Vertex new_surfel;
-    new_surfel.position = pt_ws.xyz;
+    new_surfel.position = pt_ws.xyz + offset_towards_query;
     new_surfel.normal = normal_ws;
+    //new_surfel.normal = to_eye;
 
     float3 irradiance_sum = 0.0.xxx;
 
@@ -155,7 +195,12 @@ float3 lookup_surfel_gi(float3 pt_ws, float3 normal_ws, uint query_rank, inout u
     [unroll]
     for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.count) {
         const uint entry_idx = lookup.entry_idx[i];
-        const float3 irradiance = surf_rcache_irradiance_buf[entry_idx].xyz;
+
+        float3 irradiance = 0;
+        for (uint basis_i = 0; basis_i < 3; ++basis_i) {
+            irradiance[basis_i] += eval_surfel_sh(surf_rcache_irradiance_buf[entry_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i], normal_ws);
+        }
+        irradiance = max(0.0.xxx, irradiance / 2);
         irradiance_sum += irradiance * lookup.weight[i];
 
         if (!SURF_RCACHE_FREEZE && should_propose_position) {

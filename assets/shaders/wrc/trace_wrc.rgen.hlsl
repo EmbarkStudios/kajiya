@@ -193,7 +193,7 @@ void main() {
 
                 if (USE_SURFEL_GI) {
                     const uint rank = 0;    // TODO: how the heck...
-                    irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, rank, rng) * gbuffer.albedo;
+                    irradiance_sum += lookup_surfel_gi(outgoing_ray.Origin, primary_hit.position, gbuffer.normal, rank, rng) * gbuffer.albedo;
                 }
                 
                 hit_count += 1.0;

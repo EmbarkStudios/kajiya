@@ -1,7 +1,7 @@
 #include "../inc/hash.hlsl"
 #include "surfel_constants.hlsl"
 
-static const uint MAX_SURFEL_GRID_CELLS = 1024 * 256;
+static const uint MAX_SURFEL_GRID_CELLS = 1024 * 1024 * 2;
 static const uint SURFEL_CS = 32;
 static const float SURFEL_GRID_CASCADE_DIAMETER = SURFEL_GRID_CELL_DIAMETER * SURFEL_CS;
 static const float SURFEL_GRID_CASCADE_RADIUS = SURFEL_GRID_CASCADE_DIAMETER * 0.5;
@@ -10,6 +10,7 @@ static const float SURFEL_NORMAL_DIRECTION_SQUISH = 2.0;
 
 static const bool SURFEL_GRID_SCROLL = !true;
 static const float3 SURFEL_GRID_CENTER = float3(-1.5570648, -1.2360737, 9.283543);
+//static const float3 SURFEL_GRID_CENTER = 0.0.xxx;
 
 int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {
     if (!SURFEL_GRID_SCROLL) {

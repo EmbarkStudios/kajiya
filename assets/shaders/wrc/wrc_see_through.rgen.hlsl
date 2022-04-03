@@ -169,6 +169,7 @@ void main() {
 
             if (USE_SURFEL_GI) {
                 float3 gi = lookup_surfel_gi(
+                    outgoing_ray.Origin,
                     primary_hit.position,
                     gbuffer.normal,
                     0,

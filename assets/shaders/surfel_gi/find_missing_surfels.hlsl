@@ -7,7 +7,7 @@
 #include "../inc/color.hlsl"
 #include "../inc/sh.hlsl"
 
-#define VISUALIZE_ENTRIES 0
+#define VISUALIZE_ENTRIES 1
 #define VISUALIZE_CASCADES 0
 #define VISUALIZE_SURFEL_AGE 0
 #define VISUALIZE_CELLS 0
@@ -80,41 +80,9 @@ float3 cost_color_map(float x) {
     );
 }
 
-float eval_sh_simplified(float4 sh, float3 normal) {
-    //return (0.5 + dot(sh.xyz, normal)) * sh.w * 2;
-    //return sh.w;
-
-    float4 lobe_sh = float4(0.8862, 1.0233 * normal);
-    return dot(sh * float4(1, sh.xxx), lobe_sh) * M_PI;
-    //return sh.x * 4;
-}
-
-float eval_sh_geometrics(float4 sh, float3 normal)
-{
-	// http://www.geomerics.com/wp-content/uploads/2015/08/CEDEC_Geomerics_ReconstructingDiffuseLighting1.pdf
-
-	float R0 = sh.x;
-
-	float3 R1 = 0.5f * float3(sh.y, sh.z, sh.w) * sh.x;
-	float lenR1 = length(R1);
-
-	float q = 0.5f * (1.0f + dot(R1 / lenR1, normal));
-
-	float p = 1.0f + 2.0f * lenR1 / R0;
-	float a = (1.0f - lenR1 / R0) / (1.0f + lenR1 / R0);
-
-	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p)) * M_PI;
-}
-
 uint pack_score_and_px_within_group(float score, uint2 px_within_group) {
     return (asuint(score) & (0xffffffffu - 63)) | (px_within_group.y * 8 + px_within_group.x);
 }
-
-#if 1
-    #define eval_surfel_sh eval_sh_simplified
-#else
-    #define eval_surfel_sh eval_sh_geometrics
-#endif
 
 [numthreads(8, 8, 1)]
 void main(
@@ -189,7 +157,7 @@ void main(
     #endif
 
     float3 surfel_color = 0.0.xxx;
-    float3 debug_color = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal, 0, rng);
+    float3 debug_color = lookup_surfel_gi(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
 
 #if 0
     {
@@ -255,8 +223,8 @@ void main(
             }
         }
         
-        float4 surfel_irradiance_packed = surf_rcache_irradiance_buf[entry_idx];
-        surfel_color = surfel_irradiance_packed.xyz;
+        float4 surfel_irradiance_packed = surf_rcache_irradiance_buf[entry_idx * SURF_RCACHE_IRRADIANCE_STRIDE];
+        surfel_color = 1;//surfel_irradiance_packed.xyz;
 
         #if VISUALIZE_ENTRIES
             debug_color = surfel_color;

@@ -1,3 +1,5 @@
+#include "../inc/frame_constants.hlsl"
+#include "../inc/hash.hlsl"
 #include "../inc/mesh.hlsl" // for VertexPacked
 
 [[vk::binding(0)]] RWByteAddressBuffer surf_rcache_meta_buf;
@@ -23,7 +25,9 @@ void age_surfel(uint entry_idx) {
         // onoz, we killed it!
         // deallocate.
 
-        surf_rcache_irradiance_buf[entry_idx] = 0.0.xxxx;
+        for (uint i = 0; i < SURF_RCACHE_IRRADIANCE_STRIDE; ++i) {
+            surf_rcache_irradiance_buf[entry_idx * SURF_RCACHE_IRRADIANCE_STRIDE + i] = 0.0.xxxx;
+        }
 
         uint surfel_alloc_count = 0;
         surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, -1, surfel_alloc_count);
@@ -48,9 +52,19 @@ void main(uint entry_idx: SV_DispatchThreadID) {
         }
 
         #if 1
-            // Flush the reposition proposal
-            VertexPacked proposal = surf_rcache_reposition_proposal_buf[entry_idx];
-            surf_rcache_spatial_buf[entry_idx] = proposal;
+            #if 0
+                uint rng = hash2(uint2(entry_idx, frame_constants.frame_index));
+                const float dart = uint_to_u01_float(hash1_mut(rng));
+                const float prob = 0.02;
+
+                if (dart <= prob)
+            #endif
+            {
+
+                // Flush the reposition proposal
+                VertexPacked proposal = surf_rcache_reposition_proposal_buf[entry_idx];
+                surf_rcache_spatial_buf[entry_idx] = proposal;
+            }
         #endif
 
         surf_rcache_reposition_proposal_count_buf[entry_idx] = 0;

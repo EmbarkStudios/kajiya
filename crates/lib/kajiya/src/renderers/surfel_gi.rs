@@ -133,7 +133,7 @@ impl SurfelGiRenderer {
             surf_rcache_irradiance_buf: temporal_storage_buffer(
                 rg,
                 "surf_rcache.irradiance_buf",
-                size_of::<[f32; 4]>() * MAX_SURFELS,
+                3 * size_of::<[f32; 4]>() * MAX_SURFELS,
             ),
             surf_rcache_aux_buf: temporal_storage_buffer(
                 rg,

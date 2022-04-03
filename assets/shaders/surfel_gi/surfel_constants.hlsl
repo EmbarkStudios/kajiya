@@ -1,10 +1,7 @@
 #ifndef SURFEL_CONSTANTS_HLSL
 #define SURFEL_CONSTANTS_HLSL
 
-#define MAX_SURFELS_PER_CELL 128
-#define MAX_SURFELS_PER_CELL_FOR_KEEP_ALIVE 32
-
-static const float SURFEL_GRID_CELL_DIAMETER = 0.2;
+static const float SURFEL_GRID_CELL_DIAMETER = 0.16;
 static const float SURFEL_BASE_RADIUS = SURFEL_GRID_CELL_DIAMETER * 1.2;
 static const float SURFEl_RADIUS_OVERSCALE = 1.25;
 
@@ -21,11 +18,11 @@ static const uint SURF_RCACHE_ENTRY_META_OCCUPIED = 1;
 #define SURFEL_LIFE_RECYCLE 0x8000000u
 #define SURFEL_LIFE_RECYCLED (SURFEL_LIFE_RECYCLE + 1u)
 
-static const uint SURF_RCACHE_ENTRY_LIFE_PER_RANK = 32;
-static const uint SURF_RCACHE_ENTRY_MAX_RANK = 3;
+static const uint SURF_RCACHE_ENTRY_LIFE_PER_RANK = 16;
+static const uint SURF_RCACHE_ENTRY_RANK_COUNT = 3;
 
 bool is_surfel_life_valid(uint life) {
-    return life < SURF_RCACHE_ENTRY_LIFE_PER_RANK * SURF_RCACHE_ENTRY_MAX_RANK;
+    return life < SURF_RCACHE_ENTRY_LIFE_PER_RANK * SURF_RCACHE_ENTRY_RANK_COUNT;
 }
 
 bool surfel_life_needs_aging(uint life) {
@@ -39,5 +36,10 @@ uint surfel_life_to_rank(uint life) {
 uint surfel_life_for_rank(uint rank) {
     return rank * SURF_RCACHE_ENTRY_LIFE_PER_RANK;
 }
+
+static const uint SURF_RCACHE_IRRADIANCE_STRIDE = 3;
+static const uint SURF_RCACHE_AUX_STRIDE = 3;
+
+
 
 #endif // SURFEL_CONSTANTS_HLSL

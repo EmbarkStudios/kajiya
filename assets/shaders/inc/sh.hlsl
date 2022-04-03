@@ -1,3 +1,6 @@
+#ifndef SH_HLSL
+#define SH_HLSL
+
 // Based on https://github.com/sebh/HLSL-Spherical-Harmonics/
 
 #include "math_const.hlsl"
@@ -28,3 +31,5 @@ float4 sh_diffuse_convolution(float4 sh) {
 	result.yzw *= 2.0943951023931954923f;
 	return result;
 }
+
+#endif  // SH_HLSL

@@ -218,7 +218,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     }
 
     if (debug_shading_mode == SHADING_MODE_SURFEL_GI) {
-        output = lookup_surfel_gi(pt_ws.xyz, gbuffer.normal, 0, rng);
+        output = lookup_surfel_gi(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
     }
 
     //output = gbuffer.albedo;

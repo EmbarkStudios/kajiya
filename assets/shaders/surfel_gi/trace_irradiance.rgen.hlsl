@@ -41,7 +41,7 @@ DEFINE_WRC_BINDINGS(6)
 // but increases temporal fluctuation.
 #define USE_DYNAMIC_TRACE_ORIGIN 0
 
-#define USE_BLEND_RESULT 1
+#define USE_BLEND_RESULT 0
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following
@@ -51,9 +51,10 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
-static const uint TARGET_SAMPLE_COUNT = 128;
+static const uint SAMPLES_PER_FRAME = 8;
+static const uint TARGET_SAMPLE_COUNT = 256;
 static const uint SHORT_ESTIMATOR_SAMPLE_COUNT = 4;
-static const bool USE_MSME = true;
+static const bool USE_MSME = !true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -75,14 +76,16 @@ float unpack_dist(float x) {
 
 struct SurfelTraceResult {
     float3 irradiance;
+    float3 direction;
 };
 
 SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent_to_world, uint sequence_idx, uint life) {
     uint rng = hash1(sequence_idx);
     //const float2 urand = r2_sequence(sequence_idx % (TARGET_SAMPLE_COUNT * 64));
-    const float2 urand = r2_sequence(sequence_idx % max(128, TARGET_SAMPLE_COUNT));
+    const float2 urand = r2_sequence(sequence_idx % max(256, TARGET_SAMPLE_COUNT));
 
     RayDesc outgoing_ray;
+    #if 0
     {
         BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
 
@@ -93,6 +96,14 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
             FLT_MAX
         );
     }
+    #else
+        outgoing_ray = new_ray(
+            surfel.position,
+            uniform_sample_sphere(urand),
+            0.0,
+            FLT_MAX
+        );
+    #endif
 
     #if USE_WORLD_RADIANCE_CACHE
         WrcFarField far_field =
@@ -223,7 +234,7 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
             );
 
             if (SAMPLE_SURFELS_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
-                irradiance_sum += lookup_surfel_gi(primary_hit.position, gbuffer.normal, 1 + surfel_life_to_rank(life), rng) * throughput * gbuffer.albedo;
+                irradiance_sum += lookup_surfel_gi(surfel.position, primary_hit.position, gbuffer.normal, 1 + surfel_life_to_rank(life), rng) * throughput * gbuffer.albedo;
             }
 
             BrdfSample brdf_sample = brdf.sample(wo, urand);
@@ -255,8 +266,27 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
 
     SurfelTraceResult result;
     result.irradiance = irradiance_sum;
+    result.direction = outgoing_ray.Direction;
     return result;
 }
+
+struct Contribution {
+    float4 sh_rgb[3];
+
+    void add_radiance_in_direction(float3 radiance, float3 direction) {
+        //float4 sh = sh_eval_cosine_lobe(direction);
+        float4 sh = float4(0.4886, direction * 0.282);
+        sh_rgb[0] += sh * radiance.r;
+        sh_rgb[1] += sh * radiance.g;
+        sh_rgb[2] += sh * radiance.b;
+    }
+
+    void scale(float value) {
+        sh_rgb[0] *= value;
+        sh_rgb[1] *= value;
+        sh_rgb[2] *= value;
+    }
+};
 
 [shader("raygeneration")]
 void main() {
@@ -278,15 +308,13 @@ void main() {
         const Vertex surfel = unpack_vertex(surf_rcache_spatial_buf[surfel_idx]);
     #endif
 
-    const float4 prev_total_radiance_packed = surf_rcache_aux_buf[surfel_idx * 2 + 0];
-
     DiffuseBrdf brdf;
     const float3x3 tangent_to_world = build_orthonormal_basis(surfel.normal);
 
     brdf.albedo = 1.0.xxx;
 
-    const uint sample_count = 4;//clamp(int(32 - prev_total_radiance_packed.w), 1, 32);
-    float3 irradiance_sum = 0;
+    const uint sample_count = SAMPLES_PER_FRAME;
+    Contribution contribution_sum = (Contribution)0;
     float valid_sample_count = 0;
 
     float sample0_luminance = 0;
@@ -296,106 +324,61 @@ void main() {
         const uint sequence_idx = hash1(surfel_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
         SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx, life);
-        irradiance_sum += traced.irradiance;
+        contribution_sum.add_radiance_in_direction(traced.irradiance, traced.direction);
 
         if (0 == sample_idx) {
             sample0_luminance = calculate_luma(traced.irradiance);
         }
     }
-    const float3 new_value = irradiance_sum / max(1.0, valid_sample_count);
-    const float irradiance_lum = calculate_luma(new_value);
+    contribution_sum.scale(1.0 / max(1.0, valid_sample_count));
 
-    const float4 prev_aux = surf_rcache_aux_buf[surfel_idx * 2 + 1];
-    const float prev_sample0_luminance = prev_aux.x;
-    const float2 prev_ex_ex2 = prev_aux.zw;
+    for (uint basis_i = 0; basis_i < SURF_RCACHE_IRRADIANCE_STRIDE; ++basis_i) {
+        //const float4 prev_total_radiance_packed = surf_rcache_aux_buf[surfel_idx * SURF_RCACHE_AUX_STRIDE + basis_i];
+        float prev_sample_count = TARGET_SAMPLE_COUNT;//min(prev_total_radiance_packed.w, TARGET_SAMPLE_COUNT);
 
-    float relative_sample0_diff = 0;
+        //const float4 prev_irrad_sample_count_packed = surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i];
+        //const float3 prev_irrad = prev_irrad_sample_count_packed.xyz;
 
-    // TODO: fix for USE_DYNAMIC_TRACE_ORIGIN. prev ray is going to change with it, so can't quite compare
-    #if !USE_DYNAMIC_TRACE_ORIGIN
-    {
-        const uint sequence_idx = hash1(surfel_idx) + 0 + (frame_constants.frame_index - 1) * sample_count;
-        SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx, life);
-        const float lum = calculate_luma(traced.irradiance);
-        relative_sample0_diff = 2.0 * abs(lum - prev_sample0_luminance) / max(1e-10, lum + prev_sample0_luminance);
+        const float4 new_value = contribution_sum.sh_rgb[basis_i];
+        const float4 prev_value = surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i];
+
+        // When cache points are despawned, their irradiance is cleared to zero
+        // If we encounter one with such, it's a reused cache point. Clear its state then.
+        /*const bool should_reset = 0 == prev_irrad_sample_count_packed.w;
+
+        if (should_reset) {
+            prev_sample_count = 0;
+        }*/
+
+        // Hard suppress if the control sample had a large difference
+        //prev_sample_count *= (1.0 - relative_sample0_diff);
+
+        const float total_sample_count = prev_sample_count + valid_sample_count;
+        float blend_factor_new = valid_sample_count / max(1, total_sample_count);
+
+        const float4 blended_value = lerp(prev_value, new_value, blend_factor_new);
+        //const float4 blended_value = new_value;
+
+        //surf_rcache_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
+        surf_rcache_aux_buf[surfel_idx * SURF_RCACHE_AUX_STRIDE + basis_i] = float4(blended_value);
+
+        const float k = 0.5;
+
+        surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i] = float4(
+            #if USE_BLEND_RESULT
+                /*pow(
+                    lerp(
+                        pow(max(0.0, prev_irrad), k),
+                        pow(max(0.0, blended_value), k),
+                        0.25
+                    ),
+                    1.0 / k
+                )*/
+            #else
+                blended_value
+            #endif
+            //lerp(prev_irrad, blended_value, 0.25),
+            //total_sample_count
+        );
     }
-    #endif
-
-    const float2 sample_ex_ex2 = float2(irradiance_lum, irradiance_lum * irradiance_lum);
-    const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / (1.0 + clamp(prev_total_radiance_packed.w, 1, SHORT_ESTIMATOR_SAMPLE_COUNT)));
-
-    const float4 new_aux = float4(
-        sample0_luminance,
-        lerp(prev_aux.y, irradiance_lum, 1.0 / (1.0 + clamp(prev_total_radiance_packed.w, 2, 2 * SHORT_ESTIMATOR_SAMPLE_COUNT))),
-        ex_ex2
-    );
-    surf_rcache_aux_buf[surfel_idx * 2 + 1] = new_aux;
-
-    const float lum_variance = max(0.0, ex_ex2.y - ex_ex2.x * ex_ex2.x);
-    const float lum_dev = sqrt(lum_variance);
-
-    //float avg_dist = unpack_dist(hit_dist_wt.x / max(1, hit_dist_wt.y));
-    //total_radiance.xyz = lerp(float3(1, 0, 0), float3(0.02, 1.0, 0.2), avg_dist) * total_radiance.w;
-
-    float prev_sample_count = min(prev_total_radiance_packed.w, TARGET_SAMPLE_COUNT);
-
-    const float4 prev_irrad_sample_count_packed = surf_rcache_irradiance_buf[surfel_idx];
-    const float3 prev_irrad = prev_irrad_sample_count_packed.xyz;
-
-    // When cache points are despawned, their irradiance is cleared to zero
-    // If we encounter one with such, it's a reused cache point. Clear its state then.
-    const bool should_reset = 0 == prev_irrad_sample_count_packed.w;
-
-    if (should_reset) {
-        prev_sample_count = 0;
-    }
-
-    // Hard suppress if the control sample had a large difference
-    //prev_sample_count *= (1.0 - relative_sample0_diff);
-
-    const float total_sample_count = prev_sample_count + valid_sample_count;
-    float blend_factor_new = valid_sample_count / max(1, total_sample_count);
-
-    // Forecasting mean
-    const float quick_lum_ex = min(ex_ex2.x * 1.2, lerp(new_aux.y, ex_ex2.x, 1.5));
-
-    // Smoothed mean
-    //const float quick_lum_ex = ex_ex2.x;
-
-    // MSME clamp
-    const float3 prev_value = prev_total_radiance_packed.rgb;
-    const float3 prev_value_ycbcr = rgb_to_ycbcr(prev_value);
-    const float num_deviations = 1.0;
-    const float3 prev_value_clamped = ycbcr_to_rgb(sign(prev_value_ycbcr) * clamp(
-        abs(prev_value_ycbcr),
-        abs(prev_value_ycbcr) * (quick_lum_ex - lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x),
-        abs(prev_value_ycbcr) * (quick_lum_ex + lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x)
-    ));
-
-    const float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
-
-    //surf_rcache_irradiance_buf[surfel_idx] = float4(0.0.xxx, total_sample_count);
-    surf_rcache_aux_buf[surfel_idx * 2 + 0] = max(0.0, float4(
-        blended_value,
-        total_sample_count
-    ));
-
-    const float k = 0.5;
-
-    surf_rcache_irradiance_buf[surfel_idx] = max(0.0, float4(
-        #if USE_BLEND_RESULT
-            pow(
-                lerp(
-                    pow(max(0.0, prev_irrad), k),
-                    pow(max(0.0, blended_value), k),
-                    0.25
-                ),
-                1.0 / k
-            ),
-        #else
-            blended_value,
-        #endif
-        //lerp(prev_irrad, blended_value, 0.25),
-        total_sample_count
-    ));
 }
