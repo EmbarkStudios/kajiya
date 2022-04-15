@@ -94,7 +94,7 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
 
 float eval_sh_simplified(float4 sh, float3 normal) {
     float4 lobe_sh = float4(0.8862, 1.0233 * normal);
-    return dot(sh, lobe_sh) * M_PI;
+    return dot(sh, lobe_sh);
 }
 
 float eval_sh_geometrics(float4 sh, float3 normal)
@@ -111,13 +111,21 @@ float eval_sh_geometrics(float4 sh, float3 normal)
 	float p = 1.0f + 2.0f * lenR1 / R0;
 	float a = (1.0f - lenR1 / R0) / (1.0f + lenR1 / R0);
 
-	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p)) * M_PI;
+	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p));
 }
 
-#if 1
-    #define eval_surfel_sh eval_sh_simplified
+float eval_sh_nope(float4 sh, float3 normal) {
+    return sh.x / (0.282095 * 4);
+}
+
+#if SURF_RCACHE_USE_SPHERICAL_HARMONICS
+    #if 1
+        #define eval_surfel_sh eval_sh_simplified
+    #else
+        #define eval_surfel_sh eval_sh_geometrics
+    #endif
 #else
-    #define eval_surfel_sh eval_sh_geometrics
+    #define eval_surfel_sh eval_sh_nope
 #endif
 
 float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
@@ -180,7 +188,13 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
     offset_towards_query *= MAX_OFFSET / max(MAX_OFFSET / MAX_OFFSET_AS_FRAC, length(offset_towards_query));
 
     Vertex new_surfel;
-    new_surfel.position = pt_ws.xyz + offset_towards_query;
+    #if SURF_RCACHE_USE_SPHERICAL_HARMONICS
+        // probes
+        new_surfel.position = pt_ws.xyz + offset_towards_query;
+    #else
+        // surfels
+        new_surfel.position = pt_ws.xyz;
+    #endif
     new_surfel.normal = normal_ws;
     //new_surfel.normal = to_eye;
 
@@ -200,7 +214,7 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
         for (uint basis_i = 0; basis_i < 3; ++basis_i) {
             irradiance[basis_i] += eval_surfel_sh(surf_rcache_irradiance_buf[entry_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i], normal_ws);
         }
-        irradiance = max(0.0.xxx, irradiance / 2);
+        irradiance = max(0.0.xxx, irradiance);
         irradiance_sum += irradiance * lookup.weight[i];
 
         if (!SURF_RCACHE_FREEZE && should_propose_position) {

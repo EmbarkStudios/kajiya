@@ -52,7 +52,7 @@ static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
 static const uint SAMPLES_PER_FRAME = 8;
-static const uint TARGET_SAMPLE_COUNT = 256;
+static const uint TARGET_SAMPLE_COUNT = 64;
 static const uint SHORT_ESTIMATOR_SAMPLE_COUNT = 4;
 static const bool USE_MSME = !true;
 
@@ -85,7 +85,7 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
     const float2 urand = r2_sequence(sequence_idx % max(256, TARGET_SAMPLE_COUNT));
 
     RayDesc outgoing_ray;
-    #if 0
+    #if 0 == SURF_RCACHE_USE_SPHERICAL_HARMONICS
     {
         BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
 
@@ -274,8 +274,9 @@ struct Contribution {
     float4 sh_rgb[3];
 
     void add_radiance_in_direction(float3 radiance, float3 direction) {
-        //float4 sh = sh_eval_cosine_lobe(direction);
-        float4 sh = float4(0.4886, direction * 0.282);
+        // https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
+        // `shEvaluateL1`, plus the `4` factor, with `pi` cancelled out in the evaluation code (BRDF).
+        float4 sh = float4(0.282095, direction * 0.488603) * 4;
         sh_rgb[0] += sh * radiance.r;
         sh_rgb[1] += sh * radiance.g;
         sh_rgb[2] += sh * radiance.b;

@@ -26,11 +26,11 @@ static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
 #define USE_GRADE 0
 #define USE_DISPLAY_TRANSFORM 1
 #define USE_DITHER 1
-#define USE_SHARPEN 1
+#define USE_SHARPEN 0
 #define USE_VIGNETTE 1
 
 static const float sharpen_amount = 0.1;
-static const float glare_amount = 0.05;
+static const float glare_amount = 0.07;
 //static const float glare_amount = 0.0;
 
 float sharpen_remap(float l) {

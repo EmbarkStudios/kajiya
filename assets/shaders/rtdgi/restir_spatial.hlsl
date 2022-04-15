@@ -75,12 +75,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         spatial_reuse_pass_idx == 0
         ? smoothstep(5.0, 10.0, center_r.M)
         : smoothstep(25.0, 50.0, center_r.M);
-    #elif 1
+    #elif 0
     const float ssao_factor_importance = smoothstep(5.0, 10.0, center_r.M);
     #else
         const float ssao_factor_importance = 0;
     #endif
 
+    // TODO: drive this via variance
     float kernel_radius = lerp(2.0, 16.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
 
     if (spatial_reuse_pass_idx == 1) {
@@ -151,13 +152,19 @@ if (spatial_reuse_pass_idx != 0) {
             float normal_cutoff = 0.5;
         #endif
         
-        if (spatial_reuse_pass_idx != 0) {
-            normal_cutoff = 0.5;
-        }
-
         if (center_r.M < 10) {
             normal_cutoff = 0.5 * exp2(-max(0, poor_normals) * 0.3);
         }
+
+        if (spatial_reuse_pass_idx != 0) {
+            //normal_cutoff = 0.5;
+
+            // TODO: find whether we can be picky about normals
+            // fow now, accept halos over noise from rare normals
+            normal_cutoff = 0.0;
+        }
+
+        //normal_cutoff = 0;
 
         // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
         // areas of high geometric complexity. The resulting bias tends to brighten edges,
@@ -230,7 +237,7 @@ if (spatial_reuse_pass_idx != 0) {
                 continue;
             }
         } else {
-            if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.2) {
+            if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.15) {
                 continue;
             }
         }
@@ -240,8 +247,11 @@ if (spatial_reuse_pass_idx != 0) {
             const float sample_inclination = dot(normalize(surface_offset_vs), center_normal_vs);
             const float ray_inclination = dot(dir_to_sample_hit, center_normal_ws);
 
+            // TODO: consider using this with a const of 1.0
+            // (used to be 0.2). This fixes some halos,
+            // and in _some_ cases, reduces noise, but at the cost of noise in other cases :S
             // Approx shadowing (bias)
-            if (!is_center_sample && ray_inclination * 0.2 < sample_inclination) {
+            if (!is_center_sample && ray_inclination * 1 < sample_inclination) {
                 continue;
             }
 
@@ -264,7 +274,7 @@ if (spatial_reuse_pass_idx != 0) {
                 const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
 
                 // Depth values only have the front; assume a certain thickness.
-                const float Z_LAYER_THICKNESS = 0.05;
+                const float Z_LAYER_THICKNESS = 0.1;
 
                 for (int k = 0; k < k_count; ++k) {
                     const float t = (k + 0.5) / k_count;

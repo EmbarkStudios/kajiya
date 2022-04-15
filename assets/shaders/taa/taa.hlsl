@@ -270,6 +270,8 @@ void main(uint2 px: SV_DispatchThreadID) {
                 clamped_history = clamped_bhistory + history_detail;
                 
                 #if 1
+                // TODO: figure out how not to over-do this with temporal super-resolution
+                if (input_resolution_fraction.x < 1.0) {
                     // When temporally upsampling, after a clamping event, there's pixellation
                     // because we haven't accumulated enough samples yet from
                     // the reduced-resolution input. Dampening history coverage when
@@ -278,6 +280,7 @@ void main(uint2 px: SV_DispatchThreadID) {
                     history_coverage *= lerp(
                         lerp(0.0, 0.9, keep_detail), 1.0, saturate(10 * clamping_event)
                     );
+                }
                 #endif
             } else {
                 clamped_history = clamped_bhistory;
