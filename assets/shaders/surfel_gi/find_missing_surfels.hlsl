@@ -143,8 +143,6 @@ void main(
 
     const float pt_depth = -pt_vs.z / pt_vs.w;
 
-    const uint cell_idx = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos));
-
    #if USE_GEOMETRIC_NORMALS
         const float3 shading_normal = geometric_normal_ws;
     #else
@@ -152,9 +150,6 @@ void main(
     #endif
 
     float3 debug_color = lookup_surfel_gi(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
-
-    //debug_color = uint_id_to_color(cell_idx) * 0.3;
-    //debug_color = saturate(1.0 - length(pt_ws.xyz));
 
     #if USE_DEBUG_OUT
         debug_out_tex[px] = float4(debug_color, 1);

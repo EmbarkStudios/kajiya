@@ -4,65 +4,15 @@
 #include "surfel_grid_hash.hlsl"
 #include "../inc/sh.hlsl"
 
+#define SURF_CACHE_LOOKUP_MAX 1
+
 struct SurfRcacheLookup {
-    uint entry_idx[8];
-    float weight[8];
+    uint entry_idx[SURF_CACHE_LOOKUP_MAX];
+    float weight[SURF_CACHE_LOOKUP_MAX];
     uint count;
 };
 
-SurfRcacheLookup surf_rcache_trilinear_lookup(float3 pt_ws) {
-    const float3 eye_pos = get_eye_position();
-
-    const int3 grid_coord = surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos);
-    const uint4 grid_c4 = surfel_grid_coord_to_c4(grid_coord);
-    const uint cascade = grid_c4.w;
-
-    const int3 coord_within_cascade = surfel_grid_coord_within_cascade(grid_coord, cascade);
-    const float3 center_cell_offset = pt_ws - surfel_grid_coord_center(grid_c4, eye_pos);
-    const float cell_diameter = surfel_grid_cell_diameter_in_cascade(cascade);
-    const int3 c0 = coord_within_cascade + (center_cell_offset > 0.0.xxx ? (0).xxx : (-1).xxx);
-    const float3 interp_t0 = center_cell_offset > 0.0.xxx ? 0.0.xxx : 1.0.xxx;
-
-    float weight_sum = 0.0;
-    SurfRcacheLookup result;
-    result.count = 0;
-
-    for (int z = 0; z < 2; ++z) {
-        for (int y = 0; y < 2; ++y) {
-            for (int x = 0; x < 2; ++x) {
-                const int3 sample_within_cascade = c0 + int3(x, y, z);
-                const uint4 sample_c4 = uint4(
-                    clamp(sample_within_cascade, (int3)0, (int3)(SURFEL_CS - 1)),
-                    cascade);
-    
-                const uint cell_idx = surfel_grid_c4_to_hash(sample_c4);
-                const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
-                const uint entry_idx = cell_meta.x;
-
-                result.weight[result.count] = 0;
-
-                if (cell_meta.y & SURF_RCACHE_ENTRY_META_OCCUPIED) {
-                    float3 interp = center_cell_offset / cell_diameter + interp_t0;
-                    interp = saturate((int3(x, y, z) == 0 ? ((1).xxx - interp) : interp));
-
-                    const float weight = interp.x * interp.y * interp.z;
-                    result.entry_idx[result.count] = entry_idx;
-                    result.weight[result.count] = weight;
-                    result.count += 1;
-                    weight_sum += weight;
-                }
-            }
-        }
-    }
-
-    for (uint i = 0; i < result.count; ++i) {
-        result.weight[i] /= max(1e-10, weight_sum);
-    }
-
-    return result;
-}
-
-SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
+SurfRcacheLookup surf_rcache_lookup(float3 pt_ws) {
     SurfRcacheLookup result;
     result.count = 0;
 
@@ -83,14 +33,6 @@ SurfRcacheLookup surf_rcache_nearest_lookup(float3 pt_ws) {
 
     return result;
 }
-
-#if SURF_RCACHE_USE_TRILINEAR
-    #define surf_rcache_lookup surf_rcache_trilinear_lookup
-    static const uint SURF_CACHE_LOOKUP_MAX = 8;
-#else
-    #define surf_rcache_lookup surf_rcache_nearest_lookup
-    static const uint SURF_CACHE_LOOKUP_MAX = 1;
-#endif
 
 float eval_sh_simplified(float4 sh, float3 normal) {
     float4 lobe_sh = float4(0.8862, 1.0233 * normal);
@@ -173,7 +115,7 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
     SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws);
 
     const int3 grid_coord = surfel_pos_to_grid_coord(pt_ws.xyz, get_eye_position());
-    const uint cascade = surfel_cascade_float_to_cascade(surfel_grid_coord_to_cascade_float(grid_coord));
+    const uint cascade = surfel_grid_coord_to_cascade(grid_coord);
     const float cell_diameter = surfel_grid_cell_diameter_in_cascade(cascade);
 
     float3 to_eye = normalize(get_eye_position() - pt_ws.xyz);

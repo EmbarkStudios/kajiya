@@ -11,6 +11,15 @@ static const float3 SURFEL_GRID_CENTER = float3(0, 0, 14);
 //static const float3 SURFEL_GRID_CENTER = float3(-1.3989427, 0.44028947, -4.080884);
 //static const float3 SURFEL_GRID_CENTER = 0.0.xxx;
 
+struct RcacheCoord {
+    uint3 coord;
+    uint cascade;
+};
+
+/*RcacheCoord ws_pos_to_rcache_coord(float3 pos) {
+
+}*/
+
 int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {
     if (SURFEL_GRID_SCROLL) {
         eye_pos = trunc(eye_pos / SURFEL_GRID_CELL_DIAMETER) * SURFEL_GRID_CELL_DIAMETER;
@@ -20,31 +29,15 @@ int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {
     return int3(floor((pos - eye_pos) / SURFEL_GRID_CELL_DIAMETER));
 }
 
-float3 surfel_grid_coord_center(uint4 coord, float3 eye_pos) {
-    if (SURFEL_GRID_SCROLL) {
-        eye_pos = trunc(eye_pos / SURFEL_GRID_CELL_DIAMETER) * SURFEL_GRID_CELL_DIAMETER;
-    } else {
-        eye_pos = SURFEL_GRID_CENTER;
-    }
-    return eye_pos + ((coord.xyz + 0.5.xxx - SURFEL_CS / 2) * SURFEL_GRID_CELL_DIAMETER) * (1u << uint(coord.w));
-}
-
 float surfel_grid_cell_diameter_in_cascade(uint cascade) {
     return SURFEL_GRID_CELL_DIAMETER * (1u << uint(cascade));
 }
 
-float surfel_grid_coord_to_cascade_float(int3 coord) {
+uint surfel_grid_coord_to_cascade(int3 coord) {
     const float3 fcoord = coord + 0.5;
     const float max_coord = max(abs(fcoord.x), max(abs(fcoord.y), abs(fcoord.z)));
-    return log2(max_coord / (SURFEL_CS / 2));
-}
-
-uint surfel_cascade_float_to_cascade(float cascade_float) {
+    const float cascade_float = log2(max_coord / (SURFEL_CS / 2));
     return uint(clamp(ceil(max(0.0, cascade_float)), 0, 7));
-}
-
-uint surfel_grid_coord_to_cascade(int3 coord) {
-    return surfel_cascade_float_to_cascade(surfel_grid_coord_to_cascade_float(coord));
 }
 
 int3 surfel_grid_coord_within_cascade(int3 coord, uint cascade) {
