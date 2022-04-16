@@ -10,7 +10,6 @@
 #define VISUALIZE_ENTRIES 1
 #define VISUALIZE_CASCADES 0
 #define VISUALIZE_SURFEL_AGE 0
-#define VISUALIZE_CELLS 0
 #define USE_GEOMETRIC_NORMALS 1
 #define USE_DEBUG_OUT 1
 
@@ -37,7 +36,6 @@
 #define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.05
 
 #include "lookup.hlsl"
-#include "surfel_binning_shared.hlsl"
 
 groupshared uint gs_px_min_score_loc_packed;
 groupshared uint gs_px_max_score_loc_packed;
@@ -147,122 +145,14 @@ void main(
 
     const uint cell_idx = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos));
 
-    const uint4 pt_c4 = surfel_grid_coord_to_c4(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos));
-    const uint pt_c4_hash = surfel_grid_c4_to_hash(pt_c4);
-
    #if USE_GEOMETRIC_NORMALS
         const float3 shading_normal = geometric_normal_ws;
     #else
         const float3 shading_normal = gbuffer.normal;
     #endif
 
-    float3 surfel_color = 0.0.xxx;
     float3 debug_color = lookup_surfel_gi(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
 
-#if 0
-    {
-        const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
-        uint entry_idx = cell_meta.x;
-        const uint entry_flags = cell_meta.y;
-
-        if ((entry_flags & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
-            // Allocate
-
-            uint prev = 0;
-            surf_rcache_grid_meta_buf.InterlockedOr(sizeof(uint4) * cell_idx + sizeof(uint), SURF_RCACHE_ENTRY_META_OCCUPIED, prev);
-
-            if ((prev & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
-                // We've allocated it!
-
-                uint alloc_idx;
-                surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, alloc_idx);
-
-                entry_idx = surf_rcache_pool_buf[alloc_idx];
-                surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
-
-                // Clear dead state, mark used.
-                surf_rcache_life_buf[entry_idx] = 0;
-                surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
-
-                surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
-            } else {
-                // We did not allocate it, so read the entry index from whoever did.
-                
-                entry_idx = surf_rcache_grid_meta_buf.Load(sizeof(uint4) * cell_idx + 0);
-            }
-        }
-
-        // TODO: reservoir-based selection, factor in vertex ranks
-        if (!true) {
-            SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws.xyz);
-            Vertex new_surfel;
-            new_surfel.position = pt_ws.xyz;
-            new_surfel.normal = shading_normal;
-
-            #if 1
-            [unroll]
-            for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.count) {
-                const uint entry_idx = lookup.entry_idx[i];
-
-                // HACK; TODO: only accept trilinear footprint proposals if no direct proposals found
-                // or direct proposals are from a lower rank
-                const float prob = pow(lookup.weight[i], 3);
-                if (uint_to_u01_float(hash1_mut(rng)) > prob) {
-                    continue;
-                }
-
-            #else
-            if (true) {
-            #endif
-                surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
-
-                // Mark used
-                if (surf_rcache_life_buf[entry_idx] < SURFEL_LIFE_RECYCLE) {
-                    surf_rcache_life_buf[entry_idx] = 0;
-                }
-            }
-        }
-        
-        float4 surfel_irradiance_packed = surf_rcache_irradiance_buf[entry_idx * SURF_RCACHE_IRRADIANCE_STRIDE];
-        surfel_color = 1;//surfel_irradiance_packed.xyz;
-
-        #if VISUALIZE_ENTRIES
-            debug_color = surfel_color;
-        #endif
-   
-        #if VISUALIZE_SURFEL_AGE
-            //debug_color = cost_color_map(1.4 - min(1.0, pow(surfel_irradiance_packed.w / 128.0, 8.0)));
-        #endif
-    }
-#endif
-
-    #if VISUALIZE_CASCADES
-        Vertex surfel;
-        surfel.position = pt_ws.xyz;
-        SurfelGridMinMax box = get_surfel_grid_box_min_max(surfel);
-
-        debug_color = cost_color_map((
-            surfel_grid_coord_to_cascade(surfel_pos_to_grid_coord(pt_ws.xyz, prev_eye_pos))
-            + 1) / 8.0
-        );
-
-        debug_color = cost_color_map(
-            (box.c4_min[0].w + 1) / 8.0
-        );
-
-        debug_color = cost_color_map(
-            (box.c4_min[0].x % 32 + 1) / 32.0
-        );
-
-        if (box.cascade_count > 1) {
-            debug_color = 1;
-        }
-    #endif
-
-    if (VISUALIZE_CELLS) {
-        const uint h = hash4(pt_c4);
-        debug_color = uint_id_to_color(h);
-    }
     //debug_color = uint_id_to_color(cell_idx) * 0.3;
     //debug_color = saturate(1.0 - length(pt_ws.xyz));
 

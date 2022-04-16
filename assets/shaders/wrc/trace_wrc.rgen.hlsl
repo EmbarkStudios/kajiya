@@ -58,6 +58,8 @@ float unpack_dist(float x) {
 
 [shader("raygeneration")]
 void main() {
+    return;
+    
     const uint probe_idx = DispatchRaysIndex().x / (WRC_PROBE_DIMS * WRC_PROBE_DIMS);
     const uint probe_px_idx = DispatchRaysIndex().x % (WRC_PROBE_DIMS * WRC_PROBE_DIMS);
     const uint2 probe_px = uint2(probe_px_idx % WRC_PROBE_DIMS, probe_px_idx / WRC_PROBE_DIMS);

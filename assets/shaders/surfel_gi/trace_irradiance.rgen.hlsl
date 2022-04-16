@@ -322,6 +322,7 @@ void main() {
 
     float3 irradiance_sum = 0;
 
+    // TODO: consider stratifying within cells
     for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx) {
         const uint sequence_idx = hash1(surfel_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
@@ -381,6 +382,7 @@ void main() {
 
     Contribution contribution_sum = (Contribution)0;
     {
+        // TODO: counter distortion
         [loop]
         for (uint octa_idx = 0; octa_idx < SURF_RCACHE_OCTA_DIMS2; ++octa_idx) {
             const float2 octa_coord = (float2(octa_idx % SURF_RCACHE_OCTA_DIMS, octa_idx / SURF_RCACHE_OCTA_DIMS) + 0.5) / SURF_RCACHE_OCTA_DIMS;
