@@ -23,7 +23,7 @@ static const float MAX_RAY_LENGTH = FLT_MAX;
 // Rough-smooth-rough specular paths are a major source of fireflies.
 // Enabling this option will bias roughness of path vertices following
 // reflections off rough interfaces.
-static const bool FIREFLY_SUPPRESSION = !true;
+static const bool FIREFLY_SUPPRESSION = true;
 static const bool FURNACE_TEST = false;
 static const bool FURNACE_TEST_EXCLUDE_DIFFUSE = !true;
 static const bool USE_PIXEL_FILTER = true;

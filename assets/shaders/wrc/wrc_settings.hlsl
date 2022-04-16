@@ -13,6 +13,7 @@ float3 wrc_grid_center() {
     //return float3(0, 1.5, 0);
     //return float3(0, -0.5, 0);
     //return float3(0, 1, -15);
+    //return float3(0, 0, 14);
 
     return float3(0, 0.0, 8);
 }

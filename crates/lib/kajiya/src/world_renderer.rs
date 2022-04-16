@@ -26,7 +26,9 @@ use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
 use rg::renderer::FrameConstantsLayout;
 use rust_shaders_shared::{
-    camera::CameraMatrices, frame_constants::FrameConstants, view_constants::ViewConstants,
+    camera::CameraMatrices,
+    frame_constants::{FrameConstants, RcacheCascadeConstants, RCACHE_CASCADE_COUNT},
+    view_constants::ViewConstants,
 };
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
@@ -914,6 +916,19 @@ impl WorldRenderer {
             })
             .collect();
 
+        // Initialize constants for the maximum allowed cascade count, even if we're not using them,
+        // so that we don't need to change the layout of frame constants up to this limit.
+        let mut rcache_cascades: [RcacheCascadeConstants; RCACHE_CASCADE_COUNT] =
+            Default::default();
+
+        self.surfel_gi
+            .update_eye_position(view_constants.eye_position());
+
+        // Actually set the cascade constants we're using
+        for (i, c) in self.surfel_gi.constants().iter().copied().enumerate() {
+            rcache_cascades[i] = c;
+        }
+
         let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
 
         let globals_offset = dynamic_constants.push(&FrameConstants {
@@ -930,6 +945,8 @@ impl WorldRenderer {
             pad0: 0,
             pad1: 0,
             pad2: 0,
+
+            rcache_cascades,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

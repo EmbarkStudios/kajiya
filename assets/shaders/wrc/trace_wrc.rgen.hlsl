@@ -36,7 +36,7 @@ static const bool USE_EMISSIVE = true;
 static const bool USE_SURFEL_GI = true;
 static const bool USE_BLEND_OUTPUT = true;
 static const bool USE_FLICKER_SUPPRESSION = true;
-static const uint TARGET_SAMPLE_COUNT = 8;
+static const uint TARGET_SAMPLE_COUNT = 32;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -58,8 +58,8 @@ float unpack_dist(float x) {
 
 [shader("raygeneration")]
 void main() {
-    return;
-    
+    //return;
+
     const uint probe_idx = DispatchRaysIndex().x / (WRC_PROBE_DIMS * WRC_PROBE_DIMS);
     const uint probe_px_idx = DispatchRaysIndex().x % (WRC_PROBE_DIMS * WRC_PROBE_DIMS);
     const uint2 probe_px = uint2(probe_px_idx % WRC_PROBE_DIMS, probe_px_idx / WRC_PROBE_DIMS);

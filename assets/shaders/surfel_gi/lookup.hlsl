@@ -16,12 +16,9 @@ SurfRcacheLookup surf_rcache_lookup(float3 pt_ws) {
     SurfRcacheLookup result;
     result.count = 0;
 
-    const float3 eye_pos = get_eye_position();
-    const int3 grid_coord = surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos);
-    const uint4 grid_c4 = surfel_grid_coord_to_c4(grid_coord);
-    const uint cascade = grid_c4.w;
+    const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws.xyz);
+    const uint cell_idx = rcache_coord_to_cell_idx(rcoord);
 
-    const uint cell_idx = surfel_grid_coord_to_hash(grid_coord);
     const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
 
     if (cell_meta.y & SURF_RCACHE_ENTRY_META_OCCUPIED) {
@@ -76,7 +73,8 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
         // TODO: should be prev eye pos for the find_missing_surfels shader
         const float3 eye_pos = get_eye_position();
 
-        const uint cell_idx = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos));
+        const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws.xyz);
+        const uint cell_idx = rcache_coord_to_cell_idx(rcoord);
 
         const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
         const uint entry_flags = cell_meta.y;
@@ -114,8 +112,7 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
 
     SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws);
 
-    const int3 grid_coord = surfel_pos_to_grid_coord(pt_ws.xyz, get_eye_position());
-    const uint cascade = surfel_grid_coord_to_cascade(grid_coord);
+    const uint cascade = ws_pos_to_rcache_coord(pt_ws.xyz).cascade;
     const float cell_diameter = surfel_grid_cell_diameter_in_cascade(cascade);
 
     float3 to_eye = normalize(get_eye_position() - pt_ws.xyz);

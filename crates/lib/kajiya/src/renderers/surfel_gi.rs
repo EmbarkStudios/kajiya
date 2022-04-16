@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 use std::{mem::size_of, sync::Arc};
 
+use glam::{IVec3, Vec3};
 use kajiya_backend::{
     ash::vk,
     vk_sync::AccessType,
@@ -17,12 +18,15 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
 use rg::{BindMutToSimpleRenderPass, BindRgRef, IntoRenderPassPipelineBinding};
+use rust_shaders_shared::frame_constants::{RcacheCascadeConstants, RCACHE_CASCADE_COUNT};
 use vk::BufferUsageFlags;
 
 use super::{wrc::WrcRenderState, GbufferDepth};
 
 const MAX_SURFEL_CELLS: usize = 1024 * 1024 * 2;
 const MAX_SURFELS: usize = 1024 * 256;
+const RCACHE_GRID_CELL_DIAMETER: f32 = 0.16;
+const RCACHE_CASCADE_SIZE: usize = 32;
 
 pub struct SurfelGiRenderState {
     surf_rcache_meta_buf: rg::Handle<Buffer>,
@@ -77,6 +81,8 @@ fn temporal_storage_buffer(
 pub struct SurfelGiRenderer {
     debug_render_pass: Arc<RenderPass>,
     initialized: bool,
+    cur_scroll: [IVec3; RCACHE_CASCADE_COUNT],
+    prev_scroll: [IVec3; RCACHE_CASCADE_COUNT],
 }
 
 impl SurfelGiRenderer {
@@ -95,6 +101,36 @@ impl SurfelGiRenderer {
         Ok(Self {
             debug_render_pass,
             initialized: false,
+            cur_scroll: Default::default(),
+            prev_scroll: Default::default(),
+        })
+    }
+
+    pub fn update_eye_position(&mut self, eye_position: Vec3) {
+        for cascade in 0..RCACHE_CASCADE_COUNT {
+            let cell_diameter = RCACHE_GRID_CELL_DIAMETER * (1 << cascade) as f32;
+            let cascade_center = (eye_position / cell_diameter).floor().as_ivec3();
+            let cascade_origin = cascade_center - IVec3::splat(RCACHE_CASCADE_SIZE as i32 / 2);
+
+            self.prev_scroll[cascade] = self.cur_scroll[cascade];
+            self.cur_scroll[cascade] = cascade_origin;
+        }
+    }
+
+    pub fn constants(&self) -> [RcacheCascadeConstants; RCACHE_CASCADE_COUNT] {
+        array_init::array_init(|cascade| {
+            let cur_scroll = self.cur_scroll[cascade];
+            let prev_scroll = self.prev_scroll[cascade];
+            let scroll_amount = cur_scroll - prev_scroll;
+
+            if scroll_amount.ne(&IVec3::ZERO) {
+                log::info!("cascade {cascade} scrolled by {scroll_amount:?}");
+            }
+
+            RcacheCascadeConstants {
+                origin: cur_scroll.extend(0),
+                voxels_scrolled_this_frame: scroll_amount.extend(0),
+            }
         })
     }
 }
