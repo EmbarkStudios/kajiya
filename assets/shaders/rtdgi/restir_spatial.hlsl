@@ -233,11 +233,13 @@ if (spatial_reuse_pass_idx != 0) {
 
         // Reject neighbors with vastly different depths
         if (spatial_reuse_pass_idx == 0) {
-            if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.1) {
+            // Clamp the normal_vs.z so that we don't get arbitrarily loose depth comparison at grazing angles.
+            if (!is_center_sample && abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0)) > 0.1) {
                 continue;
             }
         } else {
-            if (!is_center_sample && abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)) > 0.15) {
+            // Ditto
+            if (!is_center_sample && abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0)) > 0.15) {
                 continue;
             }
         }
@@ -281,7 +283,7 @@ if (spatial_reuse_pass_idx != 0) {
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
                     const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z * 1.001) {
+                    if (depth_at_interp > interp_pos_cs.z * 1.003) {
                         visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
                     }
                 }
