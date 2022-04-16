@@ -35,6 +35,9 @@ struct Opt {
     #[structopt(long)]
     no_debug: bool,
 
+    #[structopt(long)]
+    physical_device_index: Option<usize>,
+
     #[structopt(long, default_value = "1.0")]
     gi_volume_scale: f32,
 }
@@ -113,6 +116,7 @@ fn main() -> anyhow::Result<()> {
         .resolution([opt.width, opt.height])
         .vsync(!opt.no_vsync)
         .graphics_debugging(!opt.no_debug)
+        .physical_device_index(opt.physical_device_index)
         .temporal_upsampling(opt.temporal_upsampling)
         .default_log_level(log::LevelFilter::Info)
         .fullscreen(opt.fullscreen.then(|| FullscreenMode::Exclusive))

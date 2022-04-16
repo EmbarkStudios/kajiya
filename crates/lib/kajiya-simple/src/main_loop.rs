@@ -87,6 +87,7 @@ pub struct SimpleMainLoopBuilder {
     vsync: bool,
     fullscreen: Option<FullscreenMode>,
     graphics_debugging: bool,
+    physical_device_index: Option<usize>,
     default_log_level: log::LevelFilter,
     window_scale: WindowScale,
     temporal_upsampling: f32,
@@ -105,6 +106,7 @@ impl SimpleMainLoopBuilder {
             vsync: true,
             fullscreen: None,
             graphics_debugging: false,
+            physical_device_index: None,
             default_log_level: log::LevelFilter::Warn,
             window_scale: WindowScale::SystemNative,
             temporal_upsampling: 1.0,
@@ -123,6 +125,11 @@ impl SimpleMainLoopBuilder {
 
     pub fn graphics_debugging(mut self, graphics_debugging: bool) -> Self {
         self.graphics_debugging = graphics_debugging;
+        self
+    }
+
+    pub fn physical_device_index(mut self, physical_device_index: Option<usize>) -> Self {
+        self.physical_device_index = physical_device_index;
         self
     }
 
@@ -238,6 +245,7 @@ impl SimpleMainLoop {
                 swapchain_extent,
                 vsync: builder.vsync,
                 graphics_debugging: builder.graphics_debugging,
+                device_index: builder.physical_device_index,
             },
         )?;
 

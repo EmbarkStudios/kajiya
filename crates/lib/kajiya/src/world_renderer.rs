@@ -1,5 +1,8 @@
 use crate::{
-    bindless_descriptor_set::{create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT},
+    bindless_descriptor_set::{
+        create_bindless_descriptor_set, BINDLESS_DESCRIPTOR_SET_LAYOUT,
+        BINDLESS_TEXURES_BINDING_INDEX,
+    },
     buffer_builder::BufferBuilder,
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
@@ -148,6 +151,7 @@ pub struct WorldRenderer {
     bindless_images: Vec<Arc<Image>>,
     next_bindless_image_id: usize,
     next_instance_handle: usize,
+    bindless_texture_sizes: Buffer,
 
     image_luts: Vec<ImageLut>,
     frame_idx: u32,
@@ -288,8 +292,22 @@ impl WorldRenderer {
             )
             .unwrap();
 
+        let bindless_texture_sizes = backend
+            .device
+            .create_buffer(
+                BufferDesc {
+                    size: MAX_BINDLESS_DESCRIPTOR_COUNT * std::mem::size_of::<[f32; 4]>(),
+                    usage: vk::BufferUsageFlags::STORAGE_BUFFER
+                        | vk::BufferUsageFlags::TRANSFER_DST,
+                    mapped: true,
+                },
+                None,
+            )
+            .unwrap();
+
         let bindless_descriptor_set = create_bindless_descriptor_set(backend.device.as_ref());
 
+        // `meshes`
         Self::write_descriptor_set_buffer(
             &backend.device.raw,
             bindless_descriptor_set,
@@ -297,11 +315,20 @@ impl WorldRenderer {
             &mesh_buffer,
         );
 
+        // `vertices`
         Self::write_descriptor_set_buffer(
             &backend.device.raw,
             bindless_descriptor_set,
             1,
             &vertex_buffer,
+        );
+
+        // `bindless_texture_sizes`
+        Self::write_descriptor_set_buffer(
+            &backend.device.raw,
+            bindless_descriptor_set,
+            2,
+            &bindless_texture_sizes,
         );
 
         let supersample_count = 128;
@@ -349,6 +376,7 @@ impl WorldRenderer {
 
             next_bindless_image_id: 0,
             next_instance_handle: 0,
+            bindless_texture_sizes,
 
             rg_debug_hook: None,
             render_mode: RenderMode::Standard,
@@ -419,7 +447,7 @@ impl WorldRenderer {
         let write_descriptor_set = vk::WriteDescriptorSet::builder()
             .dst_set(self.bindless_descriptor_set)
             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
-            .dst_binding(2)
+            .dst_binding(BINDLESS_TEXURES_BINDING_INDEX as _)
             .dst_array_element(handle.0 as _)
             .image_info(std::slice::from_ref(&image_info))
             .build();
@@ -449,9 +477,20 @@ impl WorldRenderer {
     }
 
     pub fn add_image(&mut self, image: Arc<Image>) -> BindlessImageHandle {
+        let image_size: [f32; 4] = image.desc.extent_inv_extent_2d();
+
         let handle = self
             .add_bindless_image_view(image.view(self.device.as_ref(), &ImageViewDesc::default()));
+
         self.bindless_images.push(image);
+
+        bytemuck::checked::cast_slice_mut::<u8, [f32; 4]>(
+            self.bindless_texture_sizes
+                .allocation
+                .mapped_slice_mut()
+                .unwrap(),
+        )[handle.0 as usize] = image_size;
+
         handle
     }
 

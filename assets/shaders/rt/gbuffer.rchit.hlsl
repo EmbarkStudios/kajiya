@@ -19,19 +19,27 @@ float twice_uv_area(float2 t0, float2 t1, float2 t2) {
     return abs((t1.x - t0.x) * (t2.y - t0.y) - (t2.x - t0.x) * (t1.y - t0.y));
 }
 
+struct BindlessTextureWithLod {
+    Texture2D tex;
+    float lod;
+};
+
 // https://media.contentapi.ea.com/content/dam/ea/seed/presentations/2019-ray-tracing-gems-chapter-20-akenine-moller-et-al.pdf
-float compute_texture_lod(Texture2D tex, float triangle_constant, float3 ray_direction, float3 surf_normal, float cone_width) {
-    uint w, h;
-    tex.GetDimensions(w, h);
+BindlessTextureWithLod compute_texture_lod(uint bindless_texture_idx, float triangle_constant, float3 ray_direction, float3 surf_normal, float cone_width) {
+    // Not using `GetDimensions` as it's buggy on AMD.
+    float2 wh = bindless_texture_sizes[bindless_texture_idx].xy;
 
     float lambda = triangle_constant;
     lambda += log2(abs(cone_width));
-    lambda += 0.5 * log2(float(w) * float(h));
+    lambda += 0.5 * log2(wh.x * wh.y);
 
     // TODO: This blurs a lot at grazing angles; do aniso.
     lambda -= log2(abs(dot(normalize(ray_direction), surf_normal)));
 
-    return lambda;
+    BindlessTextureWithLod res;
+    res.tex = bindless_textures[NonUniformResourceIndex(bindless_texture_idx)];
+    res.lod = lambda;
+    return res;
 }
 
 [shader("closesthit")]
@@ -79,18 +87,18 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + material_id * sizeof(MeshMaterial));
 
     float2 albedo_uv = transform_material_uv(material, uv, 0);
-    Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
-    float albedo_lod = compute_texture_lod(albedo_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    const BindlessTextureWithLod albedo_tex =
+        compute_texture_lod(material.albedo_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
 
     float3 albedo =
-        albedo_tex.SampleLevel(sampler_llr, albedo_uv, albedo_lod).xyz
+        albedo_tex.tex.SampleLevel(sampler_llr, albedo_uv, albedo_tex.lod).xyz
         * float4(material.base_color_mult).xyz
         * v_color.rgb;
 
     float2 spec_uv = transform_material_uv(material, uv, 2);
-    Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
-    float spec_lod = compute_texture_lod(spec_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
-    float4 metalness_roughness = spec_tex.SampleLevel(sampler_llr, spec_uv, spec_lod);
+    const BindlessTextureWithLod spec_tex =
+        compute_texture_lod(material.spec_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float4 metalness_roughness = spec_tex.tex.SampleLevel(sampler_llr, spec_uv, spec_tex.lod);
     float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
     float metalness = metalness_roughness.z * material.metalness_factor;
@@ -124,9 +132,9 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float3 bitangent = bitangent0 * barycentrics.x + bitangent1 * barycentrics.y + bitangent2 * barycentrics.z;
 
     float2 normal_uv = transform_material_uv(material, uv, 0);
-    Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
-    float normal_lod = compute_texture_lod(normal_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
-    float3 ts_normal = normal_tex.SampleLevel(sampler_llr, normal_uv, normal_lod).xyz * 2.0 - 1.0;
+    const BindlessTextureWithLod normal_tex =
+        compute_texture_lod(material.normal_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    float3 ts_normal = normal_tex.tex.SampleLevel(sampler_llr, normal_uv, normal_tex.lod).xyz * 2.0 - 1.0;
 
     if (dot(bitangent, bitangent) > 0.0) {
         float3x3 tbn = float3x3(tangent, bitangent, normal);
@@ -136,8 +144,8 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 #endif
 
     float2 emissive_uv = transform_material_uv(material, uv, 3);
-    Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
-    float emissive_lod = compute_texture_lod(emissive_tex, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+    const BindlessTextureWithLod emissive_tex =
+        compute_texture_lod(material.emissive_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
 
     float3 emissive = 0;
 
@@ -146,7 +154,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     // since we need the direct contribution of the light's surface to the screen.
     if (0 == payload.path_length || 0 == (material.flags & MESH_MATERIAL_FLAG_EMISSIVE_USED_AS_LIGHT)) {
         emissive = 1.0.xxx
-            * emissive_tex.SampleLevel(sampler_llr, emissive_uv, emissive_lod).rgb
+            * emissive_tex.tex.SampleLevel(sampler_llr, emissive_uv, emissive_tex.lod).rgb
             * float3(material.emissive)
             * instance_dynamic_parameters_dyn[InstanceIndex()].emissive_multiplier;
     }

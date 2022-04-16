@@ -136,10 +136,6 @@ pub fn create_descriptor_set_layouts(
             let mut set_layout_create_flags = vk::DescriptorSetLayoutCreateFlags::empty();
 
             for (binding_index, binding) in set.iter() {
-                /*if binding.name == "bindless_textures" {
-                    panic!("{:?}", binding);
-                }*/
-
                 match binding.ty {
                     rspirv_reflect::DescriptorType::UNIFORM_BUFFER
                     | rspirv_reflect::DescriptorType::UNIFORM_TEXEL_BUFFER

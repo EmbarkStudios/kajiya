@@ -93,7 +93,7 @@ pub fn post_combine_cs(
     #[spirv(descriptor_set = 0, binding = 0)] input_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 2)] rev_blur_pyramid_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 3)] output_tex: &Image!(2D, type=f32, sampled=false),
-    #[spirv(descriptor_set = 1, binding = 2)] bindless_textures: &RuntimeArray<
+    #[spirv(descriptor_set = 1, binding = 3)] bindless_textures: &RuntimeArray<
         Image!(2D, type=f32, sampled=true),
     >,
 
