@@ -9,7 +9,7 @@ static const float SURFEl_RADIUS_OVERSCALE = 1.25;
 #define SURF_RCACHE_USE_UNIFORM_VOTING 1
 #define SURF_RCACHE_FREEZE 0
 
-#define SURF_RCACHE_USE_SPHERICAL_HARMONICS 0
+#define SURF_RCACHE_USE_SPHERICAL_HARMONICS 1
 
 //#define SURFEL_META_CELL_COUNT (0 * sizeof(uint))
 #define SURFEL_META_ENTRY_COUNT (1 * sizeof(uint))
@@ -39,8 +39,10 @@ uint surfel_life_for_rank(uint rank) {
     return rank * SURF_RCACHE_ENTRY_LIFE_PER_RANK;
 }
 
+static const uint SURF_RCACHE_OCTA_DIMS = 4;
+static const uint SURF_RCACHE_OCTA_DIMS2 = SURF_RCACHE_OCTA_DIMS * SURF_RCACHE_OCTA_DIMS;
 static const uint SURF_RCACHE_IRRADIANCE_STRIDE = 3;
-static const uint SURF_RCACHE_AUX_STRIDE = 3;
+static const uint SURF_RCACHE_AUX_STRIDE = 2 * SURF_RCACHE_OCTA_DIMS2;
 
 
 

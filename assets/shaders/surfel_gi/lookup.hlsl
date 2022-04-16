@@ -119,7 +119,7 @@ float eval_sh_nope(float4 sh, float3 normal) {
 }
 
 #if SURF_RCACHE_USE_SPHERICAL_HARMONICS
-    #if 1
+    #if 0
         #define eval_surfel_sh eval_sh_simplified
     #else
         #define eval_surfel_sh eval_sh_geometrics
@@ -137,7 +137,6 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
         const uint cell_idx = surfel_grid_coord_to_hash(surfel_pos_to_grid_coord(pt_ws.xyz, eye_pos));
 
         const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
-        uint entry_idx = cell_meta.x;
         const uint entry_flags = cell_meta.y;
 
         if ((entry_flags & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
@@ -152,7 +151,7 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
                 uint alloc_idx;
                 surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, alloc_idx);
 
-                entry_idx = surf_rcache_pool_buf[alloc_idx];
+                uint entry_idx = surf_rcache_pool_buf[alloc_idx];
                 surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
 
                 // Clear dead state, mark used.
@@ -166,10 +165,6 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
                 surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
 
                 surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
-            } else {
-                // We did not allocate it, so read the entry index from whoever did.
-                
-                entry_idx = surf_rcache_grid_meta_buf.Load(sizeof(uint4) * cell_idx + 0);
             }
         }
     }

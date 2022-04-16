@@ -1,3 +1,6 @@
+#![allow(unreachable_code)]
+#![allow(unused_variables)]
+
 use crate::atmosphere::*;
 use macaw::{UVec3, Vec2, Vec3};
 use rust_shaders_shared::{frame_constants::FrameConstants, util::*};
@@ -7,6 +10,9 @@ use spirv_std::Image;
 use spirv_std::macros::spirv;
 
 fn atmosphere_default(wi: Vec3, light_dir: Vec3) -> Vec3 {
+    //return Vec3::ZERO;
+    //return Vec3::splat(0.5);
+
     let world_space_camera_pos = Vec3::ZERO;
     let ray_start = world_space_camera_pos;
     let ray_dir = wi.normalize();
