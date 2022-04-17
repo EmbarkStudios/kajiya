@@ -2,10 +2,13 @@ use anyhow::Context;
 
 use dolly::prelude::*;
 use imgui::im_str;
-use kajiya::{rg::GraphDebugHook, world_renderer::AddMeshOptions};
+use kajiya::{
+    rg::GraphDebugHook,
+    world_renderer::{AddMeshOptions, MeshHandle},
+};
 use kajiya_simple::*;
 
-use std::fs::File;
+use std::{collections::HashMap, fs::File, path::PathBuf};
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -172,12 +175,19 @@ fn main() -> anyhow::Result<()> {
     )?;
     let mut light_instances = Vec::new();*/
 
+    let mut known_meshes: HashMap<PathBuf, MeshHandle> = HashMap::new();
+
     let mut render_instances = vec![];
     for instance in scene_desc.instances {
-        let mesh = kajiya.world_renderer.add_baked_mesh(
-            format!("/baked/{}.mesh", instance.mesh),
-            AddMeshOptions::new(),
-        )?;
+        let path = PathBuf::from(format!("/baked/{}.mesh", instance.mesh));
+
+        let mesh = *known_meshes.entry(path.clone()).or_insert_with(|| {
+            kajiya
+                .world_renderer
+                .add_baked_mesh(path, AddMeshOptions::new())
+                .unwrap()
+        });
+
         render_instances.push(kajiya.world_renderer.add_instance(
             mesh,
             instance.position.into(),

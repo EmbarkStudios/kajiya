@@ -1,7 +1,7 @@
 use crate::view_constants::ViewConstants;
 use macaw::{IVec4, Vec4};
 
-pub const RCACHE_CASCADE_COUNT: usize = 8;
+pub const RCACHE_CASCADE_COUNT: usize = 12;
 
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Default)]

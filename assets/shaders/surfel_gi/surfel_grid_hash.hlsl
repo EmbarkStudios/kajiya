@@ -3,7 +3,7 @@
 
 static const uint MAX_SURFEL_GRID_CELLS = 1024 * 1024 * 2;
 static const uint RCACHE_CASCADE_SIZE = 32;
-static const uint RCACHE_CASCADE_COUNT = 8;
+static const uint RCACHE_CASCADE_COUNT = 12;
 
 static const bool SURFEL_GRID_SCROLL = true;
 //static const float3 SURFEL_GRID_CENTER = float3(-1.5570648, -1.2360737, 9.283543);

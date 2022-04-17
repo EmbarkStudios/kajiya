@@ -56,7 +56,7 @@ struct FrameConstants {
 	uint pad1;
 	uint pad2;
 
-    RcacheCascadeConstants rcache_cascades[8];
+    RcacheCascadeConstants rcache_cascades[12];
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;
