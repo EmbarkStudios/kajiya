@@ -19,7 +19,7 @@ SurfRcacheLookup surf_rcache_lookup(float3 pt_ws) {
     const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws.xyz);
     const uint cell_idx = rcache_coord_to_cell_idx(rcoord);
 
-    const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
+    const uint2 cell_meta = surf_rcache_grid_meta_buf.Load2(sizeof(uint2) * cell_idx);
 
     if (cell_meta.y & SURF_RCACHE_ENTRY_META_OCCUPIED) {
         const uint entry_idx = cell_meta.x;
@@ -68,43 +68,61 @@ float eval_sh_nope(float4 sh, float3 normal) {
 #endif
 
 float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
+    bool allocated_by_us = false;
+
 #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
     if (!SURF_RCACHE_FREEZE) {
         // TODO: should be prev eye pos for the find_missing_surfels shader
         const float3 eye_pos = get_eye_position();
 
         const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws.xyz);
-        const uint cell_idx = rcache_coord_to_cell_idx(rcoord);
 
-        const uint4 cell_meta = surf_rcache_grid_meta_buf.Load4(sizeof(uint4) * cell_idx);
-        const uint entry_flags = cell_meta.y;
+        const int3 scroll_offset = frame_constants.rcache_cascades[rcoord.cascade].voxels_scrolled_this_frame.xyz;
+        const int3 was_just_scrolled_in =
+            scroll_offset > 0
+            ? (int3(rcoord.coord) + scroll_offset >= RCACHE_CASCADE_SIZE)
+            : (int3(rcoord.coord) < -scroll_offset);
 
-        if ((entry_flags & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
-            // Allocate
+        // When a voxel is just scrolled in to a cascade, allocating it via indirect rays
+        // has a good chance of creating leaks. Delay the allocation for one frame
+        // unless we have a suitable one from a primary ray.
+        const bool skip_allocation =
+            (query_rank + 1) >= SURF_RCACHE_ENTRY_RANK_COUNT
+            || (any(was_just_scrolled_in) && query_rank > 0);
 
-            uint prev = 0;
-            surf_rcache_grid_meta_buf.InterlockedOr(sizeof(uint4) * cell_idx + sizeof(uint), SURF_RCACHE_ENTRY_META_OCCUPIED, prev);
+        if (!skip_allocation) {
+            const uint cell_idx = rcache_coord_to_cell_idx(rcoord);
+            const uint2 cell_meta = surf_rcache_grid_meta_buf.Load2(sizeof(uint2) * cell_idx);
+            const uint entry_flags = cell_meta.y;
 
-            if ((prev & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
-                // We've allocated it!
+            if ((entry_flags & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
+                // Allocate
 
-                uint alloc_idx;
-                surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, alloc_idx);
+                uint prev = 0;
+                surf_rcache_grid_meta_buf.InterlockedOr(sizeof(uint2) * cell_idx + sizeof(uint), SURF_RCACHE_ENTRY_META_OCCUPIED, prev);
 
-                uint entry_idx = surf_rcache_pool_buf[alloc_idx];
-                surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
+                if ((prev & SURF_RCACHE_ENTRY_META_OCCUPIED) == 0) {
+                    // We've allocated it!
+                    allocated_by_us = true;
 
-                // Clear dead state, mark used.
+                    uint alloc_idx;
+                    surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, 1, alloc_idx);
 
-                // TODO: this fails to compile on AMD:
-                //surf_rcache_life_buf[entry_idx] = surfel_life_for_rank(query_rank);
+                    uint entry_idx = surf_rcache_pool_buf[alloc_idx];
+                    surf_rcache_meta_buf.InterlockedMax(SURFEL_META_ENTRY_COUNT, entry_idx + 1);
 
-                // ... but this works:
-                InterlockedMin(surf_rcache_life_buf[entry_idx], surfel_life_for_rank(query_rank));
+                    // Clear dead state, mark used.
 
-                surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
+                    // TODO: this fails to compile on AMD:
+                    //surf_rcache_life_buf[entry_idx] = surfel_life_for_rank(query_rank);
 
-                surf_rcache_grid_meta_buf.Store(sizeof(uint4) * cell_idx + 0, entry_idx);
+                    // ... but this works:
+                    InterlockedMin(surf_rcache_life_buf[entry_idx], surfel_life_for_rank(query_rank));
+
+                    surf_rcache_entry_cell_buf[entry_idx] = cell_idx;
+
+                    surf_rcache_grid_meta_buf.Store(sizeof(uint2) * cell_idx + 0, entry_idx);
+                }
             }
         }
     }
@@ -131,6 +149,16 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
     #endif
     new_surfel.normal = normal_ws;
     //new_surfel.normal = to_eye;
+
+    if (allocated_by_us) {
+        [unroll]
+        for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.count) {
+            const uint entry_idx = lookup.entry_idx[i];
+            surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+        }
+        
+        return 0.0.xxx;
+    }
 
     float3 irradiance_sum = 0.0.xxx;
 

@@ -23,7 +23,8 @@ use vk::BufferUsageFlags;
 
 use super::{wrc::WrcRenderState, GbufferDepth};
 
-const MAX_SURFEL_CELLS: usize = 1024 * 1024 * 2;
+const MAX_SURFEL_CELLS: usize =
+    RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE * RCACHE_CASCADE_COUNT;
 const MAX_SURFELS: usize = 1024 * 256;
 const RCACHE_GRID_CELL_DIAMETER: f32 = 0.16;
 const RCACHE_CASCADE_SIZE: usize = 32;
@@ -32,6 +33,7 @@ pub struct SurfelGiRenderState {
     surf_rcache_meta_buf: rg::Handle<Buffer>,
 
     surf_rcache_grid_meta_buf: rg::Handle<Buffer>,
+    surf_rcache_grid_meta_buf2: rg::Handle<Buffer>,
 
     surf_rcache_entry_cell_buf: rg::Handle<Buffer>,
     surf_rcache_spatial_buf: rg::Handle<Buffer>,
@@ -83,6 +85,7 @@ pub struct SurfelGiRenderer {
     initialized: bool,
     cur_scroll: [IVec3; RCACHE_CASCADE_COUNT],
     prev_scroll: [IVec3; RCACHE_CASCADE_COUNT],
+    parity: usize,
 }
 
 impl SurfelGiRenderer {
@@ -103,6 +106,7 @@ impl SurfelGiRenderer {
             initialized: false,
             cur_scroll: Default::default(),
             prev_scroll: Default::default(),
+            parity: 0,
         })
     }
 
@@ -123,9 +127,9 @@ impl SurfelGiRenderer {
             let prev_scroll = self.prev_scroll[cascade];
             let scroll_amount = cur_scroll - prev_scroll;
 
-            if scroll_amount.ne(&IVec3::ZERO) {
+            /*if scroll_amount.ne(&IVec3::ZERO) {
                 log::info!("cascade {cascade} scrolled by {scroll_amount:?}");
-            }
+            }*/
 
             RcacheCascadeConstants {
                 origin: cur_scroll.extend(0),
@@ -154,7 +158,12 @@ impl SurfelGiRenderer {
             surf_rcache_grid_meta_buf: temporal_storage_buffer(
                 rg,
                 "surf_rcache.grid_meta_buf",
-                size_of::<[u32; 4]>() * MAX_SURFEL_CELLS,
+                size_of::<[u32; 2]>() * MAX_SURFEL_CELLS,
+            ),
+            surf_rcache_grid_meta_buf2: temporal_storage_buffer(
+                rg,
+                "surf_rcache.grid_meta_buf2",
+                size_of::<[u32; 2]>() * MAX_SURFEL_CELLS,
             ),
             surf_rcache_entry_cell_buf: temporal_storage_buffer(
                 rg,
@@ -199,6 +208,13 @@ impl SurfelGiRenderer {
             debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
         };
 
+        if 1 == self.parity {
+            std::mem::swap(
+                &mut state.surf_rcache_grid_meta_buf,
+                &mut state.surf_rcache_grid_meta_buf2,
+            );
+        }
+
         if !self.initialized {
             SimpleRenderPass::new_compute(
                 rg.add_pass("clear surfel pool"),
@@ -209,6 +225,30 @@ impl SurfelGiRenderer {
             .dispatch([MAX_SURFELS as _, 1, 1]);
 
             self.initialized = true;
+        } else {
+            SimpleRenderPass::new_compute(
+                rg.add_pass("scroll cascades"),
+                "/shaders/surfel_gi/scroll_cascades.hlsl",
+            )
+            .read(&mut state.surf_rcache_grid_meta_buf)
+            .write(&mut state.surf_rcache_grid_meta_buf2)
+            .write(&mut state.surf_rcache_entry_cell_buf)
+            .write(&mut state.surf_rcache_irradiance_buf)
+            .write(&mut state.surf_rcache_life_buf)
+            .write(&mut state.surf_rcache_pool_buf)
+            .write(&mut state.surf_rcache_meta_buf)
+            .dispatch([
+                RCACHE_CASCADE_SIZE as u32,
+                RCACHE_CASCADE_SIZE as u32,
+                (RCACHE_CASCADE_SIZE * RCACHE_CASCADE_COUNT) as u32,
+            ]);
+
+            std::mem::swap(
+                &mut state.surf_rcache_grid_meta_buf,
+                &mut state.surf_rcache_grid_meta_buf2,
+            );
+
+            self.parity = (self.parity + 1) % 2;
         }
 
         SimpleRenderPass::new_compute(
@@ -231,7 +271,7 @@ impl SurfelGiRenderer {
         .constants(gbuffer_desc.extent_inv_extent_2d())
         .dispatch(gbuffer_desc.extent);
 
-        state.draw_trace_origins(rg, self.debug_render_pass.clone(), gbuffer_depth);
+        //state.draw_trace_origins(rg, self.debug_render_pass.clone(), gbuffer_depth);
 
         let indirect_args_buf = {
             let mut indirect_args_buf = rg.create(BufferDesc::new(
@@ -405,7 +445,7 @@ impl SurfelGiRenderState {
                 raw_device.cmd_draw(
                     cb.raw,
                     // 6 verts (two triangles) per cube face
-                    6 * 6 * 10000,
+                    6 * 6 * MAX_SURFELS as u32,
                     1,
                     0,
                     0,

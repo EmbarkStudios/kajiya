@@ -15,6 +15,23 @@ static const float3 SURFEL_GRID_CENTER = float3(0, 0, 14);
 struct RcacheCoord {
     uint3 coord;
     uint cascade;
+
+    static RcacheCoord from_coord_cascade(uint3 coord, uint cascade) {
+        RcacheCoord res;
+        res.coord = min(coord, (RCACHE_CASCADE_SIZE - 1).xxx);
+        res.cascade = min(cascade, RCACHE_CASCADE_COUNT - 1);
+        return res;
+    }
+
+    uint cell_idx() {
+        return dot(
+            uint4(coord, cascade),
+            uint4(
+                1,
+                RCACHE_CASCADE_SIZE,
+                RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE,
+                RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE));    
+    }
 };
 
 RcacheCoord ws_pos_to_rcache_coord(float3 pos) {
@@ -43,13 +60,7 @@ RcacheCoord ws_pos_to_rcache_coord(float3 pos) {
 }
 
 uint rcache_coord_to_cell_idx(RcacheCoord coord) {
-    return dot(
-        uint4(coord.coord, coord.cascade),
-        uint4(
-            1,
-            RCACHE_CASCADE_SIZE,
-            RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE,
-            RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE));    
+    return coord.cell_idx();
 }
 
 int3 surfel_pos_to_grid_coord(float3 pos, float3 eye_pos) {

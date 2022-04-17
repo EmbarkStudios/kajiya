@@ -30,7 +30,6 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     const uint dir_idx = (vid / 6) % 6;
     const uint entry_idx = vid / 6 / 6;
 
-    //const uint entry_flags = surf_rcache_grid_meta_buf.Load(sizeof(uint4) * cell_idx + sizeof(uint));
     const float3 cube_center = unpack_vertex(surf_rcache_spatial_buf[entry_idx]).position;
 
     if (is_surfel_life_valid(surf_rcache_life_buf[entry_idx])) {

@@ -33,8 +33,9 @@ void age_surfel(uint entry_idx) {
         surf_rcache_meta_buf.InterlockedAdd(SURFEL_META_ALLOC_COUNT, -1, surfel_alloc_count);
         surf_rcache_pool_buf[surfel_alloc_count - 1] = entry_idx;
 
+        // TODO: just `Store` it.
         const uint cell_idx = surf_rcache_entry_cell_buf[entry_idx];
-        surf_rcache_grid_meta_buf.InterlockedAnd(sizeof(uint4) * cell_idx + sizeof(uint), ~SURF_RCACHE_ENTRY_META_OCCUPIED);
+        surf_rcache_grid_meta_buf.InterlockedAnd(sizeof(uint2) * cell_idx + sizeof(uint), ~SURF_RCACHE_ENTRY_META_OCCUPIED);
     }
 }
 

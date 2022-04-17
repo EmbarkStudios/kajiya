@@ -33,6 +33,8 @@ DEFINE_WRC_BINDINGS(6)
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
+
+//#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
 
 #define USE_WORLD_RADIANCE_CACHE 0
@@ -318,8 +320,15 @@ void main() {
 
     brdf.albedo = 1.0.xxx;
 
-    const uint sample_count = SAMPLES_PER_FRAME;
+    const bool should_reset = all(0.0 == surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE]);
 
+    if (should_reset) {
+        for (uint i = 0; i < SURF_RCACHE_AUX_STRIDE; ++i) {
+            surf_rcache_aux_buf[surfel_idx * SURF_RCACHE_AUX_STRIDE + i] = 0.0.xxxx;
+        }
+    }
+
+    const uint sample_count = SAMPLES_PER_FRAME;
     float3 irradiance_sum = 0;
 
     // TODO: consider stratifying within cells
@@ -327,24 +336,24 @@ void main() {
         const uint sequence_idx = hash1(surfel_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
         SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx, life);
+        const float3 new_value = traced.incident_radiance;
+        const float new_lum = calculate_luma(new_value);
 
         const float2 octa_coord = octa_encode(normalize(traced.direction));
         const uint2 octa_quant = min(uint2(octa_coord * SURF_RCACHE_OCTA_DIMS), (SURF_RCACHE_OCTA_DIMS - 1).xx);
         const uint octa_idx = octa_quant.x + octa_quant.y * SURF_RCACHE_OCTA_DIMS;
 
         const uint output_idx = surfel_idx * SURF_RCACHE_AUX_STRIDE + octa_idx;
-        const float3 prev = surf_rcache_aux_buf[output_idx].rgb;
 
         const float4 prev_aux = surf_rcache_aux_buf[output_idx];
-        const float2 prev_ex_ex2 = prev_aux.xy;
-
-        const float new_lum = calculate_luma(traced.incident_radiance);
-
         const float2 sample_ex_ex2 = float2(new_lum, new_lum * new_lum);
-        const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / SHORT_ESTIMATOR_SAMPLE_COUNT);
+
+        const float2 prev_ex_ex2 = should_reset ? sample_ex_ex2 : prev_aux.xy;
+
+        const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / min(SHORT_ESTIMATOR_SAMPLE_COUNT, prev_aux.w + 1));
 
         const float4 new_aux = float4(
-            ex_ex2, 0, 0
+            ex_ex2, 0, min(SHORT_ESTIMATOR_SAMPLE_COUNT, prev_aux.w + 1)
         );
 
         surf_rcache_aux_buf[output_idx] = new_aux;
@@ -353,7 +362,10 @@ void main() {
         const float lum_dev = sqrt(lum_variance);
         const float quick_lum_ex = ex_ex2.x;
 
-        const float3 prev_value = surf_rcache_aux_buf[output_idx + SURF_RCACHE_OCTA_DIMS2].rgb;
+        const float4 prev_value_and_count = surf_rcache_aux_buf[output_idx + SURF_RCACHE_OCTA_DIMS2];
+        const float bucket_sample_count = min(1 + prev_value_and_count.w, 32);
+
+        const float3 prev_value = prev_value_and_count.rgb;
         const float prev_lum = calculate_luma(prev_value);
 
         const float3 prev_value_ycbcr = rgb_to_ycbcr(prev_value);
@@ -366,13 +378,12 @@ void main() {
         //prev_value_clamped = prev_value_clamped.xxx;
         //prev_value_clamped = clamp(prev_lum, quick_lum_ex - lum_dev * num_deviations, quick_lum_ex + lum_dev * num_deviations).xxx;
 
-        const float blend_factor_new = 0.03;
-        const float3 new_value = traced.incident_radiance;
+        const float blend_factor_new = 1.0 / bucket_sample_count;
         
-        const float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
+        float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
         //const float3 blended_value = lerp(prev_value, new_value, blend_factor_new);
 
-        surf_rcache_aux_buf[output_idx + SURF_RCACHE_OCTA_DIMS2] = float4(blended_value, 1.0);
+        surf_rcache_aux_buf[output_idx + SURF_RCACHE_OCTA_DIMS2] = float4(blended_value, bucket_sample_count);
         irradiance_sum += blended_value;
     }
 
@@ -382,24 +393,33 @@ void main() {
 
     Contribution contribution_sum = (Contribution)0;
     {
+        float valid_samples = 0;
+
         // TODO: counter distortion
-        [loop]
         for (uint octa_idx = 0; octa_idx < SURF_RCACHE_OCTA_DIMS2; ++octa_idx) {
             const float2 octa_coord = (float2(octa_idx % SURF_RCACHE_OCTA_DIMS, octa_idx / SURF_RCACHE_OCTA_DIMS) + 0.5) / SURF_RCACHE_OCTA_DIMS;
             const float3 dir = octa_decode(octa_coord);
+            const float4 contrib = surf_rcache_aux_buf[surfel_idx * SURF_RCACHE_AUX_STRIDE + SURF_RCACHE_OCTA_DIMS2 + octa_idx];
 
             contribution_sum.add_radiance_in_direction(
-                surf_rcache_aux_buf[surfel_idx * SURF_RCACHE_AUX_STRIDE + SURF_RCACHE_OCTA_DIMS2 + octa_idx].rgb,
+                contrib.rgb,
                 dir
             );
+
+            valid_samples += contrib.w > 0 ? 1.0 : 0.0;
         }
-        contribution_sum.scale(1.0 / (SURF_RCACHE_OCTA_DIMS2));
+
+        contribution_sum.scale(1.0 / max(1.0, valid_samples));
     }
 
     for (uint basis_i = 0; basis_i < SURF_RCACHE_IRRADIANCE_STRIDE; ++basis_i) {
         float prev_sample_count = TARGET_SAMPLE_COUNT;
         const float4 new_value = contribution_sum.sh_rgb[basis_i];
-        const float4 prev_value = surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i];
+        float4 prev_value = surf_rcache_irradiance_buf[surfel_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i];
+
+        if (should_reset) {
+            prev_value = new_value;
+        }
 
         const float total_sample_count = prev_sample_count + sample_count;
         float blend_factor_new = 0.25;
