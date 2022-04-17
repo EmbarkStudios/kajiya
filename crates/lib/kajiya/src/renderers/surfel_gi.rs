@@ -26,7 +26,7 @@ use super::{wrc::WrcRenderState, GbufferDepth};
 const MAX_SURFEL_CELLS: usize =
     RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE * RCACHE_CASCADE_SIZE * RCACHE_CASCADE_COUNT;
 const MAX_SURFELS: usize = 1024 * 256;
-const RCACHE_GRID_CELL_DIAMETER: f32 = 0.16;
+const RCACHE_GRID_CELL_DIAMETER: f32 = 0.16 * 0.5;
 const RCACHE_CASCADE_SIZE: usize = 32;
 
 pub struct SurfelGiRenderState {

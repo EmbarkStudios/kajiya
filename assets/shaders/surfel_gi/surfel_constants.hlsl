@@ -1,7 +1,7 @@
 #ifndef SURFEL_CONSTANTS_HLSL
 #define SURFEL_CONSTANTS_HLSL
 
-static const float RCACHE_GRID_CELL_DIAMETER = 0.16;
+static const float RCACHE_GRID_CELL_DIAMETER = 0.16 * 0.5;
 static const float SURFEL_BASE_RADIUS = RCACHE_GRID_CELL_DIAMETER * 1.2;
 static const float SURFEl_RADIUS_OVERSCALE = 1.25;
 
