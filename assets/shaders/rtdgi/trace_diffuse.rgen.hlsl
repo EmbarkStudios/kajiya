@@ -28,6 +28,8 @@
 #define USE_EMISSIVE 1
 #define USE_LIGHTS 1
 
+#define USE_SKY_CUBE_TEX 1
+
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
@@ -56,6 +58,14 @@ DEFINE_WRC_BINDINGS(15)
 #include "candidate_ray_dir.hlsl"
 
 static const float SKY_DIST = 1e4;
+
+float3 sample_environment_light(float3 dir) {
+    #if USE_SKY_CUBE_TEX
+        return sky_cube_tex.SampleLevel(sampler_llr, dir, 0).rgb;
+    #else
+        return atmosphere_default(dir, SUN_DIRECTION);
+    #endif
+}
 
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
@@ -92,6 +102,10 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
 
     float hit_t = outgoing_ray.TMax;
     float inv_pdf = 1.0;
+
+    #if DIFFUSE_GI_BRDF_SAMPLING
+        inv_pdf /= max(1e-5, dot(outgoing_ray.Direction, normal_ws));
+    #endif
 
     const float reflected_cone_spread_angle = 0.03;
     const RayCone ray_cone =
@@ -232,7 +246,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
             hit_t = far_field.approx_surface_t;
             inv_pdf = far_field.inv_pdf;
         } else {
-            total_radiance += sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+            total_radiance += sample_environment_light(outgoing_ray.Direction);
         }
     }
 

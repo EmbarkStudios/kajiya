@@ -65,6 +65,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 center_normal_ws = gbuffer.normal;
     const float3 center_normal_vs = direction_world_to_view(center_normal_ws);
     const float center_depth = depth;
+    const float center_ssao = ssao_tex[px].r;
 
     //const float3 center_bent_normal_ws = normalize(direction_view_to_world(ssao_tex[px * 2].gba));
 
@@ -75,11 +76,16 @@ void main(uint2 px : SV_DispatchThreadID) {
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + frame_hash) & 3;
     const float4 blue = blue_noise_for_pixel(px, frame_constants.frame_index) * M_TAU;
 
-    for (uint sample_i = 0; sample_i < 4; ++sample_i) {
+    #define USE_RESOLVE_SPATIAL_FILTER 1
+
+    for (uint sample_i = 0; sample_i < (USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
         float3 irradiance_sum = 0;
 
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-        const float radius = pow(float(sample_i), 0.666) * 1.0 + 0.4;
+        const float radius =
+            USE_RESOLVE_SPATIAL_FILTER
+            ? (pow(float(sample_i), 0.666) * 1.0 + 0.4)
+            : 0.0;
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
         const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));
 
@@ -92,38 +98,45 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_dir = sample_offset / sample_dist;
         const float3 sample_hit_normal = hit_normal_tex[spx].xyz;
 
-        float geometric_term =
-            max(0.0, dot(center_normal_ws, sample_dir))
-            // TODO: wtf, why 2
-            * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
+        #if DIFFUSE_GI_BRDF_SAMPLING
+            const float geometric_term = 1;
+        #else
+            const float geometric_term =
+                2 * max(0.0, dot(center_normal_ws, sample_dir));
+        #endif
+
         float3 radiance = irradiance_tex[spx].rgb;
 
-        const bool SPLIT = USE_SPLIT_RT_NEAR_FIELD && !USE_SSGI_NEAR_FIELD;
         const float NEAR_FIELD_FADE_OUT_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5);
         const float NEAR_FIELD_FADE_OUT_START = NEAR_FIELD_FADE_OUT_END * 0.5;
 
-        /*if (USE_SSGI_NEAR_FIELD && dot(sample_hit_normal, hit_ws - get_eye_position()) < 0) {
-            float infl = sample_dist / (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
-            // eyeballed
-            radiance *= lerp(0.2, 1.0, smoothstep(0.0, 1.0, infl));
-        }*/
+        // The near field cannot be fully trusted in tight corners because our irradiance cache
+        // has limited resolution, and is likely to create artifacts. Opt on the side of shadowing.
+        const float near_field_influence = center_ssao;
 
-        if (SPLIT) {
-            radiance *= smoothstep(NEAR_FIELD_FADE_OUT_START, NEAR_FIELD_FADE_OUT_END, sample_dist);
+        if (USE_SPLIT_RT_NEAR_FIELD) {
+            const float atten = smoothstep(NEAR_FIELD_FADE_OUT_START, NEAR_FIELD_FADE_OUT_END, sample_dist);
+            radiance *= lerp(1.0, atten, near_field_influence);
         }
 
         irradiance_sum += radiance * geometric_term * r.W;
 
-        if (SPLIT) {
+        if (USE_SPLIT_RT_NEAR_FIELD) {
             const float hit_t = candidate_hit_tex[rpx].w;
             if (hit_t < NEAR_FIELD_FADE_OUT_END) {
                 const float3x3 tangent_to_world = build_orthonormal_basis(center_normal_ws);
                 const float3 outgoing_dir_ws = rtdgi_candidate_ray_dir(rpx, tangent_to_world);
 
-                float geometric_term =
-                    max(0.0, dot(center_normal_ws, outgoing_dir_ws))
-                    * (DIFFUSE_GI_SAMPLING_FULL_SPHERE ? M_PI : 2);
-                irradiance_sum += candidate_irradiance_tex[rpx].rgb * geometric_term * smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, hit_t);
+                #if DIFFUSE_GI_BRDF_SAMPLING
+                    const float geometric_term = 1;
+                #else
+                    const float geometric_term =
+                        2 * max(0.0, dot(center_normal_ws, outgoing_dir_ws));
+                #endif
+
+                const float atten = smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, hit_t);
+                const float mult = lerp(0.0, atten, near_field_influence);
+                irradiance_sum += mult * candidate_irradiance_tex[rpx].rgb * geometric_term;
             }
         }
 

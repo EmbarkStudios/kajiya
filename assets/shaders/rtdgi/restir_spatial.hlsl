@@ -26,9 +26,6 @@
     uint spatial_reuse_pass_idx;
 };
 
-// Not needed anymore? `W` clamping seems sufficient for the fireflies
-static const float CENTER_SAMPLE_M_TRUNCATION = 1;  // 0.2;
-
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
 }
@@ -64,8 +61,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
-    float poor_normals = 0;
-
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
     // Don't be picky at low contribution counts. SSAO weighing
@@ -89,9 +84,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         kernel_radius = lerp(2.0, 32.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
     }
 
-                                        //kernel_radius = 32;
-                                        //sample_count = 2;
-
     const uint TARGET_M = 512;
 
     // Scrambling angles here would be nice, but results in bad cache thrashing.
@@ -105,11 +97,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         sample_count = 1;
     }
 
-if (spatial_reuse_pass_idx != 0) {
-    //sample_count = 1;
-}
-
-    uint valid_sample_count = 0;
     for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
         //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
@@ -122,23 +109,13 @@ if (spatial_reuse_pass_idx != 0) {
         const int2 rpx = px + rpx_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
 
-        if (is_center_sample && spatial_reuse_pass_idx == 0) {
-            #if 1
-                // I don't quite understand how, but suppressing the central reservoir's
-                // sample count here reduces noise, especially reducing fireflies,
-                // and yet has a pretty small impact on the sharpness of the output.
-                // A decent value seems to be around 20% of the limit
-                // in the preceding exchange pass.
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * CENTER_SAMPLE_M_TRUNCATION);
-            #else
-                r.M = min(r.M, 500);
-            #endif
-        } else {
-            // After the ReSTIR GI paper
-            r.M = min(r.M, 500);
-        }
+        // After the ReSTIR GI paper
+        r.M = min(r.M, 500);
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
+
+        // TODO: to recover tiny highlights, consider raymarching first, and then using the screen-space
+        // irradiance value instead of this.
         float4 prev_irrad = irradiance_tex[spx];
         float visibility = 1;
 
@@ -152,19 +129,15 @@ if (spatial_reuse_pass_idx != 0) {
             float normal_cutoff = 0.5;
         #endif
         
-        if (center_r.M < 10) {
-            normal_cutoff = 0.5 * exp2(-max(0, poor_normals) * 0.3);
-        }
-
         if (spatial_reuse_pass_idx != 0) {
             //normal_cutoff = 0.5;
 
             // TODO: find whether we can be picky about normals
             // fow now, accept halos over noise from rare normals
-            normal_cutoff = 0.0;
+            normal_cutoff = 0.1;
         }
 
-        //normal_cutoff = 0;
+        //normal_cutoff = 0.9;
 
         // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
         // areas of high geometric complexity. The resulting bias tends to brighten edges,
@@ -173,10 +146,7 @@ if (spatial_reuse_pass_idx != 0) {
         // is a shitty take at that.
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
         if (!is_center_sample && normal_similarity_dot < normal_cutoff) {
-            poor_normals += 1;
             continue;
-        } else {
-            poor_normals -= 1;
         }
 
         const float ssao_dart = uint_to_u01_float(hash1_mut(rng));
@@ -253,7 +223,12 @@ if (spatial_reuse_pass_idx != 0) {
             // (used to be 0.2). This fixes some halos,
             // and in _some_ cases, reduces noise, but at the cost of noise in other cases :S
             // Approx shadowing (bias)
-            if (!is_center_sample && ray_inclination * 1 < sample_inclination) {
+            //
+            // Note: this prevents reuse some rays from neighbors which are in front
+            // of the center pixel, reducing leaks. Making this too aggressive increases noise.
+            //
+            // Note: causes slight halos in corners. Especially bad in the kitchen interior scene.
+            if (!is_center_sample && ray_inclination * 0.5 < sample_inclination) {
                 continue;
             }
 
@@ -261,17 +236,29 @@ if (spatial_reuse_pass_idx != 0) {
             if (true && !is_center_sample) {
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
+#if 1
+                // Trace towards the hit point.
+                
                 const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
                     + raymarch_dir_unnorm_ws * min(1.0, length(surface_offset_vs) / length(raymarch_dir_unnorm_ws));
+#else
+                // Trace in the same direction as the reused ray.
+                // More precise shadowing sometimes, but corner darkening. TODO.
+
+                const float3 raymarch_dir_unnorm_ws = prev_dir_to_sample_hit_unnorm_ws;
+                const float3 raymarch_end_ws =
+                    view_ray_context.ray_hit_ws()
+                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), length(surface_offset_vs)) / length(prev_dist);
+#endif
 
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
                 const float2 raymarch_len_px = (raymarch_end_uv - uv) * output_tex_size.xy;
 
                 const uint MIN_PX_PER_STEP = 2;
-                const uint MAX_TAPS = 3;
+                const uint MAX_TAPS = 4;
 
                 const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
 
@@ -282,9 +269,13 @@ if (spatial_reuse_pass_idx != 0) {
                     const float t = (k + 0.5) / k_count;
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
+                    // TODO: the point-sampled uv (cs) could end up with a quite different depth value.
                     const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
                     if (depth_at_interp > interp_pos_cs.z * 1.003) {
-                        visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
+                        visibility *= smoothstep(
+                            Z_LAYER_THICKNESS * 0.5,
+                            Z_LAYER_THICKNESS,
+                            inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
                     }
                 }
     		}
@@ -314,13 +305,8 @@ if (spatial_reuse_pass_idx != 0) {
         jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-4, 1e4);
         jacobian *= jacobian;
 
-        // N of hit dot -L. Needed to avoid leaks.
-        jacobian *=
-            clamp(
-                center_to_hit_vis
-                / sample_hit_normal_ws_dot.w,
-                // / -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws),
-                0, 1e4);
+        // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
+        jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 1e-1, 1e4);
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             // N dot L. Useful for normal maps, micro detail.
@@ -334,13 +320,17 @@ if (spatial_reuse_pass_idx != 0) {
             jacobian = 1;
         }
 
-// haaaaaaaaaaaaaaaaaaaax
-        if (jacobian < 1.0 / 4.0 || jacobian > 16.0) {
-            continue;
-        }
+        // Clamp neighbors give us a hit point that's considerably easier to sample
+        // from our own position than from the neighbor. This can cause some darkening,
+        // but prevents fireflies.
 
-        // TODO: mult p_q by jacobian here or only in `update`?
-        //p_q *= jacobian;
+        #if 0
+            // Slightly less noise
+            if (jacobian > 5.0) { continue; }
+        #else
+            // Doesn't over-darken corners as much
+            jacobian = min(jacobian, 5);
+        #endif
 
         if (!(p_q > 0)) {
             continue;
@@ -353,13 +343,12 @@ if (spatial_reuse_pass_idx != 0) {
         }
 
         M_sum += r.M;
-        valid_sample_count += 1;
     }
 
     reservoir.M = M_sum;
     reservoir.W =
         (1.0 / max(1e-8, p_q_sel))
-        * (reservoir.w_sum / max(CENTER_SAMPLE_M_TRUNCATION, reservoir.M));
+        * (reservoir.w_sum / max(1.0, reservoir.M));
 
     // (Source of bias?) suppress fireflies
     // Unclear what kind of bias. When clamped lower, e.g. 1.0,

@@ -32,7 +32,9 @@
 //
 // Has slightly visible line artifacts when `RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS` is zero.
 // Has visible artifacts on edges when used with ReSTIR
-#define RTR_APPROX_MEASURE_CONVERSION !true
+// Actually, cannot see the artifacts anymore, and using this fixes
+// halos on Maik's gnome (V-shaped rough geo, looking into the cavity).
+#define RTR_APPROX_MEASURE_CONVERSION true
 
 #define RTR_ROUGHNESS_CLAMP 6e-4
 

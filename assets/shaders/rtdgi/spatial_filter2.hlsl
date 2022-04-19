@@ -78,6 +78,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const float sample_depth = depth_tex[sample_px];
             const float3 sample_val = input_tex[sample_px].rgb;
             const float sample_ssao = ssao_tex[sample_px].r;
+            const float3 sample_normal_vs = geometric_normal_tex[sample_px] * 2.0 - 1.0;
 
             if (sample_depth != 0 && sample_i < sample_count) {
                 float wt = 1;

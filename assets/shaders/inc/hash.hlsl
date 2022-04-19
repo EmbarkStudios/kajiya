@@ -58,4 +58,4 @@ float interleaved_gradient_noise(uint2 px) {
 }
 
 
-#endif 
+#endif

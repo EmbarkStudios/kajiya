@@ -15,7 +15,9 @@
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 [[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
 
-static const uint MAX_PATH_LENGTH = 16;
+// Does not include the segment used to connect to the sun
+static const uint MAX_EYE_PATH_LENGTH = 16;
+
 static const uint RUSSIAN_ROULETTE_START_PATH_LENGTH = 3;
 static const float MAX_RAY_LENGTH = FLT_MAX;
 //static const float MAX_RAY_LENGTH = 5.0;
@@ -115,7 +117,7 @@ void main() {
         ray_cone.spread_angle *= 0.3;
 
         [loop]
-        for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
+        for (uint path_length = 0; path_length < MAX_EYE_PATH_LENGTH; ++path_length) {
             /*if (path_length == 1 && outgoing_ray.Direction.x > -0.8) {
                 throughput = 0;
             } else {
@@ -144,7 +146,6 @@ void main() {
                 
                 const bool is_shadowed =
                     (INDIRECT_ONLY && path_length == 0) ||
-                    path_length+1 >= MAX_PATH_LENGTH ||
                     rt_is_shadowed(
                         acceleration_structure,
                         new_ray(

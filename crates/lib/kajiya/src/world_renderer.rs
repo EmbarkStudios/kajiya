@@ -56,7 +56,7 @@ pub struct MeshHandle(pub usize);
 pub struct InstanceHandle(pub usize);
 
 const MAX_GPU_MESHES: usize = 1024;
-const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 512;
+const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 1024;
 const TLAS_PREALLOCATE_BYTES: usize = 1024 * 1024 * 32;
 
 #[derive(Clone, Copy)]
