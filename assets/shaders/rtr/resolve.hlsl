@@ -45,7 +45,7 @@
 #define REJECT_NEGATIVE_HEMISPHERE_REUSE 1
 
 static const uint MAX_SAMPLE_COUNT = 8;
-static const bool USE_RESTIR = true;
+static const bool USE_RESTIR = RTR_USE_RESTIR;
 
 float inverse_lerp(float minv, float maxv, float v) {
     return (v - minv) / (maxv - minv);
@@ -301,6 +301,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             // the projected solid angle metric for BRDFs.
             float bent_pdf_ndotl_fix = 1;
 
+            // Mult for the bent pdf
+            float pdf0_mult = 1;
+
+            // Mult for the real pdf
+            float pdf1_mult = 1;
+
             if (USE_RESTIR) {
                 const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
 
@@ -328,12 +334,36 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float center_to_hit_dist = length(center_to_hit_vs);
                 const float sample_to_hit_dist = length(sample_hit_ws - ray_origin_ws);
 
-                // TODO: should not be clamped, but clamping reduces some excessive hotness
-                // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
-                neighbor_sampling_pdf *= max(
-                    RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION ? 1.0 : 1e-5,
-                    pow(center_to_hit_dist / sample_to_hit_dist, 2)
-                );
+                if (RTR_USE_BULLSHIT_TO_FIX_EDGE_HALOS) {
+                    // Looks almost correct without this entire term, but then at certain roughness levels,
+                    // there's a bit of a halo followed by a darker line in corners.
+                    //
+                    // My math is likely (definitely) nonsense somewhere, and then this other nonsense
+                    // is "needed" to cancel out.
+                    //
+                    // Everything is fine if `RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS` is 1.0,
+                    // and none of this nonsense is needed then, but that has its own issues.
+
+                    const float center_to_hit_dist_wat_i_dont_even = length(
+                        position_world_to_view(sample_hit_ws)
+                        // At low roughness pretend we're directly using neighbor positions for hits ¯\_(ツ)_/¯
+                        - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, lerp(
+                            1.0,
+                            RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS,
+                            // eyeballed bullshit
+                            0.4 * min(1, 3 * sqrt(gbuffer.roughness))
+                            ))
+                    );
+                    pdf0_mult *= max(1e-5, pow(center_to_hit_dist_wat_i_dont_even / sample_to_hit_dist, 2));
+                    pdf1_mult *= max(1.0, pow(center_to_hit_dist / sample_to_hit_dist, 2));
+                } else {
+                    // TODO: should not be clamped, but clamping reduces some excessive hotness
+                    // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
+                    neighbor_sampling_pdf *= max(
+                        RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION ? 1.0 : 1e-5,
+                        pow(center_to_hit_dist / sample_to_hit_dist, 2)
+                    );
+                }
 
                 float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
                 float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_hit_vs - sample_origin_vs));
@@ -498,33 +528,44 @@ void main(uint2 px : SV_DispatchThreadID) {
                     // Blent towards using the real spec pdf at high roughness. Otherwise the ratio
                     // estimator combined with bent sample rays results in too much brightness in corners/cracks.
                     // At low roughness this can result in noise in the FG estimate, causing darkening.
-                    bent_sample_pdf = lerp(
-                        min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP) * bent_pdf_ndotl_fix,
-                        min(spec.pdf, RTR_RESTIR_MAX_PDF_CLAMP),
-                        smoothstep(0.4, 0.7, sqrt(gbuffer.roughness)) * smoothstep(0.0, 0.1, ray_len_avg / eye_to_surf_dist)
-                    );
-                    //bent_sample_pdf = spec.pdf;
+                    const float pdf_lerp_t = smoothstep(0.4, 0.7, sqrt(gbuffer.roughness)) * smoothstep(0.0, 0.1, ray_len_avg / eye_to_surf_dist);
 
-                    //bent_sample_pdf = min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP);
+                    float3 pdfs[2] = {
+                        float3(
+                            min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP) * bent_pdf_ndotl_fix,
+                            neighbor_sampling_pdf * pdf0_mult,
+                            1 - pdf_lerp_t),
+                        float3(
+                            min(spec.pdf, RTR_RESTIR_MAX_PDF_CLAMP),
+                            neighbor_sampling_pdf * pdf1_mult,
+                            pdf_lerp_t),
+                    };
 
-                    // Pseudo MIS. Weigh down samples which claim to be high pdf
-                    // if we could have sampled them with a lower pdf. This helps rough reflections
-                    // surrounded by almost-mirrors. The rays sampled from the mirrors will have
-                    // high pdf values, and skew the integration, creating halos around themselves
-                    // on the rough objects.
-                    // This is similar in formulation to actual MIS; where we're lying is in claiming
-                    // that the central pixel generates samples, while it does not.
-                    //
-                    // The error from this seems to be making detail in roughness map hotter,
-                    // which is not a terrible thing given that it's also usually dimmed down
-                    // by temporal filters.
-                    float mis_weight = max(1e-4, spec.pdf / (sample_ray_pdf + spec.pdf));
+                    [unroll]
+                    for (uint pdf_i = 0; pdf_i < 2; ++pdf_i) {
+                        const float bent_sample_pdf = pdfs[pdf_i].x;
+                        const float neighbor_sampling_pdf = pdfs[pdf_i].y;
+                        const float pdf_influence = pdfs[pdf_i].z;
 
-                    contrib_wt = rejection_bias * mis_weight * max(1e-10, spec_weight / bent_sample_pdf);
-                    contrib_accum += float4(
-                        sample_radiance * bent_sample_pdf / neighbor_sampling_pdf * spec.value_over_pdf,
-                        1
-                    ) * contrib_wt;
+                        // Pseudo MIS. Weigh down samples which claim to be high pdf
+                        // if we could have sampled them with a lower pdf. This helps rough reflections
+                        // surrounded by almost-mirrors. The rays sampled from the mirrors will have
+                        // high pdf values, and skew the integration, creating halos around themselves
+                        // on the rough objects.
+                        // This is similar in formulation to actual MIS; where we're lying is in claiming
+                        // that the central pixel generates samples, while it does not.
+                        //
+                        // The error from this seems to be making detail in roughness map hotter,
+                        // which is not a terrible thing given that it's also usually dimmed down
+                        // by temporal filters.
+                        float mis_weight = max(1e-4, spec.pdf / (sample_ray_pdf + spec.pdf));
+
+                        contrib_wt = rejection_bias * mis_weight * max(1e-10, spec_weight / bent_sample_pdf);
+                        contrib_accum += float4(
+                            sample_radiance * bent_sample_pdf / neighbor_sampling_pdf * spec.value_over_pdf,
+                            1
+                        ) * contrib_wt * pdf_influence;
+                    }
                 #endif
             }
 

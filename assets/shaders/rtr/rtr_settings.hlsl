@@ -6,6 +6,8 @@
 // HACK: must be 1 if jointly filtering with specular lighting
 #define RTR_RENDER_SCALED_BY_FG 0
 
+#define RTR_USE_RESTIR true
+
 #define RTR_RAY_HIT_STORED_AS_POSITION 1
 
 // Only works with `RTR_RAY_HIT_STORED_AS_POSITION` set to true.
@@ -21,6 +23,8 @@
 // Technically should not be clamped, but clamping reduces some excessive hotness
 // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
 #define RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION true
+
+#define RTR_USE_BULLSHIT_TO_FIX_EDGE_HALOS true
 
 #define RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC 0
 
