@@ -170,6 +170,11 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
 
+    // Force double-sided
+    if (dot(WorldRayDirection(), gbuffer.normal) > 0) {
+        gbuffer.normal *= -1;
+    }
+
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
     //gbuffer.metalness = 0;
     //gbuffer.roughness *= 0.5;

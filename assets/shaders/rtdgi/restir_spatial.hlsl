@@ -118,6 +118,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // irradiance value instead of this.
         float4 prev_irrad = irradiance_tex[spx];
         float visibility = 1;
+        float relevance = 1;
 
         const int2 sample_offset = int2(px) - int2(rpx);
         const float sample_dist2 = dot(sample_offset, sample_offset);
@@ -149,6 +150,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
+        relevance *= normal_similarity_dot;
+
         const float ssao_dart = uint_to_u01_float(hash1_mut(rng));
         const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
 
@@ -166,6 +169,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             // which we can do in a better way.
             continue;
         }
+
+        relevance *= 1 - abs(sample_ssao - center_ssao);
 
         const float2 sample_uv = get_uv(
             rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
@@ -199,38 +204,21 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
-        // TODO: combine all those into a single similarity metric?
-
         // Reject neighbors with vastly different depths
-        if (spatial_reuse_pass_idx == 0) {
-            // Clamp the normal_vs.z so that we don't get arbitrarily loose depth comparison at grazing angles.
-            if (!is_center_sample && abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0)) > 0.1) {
-                continue;
-            }
-        } else {
-            // Ditto
-            if (!is_center_sample && abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0)) > 0.15) {
-                continue;
+        if (!is_center_sample) {
+            const float depth_diff = abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0));
+
+            if (spatial_reuse_pass_idx == 0) {
+                // Clamp the normal_vs.z so that we don't get arbitrarily loose depth comparison at grazing angles.
+                relevance *= 1 - smoothstep(0.025, 0.1, depth_diff);
+            } else {
+                // Ditto
+                relevance *= 1 - smoothstep(0.0, 0.15, depth_diff);
             }
         }
 
         {
     		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
-            const float sample_inclination = dot(normalize(surface_offset_vs), center_normal_vs);
-            const float ray_inclination = dot(dir_to_sample_hit, center_normal_ws);
-
-            // TODO: consider using this with a const of 1.0
-            // (used to be 0.2). This fixes some halos,
-            // and in _some_ cases, reduces noise, but at the cost of noise in other cases :S
-            // Approx shadowing (bias)
-            //
-            // Note: this prevents reuse some rays from neighbors which are in front
-            // of the center pixel, reducing leaks. Making this too aggressive increases noise.
-            //
-            // Note: causes slight halos in corners. Especially bad in the kitchen interior scene.
-            if (!is_center_sample && ray_inclination * 0.5 < sample_inclination) {
-                continue;
-            }
 
             // Raymarch to check occlusion
             if (true && !is_center_sample) {
@@ -238,7 +226,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
 #if 1
                 // Trace towards the hit point.
-                
+
                 const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
@@ -265,18 +253,28 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // Depth values only have the front; assume a certain thickness.
                 const float Z_LAYER_THICKNESS = 0.1;
 
+                float t_step = 1.0 / k_count;
+                float t = 0.5 * t_step;
                 for (int k = 0; k < k_count; ++k) {
-                    const float t = (k + 0.5) / k_count;
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
                     // TODO: the point-sampled uv (cs) could end up with a quite different depth value.
                     const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
+
                     if (depth_at_interp > interp_pos_cs.z * 1.003) {
+                        const float depth_diff = inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp);
                         visibility *= smoothstep(
                             Z_LAYER_THICKNESS * 0.5,
                             Z_LAYER_THICKNESS,
-                            inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
+                            depth_diff);
+
+                        if (depth_diff > Z_LAYER_THICKNESS) {
+                            // Going behind an object; could be sketchy.
+                            relevance *= 0.2;
+                        }
                     }
+
+                    t += t_step;
                 }
     		}
         }
@@ -296,6 +294,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // With (hemi)spherical sampling, it's fine.
         #if !DIFFUSE_GI_BRDF_SAMPLING
             p_q *= max(0, dot(dir_to_sample_hit, center_normal_ws));
+            //p_q *= step(0, dot(dir_to_sample_hit, center_normal_ws));
         #endif
 
         float jacobian = 1;
@@ -336,13 +335,13 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
-        float w = p_q * r.W * r.M * jacobian;
+        const float w = p_q * r.W * r.M * jacobian * relevance;
         if (reservoir.update(w * visibility, r.payload, rng)) {
             p_q_sel = p_q;
             dir_sel = dir_to_sample_hit;
         }
 
-        M_sum += r.M;
+        M_sum += r.M * relevance;
     }
 
     reservoir.M = M_sum;

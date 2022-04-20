@@ -170,7 +170,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float rt_invalid = sqrt(saturate(rt_history_validity_tex[px / 2]));
 
     //float current_sample_count = min(history.a, 32);
-    float current_sample_count = min(history.a, 1024);
+    float current_sample_count = min(history.a, 1024 * 16);
 
     float clamp_box_size = 1
         * lerp(0.25, 1.0, 1.0 - rt_invalid)
@@ -211,7 +211,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     max_sample_count *= lerp(1.0, 0.5, rt_invalid);
 
 // hax
-//max_sample_count = 1;//2 * 32;
+//max_sample_count = 1;// * 1024;
 
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);

@@ -82,7 +82,7 @@ void main() {
     // TODO: cone spread angle
     const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
         .with_cone(ray_cone)
-        .with_cull_back_faces(true)
+        .with_cull_back_faces(false)
         .with_path_length(1)
         .trace(acceleration_structure);
 

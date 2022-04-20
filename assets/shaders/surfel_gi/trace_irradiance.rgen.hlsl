@@ -143,7 +143,7 @@ SurfelTraceResult surfel_trace(Vertex surfel, DiffuseBrdf brdf, float3x3 tangent
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
         const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
             .with_cone(RayCone::from_spread_angle(0.03))
-            .with_cull_back_faces(true)
+            .with_cull_back_faces(false)
             .with_path_length(path_length + 1)  // +1 because this is indirect light
             .trace(acceleration_structure);
 

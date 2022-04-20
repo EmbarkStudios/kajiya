@@ -65,32 +65,17 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
     return result;
 }
 
-#define OLDE_PERMUTATION_SHIFTING 0
-
 int2 get_rpx_offset(uint sample_i, uint frame_index) {
-    #if OLDE_PERMUTATION_SHIFTING
-        const float ang_offset = ((frame_index + 7) * 11) % 32 * M_TAU;
+    const int2 offsets[4] = {
+        int2(-1, -1),
+        int2(1, 1),
+        int2(-1, 1),
+        int2(1, -1),
+    };
 
-        const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-        const float rpx_offset_radius = sqrt(
-            float(((sample_i - 1) + frame_index) & 3) + 1
-        //) * clamp(8 - M_sum, 1, 7); // TODO: keep high in noisy situations
-        ) * 1;
-        const float2 reservoir_px_offset_base = float2(
-            cos(ang), sin(ang)
-        ) * rpx_offset_radius;
-    #else
-        const int2 offsets[4] = {
-            int2(-1, -1),
-            int2(1, 1),
-            int2(-1, 1),
-            int2(1, -1),
-        };
-
-        const int2 reservoir_px_offset_base =
-            offsets[frame_index & 3]
-            + offsets[(sample_i + (frame_index ^ 1)) & 3];
-    #endif
+    const int2 reservoir_px_offset_base =
+        offsets[frame_index & 3]
+        + offsets[(sample_i + (frame_index ^ 1)) & 3];
 
     return
         sample_i == 0
@@ -233,9 +218,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 uint2(3, 3),
             };
             const uint2 permutation_xor_val =
-                OLDE_PERMUTATION_SHIFTING
-                ? uint2(3, 3)
-                : xor_seq[frame_constants.frame_index & 3];            
+                xor_seq[frame_constants.frame_index & 3];            
 
             const int2 permuted_reproj_px = floor(
                 (sample_i == 0
@@ -264,6 +247,9 @@ void main(uint2 px : SV_DispatchThreadID) {
             Reservoir1spp r = Reservoir1spp::from_raw(reservoir_history_tex[rpx]);
             const uint2 spx = reservoir_payload_to_px(r.payload);
 
+            float visibility = 1;
+            float relevance = 1;
+
             const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
             const float sample_depth = depth_tex[rpx_hi];
 
@@ -287,20 +273,31 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // TODO: some more rejection based on the reprojection map.
             // This one is not enough ("battle", buttom of tower).
-            if (inverse_depth_relative_diff(depth, sample_depth) > 0.2 || reproj.z == 0) {
+            if (reproj.z == 0) {
                 continue;
             }
+
+            #if 1
+                relevance *= 1 - smoothstep(0.05, 0.2, inverse_depth_relative_diff(depth, sample_depth));
+            #else
+                if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
+                    continue;
+                }
+            #endif
+
+            const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
+            const float normal_similarity_dot = max(0.0, dot(sample_normal_vs, normal_vs));
 
         // Increases noise, but prevents leaking in areas of geometric complexity
         #if 1
             // High cutoff seems unnecessary. Had it at 0.9 before.
-            const float normal_cutoff = 0.7;
-            const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
-            const float normal_similarity_dot = dot(sample_normal_vs, normal_vs);
+            const float normal_cutoff = 0.2;
             if (sample_i != 0 && normal_similarity_dot < normal_cutoff) {
                 continue;
             }
         #endif
+
+            relevance *= normal_similarity_dot;
 
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float4 sample_hit_ws_and_dist = ray_history_tex[spx]/* + float4(get_prev_eye_position(), 0.0)*/;
@@ -356,7 +353,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             #endif
                 ;
 
-            float visibility = 1;
             float jacobian = 1;
 
             // Note: needed for sample 0 too due to temporal jitter.
@@ -438,8 +434,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             // TODO: mult p_q by jacobian here or only in `update`?
             //p_q *= jacobian;
 
-            M_sum += r.M;
-            if (reservoir.update(p_q * r.W * r.M * visibility * jacobian, reservoir_payload, rng)) {
+            const float w = p_q * r.W * r.M * jacobian * relevance;
+            if (reservoir.update(w * visibility, reservoir_payload, rng)) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
                 src_px_sel = rpx;
@@ -448,6 +444,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
             }
+
+            M_sum += r.M * relevance;
         }
 
         reservoir.M = M_sum;

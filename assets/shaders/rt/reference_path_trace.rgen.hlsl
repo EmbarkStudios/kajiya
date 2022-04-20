@@ -130,7 +130,8 @@ void main() {
 
             GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
                 .with_cone(ray_cone)
-                .with_cull_back_faces(true || 0 == path_length)
+                //.with_cull_back_faces(true || 0 == path_length)
+                .with_cull_back_faces(false)
                 .with_path_length(path_length)
                 .trace(acceleration_structure);
 

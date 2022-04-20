@@ -49,7 +49,7 @@ pub fn raster_meshes(
         ],
         RasterPipelineDesc::builder()
             .render_pass(render_pass.clone())
-            .face_cull(true)
+            .face_cull(false)
             .push_constants_bytes(2 * std::mem::size_of::<u32>()),
     );
 

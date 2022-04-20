@@ -22,7 +22,7 @@
 #define USE_WORLD_RADIANCE_CACHE 0
 
 #define ROUGHNESS_BIAS 0.5
-#define USE_SCREEN_GI_REPROJECTION 0
+#define USE_SCREEN_GI_REPROJECTION 1
 #define USE_SWIZZLE_TILE_PIXELS 0
 
 #define USE_EMISSIVE 1
@@ -115,7 +115,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     // TODO: cone spread angle
     const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
         .with_cone(ray_cone)
-        .with_cull_back_faces(!true)
+        .with_cull_back_faces(false)
         .with_path_length(1)
         .trace(acceleration_structure);
 
