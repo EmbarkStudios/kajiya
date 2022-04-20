@@ -12,11 +12,11 @@ struct SurfRcacheLookup {
     uint count;
 };
 
-SurfRcacheLookup surf_rcache_lookup(float3 pt_ws) {
+SurfRcacheLookup surf_rcache_lookup(float3 pt_ws, float3 normal_ws) {
     SurfRcacheLookup result;
     result.count = 0;
 
-    const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws.xyz);
+    const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws, normal_ws);
     const uint cell_idx = rcache_coord_to_cell_idx(rcoord);
 
     const uint2 cell_meta = surf_rcache_grid_meta_buf.Load2(sizeof(uint2) * cell_idx);
@@ -75,7 +75,7 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
         // TODO: should be prev eye pos for the find_missing_surfels shader
         const float3 eye_pos = get_eye_position();
 
-        const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws.xyz);
+        const RcacheCoord rcoord = ws_pos_to_rcache_coord(pt_ws, normal_ws);
 
         const int3 scroll_offset = frame_constants.rcache_cascades[rcoord.cascade].voxels_scrolled_this_frame.xyz;
         const int3 was_just_scrolled_in =
@@ -128,9 +128,9 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
     }
 #endif
 
-    SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws);
+    SurfRcacheLookup lookup = surf_rcache_lookup(pt_ws, normal_ws);
 
-    const uint cascade = ws_pos_to_rcache_coord(pt_ws.xyz).cascade;
+    const uint cascade = ws_pos_to_rcache_coord(pt_ws, normal_ws).cascade;
     const float cell_diameter = surfel_grid_cell_diameter_in_cascade(cascade);
 
     float3 to_eye = normalize(get_eye_position() - pt_ws.xyz);

@@ -32,8 +32,8 @@
 };
 
 // TODO: figure out which one actually works better
-//#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
-#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.05
+#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
+//#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.05
 
 #include "lookup.hlsl"
 

@@ -12,6 +12,8 @@ static const float3 SURFEL_GRID_CENTER = float3(0, 0, 14);
 //static const float3 SURFEL_GRID_CENTER = float3(-1.3989427, 0.44028947, -4.080884);
 //static const float3 SURFEL_GRID_CENTER = 0.0.xxx;
 
+static const bool RCACHE_USE_NORMAL_BASED_CELL_OFFSET = true;
+
 struct RcacheCoord {
     uint3 coord;
     uint cascade;
@@ -34,24 +36,32 @@ struct RcacheCoord {
     }
 };
 
-RcacheCoord ws_pos_to_rcache_coord(float3 pos) {
+RcacheCoord ws_pos_to_rcache_coord(float3 pos, float3 normal) {
     const float3 center = get_eye_position();
+
+    const uint reserved_cells =
+        RCACHE_USE_NORMAL_BASED_CELL_OFFSET
+        // Make sure we can actually offset towards the edge of a cascade.
+        ? 1
+        // Business as usual
+        : 0;
 
     uint cascade; {
         const float3 fcoord = (pos - center) / RCACHE_GRID_CELL_DIAMETER;
         const float max_coord = max(abs(fcoord.x), max(abs(fcoord.y), abs(fcoord.z)));
-        const float cascade_float = log2(max_coord / (RCACHE_CASCADE_SIZE / 2));
+        const float cascade_float = log2(max(0.0, max_coord - reserved_cells) / (RCACHE_CASCADE_SIZE / 2));
         cascade = uint(clamp(ceil(max(0.0, cascade_float)), 0, RCACHE_CASCADE_COUNT - 1));
     }
 
     const float cell_diameter = (RCACHE_GRID_CELL_DIAMETER * (1u << cascade));
-#if 0
-    const float3 cascade_center = floor(get_eye_position() / cell_diameter);
-    const float3 cascade_origin = cascade_center - RCACHE_CASCADE_SIZE / 2;
-#else
     const int3 cascade_origin = frame_constants.rcache_cascades[cascade].origin.xyz;
-#endif
-    const int3 coord = floor(pos / cell_diameter) - cascade_origin;
+
+    const float3 normal_based_cell_offset =
+        RCACHE_USE_NORMAL_BASED_CELL_OFFSET
+        ? normal * cell_diameter * 0.5
+        : 0.0.xxx;
+
+    const int3 coord = floor((pos + normal_based_cell_offset) / cell_diameter) - cascade_origin;
 
     RcacheCoord res;
     res.cascade = cascade;
