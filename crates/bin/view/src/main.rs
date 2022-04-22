@@ -252,9 +252,10 @@ fn main() -> anyhow::Result<()> {
                 * 10.0f32.powf(input["boost"]);
 
             if (mouse.buttons_held & (1 << 2)) != 0 {
+                let sensitivity = 0.1;
                 camera
                     .driver_mut::<YawPitch>()
-                    .rotate_yaw_pitch(-0.1 * mouse.delta.x, -0.1 * mouse.delta.y);
+                    .rotate_yaw_pitch(-sensitivity * mouse.delta.x, -sensitivity * mouse.delta.y);
             }
             camera
                 .driver_mut::<Position>()
