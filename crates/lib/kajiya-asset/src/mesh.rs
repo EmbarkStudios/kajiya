@@ -323,8 +323,10 @@ impl LazyWorker for LoadGltfScene {
                                 indices =
                                     indices_reader.into_u32().map(|i| i + base_index).collect();
                             } else {
-                                indices =
-                                    (base_index..(base_index + positions.len() as u32)).collect();
+                                // TODO; this seemingly creates broken geometry; probably need to check out `mode` on the reader.
+                                /*indices =
+                                (base_index..(base_index + positions.len() as u32)).collect();*/
+                                return;
                             }
 
                             if flip_winding_order {

@@ -35,6 +35,15 @@ DEFINE_WRC_BINDINGS(6)
 #include "../wrc/lookup.hlsl"
 
 //#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
+
+// Sample straight from the `surf_rcache_aux_buf` instead of the SH.
+#define SURF_CACHE_LOOKUP_PRECISE
+
+// HACK: reduces feedback loops due to the spherical traces.
+// As a side effect, dims down the result a bit, and increases variance.
+// Maybe not needed when using SURF_CACHE_LOOKUP_PRECISE.
+#define USE_SELF_LIGHTING_LIMITER 0
+
 #include "lookup.hlsl"
 
 #define USE_WORLD_RADIANCE_CACHE 0
@@ -55,6 +64,7 @@ static const bool SAMPLE_SURFELS_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
 static const uint SAMPLES_PER_FRAME = 8;
 static const uint TARGET_SAMPLE_COUNT = 512;
+static const uint BUCKET_SAMPLE_COUNT = 512 / SURF_RCACHE_OCTA_DIMS2;
 static const float SHORT_ESTIMATOR_SAMPLE_COUNT = 3;
 static const bool USE_MSME = true;
 
@@ -336,10 +346,16 @@ void main() {
         const uint sequence_idx = hash1(surfel_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
         SurfelTraceResult traced = surfel_trace(surfel, brdf, tangent_to_world, sequence_idx, life);
-        const float3 new_value = traced.incident_radiance;
+
+        const float self_lighting_limiter = 
+            USE_SELF_LIGHTING_LIMITER
+            ? lerp(0.5, 1, smoothstep(-0.1, 0, dot(traced.direction, surfel.normal)))
+            : 1.0;
+
+        const float3 new_value = traced.incident_radiance * self_lighting_limiter;
         const float new_lum = calculate_luma(new_value);
 
-        const float2 octa_coord = octa_encode(normalize(traced.direction));
+        const float2 octa_coord = octa_encode(traced.direction);
         const uint2 octa_quant = min(uint2(octa_coord * SURF_RCACHE_OCTA_DIMS), (SURF_RCACHE_OCTA_DIMS - 1).xx);
         const uint octa_idx = octa_quant.x + octa_quant.y * SURF_RCACHE_OCTA_DIMS;
 
@@ -363,7 +379,7 @@ void main() {
         const float quick_lum_ex = ex_ex2.x;
 
         const float4 prev_value_and_count = surf_rcache_aux_buf[output_idx + SURF_RCACHE_OCTA_DIMS2];
-        const float bucket_sample_count = min(1 + prev_value_and_count.w, 32);
+        const float bucket_sample_count = min(1 + prev_value_and_count.w, BUCKET_SAMPLE_COUNT);
 
         const float3 prev_value = prev_value_and_count.rgb;
         const float prev_lum = calculate_luma(prev_value);

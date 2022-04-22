@@ -165,7 +165,7 @@ fn import_path(path: &Path) -> Result<Import> {
     let base = path.parent().unwrap_or_else(|| Path::new("./"));
     let file = fs::File::open(path).map_err(Error::Io)?;
     let reader = io::BufReader::new(file);
-    import_impl(Gltf::from_reader(reader)?, Some(base))
+    import_impl(Gltf::from_reader_without_validation(reader)?, Some(base))
 }
 
 /// Import some glTF 2.0 from the file system.

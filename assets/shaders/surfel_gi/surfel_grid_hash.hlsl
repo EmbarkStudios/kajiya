@@ -49,7 +49,7 @@ RcacheCoord ws_pos_to_rcache_coord(float3 pos, float3 normal) {
     uint cascade; {
         const float3 fcoord = (pos - center) / RCACHE_GRID_CELL_DIAMETER;
         const float max_coord = max(abs(fcoord.x), max(abs(fcoord.y), abs(fcoord.z)));
-        const float cascade_float = log2(max(0.0, max_coord - reserved_cells) / (RCACHE_CASCADE_SIZE / 2));
+        const float cascade_float = log2(max_coord / (RCACHE_CASCADE_SIZE / 2 - reserved_cells));
         cascade = uint(clamp(ceil(max(0.0, cascade_float)), 0, RCACHE_CASCADE_COUNT - 1));
     }
 

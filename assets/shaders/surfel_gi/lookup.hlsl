@@ -31,43 +31,13 @@ SurfRcacheLookup surf_rcache_lookup(float3 pt_ws, float3 normal_ws) {
     return result;
 }
 
-float eval_sh_simplified(float4 sh, float3 normal) {
-    float4 lobe_sh = float4(0.8862, 1.0233 * normal);
-    return dot(sh, lobe_sh);
-}
+struct SurfelGiLookupMaybeAllocate {
+    SurfRcacheLookup lookup;
+    Vertex proposal;
+    bool allocated_by_us;
+};
 
-float eval_sh_geometrics(float4 sh, float3 normal)
-{
-	// http://www.geomerics.com/wp-content/uploads/2015/08/CEDEC_Geomerics_ReconstructingDiffuseLighting1.pdf
-
-	float R0 = sh.x;
-
-	float3 R1 = 0.5f * float3(sh.y, sh.z, sh.w);
-	float lenR1 = length(R1);
-
-	float q = 0.5f * (1.0f + dot(R1 / lenR1, normal));
-
-	float p = 1.0f + 2.0f * lenR1 / R0;
-	float a = (1.0f - lenR1 / R0) / (1.0f + lenR1 / R0);
-
-	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p));
-}
-
-float eval_sh_nope(float4 sh, float3 normal) {
-    return sh.x / (0.282095 * 4);
-}
-
-#if SURF_RCACHE_USE_SPHERICAL_HARMONICS
-    #if 0
-        #define eval_surfel_sh eval_sh_simplified
-    #else
-        #define eval_surfel_sh eval_sh_geometrics
-    #endif
-#else
-    #define eval_surfel_sh eval_sh_nope
-#endif
-
-float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
+SurfelGiLookupMaybeAllocate surfel_gi_lookup_maybe_allocate(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
     bool allocated_by_us = false;
 
 #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
@@ -156,7 +126,55 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
             const uint entry_idx = lookup.entry_idx[i];
             surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
         }
-        
+    }
+
+    SurfelGiLookupMaybeAllocate res;
+    res.lookup = lookup;
+    res.allocated_by_us = allocated_by_us;
+    res.proposal = new_surfel;
+    return res;
+}
+
+float eval_sh_simplified(float4 sh, float3 normal) {
+    float4 lobe_sh = float4(0.8862, 1.0233 * normal);
+    return dot(sh, lobe_sh);
+}
+
+float eval_sh_geometrics(float4 sh, float3 normal)
+{
+	// http://www.geomerics.com/wp-content/uploads/2015/08/CEDEC_Geomerics_ReconstructingDiffuseLighting1.pdf
+
+	float R0 = sh.x;
+
+	float3 R1 = 0.5f * float3(sh.y, sh.z, sh.w);
+	float lenR1 = length(R1);
+
+	float q = 0.5f * (1.0f + dot(R1 / lenR1, normal));
+
+	float p = 1.0f + 2.0f * lenR1 / R0;
+	float a = (1.0f - lenR1 / R0) / (1.0f + lenR1 / R0);
+
+	return R0 * (a + (1.0f - a) * (p + 1.0f) * pow(q, p));
+}
+
+float eval_sh_nope(float4 sh, float3 normal) {
+    return sh.x / (0.282095 * 4);
+}
+
+#if SURF_RCACHE_USE_SPHERICAL_HARMONICS
+    #if 0
+        #define eval_surfel_sh eval_sh_simplified
+    #else
+        #define eval_surfel_sh eval_sh_geometrics
+    #endif
+#else
+    #define eval_surfel_sh eval_sh_nope
+#endif
+
+float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
+    SurfelGiLookupMaybeAllocate lookup = surfel_gi_lookup_maybe_allocate(query_from_ws, pt_ws, normal_ws, query_rank, rng);
+
+    if (lookup.allocated_by_us) {
         return 0.0.xxx;
     }
 
@@ -169,15 +187,38 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
 #endif
 
     [unroll]
-    for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.count) {
-        const uint entry_idx = lookup.entry_idx[i];
+    for (uint i = 0; i < SURF_CACHE_LOOKUP_MAX; ++i) if (i < lookup.lookup.count) {
+        const uint entry_idx = lookup.lookup.entry_idx[i];
 
         float3 irradiance = 0;
+
+#ifdef SURF_CACHE_LOOKUP_PRECISE
+        {
+            float weight_sum = 0;
+
+            // TODO: counter distortion
+            for (uint octa_idx = 0; octa_idx < SURF_RCACHE_OCTA_DIMS2; ++octa_idx) {
+                const float2 octa_coord = (float2(octa_idx % SURF_RCACHE_OCTA_DIMS, octa_idx / SURF_RCACHE_OCTA_DIMS) + 0.5) / SURF_RCACHE_OCTA_DIMS;
+                const float3 dir = octa_decode(octa_coord);
+
+                const float wt = dot(dir, normal_ws);
+                if (wt > 0.0) {
+                    const float4 contrib = surf_rcache_aux_buf[entry_idx * SURF_RCACHE_AUX_STRIDE + SURF_RCACHE_OCTA_DIMS2 + octa_idx];
+                    irradiance += contrib.rgb * wt;
+                    weight_sum += wt;
+                }
+            }
+
+            irradiance /= max(1.0, weight_sum);
+        }
+#else
         for (uint basis_i = 0; basis_i < 3; ++basis_i) {
             irradiance[basis_i] += eval_surfel_sh(surf_rcache_irradiance_buf[entry_idx * SURF_RCACHE_IRRADIANCE_STRIDE + basis_i], normal_ws);
         }
+#endif
+
         irradiance = max(0.0.xxx, irradiance);
-        irradiance_sum += irradiance * lookup.weight[i];
+        irradiance_sum += irradiance * lookup.lookup.weight[i];
 
         if (!SURF_RCACHE_FREEZE && should_propose_position) {
             #ifndef SURFEL_LOOKUP_DONT_KEEP_ALIVE
@@ -194,7 +235,7 @@ float3 lookup_surfel_gi(float3 query_from_ws, float3 pt_ws, float3 normal_ws, ui
                         const float prob = 1.0 / (prev_vote_count + 1.0);
 
                         if (!SURF_RCACHE_USE_UNIFORM_VOTING || dart <= prob) {
-                            surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(new_surfel);
+                            surf_rcache_reposition_proposal_buf[entry_idx] = pack_vertex(lookup.proposal);
                         }
                     }
                 }

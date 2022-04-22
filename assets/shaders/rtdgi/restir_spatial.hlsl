@@ -258,11 +258,18 @@ void main(uint2 px : SV_DispatchThreadID) {
                 for (int k = 0; k < k_count; ++k) {
                     const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
                     const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
+
                     // TODO: the point-sampled uv (cs) could end up with a quite different depth value.
+                    // TODO: consider using full-res depth
                     const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
 
+                    // TODO: get this const as low as possible to get micro-shadowing
                     if (depth_at_interp > interp_pos_cs.z * 1.003) {
                         const float depth_diff = inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp);
+
+                        // TODO, BUG: if the hit surface is emissive, this ends up casting a shadow from it,
+                        // without taking the emission into consideration.
+
                         visibility *= smoothstep(
                             Z_LAYER_THICKNESS * 0.5,
                             Z_LAYER_THICKNESS,

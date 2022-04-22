@@ -75,7 +75,7 @@ pub struct RayTracingAccelerationScratchBuffer {
     buffer: Arc<Mutex<super::buffer::Buffer>>,
 }
 
-const RT_SCRATCH_BUFFER_SIZE: usize = 1024 * 1024 * 1440;
+const RT_SCRATCH_BUFFER_SIZE: usize = 1024 * 1024 * 1024 * 2;
 
 impl Device {
     pub fn create_ray_tracing_acceleration_scratch_buffer(
