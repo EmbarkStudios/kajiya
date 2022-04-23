@@ -245,8 +245,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                     // roughness check is a HACK. it's only there because not offsetting
                     // the center pixel on rough surfaces causes pixellation.
                     // it can happen for thin features, or features seen at an angle.
-                    && (contrib_accum.w > 1e-2 || gbuffer.roughness > 0.1)
-                    && reprojection_params.z == 1.0
+                    && (contrib_accum.w > 1e-8 || gbuffer.roughness > 0.1)
+//                    && reprojection_params.z == 1.0
                     ;
 
                 if (offset_center_pixel) {
