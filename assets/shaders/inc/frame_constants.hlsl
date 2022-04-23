@@ -115,7 +115,7 @@ struct ViewRayContext {
     float3 biased_secondary_ray_origin_ws_with_normal(float3 normal) {
         float3 ws_abs = abs(ray_hit_ws());
         float max_comp = max(max(ws_abs.x, ws_abs.y), max(ws_abs.z, -ray_hit_vs().z));
-        return ray_hit_ws() + (normal - ray_dir_ws()) * max(1e-5, max_comp * 1e-6);
+        return ray_hit_ws() + (normal - ray_dir_ws()) * max(1e-4, max_comp * 1e-6);
     }
 
     static ViewRayContext from_uv(float2 uv) {
