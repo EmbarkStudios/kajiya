@@ -112,6 +112,12 @@ struct ViewRayContext {
         return ray_hit_ws() - ray_dir_ws() * (length(ray_hit_vs()) + length(ray_hit_ws())) * 1e-4;
     }
 
+    float3 biased_secondary_ray_origin_ws_with_normal(float3 normal) {
+        float3 ws_abs = abs(ray_hit_ws());
+        float max_comp = max(max(ws_abs.x, ws_abs.y), max(ws_abs.z, -ray_hit_vs().z));
+        return ray_hit_ws() + (normal - ray_dir_ws()) * max(1e-5, max_comp * 1e-6);
+    }
+
     static ViewRayContext from_uv(float2 uv) {
         ViewConstants view_constants = frame_constants.view_constants;
 
@@ -144,6 +150,10 @@ struct ViewRayContext {
         res.ray_hit_ws_h = mul(view_constants.view_to_world, res.ray_hit_vs_h);
 
         return res;
+    }
+
+    static ViewRayContext from_uv_and_biased_depth(float2 uv, float depth) {
+        return from_uv_and_depth(uv, min(1.0, depth * asfloat(0x3f800040)));
     }
 };
 

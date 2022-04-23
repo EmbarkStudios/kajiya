@@ -92,11 +92,19 @@ void main(uint2 px : SV_DispatchThreadID) {
         return;
     #endif
 
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
-
     const float4 gbuffer_packed = gbuffer_tex[px];
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     
+#if RTR_USE_TIGHTER_RAY_BIAS
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_biased_depth(uv, depth);
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws_with_normal(gbuffer.normal);
+#else
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
+#endif
+
+    const float3 refl_ray_origin_vs = position_world_to_view(refl_ray_origin_ws);
+
     // Clamp to fix moire on mirror-like surfaces
     gbuffer.roughness = max(gbuffer.roughness, RTR_ROUGHNESS_CLAMP);
 
@@ -126,11 +134,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Project lobe footprint onto the reflector, and find the desired convolution size
     #if RTR_RAY_HIT_STORED_AS_POSITION
-        const float surf_to_hit_dist = length(hit1_tex[half_px].xyz - view_ray_context.ray_hit_vs());
+        const float surf_to_hit_dist = length(hit1_tex[half_px].xyz - refl_ray_origin_vs);
     #else
         const float surf_to_hit_dist = length(hit1_tex[half_px].xyz);
     #endif
-    const float eye_to_surf_dist = length(view_ray_context.ray_hit_vs());
+    const float eye_to_surf_dist = length(refl_ray_origin_vs);
 
     // Needed to account for perspective distortion to keep the kernel constant
     // near screen boundaries at high FOV.
@@ -251,7 +259,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 : 0;
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
-            float3 sample_ws = view_ray_context.ray_hit_ws() + offset_ws;
+            float3 sample_ws = refl_ray_origin_ws + offset_ws;
             float3 sample_cs = position_world_to_sample(sample_ws);
             float2 sample_uv = cs_to_uv(sample_cs.xy);
 
@@ -308,8 +316,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             float pdf1_mult = 1;
 
             if (USE_RESTIR) {
-                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-
                 uint2 rpx = sample_px;
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
@@ -325,7 +331,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 sample_ray_pdf = restir_irradiance_tex[spx].a;
                 neighbor_sampling_pdf = 1.0 / r.W;
                 //center_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
-                center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + position_world_to_view(ray_origin_ws);
                 sample_cos_theta = restir_ray_tex[spx].a;
 
@@ -347,7 +353,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     const float center_to_hit_dist_wat_i_dont_even = length(
                         position_world_to_view(sample_hit_ws)
                         // At low roughness pretend we're directly using neighbor positions for hits ¯\_(ツ)_/¯
-                        - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, lerp(
+                        - lerp(refl_ray_origin_vs, sample_origin_vs, lerp(
                             1.0,
                             RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS,
                             // eyeballed bullshit
@@ -384,7 +390,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     bent_pdf_ndotl_fix *= clamp(wi_measure_fix, 1e-2, 1e2);
                 #endif
             } else {
-                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_biased_depth(sample_uv, sample_depth);
                 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
                 
                 const float4 packed1 = hit1_tex[sample_px];
@@ -393,8 +399,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 sample_cos_theta = 1;
 
                 #if RTR_RAY_HIT_STORED_AS_POSITION
-                    center_to_hit_vs = packed1.xyz - lerp(view_ray_context.ray_hit_vs(), sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
-                    sample_hit_vs = center_to_hit_vs + view_ray_context.ray_hit_vs();
+                    center_to_hit_vs = packed1.xyz - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                    sample_hit_vs = center_to_hit_vs + refl_ray_origin_vs;
                 #else
                     center_to_hit_vs = packed1.xyz;
 
@@ -466,7 +472,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 }
             #endif
 
-    		float3 surface_offset = sample_origin_vs - view_ray_context.ray_hit_vs();
+    		float3 surface_offset = sample_origin_vs - refl_ray_origin_vs;
             #if USE_APPROXIMATE_SAMPLE_SHADOWING
         		if (dot(center_to_hit_vs, normal_vs) * 0.2 / length(center_to_hit_vs) < dot(surface_offset, normal_vs) / length(surface_offset)) {
         			rejection_bias *= sample_i == 0 ? 1 : 0;
@@ -475,7 +481,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         #else
             #if REJECT_NEGATIVE_HEMISPHERE_REUSE
                 const float3 sample_hit_vs = sample_origin_vs + center_to_hit_vs;
-                rejection_bias *= dot(sample_hit_vs - view_ray_context.ray_hit_vs(), normal_vs) > 0.0;
+                rejection_bias *= dot(sample_hit_vs - refl_ray_origin_vs, normal_vs) > 0.0;
             #endif
         #endif
 

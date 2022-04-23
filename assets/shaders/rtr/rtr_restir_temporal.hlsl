@@ -103,12 +103,20 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
-    const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
+
+#if RTR_USE_TIGHTER_RAY_BIAS
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_biased_depth(uv, depth);
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws_with_normal(normal_ws);
+#else
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
-    const float3 refl_ray_origin_no_bias_ws = view_ray_context.ray_hit_ws();
+#endif
+
+    const float3 refl_ray_origin_vs = position_world_to_view(refl_ray_origin_ws);
+
+    const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
     float3 outgoing_dir = float3(0, 0, 1);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
@@ -267,7 +275,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // TODO: nuke?. the ndf and jacobian-based rejection seem enough
             // except when also using spatial reservoir samples
-            if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
+            if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -refl_ray_origin_vs.z) {
                 // Reject disocclusions
                 continue;
             }
@@ -284,7 +292,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
             const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
 
-            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_no_bias_ws;
+            const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_ws;
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
@@ -375,7 +383,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // fade it out when they're rough.
                 const float dist_to_hit_vs_scaled =
                     dist_to_sample_hit
-                    / -view_ray_context.ray_hit_vs().z
+                    / -refl_ray_origin_vs.z
                     * frame_constants.view_constants.view_to_clip[1][1];
                 {
                     float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
@@ -392,7 +400,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             if (sample_i > 0) {
                 const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
                 const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
-        		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
+        		const float3 surface_offset_vs = sample_origin_vs - refl_ray_origin_vs;
 
                 // TODO: finish the derivations, don't perspective-project for every sample.
 

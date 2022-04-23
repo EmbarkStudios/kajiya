@@ -94,15 +94,19 @@ void main() {
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
 
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
-
     float4 gbuffer_packed = gbuffer_tex[hi_px];
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     gbuffer.roughness = max(gbuffer.roughness, RTR_ROUGHNESS_CLAMP);
 
     const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
 
-    const float3 refl_ray_origin = view_ray_context.biased_secondary_ray_origin_ws();
+#if RTR_USE_TIGHTER_RAY_BIAS
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_biased_depth(uv, depth);
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws_with_normal(gbuffer.normal);
+#else
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
+#endif
 
     float3 wo = mul(-view_ray_context.ray_dir_ws(), tangent_to_world);
     const float3 primary_hit_normal = gbuffer.normal;
@@ -163,7 +167,7 @@ void main() {
 
         RayDesc outgoing_ray;
         outgoing_ray.Direction = mul(tangent_to_world, brdf_sample.wi);
-        outgoing_ray.Origin = refl_ray_origin;
+        outgoing_ray.Origin = refl_ray_origin_ws;
         outgoing_ray.TMin = 0;
         outgoing_ray.TMax = SKY_DIST;
 
