@@ -182,9 +182,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Clamp the ray length used in kernel size calculations, so we don't end up with
         // tiny kernels in corners. In the presense of fireflies (e.g. from reflected spec),
         // that would result in small circles appearing as reflections.
-        const float clamped_ray_len_avg = max(
+        float clamped_ray_len_avg = max(
             ray_len_avg,
-            eye_to_surf_dist / eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1] * 0.2 * 1
+            eye_to_surf_dist / eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1] * 0.2
+            // Keep contacts sharp
+            * smoothstep(0, 0.05 * eye_to_surf_dist, ray_len_avg)
         );
 
         const float kernel_size_vs = clamped_ray_len_avg / (clamped_ray_len_avg + eye_to_surf_dist);
