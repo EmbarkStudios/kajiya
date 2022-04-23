@@ -19,7 +19,7 @@
 
 // Should be off then iterating on reflections,
 // but might be a good idea to enable for shipping anything.
-#define USE_HEAVY_BIAS 0
+#define USE_HEAVY_BIAS 1
 
 #define USE_WORLD_RADIANCE_CACHE 0
 #define LOWEST_ROUGHNESS_FOR_RADIANCE_CACHE 0.5
@@ -47,7 +47,7 @@
     #define USE_AGGRESSIVE_SECONDARY_ROUGHNESS_BIAS 1
 
     #undef SAMPLING_BIAS
-    #define SAMPLING_BIAS 0.2
+    #define SAMPLING_BIAS 0.15
 #endif
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;

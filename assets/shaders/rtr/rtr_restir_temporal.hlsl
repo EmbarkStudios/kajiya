@@ -19,8 +19,20 @@
 #define RTR_RESTIR_BRDF_SAMPLING 1
 #define USE_SPATIAL_TAPS_AT_LOW_M true
 #define USE_RESAMPLING true
-#define USE_NDF_BASED_M_CLAMP true
+
+// TODO: is it useful anymore? maybe at < 0 stregth, like 0.5?
+// at 1.0, causes too much bias (rejects valid highlights)
+#define USE_NDF_BASED_M_CLAMP_STRENGTH 0.0
+
+// Reject where the ray origin moves a lot
+#define USE_TRANSLATIONAL_CLAMP true
+
+// Fixes up ellipses near contacts
 #define USE_JACOBIAN_BASED_REJECTION true
+
+// Causes some energy loss near contacts, but prevents
+// ReSTIR from over-obsessing over them, and rendering
+// tiny circles close to surfaces.
 #define USE_DISTANCE_BASED_M_CLAMP true
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -265,20 +277,21 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            // TODO: some more rejection based on the reprojection map.
-            // This one is not enough ("battle", buttom of tower).
+            // Reject if depth difference is high
             if (inverse_depth_relative_diff(depth, sample_depth) > 0.2 || reproj.z == 0) {
                 continue;
             }
 
             const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx];
 
+#if 0
             // TODO: nuke?. the ndf and jacobian-based rejection seem enough
             // except when also using spatial reservoir samples
             if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -refl_ray_origin_vs.z) {
                 // Reject disocclusions
                 continue;
             }
+#endif
 
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float4 sample_hit_ws_and_dist = ray_history_tex[spx];/* + float4(get_prev_eye_position(), 0.0)*/
@@ -295,13 +308,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_ws;
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
-
-            // TODO: nuke. jacobian-based rejection looks to be enough
-            // Note: also doing this for sample 0, as under extreme aliasing,
-            // we can easily get bad samples in.
-            if (dot(dir_to_sample_hit, normal_ws) < 1e-3) {
-                //continue;
-            }
             
             const float4 prev_irrad_pdf = irradiance_history_tex[spx];
             const float3 prev_irrad = prev_irrad_pdf.rgb;
@@ -318,13 +324,25 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
-            if (USE_NDF_BASED_M_CLAMP) {
-                const float a2 = pow(max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness), 2);
-                float ndf_of_prev = SpecularBrdf::ggx_ndf_0_1(a2, normalize(wo + wi).z);
+            if (USE_NDF_BASED_M_CLAMP_STRENGTH > 0) {
+                const float current_pdf = specular_brdf.evaluate(wo, wi).pdf;
+                const float prev_pdf = prev_irrad_pdf.a;
 
-                const float t2 = SpecularBrdf::ggx_ndf_0_1(a2, 0.99);
+                const float rel_diff = abs(current_pdf - prev_pdf) / (current_pdf + prev_pdf);
+                //r.M *= saturate(1.0 - rel_diff);
+                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP
+                    * saturate(1.0 - USE_NDF_BASED_M_CLAMP_STRENGTH * rel_diff));
+            }
 
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * smoothstep(0.005, 0.01, ndf_of_prev));
+            if (USE_TRANSLATIONAL_CLAMP) {
+                const float3 current_wo = normalize(ViewRayContext::from_uv(uv).ray_dir_vs());
+                const float3 prev_wo = normalize(ViewRayContext::from_uv(uv + center_reproj.xy).ray_dir_vs());
+
+                const float wo_similarity =
+                    pow(SpecularBrdf::ggx_ndf_0_1(a2, dot(current_wo, prev_wo)), 4);
+
+                r.M *= lerp(wo_similarity, 1.0, sqrt(gbuffer.roughness));
+                //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * wo_similarity);
             }
 
             float p_q = 1;
@@ -439,8 +457,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 pdf_sel = prev_irrad_pdf.w;
                 ratio_estimator_factor = ray_history_tex[spx].w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
                 irradiance_sel = prev_irrad.rgb;
+
+// TODO: was `refl_ray_origin_ws`; what should it be?
                 ray_orig_sel = refl_ray_origin_ws;
                 //ray_orig_sel = prev_ray_orig_and_dist.xyz;
+
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
             }
@@ -483,12 +504,16 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
                 const float3 sample_normal_vs = half_view_normal_tex[rpx];
+
+// doesn't seem useful anymore
+#if 0
                 // Note: also doing this for sample 0, as under extreme aliasing,
                 // we can easily get bad samples in.
                 //if (dot(sample_normal_vs, normal_vs) < 0.9) {
                 if (SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)) < 0.9) {
                     continue;
                 }
+#endif
 
                 const float sample_depth = depth_tex[rpx_hi];
                 

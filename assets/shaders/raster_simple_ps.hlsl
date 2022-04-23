@@ -103,7 +103,7 @@ PsOut main(PsIn ps) {
     gbuffer.albedo = albedo;
     gbuffer.normal = normal_ws;
     gbuffer.roughness = roughness;
-    //gbuffer.roughness = 0.01;
+    //gbuffer.roughness = 0.05;
     //gbuffer.roughness = lerp(0.05, 0.15, roughness);  // kitchen hack
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
