@@ -36,7 +36,7 @@ static const bool USE_EMISSIVE = true;
 static const bool USE_SURFEL_GI = true;
 static const bool USE_BLEND_OUTPUT = true;
 static const bool USE_FLICKER_SUPPRESSION = true;
-static const uint TARGET_SAMPLE_COUNT = 32;
+static const uint TARGET_SAMPLE_COUNT = 8;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;

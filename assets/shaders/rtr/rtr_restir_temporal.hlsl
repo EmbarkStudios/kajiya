@@ -27,12 +27,17 @@
 // Reject where the ray origin moves a lot
 #define USE_TRANSLATIONAL_CLAMP true
 
-// Fixes up ellipses near contacts
+// Fixes up some ellipses near contacts
 #define USE_JACOBIAN_BASED_REJECTION true
 
 // Causes some energy loss near contacts, but prevents
 // ReSTIR from over-obsessing over them, and rendering
 // tiny circles close to surfaces.
+//
+// TODO: This problem seems somewhat similar to what MIS fixes
+// for light sampling; ReSTIR here is similar in behavior to a light sampling technique,
+// and it similarly becomes bad close to the source, where BRDF sampling
+// works perfectly fine. Maybe we can tackle it in a similar way.
 #define USE_DISTANCE_BASED_M_CLAMP true
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
