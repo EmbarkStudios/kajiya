@@ -411,7 +411,7 @@ fn main() -> anyhow::Result<()> {
                         .build(ui)
                     {
                         imgui::Drag::<f32>::new(im_str!("EV shift"))
-                            .range(-8.0..=8.0)
+                            .range(-8.0..=12.0)
                             .speed(0.01)
                             .build(ui, &mut state.ev_shift);
 

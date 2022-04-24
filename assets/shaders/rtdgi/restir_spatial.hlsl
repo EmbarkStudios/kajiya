@@ -57,32 +57,26 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 dir_sel = 1;
     float M_sum = 0;
 
-    // TODO: split off into a separate temporal stage, following ReSTIR GI
-    uint sample_count = DIFFUSE_GI_USE_RESTIR ? 8 : 1;
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
-    // Don't be picky at low contribution counts. SSAO weighing
-    // in those circumstances results in boiling near edges.
-    #if 0
-    const float ssao_factor_importance =
+    // TODO: drive this via variance, shrink when it's low. 80 is a bit of a blur...
+    const float kernel_tightness = (1 - center_ssao);
+    const float max_kernel_radius =
         spatial_reuse_pass_idx == 0
-        ? smoothstep(5.0, 10.0, center_r.M)
-        : smoothstep(25.0, 50.0, center_r.M);
-    #elif 0
-    const float ssao_factor_importance = smoothstep(5.0, 10.0, center_r.M);
-    #else
-        const float ssao_factor_importance = 0;
-    #endif
+        ? lerp(96.0, 32.0, kernel_tightness)
+        : lerp(32.0, 8.0, kernel_tightness);
 
-    // TODO: drive this via variance
-    float kernel_radius = lerp(2.0, 16.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
+    const float2 dist_to_edge_xy = min(float2(px), output_tex_size.xy - px);
+    const float allow_edge_overstep = center_r.M < 10 ? 100.0 : 1.25;
+    //const float allow_edge_overstep = 1.25;
+    const float2 kernel_radius = min(max_kernel_radius, dist_to_edge_xy * allow_edge_overstep);
+    //const float2 kernel_radius = max_kernel_radius;
 
-    if (spatial_reuse_pass_idx == 1) {
-        sample_count = 5;
-        kernel_radius = lerp(2.0, 32.0, lerp(1, ssao_tex[hi_px].r, ssao_factor_importance));
-    }
+    uint sample_count = DIFFUSE_GI_USE_RESTIR
+        ? (spatial_reuse_pass_idx == 0 ? 8 : 5)
+        : 1;
 
     const uint TARGET_M = 512;
 
@@ -100,7 +94,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
         //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-        float radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
+        float2 radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
 
         const bool is_center_sample = sample_i == 0;
@@ -125,20 +119,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
         #if DIFFUSE_GI_BRDF_SAMPLING
-            float normal_cutoff = 0.9;
+            const float normal_cutoff = 0.9;
         #else
-            float normal_cutoff = 0.5;
+            const float normal_cutoff = 0.1;
         #endif
-        
-        if (spatial_reuse_pass_idx != 0) {
-            //normal_cutoff = 0.5;
-
-            // TODO: find whether we can be picky about normals
-            // fow now, accept halos over noise from rare normals
-            normal_cutoff = 0.1;
-        }
-
-        //normal_cutoff = 0.9;
 
         // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
         // areas of high geometric complexity. The resulting bias tends to brighten edges,
@@ -152,24 +136,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         relevance *= normal_similarity_dot;
 
-        const float ssao_dart = uint_to_u01_float(hash1_mut(rng));
         const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
-
-        // Balance between details and splotches in corner
-        const float ssao_threshold = spatial_reuse_pass_idx == 0 ? 0.2 : 0.4;
-
-        // Was: abs(sample_ssao - center_ssao); that can however reject too aggressively.
-        // Some leaking is better than flicker and very dark corners.
-        const float ssao_infl =
-            smoothstep(0.0, ssao_threshold, ssao_factor_importance * abs(sample_ssao - center_ssao));
-
-        if (!is_center_sample && ssao_infl > ssao_dart) {
-            // Note: improves contacts, but results in boiling/noise in corners
-            // This is really just an approximation of a visbility check,
-            // which we can do in a better way.
-            continue;
-        }
-
         relevance *= 1 - abs(sample_ssao - center_ssao);
 
         const float2 sample_uv = get_uv(
@@ -206,15 +173,15 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // Reject neighbors with vastly different depths
         if (!is_center_sample) {
+            // Clamp the normal_vs.z so that we don't get arbitrarily loose depth comparison at grazing angles.
             const float depth_diff = abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0));
 
-            if (spatial_reuse_pass_idx == 0) {
-                // Clamp the normal_vs.z so that we don't get arbitrarily loose depth comparison at grazing angles.
-                relevance *= 1 - smoothstep(0.025, 0.1, depth_diff);
-            } else {
-                // Ditto
-                relevance *= 1 - smoothstep(0.0, 0.15, depth_diff);
-            }
+            const float depth_threshold =
+                spatial_reuse_pass_idx == 0
+                ? 0.15
+                : 0.1;
+
+            relevance *= 1 - smoothstep(0.0, depth_threshold, depth_diff);
         }
 
         {
@@ -289,11 +256,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float4 sample_hit_normal_ws_dot = hit_normal_tex[spx];
         const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
 
-        // Ignore samples hit surfaces that face away from the center point
-        if (center_to_hit_vis <= 1e-3 && sample_i != 0) {
-            continue;
-        }
-
         float p_q = 1;
         p_q *= max(1e-3, sRGB_to_luminance(prev_irrad.rgb));
 
@@ -312,7 +274,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
-        jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 1e-1, 1e4);
+        jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 1e-4, 1e4);
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             // N dot L. Useful for normal maps, micro detail.

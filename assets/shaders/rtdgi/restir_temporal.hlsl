@@ -325,11 +325,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             if (dot(dir_to_sample_hit, normal_ws) < 1e-3) {
                 continue;
             }
-            
-            // Ignore samples hit surfaces that face away from the center point
-            if (center_to_hit_vis <= 1e-3 && sample_i != 0) {
-                continue;
-            }
 
             const float4 prev_irrad = irradiance_history_tex[spx];
 

@@ -80,7 +80,7 @@ WrcFarField WrcFarFieldQuery::query() {
         const float interpolation_extent = 1.0;
         float total_weight = 0;
 
-        #define WRC_USE_STOCHASTIC_INTERPOLATION 1
+        #define WRC_USE_STOCHASTIC_INTERPOLATION 0
 
     #if WRC_USE_STOCHASTIC_INTERPOLATION
         // Stochastic interpolation

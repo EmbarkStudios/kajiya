@@ -303,6 +303,7 @@ void main() {
 
     RayDesc outgoing_ray;
     outgoing_ray.Direction = outgoing_dir;
+    // TODO: use the tighter ray bias
     outgoing_ray.Origin = view_ray_context.biased_secondary_ray_origin_ws();
     outgoing_ray.TMin = 0;
     outgoing_ray.TMax = SKY_DIST;
