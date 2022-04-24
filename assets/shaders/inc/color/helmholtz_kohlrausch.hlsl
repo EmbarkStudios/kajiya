@@ -1,5 +1,5 @@
-#ifndef HELMHOLTZ_KOHLRAUSCH_HLSL
-#define HELMHOLTZ_KOHLRAUSCH_HLSL
+#ifndef NOTORIOUS6_HELMHOLTZ_KOHLRAUSCH_HLSL
+#define NOTORIOUS6_HELMHOLTZ_KOHLRAUSCH_HLSL
 
 #include "math.hlsl"
 #include "srgb.hlsl"
@@ -130,4 +130,4 @@ float srgb_to_equivalent_luminance(HelmholtzKohlrauschEffect hk, float3 stimulus
     #endif
 }
 
-#endif  // HELMHOLTZ_KOHLRAUSCH_HLSL
+#endif  // NOTORIOUS6_HELMHOLTZ_KOHLRAUSCH_HLSL

@@ -124,7 +124,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         LayeredBrdf layered_brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
         specular_brdf = layered_brdf.specular_brdf;
     }
-    const float f0_grey = calculate_luma(specular_brdf.albedo);
+    const float f0_grey = sRGB_to_luminance(specular_brdf.albedo);
 
     // Index used to calculate a sample set disjoint for all four pixels in the quad
     // Offsetting by frame index reduces small structured artifacts
@@ -519,7 +519,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     //w_accum
 
                     contrib_wt = rejection_bias * spec_weight / ray_sampling_pdf;
-                    //contrib_wt = rejection_bias * spec_weight / (ray_sampling_pdf * max(1e-3, calculate_luma(sample_radiance)));
+                    //contrib_wt = rejection_bias * spec_weight / (ray_sampling_pdf * max(1e-3, sRGB_to_luminance(sample_radiance)));
                     contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
                     w_accum += float2(ray_sampling_pdf / neighbor_sampling_pdf, 1);
 
@@ -577,7 +577,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 #endif
             }
 
-            float luma = calculate_luma(sample_radiance);
+            float luma = sRGB_to_luminance(sample_radiance);
             ex += luma * contrib_wt;
             ex2 += luma * luma * contrib_wt;
 

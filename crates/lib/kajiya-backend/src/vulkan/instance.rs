@@ -152,7 +152,6 @@ unsafe extern "system" fn vulkan_debug_callback(
         log::warn!("{}\n", message);
     } else {
         log::error!("{}\n", message);
-        panic!("{}\n", message);
     }
 
     ash::vk::FALSE

@@ -1,5 +1,5 @@
-#ifndef DISPLAY_TRANSFORM_HLSL
-#define DISPLAY_TRANSFORM_HLSL
+#ifndef NOTORIOUS6_DISPLAY_TRANSFORM_HLSL
+#define NOTORIOUS6_DISPLAY_TRANSFORM_HLSL
 
 #include "ictcp.hlsl"
 #include "luv.hlsl"
@@ -215,4 +215,4 @@ float3 display_transform_sRGB(float3 input_stimulus) {
     return compressed_rgb;
 }
 
-#endif  // DISPLAY_TRANSFORM_HLSL
+#endif  // NOTORIOUS6_DISPLAY_TRANSFORM_HLSL

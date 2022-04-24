@@ -118,7 +118,10 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
         &mut self,
         path: &str,
         parent_file: &Self::IncludeContext,
-    ) -> std::result::Result<(String, Self::IncludeContext), failure::Error> {
+    ) -> std::result::Result<
+        (String, Self::IncludeContext),
+        shader_prepper::BoxedIncludeProviderError,
+    > {
         let resolved_path = if let Some('/') = path.chars().next() {
             path.to_owned()
         } else {
@@ -127,21 +130,14 @@ impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
             folder.join(path).as_str().to_string()
         };
 
-        // println!("shader include '{}' resolved to '{}'", path, resolved_path);
-
         let blob: Arc<Bytes> = smol::block_on(
             crate::file::LoadFile::new(&resolved_path)
-                .map_err(|err| {
-                    failure::err_msg(format!("Failed loading shader include {}: {:?}", path, err))
-                })?
+                .with_context(|| format!("Failed loading shader include {}", path))?
                 .into_lazy()
                 .eval(&self.ctx),
-        )
-        .map_err(|err| failure::format_err!("{}", err))?;
+        )?;
 
-        String::from_utf8(blob.to_vec())
-            .map_err(|e| failure::format_err!("{}", e))
-            .map(|ok| (ok, resolved_path))
+        Ok((String::from_utf8(blob.to_vec())?, resolved_path))
     }
 }
 

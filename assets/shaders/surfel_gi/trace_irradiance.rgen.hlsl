@@ -74,7 +74,7 @@ float3 sample_environment_light(float3 dir) {
     /*return atmosphere_default(dir, SUN_DIRECTION);
 
     float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
-    col = lerp(col, 1.3.xxx * calculate_luma(col), smoothstep(-0.2, 1.0, dir.y).xxx);
+    col = lerp(col, 1.3.xxx * sRGB_to_luminance(col), smoothstep(-0.2, 1.0, dir.y).xxx);
     return col;*/
 }
 
@@ -353,7 +353,7 @@ void main() {
             : 1.0;
 
         const float3 new_value = traced.incident_radiance * self_lighting_limiter;
-        const float new_lum = calculate_luma(new_value);
+        const float new_lum = sRGB_to_luminance(new_value);
 
         const float2 octa_coord = octa_encode(traced.direction);
         const uint2 octa_quant = min(uint2(octa_coord * SURF_RCACHE_OCTA_DIMS), (SURF_RCACHE_OCTA_DIMS - 1).xx);
@@ -382,11 +382,11 @@ void main() {
         const float bucket_sample_count = min(1 + prev_value_and_count.w, BUCKET_SAMPLE_COUNT);
 
         const float3 prev_value = prev_value_and_count.rgb;
-        const float prev_lum = calculate_luma(prev_value);
+        const float prev_lum = sRGB_to_luminance(prev_value);
 
-        const float3 prev_value_ycbcr = rgb_to_ycbcr(prev_value);
+        const float3 prev_value_ycbcr = sRGB_to_YCbCr(prev_value);
         const float num_deviations = 1.0;
-        float3 prev_value_clamped = ycbcr_to_rgb(sign(prev_value_ycbcr) * clamp(
+        float3 prev_value_clamped = YCbCr_to_sRGB(sign(prev_value_ycbcr) * clamp(
             abs(prev_value_ycbcr),
             abs(prev_value_ycbcr) * (quick_lum_ex - lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x),
             abs(prev_value_ycbcr) * (quick_lum_ex + lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x)

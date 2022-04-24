@@ -4,7 +4,7 @@ use kajiya_backend::{
     ash::vk,
     vk_sync,
     vulkan::{buffer::*, image::*, ray_tracing::RayTracingAcceleration, shader::ShaderSource},
-    Device,
+    BackendError, Device,
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
@@ -36,23 +36,20 @@ fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
     }
 }
 
-fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Arc<Buffer> {
-    Arc::new(
-        device
-            .create_buffer(
-                BufferDesc::new(
-                    v.len() * std::mem::size_of::<T>(),
-                    vk::BufferUsageFlags::STORAGE_BUFFER,
-                ),
-                Some(as_byte_slice_unchecked(v)),
-            )
-            .unwrap(),
-    )
+fn make_lut_buffer<T: Copy>(device: &Device, v: &[T]) -> Result<Arc<Buffer>, BackendError> {
+    Ok(Arc::new(device.create_buffer(
+        BufferDesc::new_gpu_only(
+            v.len() * std::mem::size_of::<T>(),
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        ),
+        "lut buffer",
+        Some(as_byte_slice_unchecked(v)),
+    )?))
 }
 
 impl RtrRenderer {
-    pub fn new(device: &Device) -> Self {
-        Self {
+    pub fn new(device: &Device) -> Result<Self, BackendError> {
+        Ok(Self {
             temporal_tex: PingPongTemporalResource::new("rtr.temporal"),
             temporal2_tex: PingPongTemporalResource::new("rtr.temporal2"),
             ray_len_tex: PingPongTemporalResource::new("rtr.ray_len"),
@@ -63,10 +60,10 @@ impl RtrRenderer {
             temporal_reservoir_tex: PingPongTemporalResource::new("rtr.reservoir"),
             temporal_hit_normal_tex: PingPongTemporalResource::new("rtr.hit_normal"),
 
-            ranking_tile_buf: make_lut_buffer(device, RANKING_TILE),
-            scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE),
-            sobol_buf: make_lut_buffer(device, SOBOL),
-        }
+            ranking_tile_buf: make_lut_buffer(device, RANKING_TILE)?,
+            scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE)?,
+            sobol_buf: make_lut_buffer(device, SOBOL)?,
+        })
     }
 }
 
@@ -277,6 +274,40 @@ impl RtrRenderer {
             SPATIAL_RESOLVE_OFFSETS,
         ))
         .dispatch(resolved_tex.desc().extent);
+
+        TracedRtr {
+            resolved_tex,
+            temporal_output_tex,
+            history_tex,
+            ray_len_tex: ray_len_output_tex,
+            temporal2_tex: &mut self.temporal2_tex,
+        }
+    }
+
+    pub fn create_dummy_output(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        gbuffer_depth: &GbufferDepth,
+    ) -> TracedRtr {
+        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
+
+        let resolved_tex = rg.create(
+            gbuffer_depth
+                .gbuffer
+                .desc()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R8G8B8A8_UNORM),
+        );
+
+        let (temporal_output_tex, history_tex) = self
+            .temporal_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+        let (ray_len_output_tex, _ray_len_history_tex) = self.ray_len_tex.get_output_and_history(
+            rg,
+            ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, gbuffer_desc.extent_2d())
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        );
 
         TracedRtr {
             resolved_tex,

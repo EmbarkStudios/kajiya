@@ -75,7 +75,7 @@ fn temporal_storage_buffer(
 ) -> rg::Handle<Buffer> {
     rg.get_or_create_temporal(
         name,
-        BufferDesc::new(size, BufferUsageFlags::STORAGE_BUFFER),
+        BufferDesc::new_gpu_only(size, BufferUsageFlags::STORAGE_BUFFER),
     )
     .unwrap()
 }
@@ -89,7 +89,7 @@ pub struct SurfelGiRenderer {
 }
 
 impl SurfelGiRenderer {
-    pub fn new(device: &Device) -> anyhow::Result<Self> {
+    pub fn new(device: &Device) -> Self {
         let debug_render_pass = create_render_pass(
             device,
             RenderPassDesc {
@@ -99,15 +99,15 @@ impl SurfelGiRenderer {
                 ],
                 depth_attachment: Some(RenderPassAttachmentDesc::new(vk::Format::D32_SFLOAT)),
             },
-        )?;
+        );
 
-        Ok(Self {
+        Self {
             debug_render_pass,
             initialized: false,
             cur_scroll: Default::default(),
             prev_scroll: Default::default(),
             parity: 0,
-        })
+        }
     }
 
     pub fn update_eye_position(&mut self, eye_position: Vec3) {
@@ -274,7 +274,7 @@ impl SurfelGiRenderer {
         //state.draw_trace_origins(rg, self.debug_render_pass.clone(), gbuffer_depth);
 
         let indirect_args_buf = {
-            let mut indirect_args_buf = rg.create(BufferDesc::new(
+            let mut indirect_args_buf = rg.create(BufferDesc::new_gpu_only(
                 (size_of::<u32>() * 4) * 2,
                 vk::BufferUsageFlags::empty(),
             ));
@@ -319,7 +319,7 @@ impl SurfelGiRenderState {
         wrc: &WrcRenderState,
     ) {
         let indirect_args_buf = {
-            let mut indirect_args_buf = rg.create(BufferDesc::new(
+            let mut indirect_args_buf = rg.create(BufferDesc::new_gpu_only(
                 size_of::<u32>() * 4,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ));

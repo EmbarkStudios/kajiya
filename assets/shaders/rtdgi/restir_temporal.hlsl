@@ -148,7 +148,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }*/
 
         const float p_q = p_q_sel = 1.0
-            * max(1e-3, calculate_luma(result.out_value))
+            * max(1e-3, sRGB_to_luminance(result.out_value))
             #if !DIFFUSE_GI_BRDF_SAMPLING
                 * max(0, dot(outgoing_dir, normal_ws))
 //                * step(0, dot(outgoing_dir, normal_ws))
@@ -346,7 +346,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             //r.M = min(r.M, 0.1);
 
             const float p_q = 1
-                 * max(1e-3, calculate_luma(prev_irrad.rgb))
+                 * max(1e-3, sRGB_to_luminance(prev_irrad.rgb))
             #if !DIFFUSE_GI_BRDF_SAMPLING
                 * max(0, dot(dir_to_sample_hit, normal_ws))
 //                * step(0, dot(dir_to_sample_hit, normal_ws))

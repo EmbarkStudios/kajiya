@@ -7,13 +7,13 @@
 
 // Strong suppression; reduces noise in very difficult cases but introduces a lot of bias
 float4 linear_rgb_to_crunched_luma_chroma(float4 v) {
-    v.rgb = rgb_to_ycbcr(v.rgb);
+    v.rgb = sRGB_to_YCbCr(v.rgb);
     float k = sqrt(v.x) / max(1e-8, v.x);
     return float4(v.rgb * k, v.a);
 }
 float4 crunched_luma_chroma_to_linear_rgb(float4 v) {
     v.rgb *= v.x;
-    v.rgb = ycbcr_to_rgb(v.rgb);
+    v.rgb = YCbCr_to_sRGB(v.rgb);
     return v;
 }
 
@@ -29,10 +29,10 @@ float4 crunched_rgb_to_linear_rgb(float4 v) {
 // ----
 
 float4 linear_rgb_to_linear_luma_chroma(float4 v) {
-    return float4(rgb_to_ycbcr(v.rgb), v.a);
+    return float4(sRGB_to_YCbCr(v.rgb), v.a);
 }
 float4 linear_luma_chroma_to_linear_rgb(float4 v) {
-    return float4(ycbcr_to_rgb(v.rgb), v.a);
+    return float4(YCbCr_to_sRGB(v.rgb), v.a);
 }
 
 // ----

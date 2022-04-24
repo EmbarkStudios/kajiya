@@ -1,5 +1,6 @@
+use crate::BackendError;
+
 use super::device::Device;
-use anyhow::{Context, Result};
 use ash::vk;
 use derive_builder::Builder;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
@@ -247,7 +248,7 @@ impl Device {
         &self,
         desc: ImageDesc,
         initial_data: Vec<ImageSubResourceData>,
-    ) -> Result<Image> {
+    ) -> Result<Image, BackendError> {
         log::info!("Creating an image: {:?}", desc);
 
         let create_info = get_image_create_info(&desc, !initial_data.is_empty());
@@ -277,7 +278,10 @@ impl Device {
                 location: MemoryLocation::GpuOnly,
                 linear: false,
             })
-            .context("GpuOnly image allocation")?;
+            .map_err(|err| BackendError::Allocation {
+                inner: err,
+                name: "GpuOnly image".into(),
+            })?;
 
         // Bind memory to the image
         unsafe {
@@ -300,17 +304,15 @@ impl Device {
                 _ => todo!("{:?}", desc.format),
             };
 
-            let mut image_buffer = self
-                .create_buffer_impl(
+            let mut image_buffer = self.create_buffer(
                     super::buffer::BufferDesc {
                         size: total_initial_data_bytes,
                         usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                        mapped: true,
+                    memory_location: MemoryLocation::CpuToGpu,
                     },
-                    Default::default(),
-                    MemoryLocation::CpuToGpu,
-                )
-                .context("CpuToGpu image staging buffer")?;
+                "Image initial data buffer",
+                None,
+            )?;
 
             let mapped_slice_mut = image_buffer.allocation.mapped_slice_mut().unwrap();
             let mut offset = 0;
@@ -375,7 +377,7 @@ impl Device {
                         vk::ImageAspectFlags::COLOR,
                     ),
                 )
-            });
+            })?;
         }
 
         /*        let handle = self.storage.insert(Image {
@@ -397,7 +399,7 @@ impl Device {
         desc: ImageViewDesc,
         image_desc: &ImageDesc,
         image_raw: vk::Image,
-    ) -> Result<vk::ImageView> {
+    ) -> Result<vk::ImageView, BackendError> {
         let create_info = vk::ImageViewCreateInfo {
             image: image_raw,
             ..Image::view_desc_impl(desc, image_desc)

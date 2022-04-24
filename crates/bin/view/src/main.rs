@@ -190,8 +190,7 @@ fn main() -> anyhow::Result<()> {
 
         render_instances.push(kajiya.world_renderer.add_instance(
             mesh,
-            instance.position.into(),
-            Quat::IDENTITY,
+            Affine3A::from_rotation_translation(Quat::IDENTITY, instance.position.into()),
         ));
     }
 
@@ -200,9 +199,10 @@ fn main() -> anyhow::Result<()> {
         .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::default())?;
     let mut car_pos = Vec3::Y * -0.01;
     let car_rot = 0.0f32;
-    let car_inst = kajiya
-        .world_renderer
-        .add_instance(car_mesh, car_pos, Quat::IDENTITY);
+    let car_inst = kajiya.world_renderer.add_instance(
+        car_mesh,
+        Affine3A::from_rotation_translation(Quat::IDENTITY, car_pos),
+    );
 
     let mut state = persisted_app_state
         .clone()
@@ -278,8 +278,7 @@ fn main() -> anyhow::Result<()> {
             //car_rot += 0.5 * ctx.dt;
             ctx.world_renderer.set_instance_transform(
                 car_inst,
-                car_pos,
-                Quat::from_rotation_y(car_rot),
+                Affine3A::from_rotation_translation(Quat::from_rotation_y(car_rot), car_pos),
             );
 
             for inst in &render_instances {

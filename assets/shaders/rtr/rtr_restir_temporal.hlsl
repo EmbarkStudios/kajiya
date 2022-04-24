@@ -180,11 +180,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         float3 wi = normalize(mul(outgoing_dir, tangent_to_world));
 
         const float p_q = p_q_sel = 1
-            * max(1e-3, calculate_luma(result.out_value))
+            * max(1e-3, sRGB_to_luminance(result.out_value))
             #if !RTR_RESTIR_BRDF_SAMPLING
                 * max(0, dot(outgoing_dir, normal_ws))
             #endif
-            //* calculate_luma(specular_brdf.evaluate(wo, wi).value)
+            //* sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value)
             * result.pdf
             ;
 
@@ -351,14 +351,14 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 
             float p_q = 1;
-            p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
+            p_q *= max(1e-3, sRGB_to_luminance(prev_irrad.rgb));
             #if !RTR_RESTIR_BRDF_SAMPLING
                 p_q *= max(0, dot(dir_to_sample_hit, normal_ws));
             #else
                 p_q *= step(0, dot(dir_to_sample_hit, normal_ws));
             #endif
             p_q *= prev_irrad_pdf.w;
-            //p_q *= calculate_luma(specular_brdf.evaluate(wo, wi).value);
+            //p_q *= sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value);
 
             float visibility = 1;
             float jacobian = 1;
@@ -535,11 +535,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                 float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
                 const float p_q = 1
-                    * max(1e-3, calculate_luma(result.out_value))
+                    * max(1e-3, sRGB_to_luminance(result.out_value))
                     #if !RTR_RESTIR_BRDF_SAMPLING
                         * max(0, dot(dir_to_sample_hit, normal_ws))
                     #endif
-                    //* calculate_luma(specular_brdf.evaluate(wo, wi).value)
+                    //* sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value)
                     * result.pdf
                     ;
 
@@ -590,7 +590,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
 #if 1
     /*if (!use_resampling) {
-        reservoir.w_sum = (calculate_luma(result.out_value));
+        reservoir.w_sum = (sRGB_to_luminance(result.out_value));
         reservoir.w_sel = reservoir.w_sum;
         reservoir.W = 1;
         reservoir.M = 1;

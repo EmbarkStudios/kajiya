@@ -1,5 +1,5 @@
-#ifndef MATH_HLSL
-#define MATH_HLSL
+#ifndef NOTORIOUS6_MATH_HLSL
+#define NOTORIOUS6_MATH_HLSL
 
 #define M_PI 3.1415926535897932384626433832795
 
@@ -18,4 +18,4 @@ float catmull_rom(float x, float v0,float v1, float v2,float v3) {
 	return(((c4 * x + c3) * x + c2) * x + v1);
 }
 
-#endif  // MATH_HLSL
+#endif  // NOTORIOUS6_MATH_HLSL

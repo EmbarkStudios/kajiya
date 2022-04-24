@@ -289,17 +289,18 @@ impl LazyWorker for LoadGltfScene {
                         };
 
                         // Collect tangents (optional)
-                        let tangents = if let Some(iter) = reader.read_tangents() {
-                            iter.collect::<Vec<_>>()
-                        } else {
-                            vec![[1.0, 0.0, 0.0, 0.0]; positions.len()]
-                        };
+                        let (mut tangents, tangents_found) =
+                            if let Some(iter) = reader.read_tangents() {
+                                (iter.collect::<Vec<_>>(), true)
+                            } else {
+                                (vec![[1.0, 0.0, 0.0, 0.0]; positions.len()], false)
+                            };
 
                         // Collect uvs (optional)
-                        let mut uvs = if let Some(iter) = reader.read_tex_coords(0) {
-                            iter.into_f32().collect::<Vec<_>>()
+                        let (mut uvs, uvs_found) = if let Some(iter) = reader.read_tex_coords(0) {
+                            (iter.into_f32().collect::<Vec<_>>(), true)
                         } else {
-                            vec![[0.0, 0.0]; positions.len()]
+                            (vec![[0.0, 0.0]; positions.len()], false)
                         };
 
                         // Collect colors (optional)
@@ -312,20 +313,14 @@ impl LazyWorker for LoadGltfScene {
                         // Collect material ids
                         let mut material_ids = vec![res_material_index; positions.len()];
 
-                        // --------------------------------------------------------
-                        // Write it all to the output
-
+                        // Collect indices
+                        let mut indices: Vec<u32>;
                         {
-                            let mut indices: Vec<u32>;
-                            let base_index = res.positions.len() as u32;
-
                             if let Some(indices_reader) = reader.read_indices() {
-                                indices =
-                                    indices_reader.into_u32().map(|i| i + base_index).collect();
+                                indices = indices_reader.into_u32().collect();
                             } else {
                                 // TODO; this seemingly creates broken geometry; probably need to check out `mode` on the reader.
-                                /*indices =
-                                (base_index..(base_index + positions.len() as u32)).collect();*/
+                                /*indices = (0..positions.len() as u32).collect();*/
                                 return;
                             }
 
@@ -334,8 +329,31 @@ impl LazyWorker for LoadGltfScene {
                                     tri.swap(0, 2);
                                 }
                             }
+                        }
 
+                        if !tangents_found && uvs_found {
+                            log::trace!(
+                                "Mesh had UVs but no tangents. Calculating the tangents..."
+                            );
+
+                            mikktspace::generate_tangents(&mut TangentCalcContext {
+                                indices: indices.as_slice(),
+                                positions: positions.as_slice(),
+                                normals: normals.as_slice(),
+                                uvs: uvs.as_slice(),
+                                tangents: tangents.as_mut_slice(),
+                            });
+                        }
+
+                        // --------------------------------------------------------
+                        // Write it all to the output
+
+                        {
                             // log::info!("Loading a mesh with {} indices", indices.len());
+                            let base_index = res.positions.len() as u32;
+                            for i in &mut indices {
+                                *i += base_index;
+                            }
 
                             res.indices.append(&mut indices);
                             res.colors.append(&mut colors);
@@ -820,5 +838,39 @@ impl Default for GpuMaterial {
             base_color_mult: [0.0f32; 4],
             maps: [0; 4],
         }
+    }
+}
+
+struct TangentCalcContext<'a> {
+    indices: &'a [u32],
+    positions: &'a [[f32; 3]],
+    normals: &'a [[f32; 3]],
+    uvs: &'a [[f32; 2]],
+    tangents: &'a mut [[f32; 4]],
+}
+
+impl<'a> mikktspace::Geometry for TangentCalcContext<'a> {
+    fn num_faces(&self) -> usize {
+        self.indices.len() / 3
+    }
+
+    fn num_vertices_of_face(&self, _face: usize) -> usize {
+        3
+    }
+
+    fn position(&self, face: usize, vert: usize) -> [f32; 3] {
+        self.positions[self.indices[face * 3 + vert] as usize]
+    }
+
+    fn normal(&self, face: usize, vert: usize) -> [f32; 3] {
+        self.normals[self.indices[face * 3 + vert] as usize]
+    }
+
+    fn tex_coord(&self, face: usize, vert: usize) -> [f32; 2] {
+        self.uvs[self.indices[face * 3 + vert] as usize]
+    }
+
+    fn set_tangent_encoded(&mut self, tangent: [f32; 4], face: usize, vert: usize) {
+        self.tangents[self.indices[face * 3 + vert] as usize] = tangent;
     }
 }

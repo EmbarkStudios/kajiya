@@ -61,6 +61,12 @@ pub fn wrc_trace(
     WrcRenderState { radiance_atlas }
 }
 
+pub fn allocate_dummy_output(rg: &mut rg::TemporalRenderGraph) -> WrcRenderState {
+    WrcRenderState {
+        radiance_atlas: rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1])),
+    }
+}
+
 impl WrcRenderState {
     pub fn see_through(
         &self,

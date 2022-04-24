@@ -1,7 +1,7 @@
 // from Alex Tardiff: http://alextardif.com/Lightness.html
 
-#ifndef LAB_HLSL
-#define LAB_HLSL
+#ifndef NOTORIOUS6_LAB_HLSL
+#define NOTORIOUS6_LAB_HLSL
 
 #include "xyz.hlsl"
 
@@ -67,4 +67,4 @@ float3 LAB_to_Lch(float3 lab)
     return float3(lab.x, c, h);
 }
 
-#endif  // LAB_HLSL
+#endif  // NOTORIOUS6_LAB_HLSL

@@ -94,9 +94,9 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 result += sample_val * wt;
                 w_sum += wt;
 
-                const float luma = calculate_luma(sample_val.rgb);
-                ex += luma * wt;
-                ex2 += luma * luma * wt;
+                const float luminance = sRGB_to_luminance(sample_val.rgb);
+                ex += luminance * wt;
+                ex2 += luminance * luminance * wt;
                 w_sum2 += wt;
             }
         }

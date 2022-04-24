@@ -30,7 +30,7 @@ float3 filter_input(float2 uv, float luma_cutoff, int kernel_radius) {
             // output `uv` and the low-res input `spx`.
             const float distance_w = exp(-(0.8 / (k * k)) * dot(spx_offset, spx_offset));
 
-            float3 s = rgb_to_ycbcr(input_tex[spx].rgb);
+            float3 s = sRGB_to_YCbCr(input_tex[spx].rgb);
 
             float w = 1;
             w *= distance_w;

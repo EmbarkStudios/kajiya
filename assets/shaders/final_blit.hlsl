@@ -7,21 +7,7 @@
 };
 
 #include "inc/image.hlsl"
-
-float linear_to_srgb(float v) {
-    if (v <= 0.0031308) {
-        return v * 12.92;
-    } else {
-        return pow(v, (1.0/2.4)) * (1.055) - 0.055;
-    }
-}
-
-float3 linear_to_srgb(float3 v) {
-	return float3(
-		linear_to_srgb(v.x), 
-		linear_to_srgb(v.y), 
-		linear_to_srgb(v.z));
-}
+#include "inc/color/srgb.hlsl"
 
 struct LinearToSrgbRemap {
     static LinearToSrgbRemap create() {
@@ -30,7 +16,7 @@ struct LinearToSrgbRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(linear_to_srgb(v.rgb), 1.0);
+        return float4(sRGB_EOTF(v.rgb), 1.0);
     }
 };
 
@@ -45,7 +31,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             LinearToSrgbRemap::create()
         ).rgb;
     } else {
-        main = linear_to_srgb(saturate(main_tex[px].rgb));
+        main = sRGB_EOTF(saturate(main_tex[px].rgb));
     }
     float4 gui = gui_tex[px];
 

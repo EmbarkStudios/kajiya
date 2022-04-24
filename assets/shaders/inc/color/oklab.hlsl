@@ -1,5 +1,5 @@
-#ifndef OKLAB_HLSL
-#define OKLAB_HLSL
+#ifndef NOTORIOUS6_OKLAB_HLSL
+#define NOTORIOUS6_OKLAB_HLSL
 
 #include "math.hlsl"
 
@@ -53,4 +53,4 @@ float3 Oklab_to_sRGB(float3 c) {
 	);
 }
 
-#endif  // OKLAB_HLSL
+#endif  // NOTORIOUS6_OKLAB_HLSL

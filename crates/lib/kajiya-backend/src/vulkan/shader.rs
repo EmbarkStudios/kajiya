@@ -19,7 +19,6 @@ use std::{
 };
 
 pub const MAX_DESCRIPTOR_SETS: usize = 4;
-pub const MAX_BINDLESS_DESCRIPTOR_COUNT: usize = 512 * 1024;
 
 type DescriptorSetLayout = HashMap<u32, rspirv_reflect::DescriptorInfo>;
 type StageDescriptorSetLayouts = HashMap<u32, DescriptorSetLayout>;
@@ -192,7 +191,7 @@ pub fn create_descriptor_set_layouts(
                             rspirv_reflect::DescriptorDimensionality::Single => 1,
                             rspirv_reflect::DescriptorDimensionality::Array(size) => size,
                             rspirv_reflect::DescriptorDimensionality::RuntimeArray => {
-                                MAX_BINDLESS_DESCRIPTOR_COUNT as u32
+                                device.max_bindless_descriptor_count()
                             }
                         };
 
@@ -718,10 +717,7 @@ pub struct RenderPass {
     pub framebuffer_cache: FramebufferCache,
 }
 
-pub fn create_render_pass(
-    device: &Device,
-    desc: RenderPassDesc<'_>,
-) -> anyhow::Result<Arc<RenderPass>> {
+pub fn create_render_pass(device: &Device, desc: RenderPassDesc<'_>) -> Arc<RenderPass> {
     let renderpass_attachments = desc
         .color_attachments
         .iter()
@@ -786,14 +782,14 @@ pub fn create_render_pass(
             .unwrap()
     };
 
-    Ok(Arc::new(RenderPass {
+    Arc::new(RenderPass {
         raw: render_pass,
         framebuffer_cache: FramebufferCache::new(
             render_pass,
             desc.color_attachments,
             desc.depth_attachment,
         ),
-    }))
+    })
 }
 
 #[derive(Hash, PartialEq, Eq)]

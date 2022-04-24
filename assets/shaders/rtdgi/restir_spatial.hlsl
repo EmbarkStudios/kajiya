@@ -295,7 +295,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         float p_q = 1;
-        p_q *= max(1e-3, calculate_luma(prev_irrad.rgb));
+        p_q *= max(1e-3, sRGB_to_luminance(prev_irrad.rgb));
 
         // Actually looks more noisy with this the N dot L when using BRDF sampling.
         // With (hemi)spherical sampling, it's fine.

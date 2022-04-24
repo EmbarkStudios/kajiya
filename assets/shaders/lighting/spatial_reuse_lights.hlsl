@@ -162,7 +162,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             contrib_accum += float4(contrib_rgb, 1) * contrib_wt;
 
-            float luma = calculate_luma(packed0.rgb);
+            float luminance = sRGB_to_luminance(packed0.rgb);
         }
     }
 

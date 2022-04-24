@@ -11,7 +11,7 @@
     float4 pass_through(float4 v) { return v; }
     #define linear_to_working pass_through
     #define working_to_linear pass_through
-    float working_luma(float3 v) { return calculate_luma(v); }
+    float working_luma(float3 v) { return sRGB_to_luminance(v); }
 #else
     #define linear_to_working linear_rgb_to_crunched_luma_chroma
     #define working_to_linear crunched_luma_chroma_to_linear_rgb

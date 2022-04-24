@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use kajiya_backend::{ash::vk, rspirv_reflect, vulkan::device, MAX_BINDLESS_DESCRIPTOR_COUNT};
+use kajiya_backend::{ash::vk, rspirv_reflect, vulkan::device};
 
 lazy_static::lazy_static! {
     pub static ref BINDLESS_DESCRIPTOR_SET_LAYOUT: HashMap<u32, rspirv_reflect::DescriptorInfo> = [
@@ -82,7 +82,7 @@ pub fn create_bindless_descriptor_set(device: &device::Device) -> vk::Descriptor
                         // `bindless_textures`
                         vk::DescriptorSetLayoutBinding::builder()
                             .binding(BINDLESS_TEXURES_BINDING_INDEX as _)
-                            .descriptor_count(MAX_BINDLESS_DESCRIPTOR_COUNT as _)
+                            .descriptor_count(device.max_bindless_descriptor_count() as _)
                             .descriptor_type(vk::DescriptorType::SAMPLED_IMAGE)
                             .stage_flags(vk::ShaderStageFlags::ALL)
                             .build(),
@@ -102,7 +102,7 @@ pub fn create_bindless_descriptor_set(device: &device::Device) -> vk::Descriptor
         },
         vk::DescriptorPoolSize {
             ty: vk::DescriptorType::SAMPLED_IMAGE,
-            descriptor_count: MAX_BINDLESS_DESCRIPTOR_COUNT as _,
+            descriptor_count: device.max_bindless_descriptor_count() as _,
         },
     ];
 
@@ -117,7 +117,7 @@ pub fn create_bindless_descriptor_set(device: &device::Device) -> vk::Descriptor
             .unwrap()
     };
 
-    let variable_descriptor_count = MAX_BINDLESS_DESCRIPTOR_COUNT as _;
+    let variable_descriptor_count = device.max_bindless_descriptor_count() as _;
     let mut variable_descriptor_count_allocate_info =
         vk::DescriptorSetVariableDescriptorCountAllocateInfo::builder()
             .descriptor_counts(std::slice::from_ref(&variable_descriptor_count))

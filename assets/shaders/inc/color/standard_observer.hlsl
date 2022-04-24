@@ -1,5 +1,5 @@
-#ifndef STANDARD_OBSERVER_HLSL
-#define STANDARD_OBSERVER_HLSL
+#ifndef NOTORIOUS6_STANDARD_OBSERVER_HLSL
+#define NOTORIOUS6_STANDARD_OBSERVER_HLSL
 
 #include "xyz.hlsl"
 
@@ -156,4 +156,4 @@ float CIE_xy_to_dominant_wavelength(float2 xy) {
     return -1.0;
 }
 
-#endif  // STANDARD_OBSERVER_HLSL
+#endif  // NOTORIOUS6_STANDARD_OBSERVER_HLSL

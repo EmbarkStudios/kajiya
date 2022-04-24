@@ -1,5 +1,5 @@
-#ifndef IPT_HLSL
-#define IPT_HLSL
+#ifndef NOTORIOUS6_IPT_HLSL
+#define NOTORIOUS6_IPT_HLSL
 
 float3 XYZ_to_IPT(float3 xyz) {
     float3 lms = mul(
@@ -46,4 +46,4 @@ float3 IPT_to_XYZ(float3 ipt) {
     );
 }
 
-#endif  // IPT_HLSL
+#endif  // NOTORIOUS6_IPT_HLSL

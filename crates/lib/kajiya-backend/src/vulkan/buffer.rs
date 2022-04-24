@@ -1,5 +1,6 @@
+use crate::BackendError;
+
 use super::device::Device;
-use anyhow::Result;
 use ash::vk;
 use gpu_allocator::{AllocationCreateDesc, MemoryLocation};
 
@@ -23,40 +24,54 @@ impl Buffer {
 pub struct BufferDesc {
     pub size: usize,
     pub usage: vk::BufferUsageFlags,
-    pub mapped: bool,
+    pub memory_location: MemoryLocation,
 }
 
 impl BufferDesc {
-    pub fn new(size: usize, usage: vk::BufferUsageFlags) -> Self {
+    pub fn new_gpu_only(size: usize, usage: vk::BufferUsageFlags) -> Self {
         Self {
             size,
             usage,
-            mapped: false,
+            memory_location: MemoryLocation::GpuOnly,
+        }
+    }
+
+    pub fn new_cpu_to_gpu(size: usize, usage: vk::BufferUsageFlags) -> Self {
+        Self {
+            size,
+            usage,
+            memory_location: MemoryLocation::CpuToGpu,
+        }
+    }
+
+    pub fn new_gpu_to_cpu(size: usize, usage: vk::BufferUsageFlags) -> Self {
+        Self {
+            size,
+            usage,
+            memory_location: MemoryLocation::GpuToCpu,
         }
     }
 }
 
 impl Device {
-    // TODO: not pub.
-    pub fn create_buffer_impl(
-        &self,
+    pub(crate) fn create_buffer_impl(
+        raw: &ash::Device,
+        allocator: &mut gpu_allocator::VulkanAllocator,
         desc: BufferDesc,
-        extra_usage: vk::BufferUsageFlags,
-        memory_location: MemoryLocation,
-    ) -> Result<Buffer> {
+        name: &str,
+    ) -> Result<Buffer, BackendError> {
         let buffer_info = vk::BufferCreateInfo {
             size: desc.size as u64,
-            usage: desc.usage | extra_usage,
+            usage: desc.usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             ..Default::default()
         };
 
         let buffer = unsafe {
-            self.raw
-                .create_buffer(&buffer_info, None)
+            raw.create_buffer(&buffer_info, None)
                 .expect("create_buffer")
         };
-        let mut requirements = unsafe { self.raw.get_buffer_memory_requirements(buffer) };
+        let mut requirements = unsafe { raw.get_buffer_memory_requirements(buffer) };
 
         // TODO: why does `get_buffer_memory_requirements` fail to get the correct alignment on AMD?
         if desc
@@ -67,27 +82,23 @@ impl Device {
             requirements.alignment = requirements.alignment.max(64);
         }
 
-        let allocation = self
-            .global_allocator
-            .lock()
+        let allocation = allocator
             .allocate(&AllocationCreateDesc {
-                name: "buffer",
+                name,
                 requirements,
-                location: memory_location,
+                location: desc.memory_location,
                 linear: true, // Buffers are always linear
+            })
+            .map_err(move |err| BackendError::Allocation {
+                inner: err,
+                name: name.to_owned(),
             })?;
 
         // Bind memory to the buffer
         unsafe {
-            self.raw
-                .bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
+            raw.bind_buffer_memory(buffer, allocation.memory(), allocation.offset())
                 .expect("bind_buffer_memory")
         };
-
-        /*let (buffer, allocation, allocation_info) = self
-        .global_allocator
-        .create_buffer(&buffer_info, &buffer_mem_info)
-        .expect("vma::create_buffer");*/
 
         Ok(Buffer {
             raw: buffer,
@@ -96,28 +107,32 @@ impl Device {
         })
     }
 
-    pub fn create_buffer(&self, desc: BufferDesc, initial_data: Option<&[u8]>) -> Result<Buffer> {
-        let memory_location = if desc.mapped {
-            MemoryLocation::CpuToGpu
-        } else {
-            MemoryLocation::GpuOnly
-        };
+    pub fn create_buffer(
+        &self,
+        mut desc: BufferDesc,
+        name: impl Into<String>,
+        initial_data: Option<&[u8]>,
+    ) -> Result<Buffer, BackendError> {
+        let name = name.into();
 
-        let buffer = self.create_buffer_impl(
-            desc,
-            if initial_data.is_some() {
-                vk::BufferUsageFlags::TRANSFER_DST
-            } else {
-                vk::BufferUsageFlags::empty()
-            },
-            memory_location,
-        )?;
+        if initial_data.is_some() {
+            desc.usage |= vk::BufferUsageFlags::TRANSFER_DST;
+        }
+        let buffer =
+            Self::create_buffer_impl(&self.raw, &mut self.global_allocator.lock(), desc, &name)?;
 
         if let Some(initial_data) = initial_data {
-            let mut scratch_buffer = self.create_buffer_impl(
-                desc,
-                vk::BufferUsageFlags::TRANSFER_SRC,
-                MemoryLocation::CpuToGpu,
+            let scratch_desc = BufferDesc {
+                size: desc.size,
+                usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                memory_location: MemoryLocation::CpuToGpu,
+            };
+
+            let mut scratch_buffer = Self::create_buffer_impl(
+                &self.raw,
+                &mut self.global_allocator.lock(),
+                scratch_desc,
+                &format!("Initial data for {:?}", name),
             )?;
 
             scratch_buffer.allocation.mapped_slice_mut().unwrap()[0..initial_data.len()]
@@ -134,7 +149,7 @@ impl Device {
                         .size(desc.size as u64)
                         .build()],
                 );
-            });
+            })?;
         }
 
         Ok(buffer)

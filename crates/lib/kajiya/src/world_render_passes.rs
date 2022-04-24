@@ -15,7 +15,11 @@ impl WorldRenderer {
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
     ) -> rg::Handle<Image> {
-        let tlas = self.prepare_top_level_acceleration(rg);
+        let tlas = if rg.device().ray_tracing_enabled() {
+            Some(self.prepare_top_level_acceleration(rg))
+        } else {
+            None
+        };
 
         let mut accum_img = rg
             .get_or_create_temporal(
@@ -75,15 +79,21 @@ impl WorldRenderer {
 
         let mut surfel_state = self.surfel_gi.allocate_surfels(rg, &mut gbuffer_depth);
 
-        let wrc = crate::renderers::wrc::wrc_trace(
-            rg,
-            &mut surfel_state,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-        );
+        let wrc = if let Some(tlas) = tlas.as_ref() {
+            crate::renderers::wrc::wrc_trace(
+                rg,
+                &mut surfel_state,
+                &sky_cube,
+                self.bindless_descriptor_set,
+                tlas,
+            )
+        } else {
+            crate::renderers::wrc::allocate_dummy_output(rg)
+        };
 
-        surfel_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, &tlas, &wrc);
+        if let Some(tlas) = tlas.as_ref() {
+            surfel_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc);
+        }
 
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
             rg,
@@ -100,8 +110,11 @@ impl WorldRenderer {
         );
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
-        let sun_shadow_mask =
-            trace_sun_shadow_mask(rg, &gbuffer_depth, &tlas, self.bindless_descriptor_set);
+        let sun_shadow_mask = if let Some(tlas) = tlas.as_ref() {
+            trace_sun_shadow_mask(rg, &gbuffer_depth, tlas, self.bindless_descriptor_set)
+        } else {
+            rg.create(gbuffer_depth.depth.desc().format(vk::Format::R8_UNORM))
+        };
 
         let denoised_shadow_mask = if self.sun_size_multiplier > 0.0f32 {
             self.shadow_denoise
@@ -110,17 +123,22 @@ impl WorldRenderer {
             sun_shadow_mask.into()
         };
 
-        let rtdgi = self.rtdgi.render(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &mut surfel_state,
-            &wrc,
-            &tlas,
-            &ssgi_tex,
-        );
+        let rtdgi = if let Some(tlas) = tlas.as_ref() {
+            self.rtdgi.render(
+                rg,
+                &gbuffer_depth,
+                &reprojection_map,
+                &sky_cube,
+                self.bindless_descriptor_set,
+                &mut surfel_state,
+                &wrc,
+                &tlas,
+                &ssgi_tex,
+            )
+        } else {
+            rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]))
+                .into()
+        };
 
         // TODO: don't iter over all the things
         let any_triangle_lights = self
@@ -128,27 +146,33 @@ impl WorldRenderer {
             .iter()
             .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
 
-        let mut rtr = self.rtr.trace(
-            rg,
-            &gbuffer_depth,
-            &reprojection_map,
-            &sky_cube,
-            self.bindless_descriptor_set,
-            &tlas,
-            &rtdgi,
-            &mut surfel_state,
-            &wrc,
-        );
-
-        if any_triangle_lights {
-            // Render specular lighting into the RTR image so they can be jointly filtered
-            self.lighting.render_specular(
-                &mut rtr.resolved_tex,
+        let mut rtr = if let Some(tlas) = tlas.as_ref() {
+            self.rtr.trace(
                 rg,
                 &gbuffer_depth,
+                &reprojection_map,
+                &sky_cube,
                 self.bindless_descriptor_set,
                 &tlas,
-            );
+                &rtdgi,
+                &mut surfel_state,
+                &wrc,
+            )
+        } else {
+            self.rtr.create_dummy_output(rg, &gbuffer_depth)
+        };
+
+        if any_triangle_lights {
+            if let Some(tlas) = tlas.as_ref() {
+                // Render specular lighting into the RTR image so they can be jointly filtered
+                self.lighting.render_specular(
+                    &mut rtr.resolved_tex,
+                    rg,
+                    &gbuffer_depth,
+                    self.bindless_descriptor_set,
+                    tlas,
+                );
+            }
         }
 
         let rtr = rtr.filter_temporal(rg, &gbuffer_depth, &reprojection_map);
@@ -208,15 +232,17 @@ impl WorldRenderer {
         let mut final_post_input =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
 
-        if matches!(self.debug_mode, RenderDebugMode::WorldRadianceCache) {
-            wrc.see_through(
-                rg,
-                &sky_cube,
-                &mut surfel_state,
-                self.bindless_descriptor_set,
-                &tlas,
-                &mut final_post_input,
-            );
+        if let Some(tlas) = tlas.as_ref() {
+            if matches!(self.debug_mode, RenderDebugMode::WorldRadianceCache) {
+                wrc.see_through(
+                    rg,
+                    &sky_cube,
+                    &mut surfel_state,
+                    self.bindless_descriptor_set,
+                    tlas,
+                    &mut final_post_input,
+                );
+            }
         }
 
         let post_processed = post_process(
@@ -251,9 +277,11 @@ impl WorldRenderer {
             rg::imageops::clear_color(rg, &mut accum_img, [0.0, 0.0, 0.0, 0.0]);
         }
 
-        let tlas = self.prepare_top_level_acceleration(rg);
+        if rg.device().ray_tracing_enabled() {
+            let tlas = self.prepare_top_level_acceleration(rg);
 
-        reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
+            reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
+        }
 
         post_process(
             rg,
