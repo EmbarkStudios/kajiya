@@ -10,7 +10,7 @@
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
-#include "../surfel_gi/bindings.hlsl"
+#include "../ircache/bindings.hlsl"
 #include "rtr_settings.hlsl"
 
 #define RESTIR_TEMPORAL_M_CLAMP 8.0

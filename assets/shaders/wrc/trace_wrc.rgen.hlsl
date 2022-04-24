@@ -13,18 +13,18 @@
 #include "../inc/sh.hlsl"
 #include "../inc/quasi_random.hlsl"
 #include "../inc/lights/triangle.hlsl"
-#include "../surfel_gi/bindings.hlsl"
+#include "../ircache/bindings.hlsl"
 #include "wrc_settings.hlsl"
 
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6, 7, 8, 9)
+DEFINE_IRCACHE_BINDINGS(1, 2, 3, 4, 5, 6, 7, 8, 9)
 [[vk::binding(10)]] RWTexture2D<float4> radiance_atlas_out_tex;
 
-#define SURFEL_LOOKUP_DONT_KEEP_ALIVE   // TODO
-#include "../surfel_gi/lookup.hlsl"
+#define IRCACHE_LOOKUP_DONT_KEEP_ALIVE   // TODO
+#include "../ircache/lookup.hlsl"
 #include "../inc/sun.hlsl"
 
 // Rough-smooth-rough specular paths are a major source of fireflies.
@@ -33,7 +33,7 @@ DEFINE_SURFEL_GI_BINDINGS(1, 2, 3, 4, 5, 6, 7, 8, 9)
 static const bool FIREFLY_SUPPRESSION = true;
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
-static const bool USE_SURFEL_GI = true;
+static const bool USE_IRCACHE = true;
 static const bool USE_BLEND_OUTPUT = true;
 static const bool USE_FLICKER_SUPPRESSION = true;
 static const uint TARGET_SAMPLE_COUNT = 8;
@@ -193,9 +193,9 @@ void main() {
                     }
                 }
 
-                if (USE_SURFEL_GI) {
+                if (USE_IRCACHE) {
                     const uint rank = 0;    // TODO: how the heck...
-                    irradiance_sum += lookup_surfel_gi(outgoing_ray.Origin, primary_hit.position, gbuffer.normal, rank, rng) * gbuffer.albedo;
+                    irradiance_sum += lookup_irradiance_cache(outgoing_ray.Origin, primary_hit.position, gbuffer.normal, rank, rng) * gbuffer.albedo;
                 }
                 
                 hit_count += 1.0;

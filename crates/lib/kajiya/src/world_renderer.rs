@@ -7,8 +7,8 @@ use crate::{
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        lighting::LightingRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
-        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, surfel_gi::SurfelGiRenderer,
+        ircache::IrcacheRenderer, lighting::LightingRenderer, raster_meshes::*,
+        rtdgi::RtdgiRenderer, rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*,
         taa::TaaRenderer,
     },
 };
@@ -28,7 +28,7 @@ use parking_lot::Mutex;
 use rg::renderer::FrameConstantsLayout;
 use rust_shaders_shared::{
     camera::CameraMatrices,
-    frame_constants::{FrameConstants, RcacheCascadeConstants, RCACHE_CASCADE_COUNT},
+    frame_constants::{FrameConstants, IrcacheCascadeConstants, IRCACHE_CASCADE_COUNT},
     view_constants::ViewConstants,
 };
 use std::{collections::HashMap, mem::size_of, sync::Arc};
@@ -168,7 +168,7 @@ pub struct WorldRenderer {
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub lighting: LightingRenderer,
-    pub surfel_gi: SurfelGiRenderer,
+    pub ircache: IrcacheRenderer,
     pub rtdgi: RtdgiRenderer,
     pub taa: TaaRenderer,
     pub shadow_denoise: ShadowDenoiseRenderer,
@@ -383,7 +383,7 @@ impl WorldRenderer {
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref())?,
             lighting: LightingRenderer::new(),
-            surfel_gi: SurfelGiRenderer::new(backend.device.as_ref()),
+            ircache: IrcacheRenderer::new(backend.device.as_ref()),
             rtdgi: RtdgiRenderer::new(),
             taa: TaaRenderer::new(),
             shadow_denoise: Default::default(),
@@ -911,15 +911,15 @@ impl WorldRenderer {
 
         // Initialize constants for the maximum allowed cascade count, even if we're not using them,
         // so that we don't need to change the layout of frame constants up to this limit.
-        let mut rcache_cascades: [RcacheCascadeConstants; RCACHE_CASCADE_COUNT] =
+        let mut ircache_cascades: [IrcacheCascadeConstants; IRCACHE_CASCADE_COUNT] =
             Default::default();
 
-        self.surfel_gi
+        self.ircache
             .update_eye_position(view_constants.eye_position());
 
         // Actually set the cascade constants we're using
-        for (i, c) in self.surfel_gi.constants().iter().copied().enumerate() {
-            rcache_cascades[i] = c;
+        for (i, c) in self.ircache.constants().iter().copied().enumerate() {
+            ircache_cascades[i] = c;
         }
 
         let real_sun_angular_radius = 0.53f32.to_radians() * 0.5;
@@ -939,7 +939,7 @@ impl WorldRenderer {
             pad1: 0,
             pad2: 0,
 
-            rcache_cascades,
+            ircache_cascades,
         });
 
         let instance_dynamic_parameters_offset = dynamic_constants

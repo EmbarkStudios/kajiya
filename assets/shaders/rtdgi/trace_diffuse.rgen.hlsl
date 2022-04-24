@@ -11,14 +11,14 @@
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
-#include "../surfel_gi/bindings.hlsl"
+#include "../ircache/bindings.hlsl"
 #include "../wrc/bindings.hlsl"
 #include "restir_settings.hlsl"
 
 // Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
 #define USE_SOFT_SHADOWS 0
 
-#define USE_SURFEL_GI 1
+#define USE_IRCACHE 1
 #define USE_WORLD_RADIANCE_CACHE 0
 
 #define ROUGHNESS_BIAS 0.5
@@ -38,7 +38,7 @@
 [[vk::binding(3)]] Texture2D<float4> reservoir_ray_history_tex;
 [[vk::binding(4)]] Texture2D<float> ssao_tex;
 [[vk::binding(5)]] Texture2D<float4> reprojection_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13, 14)
+DEFINE_IRCACHE_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13, 14)
 DEFINE_WRC_BINDINGS(15)
 [[vk::binding(16)]] TextureCube<float4> sky_cube_tex;
 [[vk::binding(17)]] Texture2D<float4> irradiance_history_tex;
@@ -50,10 +50,10 @@ DEFINE_WRC_BINDINGS(15)
     float4 gbuffer_tex_size;
 };
 
-//#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
-//#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.125
+//#define IRCACHE_LOOKUP_DONT_KEEP_ALIVE
+//#define IRCACHE_LOOKUP_KEEP_ALIVE_PROB 0.125
 
-#include "../surfel_gi/lookup.hlsl"
+#include "../ircache/lookup.hlsl"
 #include "../wrc/lookup.hlsl"
 #include "candidate_ray_dir.hlsl"
 
@@ -228,8 +228,8 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
                 }
             }
 
-            if (USE_SURFEL_GI) {
-                float3 gi = lookup_surfel_gi(
+            if (USE_IRCACHE) {
+                float3 gi = lookup_irradiance_cache(
                     outgoing_ray.Origin,
                     primary_hit.position,
                     gbuffer.normal,

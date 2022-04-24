@@ -9,32 +9,28 @@
 
 #define VISUALIZE_ENTRIES 1
 #define VISUALIZE_CASCADES 0
-#define VISUALIZE_SURFEL_AGE 0
 #define USE_GEOMETRIC_NORMALS 1
 #define USE_DEBUG_OUT 1
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> geometric_normals_tex;
-[[vk::binding(3)]] RWByteAddressBuffer surf_rcache_meta_buf;
-[[vk::binding(4)]] RWByteAddressBuffer surf_rcache_grid_meta_buf;
-[[vk::binding(5)]] RWStructuredBuffer<uint> surf_rcache_entry_cell_buf;
-[[vk::binding(6)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
-[[vk::binding(7)]] StructuredBuffer<float4> surf_rcache_irradiance_buf;
+[[vk::binding(3)]] RWByteAddressBuffer ircache_meta_buf;
+[[vk::binding(4)]] RWByteAddressBuffer ircache_grid_meta_buf;
+[[vk::binding(5)]] RWStructuredBuffer<uint> ircache_entry_cell_buf;
+[[vk::binding(6)]] StructuredBuffer<VertexPacked> ircache_spatial_buf;
+[[vk::binding(7)]] StructuredBuffer<float4> ircache_irradiance_buf;
 [[vk::binding(8)]] RWTexture2D<float4> debug_out_tex;
-[[vk::binding(9)]] RWStructuredBuffer<uint> surf_rcache_pool_buf;
-[[vk::binding(10)]] RWStructuredBuffer<uint> surf_rcache_life_buf;
-[[vk::binding(11)]] RWStructuredBuffer<VertexPacked> surf_rcache_reposition_proposal_buf;
-[[vk::binding(12)]] RWStructuredBuffer<uint> surf_rcache_reposition_proposal_count_buf;
+[[vk::binding(9)]] RWStructuredBuffer<uint> ircache_pool_buf;
+[[vk::binding(10)]] RWStructuredBuffer<uint> ircache_life_buf;
+[[vk::binding(11)]] RWStructuredBuffer<VertexPacked> ircache_reposition_proposal_buf;
+[[vk::binding(12)]] RWStructuredBuffer<uint> ircache_reposition_proposal_count_buf;
 
 [[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
-// TODO: figure out which one actually works better
-#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
-//#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.05
-
+#define IRCACHE_LOOKUP_DONT_KEEP_ALIVE
 #include "lookup.hlsl"
 
 groupshared uint gs_px_min_score_loc_packed;
@@ -94,18 +90,18 @@ void main(
     const float3 prev_eye_pos = get_prev_eye_position();
 
     if (USE_DEBUG_OUT && px.y < 50) {
-        const uint surfel_count = surf_rcache_meta_buf.Load(SURFEL_META_ENTRY_COUNT);
-        const uint surfel_alloc_count = surf_rcache_meta_buf.Load(SURFEL_META_ALLOC_COUNT);
+        const uint entry_count = ircache_meta_buf.Load(IRCACHE_META_ENTRY_COUNT);
+        const uint entry_alloc_count = ircache_meta_buf.Load(IRCACHE_META_ALLOC_COUNT);
         
         const float u = float(px.x + 0.5) * gbuffer_tex_size.z;
 
         if (px.y < 25) {
-            if (surfel_alloc_count > u * 256 * 1024) {
+            if (entry_alloc_count > u * 256 * 1024) {
                 debug_out_tex[px] = float4(0.05, 1, .2, 1);
                 return;
             }
         } else {
-            if (surfel_count > u * 256 * 1024) {
+            if (entry_count > u * 256 * 1024) {
                 debug_out_tex[px] = float4(1, 0.1, 0.05, 1);
                 return;
             }
@@ -149,7 +145,7 @@ void main(
         const float3 shading_normal = gbuffer.normal;
     #endif
 
-    float3 debug_color = lookup_surfel_gi(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
+    float3 debug_color = lookup_irradiance_cache(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
 
     #if USE_DEBUG_OUT
         debug_out_tex[px] = float4(debug_color, 1);

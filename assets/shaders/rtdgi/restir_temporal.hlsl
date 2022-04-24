@@ -10,7 +10,7 @@
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../inc/reservoir.hlsl"
-#include "../surfel_gi/bindings.hlsl"
+#include "../ircache/bindings.hlsl"
 #include "near_field_settings.hlsl"
 #include "restir_settings.hlsl"
 

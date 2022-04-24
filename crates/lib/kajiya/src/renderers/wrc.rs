@@ -5,7 +5,7 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg, SimpleRenderPass};
 use rg::BindToSimpleRenderPass;
 
-use super::surfel_gi::SurfelGiRenderState;
+use super::ircache::IrcacheRenderState;
 
 // Must match `wrc_settings.hlsl`
 const WRC_GRID_DIMS: [usize; 3] = [8, 3, 8];
@@ -27,7 +27,7 @@ impl<'rg, RgPipelineHandle> BindToSimpleRenderPass<'rg, RgPipelineHandle> for Wr
 
 pub fn wrc_trace(
     rg: &mut rg::TemporalRenderGraph,
-    surfel_gi: &mut SurfelGiRenderState,
+    ircache: &mut IrcacheRenderState,
     sky_cube: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
     tlas: &rg::Handle<RayTracingAcceleration>,
@@ -53,7 +53,7 @@ pub fn wrc_trace(
         [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
     )
     .read(sky_cube)
-    .bind_mut(surfel_gi)
+    .bind_mut(ircache)
     .write(&mut radiance_atlas)
     .raw_descriptor_set(1, bindless_descriptor_set)
     .trace_rays(tlas, [total_pixel_count as _, 1, 1]);
@@ -72,7 +72,7 @@ impl WrcRenderState {
         &self,
         rg: &mut rg::TemporalRenderGraph,
         sky_cube: &rg::Handle<Image>,
-        surfel_gi: &mut SurfelGiRenderState,
+        ircache: &mut IrcacheRenderState,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         output_img: &mut rg::Handle<Image>,
@@ -88,7 +88,7 @@ impl WrcRenderState {
         )
         .bind(self)
         .read(sky_cube)
-        .bind_mut(surfel_gi)
+        .bind_mut(ircache)
         .write(output_img)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, output_img.desc().extent);

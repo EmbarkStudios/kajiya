@@ -1,11 +1,11 @@
 use crate::view_constants::ViewConstants;
 use macaw::{IVec4, Vec4};
 
-pub const RCACHE_CASCADE_COUNT: usize = 12;
+pub const IRCACHE_CASCADE_COUNT: usize = 12;
 
 #[repr(C, align(16))]
 #[derive(Copy, Clone, Default)]
-pub struct RcacheCascadeConstants {
+pub struct IrcacheCascadeConstants {
     pub origin: IVec4,
     pub voxels_scrolled_this_frame: IVec4,
 }
@@ -30,5 +30,5 @@ pub struct FrameConstants {
     pub pad1: u32,
     pub pad2: u32,
 
-    pub rcache_cascades: [RcacheCascadeConstants; RCACHE_CASCADE_COUNT],
+    pub ircache_cascades: [IrcacheCascadeConstants; IRCACHE_CASCADE_COUNT],
 }

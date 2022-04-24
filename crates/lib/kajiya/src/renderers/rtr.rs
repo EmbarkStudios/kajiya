@@ -9,7 +9,7 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{
-    surfel_gi::SurfelGiRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
+    ircache::IrcacheRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
 };
 
 use blue_noise_sampler::spp64::*;
@@ -91,7 +91,7 @@ impl RtrRenderer {
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         rtdgi: &rg::Handle<Image>,
-        surfel_gi: &mut SurfelGiRenderState,
+        ircache: &mut IrcacheRenderState,
         wrc: &WrcRenderState,
     ) -> TracedRtr {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
@@ -140,7 +140,7 @@ impl RtrRenderer {
         .read(&sobol_buf)
         .read(rtdgi)
         .read(sky_cube)
-        .bind_mut(surfel_gi)
+        .bind_mut(ircache)
         .bind(wrc)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)

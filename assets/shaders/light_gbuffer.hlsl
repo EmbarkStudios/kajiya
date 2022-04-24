@@ -9,7 +9,7 @@
 #include "inc/bindless_textures.hlsl"
 #include "rtr/rtr_settings.hlsl"
 #include "wrc/wrc_settings.hlsl"
-#include "surfel_gi/bindings.hlsl"
+#include "ircache/bindings.hlsl"
 #include "wrc/bindings.hlsl"
 #include "rtdgi/near_field_settings.hlsl"
 
@@ -29,7 +29,7 @@
 [[vk::binding(3)]] Texture2D<float4> ssgi_tex;  // TODO: nuke
 [[vk::binding(4)]] Texture2D<float4> rtr_tex;
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-DEFINE_SURFEL_GI_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13, 14)
+DEFINE_IRCACHE_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13, 14)
 DEFINE_WRC_BINDINGS(15)
 [[vk::binding(16)]] RWTexture2D<float4> temporal_output_tex;
 [[vk::binding(17)]] RWTexture2D<float4> output_tex;
@@ -41,8 +41,8 @@ DEFINE_WRC_BINDINGS(15)
     uint debug_show_wrc;
 };
 
-#define SURFEL_LOOKUP_DONT_KEEP_ALIVE
-#include "surfel_gi/lookup.hlsl"
+#define IRCACHE_LOOKUP_DONT_KEEP_ALIVE
+#include "ircache/lookup.hlsl"
 #include "wrc/lookup.hlsl"
 #include "wrc/wrc_intersect_probe_grid.hlsl"
 
@@ -51,7 +51,7 @@ DEFINE_WRC_BINDINGS(15)
 #define SHADING_MODE_DIFFUSE_GI 2
 #define SHADING_MODE_REFLECTIONS 3
 #define SHADING_MODE_RTX_OFF 4
-#define SHADING_MODE_SURFEL_GI 5
+#define SHADING_MODE_IRCACHE 5
 
 #include "inc/atmosphere.hlsl"
 #include "inc/sun.hlsl"
@@ -217,8 +217,8 @@ void main(in uint2 px : SV_DispatchThreadID) {
         output = gi_irradiance;
     }
 
-    if (debug_shading_mode == SHADING_MODE_SURFEL_GI) {
-        output = lookup_surfel_gi(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
+    if (debug_shading_mode == SHADING_MODE_IRCACHE) {
+        output = lookup_irradiance_cache(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
     }
 
     //output = gbuffer.albedo;

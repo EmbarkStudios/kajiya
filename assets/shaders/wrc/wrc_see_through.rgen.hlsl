@@ -14,22 +14,22 @@
 #include "../inc/lights/triangle.hlsl"
 
 #include "bindings.hlsl"
-#include "../surfel_gi/bindings.hlsl"
+#include "../ircache/bindings.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 DEFINE_WRC_BINDINGS(0)
 [[vk::binding(1)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(2, 3, 4, 5, 6, 7, 8, 9, 10)
+DEFINE_IRCACHE_BINDINGS(2, 3, 4, 5, 6, 7, 8, 9, 10)
 [[vk::binding(11)]] RWTexture2D<float4> output_tex;
 
 #include "lookup.hlsl"
-#include "../surfel_gi/lookup.hlsl"
+#include "../ircache/lookup.hlsl"
 
 static const float SKY_DIST = 1e4;
 
 #define ROUGHNESS_BIAS 0.5
-#define USE_SURFEL_GI 1
+#define USE_IRCACHE 1
 
 static const uint MAX_PATH_LENGTH = 30;
 static const uint RUSSIAN_ROULETTE_START_PATH_LENGTH = 3;
@@ -167,8 +167,8 @@ void main() {
                 }
             }
 
-            if (USE_SURFEL_GI) {
-                float3 gi = lookup_surfel_gi(
+            if (USE_IRCACHE) {
+                float3 gi = lookup_irradiance_cache(
                     outgoing_ray.Origin,
                     primary_hit.position,
                     gbuffer.normal,

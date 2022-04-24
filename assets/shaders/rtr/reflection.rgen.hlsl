@@ -10,7 +10,7 @@
 #include "../inc/atmosphere.hlsl"
 #include "../inc/sun.hlsl"
 #include "../inc/lights/triangle.hlsl"
-#include "../surfel_gi/bindings.hlsl"
+#include "../ircache/bindings.hlsl"
 #include "../wrc/bindings.hlsl"
 #include "rtr_settings.hlsl"
 
@@ -24,7 +24,7 @@
 #define USE_WORLD_RADIANCE_CACHE 0
 #define LOWEST_ROUGHNESS_FOR_RADIANCE_CACHE 0.5
 
-#define USE_SURFEL_GI 1
+#define USE_IRCACHE 1
 
 // Note: should be off when using dedicated specular lighting passes in addition to RTR
 #define USE_EMISSIVE 1
@@ -57,7 +57,7 @@
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(2, 3, 4)
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
 [[vk::binding(6)]] TextureCube<float4> sky_cube_tex;
-DEFINE_SURFEL_GI_BINDINGS(7, 8, 9, 10, 11, 12, 13, 14, 15)
+DEFINE_IRCACHE_BINDINGS(7, 8, 9, 10, 11, 12, 13, 14, 15)
 DEFINE_WRC_BINDINGS(16)
 [[vk::binding(17)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(18)]] RWTexture2D<float4> out1_tex;
@@ -66,8 +66,8 @@ DEFINE_WRC_BINDINGS(16)
     float4 gbuffer_tex_size;
 };
 
-//#define SURFEL_LOOKUP_KEEP_ALIVE_PROB 0.125
-#include "../surfel_gi/lookup.hlsl"
+//#define IRCACHE_LOOKUP_KEEP_ALIVE_PROB 0.125
+#include "../ircache/lookup.hlsl"
 #include "../wrc/lookup.hlsl"
 
 // Large enough to mean "far away" and small enough so that
@@ -305,8 +305,8 @@ void main() {
                         }
                     }
 
-                    if (USE_SURFEL_GI) {
-                        float3 gi = lookup_surfel_gi(
+                    if (USE_IRCACHE) {
+                        float3 gi = lookup_irradiance_cache(
                             outgoing_ray.Origin,
                             primary_hit.position,
                             gbuffer.normal,

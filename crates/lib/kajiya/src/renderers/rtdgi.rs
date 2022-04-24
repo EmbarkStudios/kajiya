@@ -5,7 +5,7 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{
-    surfel_gi::SurfelGiRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
+    ircache::IrcacheRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
 };
 
 pub struct RtdgiRenderer {
@@ -130,7 +130,7 @@ impl RtdgiRenderer {
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
-        surfel_gi: &mut SurfelGiRenderState,
+        ircache: &mut IrcacheRenderState,
         wrc: &WrcRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
         ssao_img: &rg::Handle<Image>,
@@ -251,7 +251,7 @@ impl RtdgiRenderer {
             .read(&ray_history_tex)
             .read(ssao_img)
             .read(reprojection_map)
-            .bind_mut(surfel_gi)
+            .bind_mut(ircache)
             .bind(wrc)
             .read(sky_cube)
             .read(&irradiance_history_tex)

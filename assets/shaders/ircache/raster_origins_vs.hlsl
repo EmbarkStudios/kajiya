@@ -1,12 +1,12 @@
 #include "../inc/frame_constants.hlsl"
 #include "../inc/math.hlsl"
 #include "../inc/mesh.hlsl" // for VertexPacked
-#include "surfel_constants.hlsl"
+#include "ircache_constants.hlsl"
 
-[[vk::binding(0)]] ByteAddressBuffer surf_rcache_meta_buf;
-[[vk::binding(1)]] ByteAddressBuffer surf_rcache_grid_meta_buf;
-[[vk::binding(2)]] StructuredBuffer<uint> surf_rcache_life_buf;
-[[vk::binding(3)]] StructuredBuffer<VertexPacked> surf_rcache_spatial_buf;
+[[vk::binding(0)]] ByteAddressBuffer ircache_meta_buf;
+[[vk::binding(1)]] ByteAddressBuffer ircache_grid_meta_buf;
+[[vk::binding(2)]] StructuredBuffer<uint> ircache_life_buf;
+[[vk::binding(3)]] StructuredBuffer<VertexPacked> ircache_spatial_buf;
 
 struct VsOut {
 	float4 position: SV_Position;
@@ -30,9 +30,9 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     const uint dir_idx = (vid / 6) % 6;
     const uint entry_idx = vid / 6 / 6;
 
-    const float3 cube_center = unpack_vertex(surf_rcache_spatial_buf[entry_idx]).position;
+    const float3 cube_center = unpack_vertex(ircache_spatial_buf[entry_idx]).position;
 
-    if (is_surfel_life_valid(surf_rcache_life_buf[entry_idx])) {
+    if (is_ircache_entry_life_valid(ircache_life_buf[entry_idx])) {
         static const float2 face_verts_2d[6] = {
             float2(-1, -1),
             float2(1, 1),

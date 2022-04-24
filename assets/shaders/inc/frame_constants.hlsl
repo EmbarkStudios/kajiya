@@ -33,7 +33,7 @@ struct GiCascadeConstants {
     uint2 pad;   
 };
 
-struct RcacheCascadeConstants {
+struct IrcacheCascadeConstants {
     int4 origin;
     int4 voxels_scrolled_this_frame;
 };
@@ -56,7 +56,7 @@ struct FrameConstants {
 	uint pad1;
 	uint pad2;
 
-    RcacheCascadeConstants rcache_cascades[12];
+    IrcacheCascadeConstants ircache_cascades[12];
 };
 
 [[vk::binding(0, 2)]] ConstantBuffer<FrameConstants> frame_constants;

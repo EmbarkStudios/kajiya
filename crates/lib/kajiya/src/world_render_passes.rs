@@ -77,12 +77,12 @@ impl WorldRenderer {
             (gbuffer_depth, velocity_img)
         };
 
-        let mut surfel_state = self.surfel_gi.allocate_surfels(rg, &mut gbuffer_depth);
+        let mut ircache_state = self.ircache.prepare(rg, &mut gbuffer_depth);
 
         let wrc = if let Some(tlas) = tlas.as_ref() {
             crate::renderers::wrc::wrc_trace(
                 rg,
-                &mut surfel_state,
+                &mut ircache_state,
                 &sky_cube,
                 self.bindless_descriptor_set,
                 tlas,
@@ -92,7 +92,7 @@ impl WorldRenderer {
         };
 
         if let Some(tlas) = tlas.as_ref() {
-            surfel_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc);
+            ircache_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc);
         }
 
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
@@ -130,7 +130,7 @@ impl WorldRenderer {
                 &reprojection_map,
                 &sky_cube,
                 self.bindless_descriptor_set,
-                &mut surfel_state,
+                &mut ircache_state,
                 &wrc,
                 &tlas,
                 &ssgi_tex,
@@ -155,7 +155,7 @@ impl WorldRenderer {
                 self.bindless_descriptor_set,
                 &tlas,
                 &rtdgi,
-                &mut surfel_state,
+                &mut ircache_state,
                 &wrc,
             )
         } else {
@@ -189,7 +189,7 @@ impl WorldRenderer {
             &ssgi_tex,
             &rtr,
             &rtdgi,
-            &mut surfel_state,
+            &mut ircache_state,
             &wrc,
             &mut accum_img,
             &mut debug_out_tex,
@@ -237,7 +237,7 @@ impl WorldRenderer {
                 wrc.see_through(
                     rg,
                     &sky_cube,
-                    &mut surfel_state,
+                    &mut ircache_state,
                     self.bindless_descriptor_set,
                     tlas,
                     &mut final_post_input,
