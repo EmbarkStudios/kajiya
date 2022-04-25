@@ -217,10 +217,10 @@ impl DynamicExposureState {
 
         let ev = ev.clamp(-16.0, 16.0);
 
-        let t_fast = 1.0 - (-12.0 * dt).exp();
+        let t_fast = 1.0 - (-2.0 * dt).exp();
         self.ev_fast = (ev - self.ev_fast) * t_fast + self.ev_fast;
 
-        let t_slow = 1.0 - (-0.75 * dt).exp();
+        let t_slow = 1.0 - (-0.5 * dt).exp();
         self.ev_slow = (ev - self.ev_slow) * t_slow + self.ev_slow;
     }
 }
