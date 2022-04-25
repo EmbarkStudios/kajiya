@@ -202,7 +202,7 @@ impl IrcacheRenderer {
                 "ircache.reposition_proposal_count_buf",
                 size_of::<u32>() * MAX_ENTRIES,
             ),
-            debug_out: rg.create(gbuffer_desc.format(vk::Format::R32G32B32A32_SFLOAT)),
+            debug_out: rg.create(gbuffer_desc.format(vk::Format::R16G16B16A16_SFLOAT)),
         };
 
         if 1 == self.parity {
@@ -248,7 +248,7 @@ impl IrcacheRenderer {
             self.parity = (self.parity + 1) % 2;
         }
 
-        SimpleRenderPass::new_compute(
+        /*SimpleRenderPass::new_compute(
             rg.add_pass("debug ircache"),
             "/shaders/ircache/ircache_draw_debug.hlsl",
         )
@@ -268,7 +268,7 @@ impl IrcacheRenderer {
         .constants(gbuffer_desc.extent_inv_extent_2d())
         .dispatch(gbuffer_desc.extent);
 
-        //state.draw_trace_origins(rg, self.debug_render_pass.clone(), gbuffer_depth);
+        state.draw_trace_origins(rg, self.debug_render_pass.clone(), gbuffer_depth);*/
 
         let indirect_args_buf = {
             let mut indirect_args_buf = rg.create(BufferDesc::new_gpu_only(
