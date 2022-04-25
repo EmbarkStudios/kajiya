@@ -361,7 +361,13 @@ void main() {
 
         const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
 
-        const float4 prev_aux = ircache_aux_buf[output_idx];
+        const float4 prev_aux = ircache_aux_buf[output_idx]
+            // TODO: not correct unless we process every cell just once
+            * float4(
+                frame_constants.pre_exposure_delta,
+                frame_constants.pre_exposure_delta * frame_constants.pre_exposure_delta,
+                1, 1
+            );
         const float2 sample_ex_ex2 = float2(new_lum, new_lum * new_lum);
 
         const float2 prev_ex_ex2 = should_reset ? sample_ex_ex2 : prev_aux.xy;
@@ -378,7 +384,11 @@ void main() {
         const float lum_dev = sqrt(lum_variance);
         const float quick_lum_ex = ex_ex2.x;
 
-        const float4 prev_value_and_count = ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2];
+        const float4 prev_value_and_count =
+            // TODO: not correct unless we process every cell just once
+            ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
+            * float4((frame_constants.pre_exposure_delta).xxx, 1);
+
         const float bucket_sample_count = min(1 + prev_value_and_count.w, BUCKET_SAMPLE_COUNT);
 
         const float3 prev_value = prev_value_and_count.rgb;
@@ -431,7 +441,9 @@ void main() {
     for (uint basis_i = 0; basis_i < IRCACHE_IRRADIANCE_STRIDE; ++basis_i) {
         float prev_sample_count = TARGET_SAMPLE_COUNT;
         const float4 new_value = contribution_sum.sh_rgb[basis_i];
-        float4 prev_value = ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i];
+        float4 prev_value =
+            ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i]
+            * frame_constants.pre_exposure_delta;
 
         if (should_reset) {
             prev_value = new_value;

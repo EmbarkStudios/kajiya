@@ -21,7 +21,7 @@
 
 float4 fetch_history(float2 uv) {
     float4 h = history_tex.SampleLevel(sampler_lnc, uv, 0);
-	return float4(decode_rgb(h.xyz), h.w);
+	return float4(decode_rgb(h.xyz * frame_constants.pre_exposure_delta), h.w);
 }
 
 struct HistoryRemap {
@@ -31,7 +31,7 @@ struct HistoryRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(decode_rgb(v.rgb), v.a);
+        return float4(decode_rgb(v.rgb * frame_constants.pre_exposure_delta), v.a);
     }
 };
 

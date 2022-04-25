@@ -107,7 +107,7 @@ pub fn post_process(
     input: &rg::Handle<Image>,
     //debug_input: &rg::Handle<Image>,
     bindless_descriptor_set: vk::DescriptorSet,
-    ev_shift: f32,
+    post_exposure_mult: f32,
 ) -> rg::Handle<Image> {
     let blur_pyramid = blur_pyramid(rg, input);
     let rev_blur_pyramid = rev_blur_pyramid(rg, &blur_pyramid);
@@ -128,7 +128,7 @@ pub fn post_process(
         //.read(&blurred_luminance)
         .write(&mut output)
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .constants((output.desc().extent_inv_extent_2d(), ev_shift))
+        .constants((output.desc().extent_inv_extent_2d(), post_exposure_mult))
         .dispatch(output.desc().extent);
 
     output

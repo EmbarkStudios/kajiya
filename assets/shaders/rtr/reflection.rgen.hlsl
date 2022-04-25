@@ -257,7 +257,8 @@ void main() {
 
                 if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
                     const float3 reprojected_radiance =
-                        rtdgi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0).rgb;
+                        rtdgi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0).rgb
+                        * frame_constants.pre_exposure_delta;
 
                     total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
                 } else {

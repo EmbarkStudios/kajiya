@@ -159,7 +159,8 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
         emissive = 1.0.xxx
             * emissive_tex.tex.SampleLevel(sampler_llr, emissive_uv, emissive_tex.lod).rgb
             * float3(material.emissive)
-            * instance_dynamic_parameters_dyn[InstanceIndex()].emissive_multiplier;
+            * instance_dynamic_parameters_dyn[InstanceIndex()].emissive_multiplier
+            * frame_constants.pre_exposure;
     }
 
     //albedo = pow(albedo, 2);

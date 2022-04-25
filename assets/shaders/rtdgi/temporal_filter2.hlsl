@@ -46,7 +46,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     
     float4 center = linear_to_working(input_tex[px]);
     float4 reproj = reprojection_tex[px];
-    float4 history = linear_to_working(history_tex[px]);
+
+    const float4 history_mult = float4((frame_constants.pre_exposure_delta).xxx, 1);
+    float4 history = linear_to_working(history_tex[px] * history_mult);
 
     //output_tex[px] = center;
     //return;
@@ -68,7 +70,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     {for (int y = -k; y <= k; ++y) {
         for (int x = -k; x <= k; ++x) {
             float4 neigh = linear_to_working(input_tex[px + int2(x, y)]);
-            float4 hist_neigh = linear_to_working(history_tex[px + int2(x, y)]);
+            float4 hist_neigh = linear_to_working(history_tex[px + int2(x, y)] * history_mult);
 
             float neigh_luma = working_luma(neigh.rgb);
             float hist_luma = working_luma(hist_neigh.rgb);
@@ -95,7 +97,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     hist_vsum2 /= wsum;
     //dev_sum /= wsum;
 
-    const float2 moments_history = variance_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+    const float2 moments_history =
+        variance_history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0)
+        * float2(frame_constants.pre_exposure_delta, frame_constants.pre_exposure_delta * frame_constants.pre_exposure_delta);
+        
     //const float center_luma = working_luma(center.rgb);
     const float center_luma = working_luma(center.rgb) + (hist_vsum - working_luma(ex.rgb));// - 0.5 * working_luma(control_variate.rgb));
     const float2 current_moments = float2(center_luma, center_luma * center_luma);

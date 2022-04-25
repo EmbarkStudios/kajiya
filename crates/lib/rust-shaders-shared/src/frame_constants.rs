@@ -26,9 +26,9 @@ pub struct FrameConstants {
     pub sky_ambient: Vec4,
 
     pub world_gi_scale: f32,
-    pub pad0: u32,
-    pub pad1: u32,
-    pub pad2: u32,
+    pub pre_exposure: f32,
+    pub pre_exposure_prev: f32,
+    pub pre_exposure_delta: f32,
 
     pub ircache_cascades: [IrcacheCascadeConstants; IRCACHE_CASCADE_COUNT],
 }

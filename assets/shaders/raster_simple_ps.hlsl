@@ -95,7 +95,8 @@ PsOut main(PsIn ps) {
     float3 emissive = 1.0.xxx
         * emissive_tex.SampleBias(sampler_llr, emissive_uv, -0.5).rgb
         * float3(material.emissive)
-        * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier;
+        * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier
+        * frame_constants.pre_exposure;
 
     //albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
 

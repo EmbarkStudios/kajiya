@@ -17,7 +17,7 @@ static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
 [[vk::binding(3)]] RWTexture2D<float4> output_tex;
 [[vk::binding(4)]] cbuffer _ {
     float4 output_tex_size;
-    float ev_shift;
+    float input_multiplier;
 };
 
 #define USE_GRADE 0
@@ -107,7 +107,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     col = max(0.0, col);
     //col = col * (1.0 - debug_input_tex[px].a) + debug_input_tex[px].rgb;
 
-    col *= exp2(ev_shift);
+    col *= input_multiplier;
 
 #if USE_VIGNETTE
     col *= exp(-2 * pow(length(uv - 0.5), 3));

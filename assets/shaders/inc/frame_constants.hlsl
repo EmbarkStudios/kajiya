@@ -52,9 +52,9 @@ struct FrameConstants {
     float4 sky_ambient;
 
     float world_gi_scale;
-	uint pad0;
-	uint pad1;
-	uint pad2;
+    float pre_exposure;
+    float pre_exposure_prev;
+    float pre_exposure_delta;
 
     IrcacheCascadeConstants ircache_cascades[12];
 };

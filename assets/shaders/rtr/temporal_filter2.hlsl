@@ -69,24 +69,26 @@ void main(uint2 px: SV_DispatchThreadID) {
     const uint quad_reproj_valid_packed = uint(reproj.z * 15.0 + 0.5);
     const float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
 
+    const float4 history_mult = float4((frame_constants.pre_exposure_delta).xxx, 1);
+
     float4 history0 = 0.0;
     float history0_valid = 1;
     #if 0
-        history0 = linear_to_working(history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0));
+        history0 = linear_to_working(history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0) * history_mult);
     #else
         if (0 == quad_reproj_valid_packed) {
             // Everything invalid
             history0_valid = 0;
         } else if (15 == quad_reproj_valid_packed) {
-            history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
+            history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0) * history_mult;
         } else {
             float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
 
             const Bilinear bilinear = get_bilinear_filter(uv + reproj.xy, output_tex_size.xy);
-            float4 s00 = history_tex[int2(bilinear.origin) + int2(0, 0)];
-            float4 s10 = history_tex[int2(bilinear.origin) + int2(1, 0)];
-            float4 s01 = history_tex[int2(bilinear.origin) + int2(0, 1)];
-            float4 s11 = history_tex[int2(bilinear.origin) + int2(1, 1)];
+            float4 s00 = history_tex[int2(bilinear.origin) + int2(0, 0)] * history_mult;
+            float4 s10 = history_tex[int2(bilinear.origin) + int2(1, 0)] * history_mult;
+            float4 s01 = history_tex[int2(bilinear.origin) + int2(0, 1)] * history_mult;
+            float4 s11 = history_tex[int2(bilinear.origin) + int2(1, 1)] * history_mult;
             float4 weights = get_bilinear_custom_weights(bilinear, quad_reproj_valid);
 
             if (dot(weights, 1.0) > 1e-5) {
@@ -99,7 +101,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         history0 = linear_to_working(history0);
     #endif
 
-    float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0));
+    float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0) * history_mult);
     float history1_valid = quad_reproj_valid_packed == 15;
 
     float4 history0_reproj = reprojection_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);

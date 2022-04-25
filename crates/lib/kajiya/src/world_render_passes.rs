@@ -250,7 +250,7 @@ impl WorldRenderer {
             &final_post_input,
             //&anti_aliased,
             self.bindless_descriptor_set,
-            self.ev_shift,
+            self.exposure_state().post_mult,
         );
 
         rg.debugged_resource.take().unwrap_or(post_processed)
@@ -288,7 +288,7 @@ impl WorldRenderer {
             &accum_img,
             //&accum_img, // hack
             self.bindless_descriptor_set,
-            self.ev_shift,
+            self.exposure_state().post_mult,
         )
     }
 }

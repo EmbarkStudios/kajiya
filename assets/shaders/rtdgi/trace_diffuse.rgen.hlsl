@@ -142,7 +142,8 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
         float4 reprojected_radiance = 0;
         if (is_on_screen) {
             reprojected_radiance =
-                reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
+                reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)
+                * frame_constants.pre_exposure_delta;
 
             // Check if the temporal reprojection is valid.
             is_on_screen = reprojected_radiance.w > 0;

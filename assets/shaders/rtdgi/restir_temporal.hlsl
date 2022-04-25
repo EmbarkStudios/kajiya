@@ -326,7 +326,9 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            const float4 prev_irrad = irradiance_history_tex[spx];
+            const float4 prev_irrad =
+                irradiance_history_tex[spx]
+                * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
             // From the ReSTIR paper:
             // With temporal reuse, the number of candidates M contributing to the

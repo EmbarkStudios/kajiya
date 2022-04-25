@@ -21,6 +21,7 @@
             return
                 20.0 *
                 frame_constants.sun_color_multiplier.rgb *
+                frame_constants.pre_exposure *
                 Absorb(IntegrateOpticalDepth(0.0.xxx, dir));
         }
 

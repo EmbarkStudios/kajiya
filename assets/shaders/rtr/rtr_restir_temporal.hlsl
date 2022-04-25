@@ -314,7 +314,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
             
-            const float4 prev_irrad_pdf = irradiance_history_tex[spx];
+            const float4 prev_irrad_pdf =
+                irradiance_history_tex[spx]
+                * float4((frame_constants.pre_exposure_delta).xxx, 1);
+
             const float3 prev_irrad = prev_irrad_pdf.rgb;
 
             // From the ReSTIR paper:

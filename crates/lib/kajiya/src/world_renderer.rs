@@ -187,12 +187,42 @@ pub struct WorldRenderer {
     pub sun_size_multiplier: f32,
     pub sun_color_multiplier: Vec3,
     pub sky_ambient: Vec3,
+
+    // One for each render mode
+    pub(crate) exposure_state: [ExposureState; 2],
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy)]
+pub struct ExposureState {
+    /// A value to multiply all lighting by in order to apply exposure compensation
+    /// early in the pipeline, such that lighting values fit in small texture formats.
+    pub pre_mult: f32,
+
+    /// The remaining multiplier to apply in post.
+    pub post_mult: f32,
+
+    // The pre-multiplier in the previous frame.
+    pub pre_mult_prev: f32,
+
+    // `pre_mult / pre_mult_prev`
+    pub pre_mult_delta: f32,
+}
+
+impl Default for ExposureState {
+    fn default() -> Self {
+        Self {
+            pre_mult: 1.0,
+            post_mult: 1.0,
+            pre_mult_prev: 1.0,
+            pre_mult_delta: 1.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RenderMode {
-    Standard,
-    Reference,
+    Standard = 0,
+    Reference = 1,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -409,6 +439,8 @@ impl WorldRenderer {
             sun_size_multiplier: 1.0, // Sun as seen from Earth
             sun_color_multiplier: Vec3::ONE,
             sky_ambient: Vec3::ZERO,
+
+            exposure_state: Default::default(),
         })
     }
 
@@ -810,11 +842,45 @@ impl WorldRenderer {
         }
     }
 
+    fn update_pre_exposure(&mut self) {
+        let ev_mult = self.ev_shift.exp2();
+
+        let exposure_state = &mut self.exposure_state[self.render_mode as usize];
+
+        exposure_state.pre_mult_prev = exposure_state.pre_mult;
+
+        match self.render_mode {
+            RenderMode::Standard => {
+                // Smoothly blend the pre-exposure.
+                // TODO: Ensure we correctly use the previous frame's pre-mult in temporal shaders,
+                // and then nuke/speed-up this blending.
+                exposure_state.pre_mult = exposure_state.pre_mult * 0.9 + ev_mult * 0.1;
+
+                // Put the rest in post-exposure.
+                exposure_state.post_mult = ev_mult / exposure_state.pre_mult;
+            }
+            RenderMode::Reference => {
+                // The path tracer doesn't need pre-exposure.
+
+                exposure_state.pre_mult = 1.0;
+                exposure_state.post_mult = ev_mult;
+            }
+        }
+
+        exposure_state.pre_mult_delta = exposure_state.pre_mult / exposure_state.pre_mult_prev;
+    }
+
+    pub fn exposure_state(&self) -> ExposureState {
+        self.exposure_state[self.render_mode as usize]
+    }
+
     pub fn prepare_render_graph(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
         frame_desc: &WorldFrameDesc,
     ) -> rg::Handle<Image> {
+        self.update_pre_exposure();
+
         rg.predefined_descriptor_set_layouts.insert(
             1,
             rg::PredefinedDescriptorSet {
@@ -935,9 +1001,9 @@ impl WorldRenderer {
             sky_ambient: self.sky_ambient.extend(0.0),
             triangle_light_count: triangle_lights.len() as _,
             world_gi_scale: self.world_gi_scale,
-            pad0: 0,
-            pad1: 0,
-            pad2: 0,
+            pre_exposure: self.exposure_state().pre_mult,
+            pre_exposure_prev: self.exposure_state().pre_mult_prev,
+            pre_exposure_delta: self.exposure_state().pre_mult_delta,
 
             ircache_cascades,
         });

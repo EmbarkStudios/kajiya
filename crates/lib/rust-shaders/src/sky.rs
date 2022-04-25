@@ -42,7 +42,7 @@ pub fn comp_sky_cube_cs(
     let output = atmosphere_default(
         dir,
         frame_constants.sun_direction.truncate(),
-        frame_constants.sun_color_multiplier.truncate(),
+        frame_constants.sun_color_multiplier.truncate() * frame_constants.pre_exposure,
     );
     unsafe {
         output_tex.write(px, output.extend(1.0));
