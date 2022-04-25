@@ -235,6 +235,7 @@ fn main() -> anyhow::Result<()> {
         let mut max_fps = MAX_FPS_LIMIT;
 
         let mut locked_rg_debug_hook: Option<GraphDebugHook> = None;
+        let mut grab_cursor_pos = winit::dpi::PhysicalPosition::default();
 
         kajiya.run(move |mut ctx| {
             // Limit framerate. Not particularly precise.
@@ -245,6 +246,19 @@ fn main() -> anyhow::Result<()> {
             keyboard.update(ctx.events);
             mouse.update(ctx.events);
 
+            // When starting camera rotation, hide the mouse cursor, and capture it to the window.
+            if (mouse.buttons_pressed & (1 << 2)) != 0 {
+                let _ = ctx.window.set_cursor_grab(true);
+                grab_cursor_pos = mouse.physical_position;
+                ctx.window.set_cursor_visible(false);
+            }
+
+            // When ending camera rotation, release the cursor.
+            if (mouse.buttons_released & (1 << 2)) != 0 {
+                let _ = ctx.window.set_cursor_grab(false);
+                ctx.window.set_cursor_visible(true);
+            }
+
             let input = keymap.map(&keyboard, ctx.dt_filtered);
             let move_vec = camera.final_transform.rotation
                 * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
@@ -252,6 +266,15 @@ fn main() -> anyhow::Result<()> {
                 * 10.0f32.powf(input["boost"]);
 
             if (mouse.buttons_held & (1 << 2)) != 0 {
+                // While we're rotating, the cursor should not move, so that upon revealing it,
+                // it will be where we started the rotation motion at.
+                let _ = ctx
+                    .window
+                    .set_cursor_position(winit::dpi::PhysicalPosition::new(
+                        grab_cursor_pos.x,
+                        grab_cursor_pos.y,
+                    ));
+
                 let sensitivity = 0.1;
                 camera
                     .driver_mut::<YawPitch>()

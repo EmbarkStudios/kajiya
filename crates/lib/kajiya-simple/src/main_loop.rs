@@ -23,8 +23,9 @@ use winit::{
 pub struct FrameContext<'a> {
     pub dt_filtered: f32,
     pub render_extent: [u32; 2],
-    pub events: &'a [WindowEvent<'static>],
+    pub events: &'a [Event<'static, ()>],
     pub world_renderer: &'a mut WorldRenderer,
+    pub window: &'a winit::window::Window,
 
     #[cfg(feature = "dear-imgui")]
     pub imgui: Option<ImguiContext<'a>>,
@@ -358,20 +359,28 @@ impl SimpleMainLoop {
 
                 *control_flow = ControlFlow::Poll;
 
-                match event {
+                let mut allow_event = true;
+                match &event {
                     Event::WindowEvent { event, .. } => match event {
                         WindowEvent::CloseRequested => {
                             *control_flow = ControlFlow::Exit;
                             running = false;
                         }
                         WindowEvent::CursorMoved { .. } | WindowEvent::MouseInput { .. }
-                            if ui_wants_mouse => {}
-                        _ => events.extend(event.to_static()),
+                            if ui_wants_mouse =>
+                        {
+                            allow_event = false;
+                        }
+                        _ => {}
                     },
                     Event::MainEventsCleared => {
                         *control_flow = ControlFlow::Exit;
                     }
                     _ => (),
+                }
+
+                if allow_event {
+                    events.extend(event.to_static());
                 }
             });
 
@@ -413,6 +422,7 @@ impl SimpleMainLoop {
                 render_extent,
                 events: &events,
                 world_renderer: &mut world_renderer,
+                window: &window,
 
                 #[cfg(feature = "dear-imgui")]
                 imgui: Some(ImguiContext {
