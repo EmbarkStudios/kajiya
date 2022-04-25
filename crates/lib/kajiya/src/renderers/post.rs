@@ -102,6 +102,43 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
     output
 }
 
+fn luminance_histogram(
+    rg: &mut RenderGraph,
+    blur_pyramid: &rg::Handle<Image>,
+) -> rg::Handle<Image> {
+    const SIZE: u32 = 256;
+    let mut histogram = rg.create(ImageDesc::new_1d(vk::Format::R32_UINT, SIZE));
+
+    const INPUT_MIP_LEVEL: u32 = 2;
+    let mip_extent = blur_pyramid
+        .desc()
+        .div_up_extent([1 << INPUT_MIP_LEVEL, 1 << INPUT_MIP_LEVEL, 1])
+        .extent;
+
+    SimpleRenderPass::new_compute(
+        rg.add_pass("clear histogram"),
+        "/shaders/clear_luminance_histogram.hlsl",
+    )
+    .write(&mut histogram)
+    .dispatch([SIZE, 1, 1]);
+
+    SimpleRenderPass::new_compute(
+        rg.add_pass("histogram"),
+        "/shaders/luminance_histogram.hlsl",
+    )
+    .read_view(
+        blur_pyramid,
+        ImageViewDesc::builder()
+            .base_mip_level(INPUT_MIP_LEVEL)
+            .level_count(Some(1)),
+    )
+    .write(&mut histogram)
+    .constants([mip_extent[0], mip_extent[1]])
+    .dispatch(mip_extent);
+
+    histogram
+}
+
 pub fn post_process(
     rg: &mut RenderGraph,
     input: &rg::Handle<Image>,
@@ -110,6 +147,8 @@ pub fn post_process(
     post_exposure_mult: f32,
 ) -> rg::Handle<Image> {
     let blur_pyramid = blur_pyramid(rg, input);
+    let histogram = luminance_histogram(rg, &blur_pyramid);
+
     let rev_blur_pyramid = rev_blur_pyramid(rg, &blur_pyramid);
 
     let mut output = rg.create(input.desc().format(vk::Format::B10G11R11_UFLOAT_PACK32));
@@ -125,6 +164,7 @@ pub fn post_process(
         //.read(debug_input)
         .read(&blur_pyramid)
         .read(&rev_blur_pyramid)
+        .read(&histogram)
         //.read(&blurred_luminance)
         .write(&mut output)
         .raw_descriptor_set(1, bindless_descriptor_set)
