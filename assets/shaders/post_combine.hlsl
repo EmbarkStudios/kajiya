@@ -2,7 +2,7 @@
 #include "inc/uv.hlsl"
 #include "inc/frame_constants.hlsl"
 #include "inc/bindless_textures.hlsl"
-#include "luminance_histogram_common.hlsl"
+#include "post/luminance_histogram_common.hlsl"
 
 #define DECLARE_BEZOLD_BRUCKE_LUT
 static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
@@ -14,7 +14,7 @@ static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
 //[[vk::binding(1)]] Texture2D<float4> debug_input_tex;
 [[vk::binding(1)]] Texture2D<float4> blur_pyramid_tex;
 [[vk::binding(2)]] Texture2D<float4> rev_blur_pyramid_tex;
-[[vk::binding(3)]] Texture1D<uint> histogram;
+[[vk::binding(3)]] StructuredBuffer<uint> histogram_buffer;
 [[vk::binding(4)]] RWTexture2D<float4> output_tex;
 [[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
@@ -27,7 +27,7 @@ static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
 #define USE_SHARPEN 0
 #define USE_VIGNETTE 1
 
-#define DEBUG_HISTOGRAM 1
+#define DEBUG_HISTOGRAM 0
 
 static const float sharpen_amount = 0.1;
 static const float glare_amount = 0.05;
@@ -67,7 +67,7 @@ float3 push_down_black_point(float3 x, float m, float c) {
 
 groupshared uint max_histogram_bin;
 void debug_histogram(int2 px, uint idx_within_group, inout float3 color) {
-    const uint bins = LUMINANCE_HISTOGRAM_BINS;
+    const uint bins = LUMINANCE_HISTOGRAM_BIN_COUNT;
     const uint2 bin_dims = uint2(4, 96);
 
     // Center the plot
@@ -81,7 +81,7 @@ void debug_histogram(int2 px, uint idx_within_group, inout float3 color) {
         }
         GroupMemoryBarrierWithGroupSync();
         for (uint i = idx_within_group; i < bins; i += group_size) {
-            InterlockedMax(max_histogram_bin, histogram[i]);
+            InterlockedMax(max_histogram_bin, histogram_buffer[i]);
         }
         GroupMemoryBarrierWithGroupSync();
     }
@@ -93,7 +93,7 @@ void debug_histogram(int2 px, uint idx_within_group, inout float3 color) {
 
     // Find scaled bin value
     const uint bin = px.x / bin_dims.x;
-    const float bin_val = float(histogram[bin]) / max_histogram_bin;
+    const float bin_val = float(histogram_buffer[bin]) / max_histogram_bin;
 
     if (float(bin_dims.y - px.y) / bin_dims.y < bin_val) {
         // Display bar
@@ -181,8 +181,6 @@ void main(uint2 px: SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
 
     col += dither / 256.0;
 #endif
-
-    //col = filtered_luminance;
 
     if (DEBUG_HISTOGRAM) {
         debug_histogram(px, idx_within_group, col);

@@ -1,6 +1,8 @@
-use kajiya_backend::{ash::vk, vulkan::image::*};
+use std::sync::Arc;
+
+use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::image::*, BackendError, Device};
 use kajiya_rg::{self as rg};
-use rg::{RenderGraph, SimpleRenderPass};
+use rg::{Buffer, BufferDesc, RenderGraph, SimpleRenderPass};
 
 pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Handle<Image> {
     let skip_n_bottom_mips = 1;
@@ -102,74 +104,162 @@ pub fn rev_blur_pyramid(rg: &mut RenderGraph, in_pyramid: &rg::Handle<Image>) ->
     output
 }
 
-fn luminance_histogram(
-    rg: &mut RenderGraph,
-    blur_pyramid: &rg::Handle<Image>,
-) -> rg::Handle<Image> {
-    const SIZE: u32 = 256;
-    let mut histogram = rg.create(ImageDesc::new_1d(vk::Format::R32_UINT, SIZE));
+const LUMINANCE_HISTOGRAM_BIN_COUNT: usize = 256;
+const LUMINANCE_HISTOGRAM_MIN_LOG2: f64 = -16.0;
+const LUMINANCE_HISTOGRAM_MAX_LOG2: f64 = 16.0;
 
-    const INPUT_MIP_LEVEL: u32 = 2;
-    let mip_extent = blur_pyramid
-        .desc()
-        .div_up_extent([1 << INPUT_MIP_LEVEL, 1 << INPUT_MIP_LEVEL, 1])
-        .extent;
-
-    SimpleRenderPass::new_compute(
-        rg.add_pass("clear histogram"),
-        "/shaders/clear_luminance_histogram.hlsl",
-    )
-    .write(&mut histogram)
-    .dispatch([SIZE, 1, 1]);
-
-    SimpleRenderPass::new_compute(
-        rg.add_pass("histogram"),
-        "/shaders/luminance_histogram.hlsl",
-    )
-    .read_view(
-        blur_pyramid,
-        ImageViewDesc::builder()
-            .base_mip_level(INPUT_MIP_LEVEL)
-            .level_count(Some(1)),
-    )
-    .write(&mut histogram)
-    .constants([mip_extent[0], mip_extent[1]])
-    .dispatch(mip_extent);
-
-    histogram
+pub struct PostProcessRenderer {
+    histogram_buffer: Arc<Buffer>,
+    pub image_log2_lum: f32,
 }
 
-pub fn post_process(
-    rg: &mut RenderGraph,
-    input: &rg::Handle<Image>,
-    //debug_input: &rg::Handle<Image>,
-    bindless_descriptor_set: vk::DescriptorSet,
-    post_exposure_mult: f32,
-) -> rg::Handle<Image> {
-    let blur_pyramid = blur_pyramid(rg, input);
-    let histogram = luminance_histogram(rg, &blur_pyramid);
+impl PostProcessRenderer {
+    pub fn new(device: &Device) -> Result<Self, BackendError> {
+        Ok(Self {
+            histogram_buffer: Arc::new(device.create_buffer(
+                BufferDesc::new_gpu_to_cpu(
+                    std::mem::size_of::<u32>() * LUMINANCE_HISTOGRAM_BIN_COUNT,
+                    vk::BufferUsageFlags::STORAGE_BUFFER,
+                ),
+                "luminance histogram",
+                None,
+            )?),
+            image_log2_lum: 0.0,
+        })
+    }
 
-    let rev_blur_pyramid = rev_blur_pyramid(rg, &blur_pyramid);
+    fn calculate_luminance_histogram(
+        &mut self,
+        rg: &mut RenderGraph,
+        blur_pyramid: &rg::Handle<Image>,
+    ) -> rg::Handle<Buffer> {
+        let mut tmp_histogram = rg.create(BufferDesc::new_gpu_only(
+            std::mem::size_of::<u32>() * LUMINANCE_HISTOGRAM_BIN_COUNT,
+            vk::BufferUsageFlags::STORAGE_BUFFER,
+        ));
 
-    let mut output = rg.create(input.desc().format(vk::Format::B10G11R11_UFLOAT_PACK32));
+        // Start with input downsampled to a fairly consistent size.
+        let input_mip_level: u32 = blur_pyramid.desc().mip_levels.saturating_sub(7) as u32;
 
-    //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
+        let mip_extent = blur_pyramid
+            .desc()
+            .div_up_extent([1 << input_mip_level, 1 << input_mip_level, 1])
+            .extent;
 
-    /*SimpleRenderPass::new_compute_rust(
-        rg.add_pass("post combine"),
-        "post_combine::post_combine_cs",
-    )*/
-    SimpleRenderPass::new_compute(rg.add_pass("post combine"), "/shaders/post_combine.hlsl")
-        .read(input)
-        //.read(debug_input)
-        .read(&blur_pyramid)
-        .read(&rev_blur_pyramid)
-        .read(&histogram)
-        //.read(&blurred_luminance)
-        .write(&mut output)
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .constants((output.desc().extent_inv_extent_2d(), post_exposure_mult))
-        .dispatch(output.desc().extent);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("clear histogram"),
+            "/shaders/post/luminance_histogram_clear.hlsl",
+        )
+        .write(&mut tmp_histogram)
+        .dispatch([LUMINANCE_HISTOGRAM_BIN_COUNT as u32, 1, 1]);
 
-    output
+        SimpleRenderPass::new_compute(
+            rg.add_pass("calculate histogram"),
+            "/shaders/post/luminance_histogram_calculate.hlsl",
+        )
+        .read_view(
+            blur_pyramid,
+            ImageViewDesc::builder()
+                .base_mip_level(input_mip_level)
+                .level_count(Some(1)),
+        )
+        .write(&mut tmp_histogram)
+        .constants([mip_extent[0], mip_extent[1]])
+        .dispatch(mip_extent);
+
+        let mut dst_histogram = rg.import(self.histogram_buffer.clone(), AccessType::Nothing);
+        SimpleRenderPass::new_compute(
+            rg.add_pass("copy histogram"),
+            "/shaders/post/luminance_histogram_copy.hlsl",
+        )
+        .read(&tmp_histogram)
+        .write(&mut dst_histogram)
+        .dispatch([LUMINANCE_HISTOGRAM_BIN_COUNT as u32, 1, 1]);
+
+        tmp_histogram
+    }
+
+    fn read_back_histogram(&mut self) {
+        let mut histogram = [0u32; LUMINANCE_HISTOGRAM_BIN_COUNT];
+        {
+            let src = if let Some(src) = self.histogram_buffer.allocation.mapped_slice() {
+                bytemuck::checked::cast_slice::<u8, u32>(src)
+            } else {
+                return;
+            };
+
+            histogram.copy_from_slice(src);
+        }
+
+        // Reject this much from the bottom and top end
+        const OUTLIER_FRAC: f64 = 0.1;
+
+        let total_entry_count: u32 = histogram.iter().copied().sum();
+        let reject_entry_count = (total_entry_count as f64 * OUTLIER_FRAC) as u32;
+        let entry_count_to_use = total_entry_count - reject_entry_count * 2;
+
+        let mut sum = 0.0;
+        let mut used_count = 0;
+
+        let mut left_to_reject = reject_entry_count;
+        let mut left_to_use = entry_count_to_use;
+
+        for (bin_idx, count) in histogram.into_iter().enumerate() {
+            let t = (bin_idx as f64 + 0.5) / LUMINANCE_HISTOGRAM_BIN_COUNT as f64;
+
+            let count_to_use = count.saturating_sub(left_to_reject).min(left_to_use);
+            left_to_reject = left_to_reject.saturating_sub(count);
+            left_to_use = left_to_use.saturating_sub(count_to_use);
+
+            sum += t * count_to_use as f64;
+            used_count += count_to_use;
+        }
+
+        assert_eq!(entry_count_to_use, used_count);
+
+        let mean = sum / used_count.max(1) as f64;
+        self.image_log2_lum = (LUMINANCE_HISTOGRAM_MIN_LOG2
+            + mean * (LUMINANCE_HISTOGRAM_MAX_LOG2 - LUMINANCE_HISTOGRAM_MIN_LOG2))
+            as f32;
+
+        // log::info!("mean log lum: {}", self.image_log2_lum);
+    }
+
+    pub fn render(
+        &mut self,
+        rg: &mut RenderGraph,
+        input: &rg::Handle<Image>,
+        //debug_input: &rg::Handle<Image>,
+        bindless_descriptor_set: vk::DescriptorSet,
+        post_exposure_mult: f32,
+    ) -> rg::Handle<Image> {
+        self.read_back_histogram();
+
+        let blur_pyramid = blur_pyramid(rg, input);
+        let histogram = self.calculate_luminance_histogram(rg, &blur_pyramid);
+
+        let rev_blur_pyramid = rev_blur_pyramid(rg, &blur_pyramid);
+
+        let mut output = rg.create(input.desc().format(vk::Format::B10G11R11_UFLOAT_PACK32));
+
+        //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
+
+        /*SimpleRenderPass::new_compute_rust(
+            rg.add_pass("post combine"),
+            "post_combine::post_combine_cs",
+        )*/
+        SimpleRenderPass::new_compute(rg.add_pass("post combine"), "/shaders/post_combine.hlsl")
+            .read(input)
+            //.read(debug_input)
+            .read(&blur_pyramid)
+            .read(&rev_blur_pyramid)
+            .read(&histogram)
+            //.read(&blurred_luminance)
+            .write(&mut output)
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .constants((output.desc().extent_inv_extent_2d(), post_exposure_mult))
+            .dispatch(output.desc().extent);
+
+        output
+    }
 }

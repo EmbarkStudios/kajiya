@@ -93,6 +93,8 @@ struct PersistedAppState {
     sun: SunState,
     lights: LocalLightsState,
     ev_shift: f32,
+    #[serde(default)]
+    use_dynamic_exposure: bool,
 }
 
 #[derive(PartialEq, Eq)]
@@ -223,6 +225,7 @@ fn main() -> anyhow::Result<()> {
                 multiplier: 10.0,
             },
             ev_shift: 0.0,
+            use_dynamic_exposure: false,
         });
     {
         let state = &mut state;
@@ -438,6 +441,11 @@ fn main() -> anyhow::Result<()> {
                             .speed(0.01)
                             .build(ui, &mut state.ev_shift);
 
+                        ui.checkbox(
+                            im_str!("Use dynamic exposure"),
+                            &mut state.use_dynamic_exposure,
+                        );
+
                         imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                             .range(0.0..=10.0)
                             .speed(0.1)
@@ -582,6 +590,7 @@ fn main() -> anyhow::Result<()> {
             }
 
             ctx.world_renderer.ev_shift = state.ev_shift;
+            ctx.world_renderer.dynamic_exposure.enabled = state.use_dynamic_exposure;
 
             frame_desc
         })?;

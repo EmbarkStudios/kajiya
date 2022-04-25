@@ -7,9 +7,9 @@ use crate::{
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        ircache::IrcacheRenderer, lighting::LightingRenderer, raster_meshes::*,
-        rtdgi::RtdgiRenderer, rtr::*, shadow_denoise::ShadowDenoiseRenderer, ssgi::*,
-        taa::TaaRenderer,
+        ircache::IrcacheRenderer, lighting::LightingRenderer, post::PostProcessRenderer,
+        raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*, shadow_denoise::ShadowDenoiseRenderer,
+        ssgi::*, taa::TaaRenderer,
     },
 };
 use glam::{Affine3A, Vec2, Vec3};
@@ -165,6 +165,7 @@ pub struct WorldRenderer {
     pub render_mode: RenderMode,
     pub reset_reference_accumulation: bool,
 
+    pub post: PostProcessRenderer,
     pub ssgi: SsgiRenderer,
     pub rtr: RtrRenderer,
     pub lighting: LightingRenderer,
@@ -182,6 +183,7 @@ pub struct WorldRenderer {
     pub debug_shading_mode: usize,
     pub debug_show_wrc: bool,
     pub ev_shift: f32,
+    pub dynamic_exposure: DynamicExposureState,
 
     pub world_gi_scale: f32,
     pub sun_size_multiplier: f32,
@@ -190,6 +192,37 @@ pub struct WorldRenderer {
 
     // One for each render mode
     pub(crate) exposure_state: [ExposureState; 2],
+}
+
+#[derive(Default)]
+pub struct DynamicExposureState {
+    pub enabled: bool,
+    ev_fast: f32,
+    ev_slow: f32,
+}
+
+impl DynamicExposureState {
+    pub fn ev_smoothed(&self) -> f32 {
+        if self.enabled {
+            (self.ev_slow + self.ev_fast) * 0.5
+        } else {
+            0.0
+        }
+    }
+
+    pub fn update(&mut self, ev: f32, dt: f32) {
+        if !self.enabled {
+            return;
+        }
+
+        let ev = ev.clamp(-16.0, 16.0);
+
+        let t_fast = 1.0 - (-12.0 * dt).exp();
+        self.ev_fast = (ev - self.ev_fast) * t_fast + self.ev_fast;
+
+        let t_slow = 1.0 - (-0.75 * dt).exp();
+        self.ev_slow = (ev - self.ev_slow) * t_slow + self.ev_slow;
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -410,6 +443,7 @@ impl WorldRenderer {
 
             supersample_offsets,
 
+            post: PostProcessRenderer::new(backend.device.as_ref())?,
             ssgi: Default::default(),
             rtr: RtrRenderer::new(backend.device.as_ref())?,
             lighting: LightingRenderer::new(),
@@ -434,6 +468,7 @@ impl WorldRenderer {
             },
             debug_show_wrc: false,
             ev_shift: 0.0,
+            dynamic_exposure: Default::default(),
 
             world_gi_scale: 1.0,
             sun_size_multiplier: 1.0, // Sun as seen from Earth
@@ -843,7 +878,10 @@ impl WorldRenderer {
     }
 
     fn update_pre_exposure(&mut self) {
-        let ev_mult = self.ev_shift.exp2();
+        let dt = 1.0 / 60.0; // TODO
+
+        self.dynamic_exposure.update(-self.post.image_log2_lum, dt);
+        let ev_mult = (self.ev_shift + self.dynamic_exposure.ev_smoothed()).exp2();
 
         let exposure_state = &mut self.exposure_state[self.render_mode as usize];
 

@@ -1,7 +1,7 @@
 use crate::{
     frame_desc::WorldFrameDesc,
     renderers::{
-        deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
+        deferred::light_gbuffer, motion_blur::motion_blur, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
     },
     world_renderer::{RenderDebugMode, WorldRenderer},
@@ -245,7 +245,7 @@ impl WorldRenderer {
             }
         }
 
-        let post_processed = post_process(
+        let post_processed = self.post.render(
             rg,
             &final_post_input,
             //&anti_aliased,
@@ -283,7 +283,7 @@ impl WorldRenderer {
             reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
         }
 
-        post_process(
+        self.post.render(
             rg,
             &accum_img,
             //&accum_img, // hack
