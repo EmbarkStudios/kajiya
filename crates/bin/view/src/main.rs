@@ -95,6 +95,18 @@ struct PersistedAppState {
     ev_shift: f32,
     #[serde(default)]
     use_dynamic_exposure: bool,
+    #[serde(default = "default_camera_speed")]
+    camera_speed: f32,
+    #[serde(default = "default_camera_smoothness")]
+    camera_smoothness: f32,
+}
+
+fn default_camera_speed() -> f32 {
+    2.5
+}
+
+fn default_camera_smoothness() -> f32 {
+    1.0
 }
 
 #[derive(PartialEq, Eq)]
@@ -154,7 +166,7 @@ fn main() -> anyhow::Result<()> {
         CameraRig::builder()
             .with(Position::new(position))
             .with(YawPitch::new().rotation_quat(rotation))
-            .with(Smooth::new_position_rotation(1.0, 1.0))
+            .with(Smooth::default())
             .build()
     };
 
@@ -226,6 +238,8 @@ fn main() -> anyhow::Result<()> {
             },
             ev_shift: 0.0,
             use_dynamic_exposure: false,
+            camera_speed: default_camera_speed(),
+            camera_smoothness: default_camera_smoothness(),
         });
     {
         let state = &mut state;
@@ -282,10 +296,14 @@ fn main() -> anyhow::Result<()> {
                 camera
                     .driver_mut::<YawPitch>()
                     .rotate_yaw_pitch(-sensitivity * mouse.delta.x, -sensitivity * mouse.delta.y);
+
+                let smooth = camera.driver_mut::<Smooth>();
+                smooth.position_smoothness = state.camera_smoothness;
+                smooth.rotation_smoothness = state.camera_smoothness;
             }
             camera
                 .driver_mut::<Position>()
-                .translate(move_vec * ctx.dt_filtered * 2.5);
+                .translate(move_vec * ctx.dt_filtered * state.camera_speed);
             camera.update(ctx.dt_filtered);
 
             state.camera_position = camera.final_transform.position;
@@ -455,6 +473,16 @@ fn main() -> anyhow::Result<()> {
                             .range(0.0..=1000.0)
                             .speed(1.0)
                             .build(ui, &mut state.lights.multiplier);
+
+                        imgui::Drag::<f32>::new(im_str!("Camera speed"))
+                            .range(0.0..=10.0)
+                            .speed(0.025)
+                            .build(ui, &mut state.camera_speed);
+
+                        imgui::Drag::<f32>::new(im_str!("Camera smoothness"))
+                            .range(0.0..=20.0)
+                            .speed(0.1)
+                            .build(ui, &mut state.camera_smoothness);
 
                         imgui::Drag::<f32>::new(im_str!("Field of view"))
                             .range(1.0..=120.0)
