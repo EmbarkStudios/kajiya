@@ -84,7 +84,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
     // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
     const uint2 ang_offset_seed = spatial_reuse_pass_idx == 0
-        ? uint2(0, 0)
+        ? (px >> 3)
         : (px >> 2);
 
     float ang_offset = uint_to_u01_float(hash3(
