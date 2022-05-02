@@ -116,8 +116,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // irradiance value instead of this.
         float4 prev_irrad = irradiance_tex[spx];
         float visibility = 1;
-        float relevance = saturate(1 - 0.75 * float(sample_i) / sample_count);
-        //float relevance = 1;
+        float relevance = 1;
 
         const int2 sample_offset = int2(px) - int2(spx);
         const float sample_dist2 = dot(sample_offset, sample_offset);
