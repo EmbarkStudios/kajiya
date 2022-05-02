@@ -6,6 +6,8 @@
 
 #include "../inc/working_color_space.hlsl"
 
+#define USE_BBOX_CLAMP 1
+
 #if 0
     // Linear accumulation, for comparisons with path tracing
     float4 pass_through(float4 v) { return v; }
@@ -204,8 +206,9 @@ void main(uint2 px: SV_DispatchThreadID) {
         history.a
     );*/
 
-    //clamped_history = history;
-    //clamped_history = center;
+#if !USE_BBOX_CLAMP
+    clamped_history = history;
+#endif
 
     const float variance_adjusted_temporal_change = smoothstep(0.1, 1.0, 0.05 * temporal_change / center_temporal_dev);
 
@@ -216,7 +219,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     max_sample_count *= lerp(1.0, 0.5, rt_invalid);
 
 // hax
-//max_sample_count = 1;// * 1024;
+//max_sample_count = 32;// * 1024;
 
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);

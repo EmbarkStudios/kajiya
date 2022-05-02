@@ -123,12 +123,14 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float shadow_mask = shadow_mask_tex[px].x;
 
+    [branch]
     if (debug_shading_mode == SHADING_MODE_RTX_OFF) {
         shadow_mask = 1;
     }
 
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
 
+    [branch]
     if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
         gbuffer.albedo = 0.5;
     }
@@ -181,6 +183,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
                 smoothstep(USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS, 1.0, gbuffer.roughness));
         }
 
+        [branch]
         if (debug_shading_mode == SHADING_MODE_NO_TEXTURES) {
             GbufferData true_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[px])).unpack();
             LayeredBrdf true_brdf = LayeredBrdf::from_gbuffer_ndotv(true_gbuffer, wo.z);
@@ -194,6 +197,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float3 output = total_radiance;
 
+    [branch]
     if (debug_shading_mode == SHADING_MODE_REFLECTIONS) {
         #if !RTR_RENDER_SCALED_BY_FG
             output = rtr_tex[px].xyz * brdf.energy_preservation.preintegrated_reflection;
@@ -213,12 +217,36 @@ void main(in uint2 px : SV_DispatchThreadID) {
         output /= true_brdf.energy_preservation.preintegrated_reflection;
     }
 
+    [branch]
     if (debug_shading_mode == SHADING_MODE_DIFFUSE_GI) {
         output = gi_irradiance;
     }
 
+    [branch]
     if (debug_shading_mode == SHADING_MODE_IRCACHE) {
         output = lookup_irradiance_cache(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
+
+        if (px.y < 50) {
+            const uint entry_count = ircache_meta_buf.Load(IRCACHE_META_ENTRY_COUNT);
+            const uint entry_alloc_count = ircache_meta_buf.Load(IRCACHE_META_ALLOC_COUNT);
+            
+            const float u = float(px.x + 0.5) * output_tex_size.z;
+            
+            if (px.y < 25) {
+                if (entry_alloc_count > u * 256 * 1024) {
+                    output = float3(0.05, 1, .2) * 4;
+                }
+            } else {
+                if (entry_count > u * 256 * 1024) {
+                    output = float3(1, 0.1, 0.05) * 4;
+                }
+            }
+
+            // Ticks every 16k
+            if (frac(u * 16) < output_tex_size.z * 32) {
+                output = float3(1, 1, 0) * 10;
+            }
+        }
     }
 
     //output = gbuffer.albedo;

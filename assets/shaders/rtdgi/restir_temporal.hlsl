@@ -38,8 +38,6 @@
 
 #include "candidate_ray_dir.hlsl"
 
-#define USE_JACOBIAN_BASED_REJECTION !true
-
 static const float SKY_DIST = 1e4;
 
 uint2 reservoir_payload_to_px(uint payload) {
@@ -148,7 +146,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }*/
 
         const float p_q = p_q_sel = 1.0
-            * max(1e-3, sRGB_to_luminance(result.out_value))
+            * max(0, sRGB_to_luminance(result.out_value))
             #if !DIFFUSE_GI_BRDF_SAMPLING
                 * max(0, dot(outgoing_dir, normal_ws))
 //                * step(0, dot(outgoing_dir, normal_ws))
@@ -171,6 +169,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
+
+    // TODO: maybe instead of rejecting, apply a jacobian
+    // to the sample, should it change its radiance
 
     const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));
 
@@ -248,6 +249,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const uint2 spx = reservoir_payload_to_px(r.payload);
 
             float visibility = 1;
+            //float relevance = sample_i == 0 ? 1 : 0.5;
             float relevance = 1;
 
             const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
@@ -343,7 +345,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             //r.M = min(r.M, 0.1);
 
             const float p_q = 1
-                 * max(1e-3, sRGB_to_luminance(prev_irrad.rgb))
+                 * max(0, sRGB_to_luminance(prev_irrad.rgb))
             #if !DIFFUSE_GI_BRDF_SAMPLING
                 * max(0, dot(dir_to_sample_hit, normal_ws))
 //                * step(0, dot(dir_to_sample_hit, normal_ws))
@@ -378,11 +380,20 @@ void main(uint2 px : SV_DispatchThreadID) {
             // but also effectively reduces reliance on reservoir exchange
             // in tight corners, which is desirable since the well-distributed
             // raw samples thrown at temporal filters will do better.
-            if (USE_JACOBIAN_BASED_REJECTION) {
-                const float JACOBIAN_REJECT_THRESHOLD = 4.0;
-                if (!(jacobian < JACOBIAN_REJECT_THRESHOLD && jacobian > 1.0 / JACOBIAN_REJECT_THRESHOLD)) {
-                    continue;
-                }
+            if (RTDGI_RESTIR_USE_JACOBIAN_BASED_REJECTION) {
+                // Clamp neighbors give us a hit point that's considerably easier to sample
+                // from our own position than from the neighbor. This can cause some darkening,
+                // but prevents fireflies.
+                //
+                // The darkening occurs in corners, where micro-bounce should be happening instead.
+
+                #if 1
+                    // Doesn't over-darken corners as much
+                    jacobian = min(jacobian, RTDGI_RESTIR_JACOBIAN_BASED_REJECTION_VALUE);
+                #else
+                    // Slightly less noise
+                    if (jacobian > RTDGI_RESTIR_JACOBIAN_BASED_REJECTION_VALUE) { continue; }
+                #endif
             }
 
             // Raymarch to check occlusion
@@ -447,9 +458,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         reservoir.M = M_sum;
         reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
-
-        // TODO: find out if we can get away with this:
-        // It seems like it :P reduces fireflies, without much of a downside
         reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
     }
 

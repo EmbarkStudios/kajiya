@@ -83,8 +83,12 @@ void main(uint2 px : SV_DispatchThreadID) {
     // Scrambling angles here would be nice, but results in bad cache thrashing.
     // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
     // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
+    const uint2 ang_offset_seed = spatial_reuse_pass_idx == 0
+        ? uint2(0, 0)
+        : (px >> 2);
+
     float ang_offset = uint_to_u01_float(hash3(
-        uint3((px >> 2), frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
+        uint3(ang_offset_seed, frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
     )) * M_PI * 2;
 
     if (!RESTIR_USE_SPATIAL) {
@@ -112,11 +116,12 @@ void main(uint2 px : SV_DispatchThreadID) {
         // irradiance value instead of this.
         float4 prev_irrad = irradiance_tex[spx];
         float visibility = 1;
-        float relevance = 1;
+        float relevance = saturate(1 - 0.75 * float(sample_i) / sample_count);
+        //float relevance = 1;
 
-        const int2 sample_offset = int2(px) - int2(rpx);
+        const int2 sample_offset = int2(px) - int2(spx);
         const float sample_dist2 = dot(sample_offset, sample_offset);
-        const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
+        const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             const float normal_cutoff = 0.9;
@@ -140,22 +145,21 @@ void main(uint2 px : SV_DispatchThreadID) {
         relevance *= 1 - abs(sample_ssao - center_ssao);
 
         const float2 sample_uv = get_uv(
-            rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
             gbuffer_tex_size);
-        const float sample_depth = half_depth_tex[rpx];
+        const float sample_depth = half_depth_tex[spx];
         
         if (sample_depth == 0.0) {
             continue;
         }
 
         const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-        const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
 
         const float4 sample_hit_ws_and_dist = ray_tex[spx];// + float4(get_eye_position(), 0.0);
         const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
         const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
-        const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-        const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
+        //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
+        const float prev_dist = sample_hit_ws_and_dist.w;
 
         // Reject hits too close to the surface
         if (!is_center_sample && !(prev_dist > 1e-8)) {
@@ -185,10 +189,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         {
-    		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
-
             // Raymarch to check occlusion
-            if (true && !is_center_sample) {
+            if (RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
+        		const float3 surface_offset_vs = sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs();
+
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
 #if 1
@@ -257,7 +261,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
 
         float p_q = 1;
-        p_q *= max(1e-3, sRGB_to_luminance(prev_irrad.rgb));
+        p_q *= max(0, sRGB_to_luminance(prev_irrad.rgb));
 
         // Actually looks more noisy with this the N dot L when using BRDF sampling.
         // With (hemi)spherical sampling, it's fine.
@@ -270,11 +274,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // Distance falloff. Needed to avoid leaks.
         //jacobian *= max(0.0, prev_dist) / max(1e-4, dist_to_sample_hit);
-        jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-4, 1e4);
+        jacobian *= prev_dist / dist_to_sample_hit;
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
-        jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 1e-4, 1e4);
+        jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             // N dot L. Useful for normal maps, micro detail.
@@ -291,14 +295,18 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Clamp neighbors give us a hit point that's considerably easier to sample
         // from our own position than from the neighbor. This can cause some darkening,
         // but prevents fireflies.
+        //
+        // The darkening occurs in corners, where micro-bounce should be happening instead.
 
-        #if 0
-            // Slightly less noise
-            if (jacobian > 5.0) { continue; }
-        #else
-            // Doesn't over-darken corners as much
-            jacobian = min(jacobian, 5);
-        #endif
+        if (RTDGI_RESTIR_USE_JACOBIAN_BASED_REJECTION) {
+            #if 1
+                // Doesn't over-darken corners as much
+                jacobian = min(jacobian, RTDGI_RESTIR_JACOBIAN_BASED_REJECTION_VALUE);
+            #else
+                // Slightly less noise
+                if (jacobian > RTDGI_RESTIR_JACOBIAN_BASED_REJECTION_VALUE) { continue; }
+            #endif
+        }
 
         if (!(p_q > 0)) {
             continue;
@@ -317,13 +325,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     reservoir.W =
         (1.0 / max(1e-8, p_q_sel))
         * (reservoir.w_sum / max(1.0, reservoir.M));
-
-    // (Source of bias?) suppress fireflies
-    // Unclear what kind of bias. When clamped lower, e.g. 1.0,
-    // the whole scene gets darker.
-    // reservoir.W = min(reservoir.W, 5);
-
-    // TODO: find out if we can get away with this:
     reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
 
     reservoir_output_tex[px] = reservoir.as_raw();

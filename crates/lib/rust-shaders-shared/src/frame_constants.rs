@@ -30,5 +30,6 @@ pub struct FrameConstants {
     pub pre_exposure_prev: f32,
     pub pre_exposure_delta: f32,
 
+    pub ircache_grid_center: Vec4,
     pub ircache_cascades: [IrcacheCascadeConstants; IRCACHE_CASCADE_COUNT],
 }

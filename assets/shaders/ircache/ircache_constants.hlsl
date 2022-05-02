@@ -16,7 +16,7 @@ static const uint IRCACHE_ENTRY_META_OCCUPIED = 1;
 #define IRCACHE_ENTRY_LIFE_RECYCLE 0x8000000u
 #define IRCACHE_ENTRY_LIFE_RECYCLED (IRCACHE_ENTRY_LIFE_RECYCLE + 1u)
 
-static const uint IRCACHE_ENTRY_LIFE_PER_RANK = 16;
+static const uint IRCACHE_ENTRY_LIFE_PER_RANK = 4;
 static const uint IRCACHE_ENTRY_RANK_COUNT = 3;
 
 bool is_ircache_entry_life_valid(uint life) {

@@ -36,10 +36,6 @@
 groupshared uint gs_px_min_score_loc_packed;
 groupshared uint gs_px_max_score_loc_packed;
 
-float inverse_lerp(float minv, float maxv, float v) {
-    return (v - minv) / (maxv - minv);
-}
-
 float3 tricolor_ramp(float3 a, float3 b, float3 c, float x) {
     x = saturate(x);
 

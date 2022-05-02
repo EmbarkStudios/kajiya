@@ -84,9 +84,11 @@ fn temporal_storage_buffer(
 pub struct IrcacheRenderer {
     debug_render_pass: Arc<RenderPass>,
     initialized: bool,
+    grid_center: Vec3,
     cur_scroll: [IVec3; IRCACHE_CASCADE_COUNT],
     prev_scroll: [IVec3; IRCACHE_CASCADE_COUNT],
     parity: usize,
+    pub enable_scroll: bool,
 }
 
 impl IrcacheRenderer {
@@ -105,13 +107,21 @@ impl IrcacheRenderer {
         Self {
             debug_render_pass,
             initialized: false,
+            grid_center: Vec3::ZERO,
             cur_scroll: Default::default(),
             prev_scroll: Default::default(),
             parity: 0,
+            enable_scroll: true,
         }
     }
 
     pub fn update_eye_position(&mut self, eye_position: Vec3) {
+        if !self.enable_scroll {
+            return;
+        }
+
+        self.grid_center = eye_position;
+
         for cascade in 0..IRCACHE_CASCADE_COUNT {
             let cell_diameter = IRCACHE_GRID_CELL_DIAMETER * (1 << cascade) as f32;
             let cascade_center = (eye_position / cell_diameter).floor().as_ivec3();
@@ -137,6 +147,10 @@ impl IrcacheRenderer {
                 voxels_scrolled_this_frame: scroll_amount.extend(0),
             }
         })
+    }
+
+    pub fn grid_center(&self) -> Vec3 {
+        self.grid_center
     }
 }
 

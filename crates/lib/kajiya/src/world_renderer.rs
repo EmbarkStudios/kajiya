@@ -1043,6 +1043,7 @@ impl WorldRenderer {
             pre_exposure_prev: self.exposure_state().pre_mult_prev,
             pre_exposure_delta: self.exposure_state().pre_mult_delta,
 
+            ircache_grid_center: self.ircache.grid_center().extend(1.0),
             ircache_cascades,
         });
 

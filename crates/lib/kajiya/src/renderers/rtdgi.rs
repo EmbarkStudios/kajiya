@@ -188,6 +188,12 @@ impl RtdgiRenderer {
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
+        let mut candidate_hit_tex = rg.create(
+            gbuffer_desc
+                .half_res()
+                .format(vk::Format::R32G32B32A32_SFLOAT),
+        );
+
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
         let (mut validity_output_tex, validity_history_tex) =
@@ -258,6 +264,7 @@ impl RtdgiRenderer {
             .read(&ray_orig_history_tex)
             .write(&mut candidate_irradiance_tex)
             .write(&mut candidate_normal_tex)
+            .write(&mut candidate_hit_tex)
             .write(&mut rt_history_validity_input_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
@@ -373,6 +380,7 @@ impl RtdgiRenderer {
             .read(ssao_img)
             .read(&candidate_irradiance_tex)
             .read(&candidate_normal_tex)
+            .read(&candidate_hit_tex)
             .write(&mut irradiance_output_tex)
             .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((

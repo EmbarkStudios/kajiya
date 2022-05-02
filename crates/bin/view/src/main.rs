@@ -517,6 +517,11 @@ fn main() -> anyhow::Result<()> {
                             .range(0..=10)
                             .build(ui, &mut state.lights.count);*/
 
+                        ui.checkbox(
+                            im_str!("Scroll irradiance cache"),
+                            &mut ctx.world_renderer.ircache.enable_scroll,
+                        );
+
                         imgui::Drag::<u32>::new(im_str!("GI spatial reuse passes"))
                             .range(1..=3)
                             .build(ui, &mut ctx.world_renderer.rtdgi.spatial_reuse_pass_count);

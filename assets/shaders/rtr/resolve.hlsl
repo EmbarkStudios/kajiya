@@ -47,10 +47,6 @@
 static const uint MAX_SAMPLE_COUNT = 8;
 static const bool USE_RESTIR = RTR_USE_RESTIR;
 
-float inverse_lerp(float minv, float maxv, float v) {
-    return (v - minv) / (maxv - minv);
-}
-
 float approx_fresnel(float3 wo, float3 wi) {
    float3 h_unnorm = wo + wi;
    return exp2(-1.0 -8.65617024533378 * dot(wi, h_unnorm));

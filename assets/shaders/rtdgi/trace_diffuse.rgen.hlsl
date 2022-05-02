@@ -22,7 +22,7 @@
 #define USE_WORLD_RADIANCE_CACHE 0
 
 #define ROUGHNESS_BIAS 0.5
-#define USE_SCREEN_GI_REPROJECTION 1
+#define USE_SCREEN_GI_REPROJECTION 0
 #define USE_SWIZZLE_TILE_PIXELS 0
 
 #define USE_EMISSIVE 1
@@ -45,8 +45,9 @@ DEFINE_WRC_BINDINGS(15)
 [[vk::binding(18)]] Texture2D<float3> ray_orig_history_tex;
 [[vk::binding(19)]] RWTexture2D<float4> candidate_irradiance_out_tex;
 [[vk::binding(20)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(21)]] RWTexture2D<float> rt_history_invalidity_out_tex;
-[[vk::binding(22)]] cbuffer _ {
+[[vk::binding(21)]] RWTexture2D<float4> candidate_hit_out_tex;
+[[vk::binding(22)]] RWTexture2D<float> rt_history_invalidity_out_tex;
+[[vk::binding(23)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -282,8 +283,7 @@ void main() {
         uint2(0, 1),
     };
 
-    //const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
-    const int2 hi_px_offset = hi_px_subpixels[0];
+    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
     const uint2 hi_px = px * 2 + hi_px_offset;
     
     float depth = depth_tex[hi_px];
@@ -376,6 +376,7 @@ void main() {
     //candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
     candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
     candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
+    candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, 1);
     //rt_history_invalidity_out_tex[px] = is_prev_valid ? 0.0 : 1.0;
     rt_history_invalidity_out_tex[px] = invalidity;
 }

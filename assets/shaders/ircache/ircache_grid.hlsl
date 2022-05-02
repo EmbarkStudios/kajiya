@@ -5,7 +5,6 @@ static const float IRCACHE_GRID_CELL_DIAMETER = 0.16 * 0.5;
 static const uint IRCACHE_CASCADE_SIZE = 32;
 static const uint IRCACHE_CASCADE_COUNT = 12;
 
-static const bool IRCACHE_GRID_SCROLL = true;
 static const bool IRCACHE_USE_NORMAL_BASED_CELL_OFFSET = true;
 
 struct IrcacheCoord {
@@ -31,7 +30,7 @@ struct IrcacheCoord {
 };
 
 IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal) {
-    const float3 center = get_eye_position();
+    const float3 center = frame_constants.ircache_grid_center.xyz;
 
     const uint reserved_cells =
         IRCACHE_USE_NORMAL_BASED_CELL_OFFSET

@@ -183,4 +183,8 @@ struct Aabb {
     }
 };
 
+float inverse_lerp(float minv, float maxv, float v) {
+    return (v - minv) / (maxv - minv);
+}
+
 #endif

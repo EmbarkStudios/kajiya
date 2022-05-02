@@ -42,7 +42,7 @@ DEFINE_WRC_BINDINGS(6)
 // HACK: reduces feedback loops due to the spherical traces.
 // As a side effect, dims down the result a bit, and increases variance.
 // Maybe not needed when using IRCACHE_LOOKUP_PRECISE.
-#define USE_SELF_LIGHTING_LIMITER 0
+#define USE_SELF_LIGHTING_LIMITER 1
 
 #include "lookup.hlsl"
 
@@ -63,9 +63,9 @@ static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_IRCACHE_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
 static const uint SAMPLES_PER_FRAME = 8;
-static const uint TARGET_SAMPLE_COUNT = 512;
-static const uint BUCKET_SAMPLE_COUNT = 512 / IRCACHE_OCTA_DIMS2;
-static const float SHORT_ESTIMATOR_SAMPLE_COUNT = 3;
+static const uint SAMPLER_SEQUENCE_LENGTH = 1024;
+static const uint BUCKET_SAMPLE_COUNT = 8;
+static const float SHORT_ESTIMATOR_SAMPLE_COUNT = 3.0;
 static const bool USE_MSME = true;
 
 float3 sample_environment_light(float3 dir) {
@@ -93,8 +93,7 @@ struct IrcacheTraceResult {
 
 IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, float3x3 tangent_to_world, uint sequence_idx, uint life) {
     uint rng = hash1(sequence_idx);
-    //const float2 urand = r2_sequence(sequence_idx % (TARGET_SAMPLE_COUNT * 64));
-    const float2 urand = r2_sequence(sequence_idx % max(256, TARGET_SAMPLE_COUNT));
+    const float2 urand = r2_sequence(sequence_idx % SAMPLER_SEQUENCE_LENGTH);
 
     RayDesc outgoing_ray;
     #if 0 == IRCACHE_USE_SPHERICAL_HARMONICS
@@ -149,10 +148,9 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, float3x3 tangen
     float3 irradiance_sum = 0;
     float2 hit_dist_wt = 0;
 
-    [loop]
     for (uint path_length = 0; path_length < MAX_PATH_LENGTH; ++path_length) {
         const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-            .with_cone(RayCone::from_spread_angle(0.03))
+            .with_cone(RayCone::from_spread_angle(0.1))
             .with_cull_back_faces(false)
             .with_path_length(path_length + 1)  // +1 because this is indirect light
             .trace(acceleration_structure);
@@ -317,7 +315,9 @@ void main() {
 
     if (entry_idx >= total_entry_count || !is_ircache_entry_life_valid(life)) {
         return;
-    }   
+    }
+
+    const uint rank = ircache_entry_life_to_rank(life);
 
     #if USE_DYNAMIC_TRACE_ORIGIN
         const Vertex entry = unpack_vertex(ircache_reposition_proposal_buf[entry_idx]);
@@ -338,7 +338,14 @@ void main() {
         }
     }
 
-    const uint sample_count = SAMPLES_PER_FRAME;
+    // Allocate fewer samples for further bounces
+    const uint sample_count_divisor = 
+        rank <= 1
+        ? 1
+        : 4;
+
+    const uint sample_count = SAMPLES_PER_FRAME / sample_count_divisor;
+
     float3 irradiance_sum = 0;
 
     // TODO: consider stratifying within cells
@@ -349,7 +356,7 @@ void main() {
 
         const float self_lighting_limiter = 
             USE_SELF_LIGHTING_LIMITER
-            ? lerp(0.5, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
+            ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
             : 1.0;
 
         const float3 new_value = traced.incident_radiance * self_lighting_limiter;
@@ -372,36 +379,35 @@ void main() {
 
         const float2 prev_ex_ex2 = should_reset ? sample_ex_ex2 : prev_aux.xy;
 
-        const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / min(SHORT_ESTIMATOR_SAMPLE_COUNT, prev_aux.w + 1));
+        const float short_estimator_sample_count = max(1, SHORT_ESTIMATOR_SAMPLE_COUNT / max(1.0, 0.666 * sample_count_divisor));
+        const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / min(short_estimator_sample_count, prev_aux.w + 1));
 
         const float4 new_aux = float4(
-            ex_ex2, 0, min(SHORT_ESTIMATOR_SAMPLE_COUNT, prev_aux.w + 1)
+            ex_ex2, 0, min(short_estimator_sample_count, prev_aux.w + 1)
         );
 
         ircache_aux_buf[output_idx] = new_aux;
 
         const float lum_variance = max(0.0, ex_ex2.y - ex_ex2.x * ex_ex2.x);
         const float lum_dev = sqrt(lum_variance);
-        const float quick_lum_ex = ex_ex2.x;
+        const float quick_lum_ex = max(0.0, ex_ex2.x);
 
         const float4 prev_value_and_count =
             // TODO: not correct unless we process every cell just once
             ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
             * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
-        const float bucket_sample_count = min(1 + prev_value_and_count.w, BUCKET_SAMPLE_COUNT);
+        const float bucket_sample_count = max(1, min(1 + prev_value_and_count.w, BUCKET_SAMPLE_COUNT / sample_count_divisor));
 
         const float3 prev_value = prev_value_and_count.rgb;
         const float prev_lum = sRGB_to_luminance(prev_value);
 
-        const float3 prev_value_ycbcr = sRGB_to_YCbCr(prev_value);
-        const float num_deviations = 1.0;
-        float3 prev_value_clamped = YCbCr_to_sRGB(sign(prev_value_ycbcr) * clamp(
-            abs(prev_value_ycbcr),
-            abs(prev_value_ycbcr) * (quick_lum_ex - lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x),
-            abs(prev_value_ycbcr) * (quick_lum_ex + lum_dev * num_deviations) / max(1e-10, prev_value_ycbcr.x)
-        ));
-        //prev_value_clamped = prev_value_clamped.xxx;
+        const float num_deviations = 1;
+        const float lum_clamped = clamp(prev_lum, quick_lum_ex - lum_dev * num_deviations, quick_lum_ex + lum_dev * num_deviations);
+        const float lum_clamp_as_lerp_t = saturate(inverse_lerp(prev_lum, quick_lum_ex, lum_clamped));
+        
+        float3 prev_value_clamped = lerp(prev_value, new_value, lum_clamp_as_lerp_t);
+        //prev_value_clamped = prev_value;
         //prev_value_clamped = clamp(prev_lum, quick_lum_ex - lum_dev * num_deviations, quick_lum_ex + lum_dev * num_deviations).xxx;
 
         const float blend_factor_new = 1.0 / bucket_sample_count;
@@ -439,7 +445,6 @@ void main() {
     }
 
     for (uint basis_i = 0; basis_i < IRCACHE_IRRADIANCE_STRIDE; ++basis_i) {
-        float prev_sample_count = TARGET_SAMPLE_COUNT;
         const float4 new_value = contribution_sum.sh_rgb[basis_i];
         float4 prev_value =
             ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i]
@@ -449,7 +454,6 @@ void main() {
             prev_value = new_value;
         }
 
-        const float total_sample_count = prev_sample_count + sample_count;
         float blend_factor_new = 0.25;
         const float4 blended_value = lerp(prev_value, new_value, blend_factor_new);
 

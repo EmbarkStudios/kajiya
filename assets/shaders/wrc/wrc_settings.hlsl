@@ -15,7 +15,8 @@ float3 wrc_grid_center() {
     //return float3(0, 1, -15);
     //return float3(0, 0, 14);
     //return float3(0, 0.0, 8);
-    return float3(0, -100.0, 0);
+    //return float3(0, -100.0, 0);
+    return float3(-3.3786697, 0, -37.03225);
 }
 
 float3 wrc_probe_center(int3 probe_idx) {

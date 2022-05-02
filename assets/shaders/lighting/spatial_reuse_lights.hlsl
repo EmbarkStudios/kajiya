@@ -30,10 +30,6 @@
 
 #define RENDER_INTO_RTR 1
 
-float inverse_lerp(float minv, float maxv, float v) {
-    return (v - minv) / (maxv - minv);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
     uint2 orig_px = px;

@@ -56,6 +56,7 @@ struct FrameConstants {
     float pre_exposure_prev;
     float pre_exposure_delta;
 
+    float4 ircache_grid_center;
     IrcacheCascadeConstants ircache_cascades[12];
 };
 

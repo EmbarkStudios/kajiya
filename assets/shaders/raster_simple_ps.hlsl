@@ -39,9 +39,11 @@ PsOut main(PsIn ps) {
     Mesh mesh = meshes[push_constants.mesh_index];
     MeshMaterial material = vertices.Load<MeshMaterial>(mesh.mat_data_offset + ps.material_id * sizeof(MeshMaterial));
 
+    const float lod_bias = -0.5;
+
     float2 albedo_uv = transform_material_uv(material, ps.uv, 0);
     Texture2D albedo_tex = bindless_textures[NonUniformResourceIndex(material.albedo_map)];
-    float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, -0.5);
+    float4 albedo_texel = albedo_tex.SampleBias(sampler_llr, albedo_uv, lod_bias);
     if (albedo_texel.a < 0.5) {
         discard;
     }
@@ -50,13 +52,13 @@ PsOut main(PsIn ps) {
 
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
-    const float4 metalness_roughness = spec_tex.SampleBias(sampler_llr, spec_uv, -0.5);
+    const float4 metalness_roughness = spec_tex.SampleBias(sampler_llr, spec_uv, lod_bias);
     float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
     float metalness = metalness_roughness.z * material.metalness_factor;
 
     Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
-    float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, -0.5).xyz * 2.0 - 1.0;
+    float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, lod_bias).xyz * 2.0 - 1.0;
 
     // bistro hack
     //ts_normal.zy *= -1;
@@ -93,7 +95,7 @@ PsOut main(PsIn ps) {
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
     float3 emissive = 1.0.xxx
-        * emissive_tex.SampleBias(sampler_llr, emissive_uv, -0.5).rgb
+        * emissive_tex.SampleBias(sampler_llr, emissive_uv, lod_bias).rgb
         * float3(material.emissive)
         * instance_dynamic_parameters_dyn[push_constants.draw_index].emissive_multiplier
         * frame_constants.pre_exposure;

@@ -56,7 +56,7 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
         // has a good chance of creating leaks. Delay the allocation for one frame
         // unless we have a suitable one from a primary ray.
         const bool skip_allocation =
-            (query_rank + 1) >= IRCACHE_ENTRY_RANK_COUNT
+            query_rank >= IRCACHE_ENTRY_RANK_COUNT
             || (any(was_just_scrolled_in) && query_rank > 0);
 
         if (!skip_allocation) {
@@ -240,6 +240,8 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
                 }
             #endif
         }
+
+        //irradiance_sum = (entry_idx % 64) / 63.0;
     }
 
     return irradiance_sum;
