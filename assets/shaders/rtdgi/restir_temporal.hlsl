@@ -306,11 +306,13 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
             const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-            //const float prev_dist = sample_hit_ws_and_dist.w;
-            const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
+
+            // TODO: Using `prev_dir_to_sample_hit_unnorm_ws` explodes weights.
+            const float prev_dist = sample_hit_ws_and_dist.w;
+            //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: `hit_normal_history_tex` is not reprojected.
-            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[rpx];
+            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
 
             /*if (sample_i > 0 && !(prev_dist > 1e-4)) {
                 continue;
@@ -364,9 +366,10 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
                 //
                 // Wrong: must use neighbor's data, not the original ray.
-                // jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
+                // TODO: why does the "wrong" thing work, while the "correct" one has exploding weights?
+                 jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
                 // Correct:
-                jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
+                //jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
 
                 #if DIFFUSE_GI_BRDF_SAMPLING
                     // N dot L. Useful for normal maps, micro detail.
