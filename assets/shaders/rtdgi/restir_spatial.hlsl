@@ -118,9 +118,19 @@ void main(uint2 px : SV_DispatchThreadID) {
         float visibility = 1;
         float relevance = 1;
 
-        const int2 sample_offset = int2(px) - int2(spx);
+        // Note: we're using `rpx` (neighbor reservoir px) here instead of `spx` (original ray px),
+        // since we're merging with the stream of the neighbor and not the original ray.
+        //
+        // The distinction is in jacobians -- during every exchange, they get adjusted so that the target
+        // pixel has correctly distributed rays. If we were to merge with the original pixel's stream,
+        // we'd be applying the reservoirs several times.
+        //
+        // Consider for example merging a pixel with itself (no offset) multiple times over; we want
+        // the jacobian to be 1.0 in that case, and not to reflect wherever its ray originally came from.
+
+        const int2 sample_offset = int2(px) - int2(rpx);
         const float sample_dist2 = dot(sample_offset, sample_offset);
-        const float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
+        const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             const float normal_cutoff = 0.9;
@@ -140,13 +150,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         relevance *= normal_similarity_dot;
 
-        const float sample_ssao = ssao_tex[spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
+        const float sample_ssao = ssao_tex[rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
         relevance *= 1 - abs(sample_ssao - center_ssao);
 
         const float2 sample_uv = get_uv(
-            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
             gbuffer_tex_size);
-        const float sample_depth = half_depth_tex[spx];
+        const float sample_depth = half_depth_tex[rpx];
         
         if (sample_depth == 0.0) {
             continue;
@@ -157,8 +167,12 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float4 sample_hit_ws_and_dist = ray_tex[spx];// + float4(get_eye_position(), 0.0);
         const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
         const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
-        //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
-        const float prev_dist = sample_hit_ws_and_dist.w;
+
+        // Note: `sample_hit_ws_and_dist.w` represents the original ray, but we want
+        // the neighbor's sample, which might have been resampled already.
+        const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
+        const float3 prev_dir_to_sample_hit_ws = prev_dir_to_sample_hit_unnorm_ws / prev_dist;
+        //const float prev_dist = sample_hit_ws_and_dist.w;
 
         // Reject hits too close to the surface
         if (!is_center_sample && !(prev_dist > 1e-8)) {
@@ -190,7 +204,15 @@ void main(uint2 px : SV_DispatchThreadID) {
         {
             // Raymarch to check occlusion
             if (RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
-        		const float3 surface_offset_vs = sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs();
+                const float2 ray_orig_uv = get_uv(
+                    spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+                    gbuffer_tex_size);
+
+        		//const float surface_offset_len = length(sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs());
+                const float surface_offset_len = length(
+                    // Use the center depth for simplicity; this doesn't need to be exact.
+                    ViewRayContext::from_uv_and_depth(ray_orig_uv, depth).ray_hit_vs() - view_ray_context.ray_hit_vs()
+                );
 
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
@@ -201,7 +223,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
-                    + raymarch_dir_unnorm_ws * min(1.0, length(surface_offset_vs) / length(raymarch_dir_unnorm_ws));
+                    + raymarch_dir_unnorm_ws * min(1.0, surface_offset_len / length(raymarch_dir_unnorm_ws));
 #else
                 // Trace in the same direction as the reused ray.
                 // More precise shadowing sometimes, but corner darkening. TODO.
@@ -209,7 +231,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float3 raymarch_dir_unnorm_ws = prev_dir_to_sample_hit_unnorm_ws;
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
-                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), length(surface_offset_vs)) / length(prev_dist);
+                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), surface_offset_len) / length(prev_dist);
 #endif
 
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
@@ -258,6 +280,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float4 sample_hit_normal_ws_dot = hit_normal_tex[spx];
         const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
+        const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
 
         float p_q = 1;
         p_q *= max(0, sRGB_to_luminance(prev_irrad.rgb));
@@ -277,7 +300,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
-        jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
+        //
+        // Wrong: must use neighbor's data, not the original ray.
+        // jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
+        // Correct:
+        jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
 
         #if DIFFUSE_GI_BRDF_SAMPLING
             // N dot L. Useful for normal maps, micro detail.

@@ -3,9 +3,9 @@
 #define RESTIR_TEMPORAL_M_CLAMP 10.0
 
 // Reduces fireflies, but causes darkening in corners
-//#define RESTIR_RESERVOIR_W_CLAMP 5.0
+#define RESTIR_RESERVOIR_W_CLAMP 10.0
 // RTDGI_RESTIR_USE_JACOBIAN_BASED_REJECTION covers the same niche.
-#define RESTIR_RESERVOIR_W_CLAMP 1e5
+//#define RESTIR_RESERVOIR_W_CLAMP 1e5
 
 #define RESTIR_USE_SPATIAL true
 #define RESTIR_TEMPORAL_USE_PERMUTATIONS true

@@ -306,11 +306,11 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
             const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-            const float prev_dist = sample_hit_ws_and_dist.w;
-            //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
+            //const float prev_dist = sample_hit_ws_and_dist.w;
+            const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
-            // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
-            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
+            // Note: `hit_normal_history_tex` is not reprojected.
+            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[rpx];
 
             /*if (sample_i > 0 && !(prev_dist > 1e-4)) {
                 continue;
@@ -321,6 +321,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
             const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
+            const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
 
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.
@@ -360,12 +361,12 @@ void main(uint2 px : SV_DispatchThreadID) {
                 jacobian *= clamp(prev_dist / dist_to_sample_hit, 1e-4, 1e4);
                 jacobian *= jacobian;
 
-                // N of hit dot -L. Needed to avoid leaks.
-                jacobian *= clamp(
-                    center_to_hit_vis
-                    / sample_hit_normal_ws_dot.w,
-                    /// max(1e-5, -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws));
-                    0, 1e4);
+                // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
+                //
+                // Wrong: must use neighbor's data, not the original ray.
+                // jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
+                // Correct:
+                jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
 
                 #if DIFFUSE_GI_BRDF_SAMPLING
                     // N dot L. Useful for normal maps, micro detail.
@@ -399,8 +400,14 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Raymarch to check occlusion
             // Note: somehow it causes over-darkening of unoccluded stuff. Enable once figured out.
             if (!true && sample_i > 0) {
-                const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
-        		const float3 surface_offset_vs = sample_origin_vs - view_ray_context.ray_hit_vs();
+                const float2 ray_orig_uv = get_uv(
+                    spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+                    gbuffer_tex_size);
+
+                const float surface_offset_len = length(
+                    // Use the center depth for simplicity; this doesn't need to be exact.
+                    ViewRayContext::from_uv_and_depth(ray_orig_uv, depth).ray_hit_vs() - view_ray_context.ray_hit_vs()
+                );
 
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
@@ -409,12 +416,12 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
-                    + raymarch_dir_unnorm_ws * min(1.0, length(surface_offset_vs) / length(raymarch_dir_unnorm_ws));
+                    + raymarch_dir_unnorm_ws * min(1.0, surface_offset_len / length(raymarch_dir_unnorm_ws));
 #else
                 const float3 raymarch_dir_unnorm_ws = prev_dir_to_sample_hit_unnorm_ws;
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
-                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), length(surface_offset_vs)) / length(prev_dist);
+                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), surface_offset_len) / length(prev_dist);
 #endif
 
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
