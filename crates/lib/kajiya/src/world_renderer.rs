@@ -201,10 +201,12 @@ pub struct DynamicExposureState {
     ev_slow: f32,
 }
 
+const DYNAMIC_EXPOSURE_BIAS: f32 = -2.5;
+
 impl DynamicExposureState {
     pub fn ev_smoothed(&self) -> f32 {
         if self.enabled {
-            (self.ev_slow + self.ev_fast) * 0.5
+            (self.ev_slow + self.ev_fast) * 0.5 + DYNAMIC_EXPOSURE_BIAS
         } else {
             0.0
         }
