@@ -116,7 +116,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     // TODO: use
     float3 light_radiance = 0.0.xxx;
 
-    float p_q_sel = 0;
     uint2 src_px_sel = px;
     float3 irradiance_sel = 0;
     float3 ray_orig_sel_ws = 0;
@@ -124,10 +123,9 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 hit_normal_sel = 1;
     //bool prev_sample_valid = false;
 
+    Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
     Reservoir1spp reservoir = Reservoir1spp::create();
     const uint reservoir_payload = px.x | (px.y << 16);
-
-    reservoir.payload = reservoir_payload;
 
     {
         RayDesc outgoing_ray;
@@ -145,7 +143,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             result.out_value *= smoothstep(0.0, 1.0, infl);
         }*/
 
-        const float p_q = p_q_sel = 1.0
+        const float p_q = 1.0
             * max(0, sRGB_to_luminance(result.out_value))
             #if !DIFFUSE_GI_BRDF_SAMPLING
                 * max(0, dot(outgoing_dir, normal_ws))
@@ -161,10 +159,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         hit_normal_sel = result.hit_normal_ws;
         //prev_sample_valid = result.prev_sample_valid;
 
-        reservoir.payload = reservoir_payload;
-        reservoir.w_sum = p_q * inv_pdf_q;
-        reservoir.M = inv_pdf_q != 0 ? 1 : 0;
-        reservoir.W = inv_pdf_q;
+        reservoir.init_with_stream(p_q, inv_pdf_q, stream_state, reservoir_payload);
 
         float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
@@ -185,8 +180,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         : 1;
 
     if (use_resampling) {
-        float M_sum = reservoir.M;
-
         // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
         // could be due to lack of bias compensation (the `Z` term)
         //
@@ -194,7 +187,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // and looks bad. Maybe try using accum at the start, skip the middle, and then engage it once
         // the central reservoir is full, to stabilize the boiling.
 
-        for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT && M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
+        for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT && stream_state.M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
         //for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 2; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
@@ -449,25 +442,22 @@ void main(uint2 px : SV_DispatchThreadID) {
                 }
     		}
 
-            // TODO: mult p_q by jacobian here or only in `update`?
-            //p_q *= jacobian;
+            r.M *= relevance;
 
-            const float w = p_q * r.W * r.M * jacobian * relevance;
-            if (reservoir.update(w * visibility, reservoir_payload, rng)) {
+            if (reservoir.update_with_stream(
+                r, p_q, jacobian * visibility,
+                stream_state, reservoir_payload, rng
+            )) {
                 outgoing_dir = dir_to_sample_hit;
-                p_q_sel = p_q;
                 src_px_sel = rpx;
                 irradiance_sel = prev_irrad.rgb;
                 ray_orig_sel_ws = prev_ray_orig;
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
             }
-
-            M_sum += r.M * relevance;
         }
 
-        reservoir.M = M_sum;
-        reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / reservoir.M);
+        reservoir.finish_stream(stream_state);
         reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
     }
 

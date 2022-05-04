@@ -3,6 +3,18 @@
 
 #include "hash.hlsl"
 
+struct Reservoir1sppStreamState {
+    float p_q_sel;
+    float M_sum;
+
+    static Reservoir1sppStreamState create() {
+        Reservoir1sppStreamState res;
+        res.p_q_sel = 0;
+        res.M_sum = 0;
+        return res;
+    }
+};
+
 struct Reservoir1spp {
     float w_sum;
     uint payload;
@@ -43,6 +55,44 @@ struct Reservoir1spp {
         } else {
             return false;
         }
+    }
+
+    bool update_with_stream(
+        Reservoir1spp r,
+        float p_q,
+        float weight,
+        inout Reservoir1sppStreamState stream_state,
+        uint sample_payload,
+        inout uint rng
+    ) {
+        stream_state.M_sum += r.M;
+
+        if (update(p_q * weight * r.W * r.M, sample_payload, rng)) {
+            stream_state.p_q_sel = p_q;
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    void init_with_stream(
+        float p_q,
+        float weight,
+        inout Reservoir1sppStreamState stream_state,
+        uint sample_payload
+    ) {
+        payload = sample_payload;
+        w_sum = p_q * weight;
+        M = weight != 0 ? 1 : 0;
+        W = weight;
+
+        stream_state.p_q_sel = p_q;
+        stream_state.M_sum = M;
+    }
+
+    void finish_stream(Reservoir1sppStreamState state) {
+        M = state.M_sum;
+        W = (1.0 / max(1e-5, state.p_q_sel)) * (w_sum / M);
     }
 };
 

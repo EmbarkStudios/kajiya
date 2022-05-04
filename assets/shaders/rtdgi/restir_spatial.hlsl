@@ -52,10 +52,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float center_depth = half_depth_tex[px];
     const float center_ssao = ssao_tex[px * 2].r;
 
+    Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
     Reservoir1spp reservoir = Reservoir1spp::create();
-    float p_q_sel = 0;
+
     float3 dir_sel = 1;
-    float M_sum = 0;
 
     float sample_radius_offset = uint_to_u01_float(hash1_mut(rng));
 
@@ -100,7 +100,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         sample_count = 1;
     }
 
-    for (uint sample_i = 0; sample_i < sample_count && M_sum < TARGET_M; ++sample_i) {
+    for (uint sample_i = 0; sample_i < sample_count && stream_state.M_sum < TARGET_M; ++sample_i) {
         //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float2 radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
@@ -343,19 +343,19 @@ void main(uint2 px : SV_DispatchThreadID) {
             continue;
         }
 
-        const float w = p_q * r.W * r.M * jacobian * relevance;
-        if (reservoir.update(w * visibility, r.payload, rng)) {
-            p_q_sel = p_q;
+        r.M *= relevance;
+
+        const float w = p_q * r.W * r.M * jacobian;
+
+        if (reservoir.update_with_stream(
+            r, p_q, jacobian * visibility,
+            stream_state, r.payload, rng
+        )) {
             dir_sel = dir_to_sample_hit;
         }
-
-        M_sum += r.M * relevance;
     }
 
-    reservoir.M = M_sum;
-    reservoir.W =
-        (1.0 / max(1e-8, p_q_sel))
-        * (reservoir.w_sum / max(1.0, reservoir.M));
+    reservoir.finish_stream(stream_state);
     reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
 
     reservoir_output_tex[px] = reservoir.as_raw();
