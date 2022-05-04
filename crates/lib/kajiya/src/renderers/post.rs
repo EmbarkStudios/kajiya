@@ -192,16 +192,18 @@ impl PostProcessRenderer {
         }
 
         // Reject this much from the bottom and top end
-        const OUTLIER_FRAC: f64 = 0.1;
+        const OUTLIER_FRAC_LO: f64 = 0.35;
+        const OUTLIER_FRAC_HI: f64 = 0.05;
 
         let total_entry_count: u32 = histogram.iter().copied().sum();
-        let reject_entry_count = (total_entry_count as f64 * OUTLIER_FRAC) as u32;
-        let entry_count_to_use = total_entry_count - reject_entry_count * 2;
+        let reject_lo_entry_count = (total_entry_count as f64 * OUTLIER_FRAC_LO) as u32;
+        let entry_count_to_use =
+            (total_entry_count as f64 * (1.0 - OUTLIER_FRAC_LO - OUTLIER_FRAC_HI)) as u32;
 
         let mut sum = 0.0;
         let mut used_count = 0;
 
-        let mut left_to_reject = reject_entry_count;
+        let mut left_to_reject = reject_lo_entry_count;
         let mut left_to_use = entry_count_to_use;
 
         for (bin_idx, count) in histogram.into_iter().enumerate() {

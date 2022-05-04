@@ -201,7 +201,7 @@ pub struct DynamicExposureState {
     ev_slow: f32,
 }
 
-const DYNAMIC_EXPOSURE_BIAS: f32 = -2.5;
+const DYNAMIC_EXPOSURE_BIAS: f32 = -2.0;
 
 impl DynamicExposureState {
     pub fn ev_smoothed(&self) -> f32 {

@@ -63,10 +63,15 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // TODO: drive this via variance, shrink when it's low. 80 is a bit of a blur...
     const float kernel_tightness = (1 - center_ssao);
-    const float max_kernel_radius =
+    float max_kernel_radius =
         spatial_reuse_pass_idx == 0
         ? lerp(96.0, 32.0, kernel_tightness)
         : lerp(32.0, 8.0, kernel_tightness);
+
+    // TODO: only run more passes where absolutely necessary
+    if (spatial_reuse_pass_idx >= 2) {
+        max_kernel_radius = 8;
+    }
 
     const float2 dist_to_edge_xy = min(float2(px), output_tex_size.xy - px);
     const float allow_edge_overstep = center_r.M < 10 ? 100.0 : 1.25;

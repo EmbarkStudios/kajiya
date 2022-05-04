@@ -20,5 +20,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     const float t = saturate((log_lum - LUMINANCE_HISTOGRAM_MIN_LOG2) / (LUMINANCE_HISTOGRAM_MAX_LOG2 - LUMINANCE_HISTOGRAM_MIN_LOG2));
     const uint bin = min(uint(t * 256), 255);
 
-    InterlockedAdd(output_buffer[bin], 1);
+    const float2 uv = float2(px + 0.5) / input_extent;
+    const float infl = exp(-8 * pow(length(uv - 0.5), 2));
+    const uint quantized_infl = uint(infl * 256.0);
+
+    InterlockedAdd(output_buffer[bin], quantized_infl);
 }
