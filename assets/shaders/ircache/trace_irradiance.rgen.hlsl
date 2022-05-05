@@ -43,15 +43,11 @@ DEFINE_WRC_BINDINGS(6)
 // HACK: reduces feedback loops due to the spherical traces.
 // As a side effect, dims down the result a bit, and increases variance.
 // Maybe not needed when using IRCACHE_LOOKUP_PRECISE.
-#define USE_SELF_LIGHTING_LIMITER 0
+#define USE_SELF_LIGHTING_LIMITER 1
 
 #include "lookup.hlsl"
 
 #define USE_WORLD_RADIANCE_CACHE 0
-
-// Reduces leaks and spatial artifacts,
-// but increases temporal fluctuation.
-#define USE_DYNAMIC_TRACE_ORIGIN 0
 
 #define USE_BLEND_RESULT 0
 
@@ -331,20 +327,22 @@ void main() {
 
     const uint rank = ircache_entry_life_to_rank(life);
 
-    #if USE_DYNAMIC_TRACE_ORIGIN
-        const VertexPacked packed_entry = ircache_reposition_proposal_buf[entry_idx];
-    #else
-        const VertexPacked packed_entry = ircache_spatial_buf[entry_idx];
-    #endif
+    const bool should_reset = all(0.0 == ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE]);
 
+    VertexPacked packed_entry = ircache_spatial_buf[entry_idx];
+
+    if (should_reset) {
+        // HACK; this is for entries which were just allocated in this very pass.
+        // Those `ircache_spatial_buf` will not have been intialized yet by the aging pass.
+        packed_entry = ircache_reposition_proposal_buf[entry_idx];
+    }
+        
     const Vertex entry = unpack_vertex(packed_entry);
 
     DiffuseBrdf brdf;
     //const float3x3 tangent_to_world = build_orthonormal_basis(entry.normal);
 
     brdf.albedo = 1.0.xxx;
-
-    const bool should_reset = all(0.0 == ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE]);
 
     if (should_reset) {
         for (uint i = 0; i < IRCACHE_AUX_STRIDE; ++i) {
@@ -412,7 +410,12 @@ void main() {
                 #if 1
                     IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, /*tangent_to_world, */r.payload, life);
                     {
-                        const float3 a = prev_traced.incident_radiance;
+                        const float prev_self_lighting_limiter = 
+                            USE_SELF_LIGHTING_LIMITER
+                            ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(prev_traced.direction, prev_entry.normal)))
+                            : 1.0;
+
+                        const float3 a = prev_traced.incident_radiance * prev_self_lighting_limiter;
                         const float3 b = prev_value_and_count.rgb;
                         const float3 dist3 = abs(a - b) / (a + b);
                         const float dist = max(dist3.r, max(dist3.g, dist3.b));
