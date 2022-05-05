@@ -2,6 +2,7 @@
 #define IRCACHE_CONSTANTS_HLSL
 
 #define IRCACHE_USE_TRILINEAR 0
+#define IRCACHE_USE_POSITION_VOTING 1
 #define IRCACHE_USE_UNIFORM_VOTING 1
 #define IRCACHE_FREEZE 0
 
@@ -38,7 +39,7 @@ uint ircache_entry_life_for_rank(uint rank) {
 static const uint IRCACHE_OCTA_DIMS = 4;
 static const uint IRCACHE_OCTA_DIMS2 = IRCACHE_OCTA_DIMS * IRCACHE_OCTA_DIMS;
 static const uint IRCACHE_IRRADIANCE_STRIDE = 3;
-static const uint IRCACHE_AUX_STRIDE = 2 * IRCACHE_OCTA_DIMS2;
+static const uint IRCACHE_AUX_STRIDE = 4 * IRCACHE_OCTA_DIMS2;
 
 
 

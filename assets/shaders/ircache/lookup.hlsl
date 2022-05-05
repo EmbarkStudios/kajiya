@@ -203,7 +203,7 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
                 const float wt = dot(dir, normal_ws);
                 if (wt > 0.0) {
                     const float4 contrib = ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + IRCACHE_OCTA_DIMS2 + octa_idx];
-                    irradiance += contrib.rgb * wt;
+                    irradiance += contrib.rgb * wt * contrib.w;
                     weight_sum += wt;
                 }
             }

@@ -52,7 +52,7 @@ void main(uint entry_idx: SV_DispatchThreadID) {
             age_ircache_entry(entry_idx);
         }
 
-        #if 1
+        #if IRCACHE_USE_POSITION_VOTING
             #if 0
                 uint rng = hash2(uint2(entry_idx, frame_constants.frame_index));
                 const float dart = uint_to_u01_float(hash1_mut(rng));

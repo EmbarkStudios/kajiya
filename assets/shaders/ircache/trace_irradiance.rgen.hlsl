@@ -8,6 +8,7 @@
 #include "../inc/rt.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/quasi_random.hlsl"
+#include "../inc/reservoir.hlsl"
 #include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/mesh.hlsl"
@@ -42,7 +43,7 @@ DEFINE_WRC_BINDINGS(6)
 // HACK: reduces feedback loops due to the spherical traces.
 // As a side effect, dims down the result a bit, and increases variance.
 // Maybe not needed when using IRCACHE_LOOKUP_PRECISE.
-#define USE_SELF_LIGHTING_LIMITER 1
+#define USE_SELF_LIGHTING_LIMITER 0
 
 #include "lookup.hlsl"
 
@@ -63,10 +64,10 @@ static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_IRCACHE_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
 static const uint SAMPLES_PER_FRAME = 8;
-static const uint SAMPLER_SEQUENCE_LENGTH = 1024;
+static const uint SAMPLER_SEQUENCE_LENGTH = 1024 * 1024;
 static const uint BUCKET_SAMPLE_COUNT = 8;
 static const float SHORT_ESTIMATOR_SAMPLE_COUNT = 3.0;
-static const bool USE_MSME = true;
+static const bool USE_MSME = !true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.0.xxx;
@@ -89,9 +90,12 @@ float unpack_dist(float x) {
 struct IrcacheTraceResult {
     float3 incident_radiance;
     float3 direction;
+    float3 hit_pos;
 };
 
-IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, float3x3 tangent_to_world, uint sequence_idx, uint life) {
+IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, uint sequence_idx, uint life) {
+    const float3x3 tangent_to_world = build_orthonormal_basis(entry.normal);
+
     uint rng = hash1(sequence_idx);
     const float2 urand = r2_sequence(sequence_idx % SAMPLER_SEQUENCE_LENGTH);
 
@@ -156,6 +160,10 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, float3x3 tangen
             .trace(acceleration_structure);
 
         if (primary_hit.is_hit) {
+            if (0 == path_length) {
+                result.hit_pos = primary_hit.position;
+            }
+
             const float3 to_light_norm = SUN_DIRECTION;
             
             const bool is_shadowed = rt_is_shadowed(
@@ -266,6 +274,10 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, float3x3 tangen
                 break;
             }
         } else {
+            if (0 == path_length) {
+                result.hit_pos = outgoing_ray.Origin + outgoing_ray.Direction * 1000;
+            }
+
             if (far_field.is_hit()) {
                 irradiance_sum += throughput * far_field.radiance * far_field.inv_pdf;
             } else {
@@ -320,13 +332,15 @@ void main() {
     const uint rank = ircache_entry_life_to_rank(life);
 
     #if USE_DYNAMIC_TRACE_ORIGIN
-        const Vertex entry = unpack_vertex(ircache_reposition_proposal_buf[entry_idx]);
+        const VertexPacked packed_entry = ircache_reposition_proposal_buf[entry_idx];
     #else
-        const Vertex entry = unpack_vertex(ircache_spatial_buf[entry_idx]);
+        const VertexPacked packed_entry = ircache_spatial_buf[entry_idx];
     #endif
 
+    const Vertex entry = unpack_vertex(packed_entry);
+
     DiffuseBrdf brdf;
-    const float3x3 tangent_to_world = build_orthonormal_basis(entry.normal);
+    //const float3x3 tangent_to_world = build_orthonormal_basis(entry.normal);
 
     brdf.albedo = 1.0.xxx;
 
@@ -339,20 +353,24 @@ void main() {
     }
 
     // Allocate fewer samples for further bounces
-    const uint sample_count_divisor = 
-        rank <= 1
-        ? 1
-        : 4;
+    #if 0
+        const uint sample_count_divisor = 
+            rank <= 1
+            ? 1
+            : 4;
+    #else
+        const uint sample_count_divisor = 1;
+    #endif
 
     const uint sample_count = SAMPLES_PER_FRAME / sample_count_divisor;
 
-    float3 irradiance_sum = 0;
+    uint rng = hash1(hash1(entry_idx) + frame_constants.frame_index);
 
     // TODO: consider stratifying within cells
     for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx) {
         const uint sequence_idx = hash1(entry_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
-        IrcacheTraceResult traced = ircache_trace(entry, brdf, tangent_to_world, sequence_idx, life);
+        IrcacheTraceResult traced = ircache_trace(entry, brdf, /*tangent_to_world, */sequence_idx, life);
 
         const float self_lighting_limiter = 
             USE_SELF_LIGHTING_LIMITER
@@ -362,64 +380,90 @@ void main() {
         const float3 new_value = traced.incident_radiance * self_lighting_limiter;
         const float new_lum = sRGB_to_luminance(new_value);
 
+        Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
+        Reservoir1spp reservoir = Reservoir1spp::create();
+        reservoir.init_with_stream(new_lum, 1.0, stream_state, sequence_idx);
+
         const float2 octa_coord = octa_encode(traced.direction);
         const uint2 octa_quant = min(uint2(octa_coord * IRCACHE_OCTA_DIMS), (IRCACHE_OCTA_DIMS - 1).xx);
         const uint octa_idx = octa_quant.x + octa_quant.y * IRCACHE_OCTA_DIMS;
 
         const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
 
-        const float4 prev_aux = ircache_aux_buf[output_idx]
-            // TODO: not correct unless we process every cell just once
-            * float4(
-                frame_constants.pre_exposure_delta,
-                frame_constants.pre_exposure_delta * frame_constants.pre_exposure_delta,
-                1, 1
-            );
-        const float2 sample_ex_ex2 = float2(new_lum, new_lum * new_lum);
-
-        const float2 prev_ex_ex2 = should_reset ? sample_ex_ex2 : prev_aux.xy;
-
-        const float short_estimator_sample_count = max(1, SHORT_ESTIMATOR_SAMPLE_COUNT / max(1.0, 0.666 * sample_count_divisor));
-        const float2 ex_ex2 = lerp(prev_ex_ex2, sample_ex_ex2, 1.0 / min(short_estimator_sample_count, prev_aux.w + 1));
-
-        const float4 new_aux = float4(
-            ex_ex2, 0, min(short_estimator_sample_count, prev_aux.w + 1)
-        );
-
-        ircache_aux_buf[output_idx] = new_aux;
-
-        const float lum_variance = max(0.0, ex_ex2.y - ex_ex2.x * ex_ex2.x);
-        const float lum_dev = sqrt(lum_variance);
-        const float quick_lum_ex = max(0.0, ex_ex2.x);
-
         const float4 prev_value_and_count =
             // TODO: not correct unless we process every cell just once
             ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
             * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
-        const float bucket_sample_count = max(1, min(1 + prev_value_and_count.w, BUCKET_SAMPLE_COUNT / sample_count_divisor));
+        float3 val_sel = new_value;
+        bool selected_new = true;
 
-        const float3 prev_value = prev_value_and_count.rgb;
-        const float prev_lum = sRGB_to_luminance(prev_value);
+        {
+            const uint M_CLAMP = 30;
 
-        const float num_deviations = 1;
-        const float lum_clamped = clamp(prev_lum, quick_lum_ex - lum_dev * num_deviations, quick_lum_ex + lum_dev * num_deviations);
-        const float lum_clamp_as_lerp_t = saturate(inverse_lerp(prev_lum, quick_lum_ex, lum_clamped));
-        
-        float3 prev_value_clamped = lerp(prev_value, new_value, lum_clamp_as_lerp_t);
-        //prev_value_clamped = prev_value;
-        //prev_value_clamped = clamp(prev_lum, quick_lum_ex - lum_dev * num_deviations, quick_lum_ex + lum_dev * num_deviations).xxx;
+            Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
+            if (r.M > 0) {
+                r.M = min(r.M, M_CLAMP);
 
-        const float blend_factor_new = 1.0 / bucket_sample_count;
-        
-        float3 blended_value = lerp(USE_MSME ? prev_value_clamped : prev_value, new_value, blend_factor_new);
-        //const float3 blended_value = lerp(prev_value, new_value, blend_factor_new);
+                Vertex prev_entry = unpack_vertex(VertexPacked(ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2]));
+                //prev_entry.position = entry.position;
 
-        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = float4(blended_value, bucket_sample_count);
-        irradiance_sum += blended_value;
+                // Validate the previous sample
+                #if 1
+                    IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, /*tangent_to_world, */r.payload, life);
+                    {
+                        const float3 a = prev_traced.incident_radiance;
+                        const float3 b = prev_value_and_count.rgb;
+                        const float3 dist3 = abs(a - b) / (a + b);
+                        const float dist = max(dist3.r, max(dist3.g, dist3.b));
+                        const float invalidity = smoothstep(0.1, 0.4, dist);
+                        r.M = max(0, min(r.M, exp2(log2(float(M_CLAMP)) * (1.0 - invalidity))));
+                    }
+                #endif
+
+                // Reduce weight of samples whose trace origins are not accessible now
+                /*if (rt_is_shadowed(
+                    acceleration_structure,
+                    new_ray(
+                        entry.position,
+                        prev_traced.hit_pos - entry.position,
+                        0.001,
+                        0.99
+                ))) {
+                    r.M *= 0.5;
+                }*/
+                if (rt_is_shadowed(
+                    acceleration_structure,
+                    new_ray(
+                        entry.position,
+                        prev_entry.position - entry.position,
+                        0.001,
+                        0.999
+                ))) {
+                    r.M *= 0.8;
+                }
+
+
+                if (reservoir.update_with_stream(
+                    r, sRGB_to_luminance(prev_value_and_count.rgb), 1.0,
+                    stream_state, r.payload, rng
+                )) {
+                    val_sel = prev_value_and_count.rgb;
+                    selected_new = false;
+                }
+            }
+        }
+
+
+        reservoir.finish_stream(stream_state);
+
+        ircache_aux_buf[output_idx] = reservoir.as_raw();
+        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = float4(val_sel, reservoir.W);
+
+        if (selected_new) {
+            ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2] = packed_entry.data0;
+        }
     }
-
-    irradiance_sum /= sample_count;
 
     const uint output_idx = entry_idx * IRCACHE_IRRADIANCE_STRIDE;
 
@@ -434,7 +478,7 @@ void main() {
             const float4 contrib = ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + IRCACHE_OCTA_DIMS2 + octa_idx];
 
             contribution_sum.add_radiance_in_direction(
-                contrib.rgb,
+                contrib.rgb * contrib.w,
                 dir
             );
 
@@ -455,6 +499,7 @@ void main() {
         }
 
         float blend_factor_new = 0.25;
+        //float blend_factor_new = 1;
         const float4 blended_value = lerp(prev_value, new_value, blend_factor_new);
 
         ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i] = blended_value;

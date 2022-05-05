@@ -194,7 +194,7 @@ impl IrcacheRenderer {
             ircache_aux_buf: temporal_storage_buffer(
                 rg,
                 "ircache.aux_buf",
-                2 * 16 * size_of::<[f32; 4]>() * MAX_ENTRIES,
+                4 * 16 * size_of::<[f32; 4]>() * MAX_ENTRIES,
             ),
             ircache_life_buf: temporal_storage_buffer(
                 rg,
