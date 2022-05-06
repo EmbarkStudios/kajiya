@@ -12,7 +12,6 @@
 #include "../inc/bindless_textures.hlsl"
 #include "../inc/atmosphere.hlsl"
 #include "../inc/mesh.hlsl"
-#include "../inc/sh.hlsl"
 #include "../inc/lights/triangle.hlsl"
 #include "../wrc/bindings.hlsl"
 #include "../inc/color.hlsl"
@@ -27,7 +26,7 @@
 [[vk::binding(5)]] RWStructuredBuffer<uint> ircache_reposition_proposal_count_buf;
 DEFINE_WRC_BINDINGS(6)
 [[vk::binding(7)]] RWByteAddressBuffer ircache_meta_buf;
-[[vk::binding(8)]] RWStructuredBuffer<float4> ircache_irradiance_buf;
+[[vk::binding(8)]] StructuredBuffer<float4> ircache_irradiance_buf;
 [[vk::binding(9)]] RWStructuredBuffer<float4> ircache_aux_buf;
 [[vk::binding(10)]] RWStructuredBuffer<uint> ircache_pool_buf;
 [[vk::binding(11)]] RWStructuredBuffer<uint> ircache_entry_cell_buf;
@@ -59,7 +58,6 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_IRCACHE_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
-static const uint SAMPLES_PER_FRAME = 8;
 static const uint SAMPLER_SEQUENCE_LENGTH = 1024 * 1024;
 static const uint BUCKET_SAMPLE_COUNT = 8;
 static const float SHORT_ESTIMATOR_SAMPLE_COUNT = 3.0;
@@ -292,25 +290,6 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, uint sequence_i
     return result;
 }
 
-struct Contribution {
-    float4 sh_rgb[3];
-
-    void add_radiance_in_direction(float3 radiance, float3 direction) {
-        // https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
-        // `shEvaluateL1`, plus the `4` factor, with `pi` cancelled out in the evaluation code (BRDF).
-        float4 sh = float4(0.282095, direction * 0.488603) * 4;
-        sh_rgb[0] += sh * radiance.r;
-        sh_rgb[1] += sh * radiance.g;
-        sh_rgb[2] += sh * radiance.b;
-    }
-
-    void scale(float value) {
-        sh_rgb[0] *= value;
-        sh_rgb[1] *= value;
-        sh_rgb[2] *= value;
-    }
-};
-
 [shader("raygeneration")]
 void main() {
     if (IRCACHE_FREEZE) {
@@ -360,7 +339,7 @@ void main() {
         const uint sample_count_divisor = 1;
     #endif
 
-    const uint sample_count = SAMPLES_PER_FRAME / sample_count_divisor;
+    const uint sample_count = IRCACHE_SAMPLES_PER_FRAME / sample_count_divisor;
 
     uint rng = hash1(hash1(entry_idx) + frame_constants.frame_index);
 
@@ -448,45 +427,5 @@ void main() {
         if (selected_new) {
             ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2] = packed_entry.data0;
         }
-    }
-
-    const uint output_idx = entry_idx * IRCACHE_IRRADIANCE_STRIDE;
-
-    Contribution contribution_sum = (Contribution)0;
-    {
-        float valid_samples = 0;
-
-        // TODO: counter distortion
-        for (uint octa_idx = 0; octa_idx < IRCACHE_OCTA_DIMS2; ++octa_idx) {
-            const float2 octa_coord = (float2(octa_idx % IRCACHE_OCTA_DIMS, octa_idx / IRCACHE_OCTA_DIMS) + 0.5) / IRCACHE_OCTA_DIMS;
-            const float3 dir = octa_decode(octa_coord);
-            const float4 contrib = ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + IRCACHE_OCTA_DIMS2 + octa_idx];
-
-            contribution_sum.add_radiance_in_direction(
-                contrib.rgb * contrib.w,
-                dir
-            );
-
-            valid_samples += contrib.w > 0 ? 1.0 : 0.0;
-        }
-
-        contribution_sum.scale(1.0 / max(1.0, valid_samples));
-    }
-
-    for (uint basis_i = 0; basis_i < IRCACHE_IRRADIANCE_STRIDE; ++basis_i) {
-        const float4 new_value = contribution_sum.sh_rgb[basis_i];
-        float4 prev_value =
-            ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i]
-            * frame_constants.pre_exposure_delta;
-
-        if (should_reset) {
-            prev_value = new_value;
-        }
-
-        float blend_factor_new = 0.25;
-        //float blend_factor_new = 1;
-        const float4 blended_value = lerp(prev_value, new_value, blend_factor_new);
-
-        ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i] = blended_value;
     }
 }
