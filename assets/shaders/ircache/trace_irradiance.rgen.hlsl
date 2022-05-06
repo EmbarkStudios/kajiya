@@ -59,7 +59,7 @@ static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool SAMPLE_IRCACHE_AT_LAST_VERTEX = true;
 static const uint MAX_PATH_LENGTH = 1;
-static const uint SAMPLER_SEQUENCE_LENGTH = 1024 * 1024;
+static const uint SAMPLER_SEQUENCE_LENGTH = 1024;
 static const uint BUCKET_SAMPLE_COUNT = 8;
 static const float SHORT_ESTIMATOR_SAMPLE_COUNT = 3.0;
 static const bool USE_MSME = !true;
@@ -88,32 +88,67 @@ struct IrcacheTraceResult {
     float3 hit_pos;
 };
 
-IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, uint sequence_idx, uint life) {
+struct SampleParams {
+    uint value;
+
+    static SampleParams from_entry_sample_frame(uint entry_idx, uint sample_idx, uint frame_idx) {
+        // Checkerboard
+        uint cb = sample_idx * 2u + (frame_idx & 1u);
+        cb ^= (cb & 4u) >> 2u;
+
+        SampleParams res;
+        res.value = cb | ((frame_idx & 0xffff) << 16u) | ((entry_idx & 0xffff) << 4u);
+
+        return res;
+    }
+
+    static SampleParams from_raw(uint raw) {
+        SampleParams res;
+        res.value = raw;
+        return res;
+    }
+
+    uint raw() {
+        return value;
+    }
+
+    uint octa_idx() {
+        return value & 0x0f;
+    }
+
+    uint2 octa_quant() {
+        uint oi = octa_idx();
+        return uint2(oi & 3, oi >> 2);
+    }
+
+    uint rng() {
+        return hash1(value >> 4u);
+    }
+
+    float2 octa_uv() {
+        const uint2 oq = octa_quant();
+        const uint r = rng();
+        const float2 urand = r2_sequence(r % SAMPLER_SEQUENCE_LENGTH);
+        return (float2(oq) + urand) / 4.0;
+    }
+
+    // TODO: tackle distortion
+    float3 direction() {
+        return octa_decode(octa_uv());
+    }
+};
+
+IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, SampleParams sample_params, uint life) {
     const float3x3 tangent_to_world = build_orthonormal_basis(entry.normal);
 
-    uint rng = hash1(sequence_idx);
-    const float2 urand = r2_sequence(sequence_idx % SAMPLER_SEQUENCE_LENGTH);
+    uint rng = sample_params.rng();
 
-    RayDesc outgoing_ray;
-    #if 0 == IRCACHE_USE_SPHERICAL_HARMONICS
-    {
-        BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
-
-        outgoing_ray = new_ray(
-            entry.position,
-            mul(tangent_to_world, brdf_sample.wi),
-            0.0,
-            FLT_MAX
-        );
-    }
-    #else
-        outgoing_ray = new_ray(
-            entry.position,
-            uniform_sample_sphere(urand),
-            0.0,
-            FLT_MAX
-        );
-    #endif
+    RayDesc outgoing_ray = outgoing_ray = new_ray(
+        entry.position,
+        sample_params.direction(),
+        0.0,
+        FLT_MAX
+    );
 
     // force rays in the direction of the normal (debug)
     //outgoing_ray.Direction = mul(tangent_to_world, float3(0, 0, 1));
@@ -325,90 +360,83 @@ void main() {
 
     uint rng = hash1(hash1(entry_idx) + frame_constants.frame_index);
 
-    // TODO: consider stratifying within cells
-    //for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx)
+    const SampleParams sample_params = SampleParams::from_entry_sample_frame(entry_idx, sample_idx, frame_constants.frame_index);
+
+    IrcacheTraceResult traced = ircache_trace(entry, brdf, sample_params, life);
+
+    const float self_lighting_limiter = 
+        USE_SELF_LIGHTING_LIMITER
+        ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
+        : 1.0;
+
+    const float3 new_value = traced.incident_radiance * self_lighting_limiter;
+    const float new_lum = sRGB_to_luminance(new_value);
+
+    Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
+    Reservoir1spp reservoir = Reservoir1spp::create();
+    reservoir.init_with_stream(new_lum, 1.0, stream_state, sample_params.raw());
+
+    const uint octa_idx = sample_params.octa_idx();
+    const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
+
+    float4 prev_value_and_count =
+        // TODO: not correct unless we process every cell just once
+        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
+        * float4((frame_constants.pre_exposure_delta).xxx, 1);
+
+    float3 val_sel = new_value;
+    bool selected_new = true;
+
     {
-        const uint sequence_idx = hash1(entry_idx) + sample_idx + frame_constants.frame_index * sample_count;
+        const uint M_CLAMP = 30;
 
-        IrcacheTraceResult traced = ircache_trace(entry, brdf, /*tangent_to_world, */sequence_idx, life);
+        Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
+        if (r.M > 0) {
+            r.M = min(r.M, M_CLAMP);
 
-        const float self_lighting_limiter = 
-            USE_SELF_LIGHTING_LIMITER
-            ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
-            : 1.0;
+            Vertex prev_entry = unpack_vertex(VertexPacked(ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2]));
+            //prev_entry.position = entry.position;
 
-        const float3 new_value = traced.incident_radiance * self_lighting_limiter;
-        const float new_lum = sRGB_to_luminance(new_value);
+            // Validate the previous sample
+            if (true) {
+                IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, SampleParams::from_raw(r.payload), life);
+                {
+                    const float prev_self_lighting_limiter = 
+                        USE_SELF_LIGHTING_LIMITER
+                        ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(prev_traced.direction, prev_entry.normal)))
+                        : 1.0;
 
-        Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
-        Reservoir1spp reservoir = Reservoir1spp::create();
-        reservoir.init_with_stream(new_lum, 1.0, stream_state, sequence_idx);
+                    const float3 a = prev_traced.incident_radiance * prev_self_lighting_limiter;
+                    const float3 b = prev_value_and_count.rgb;
+                    const float3 dist3 = abs(a - b) / (a + b);
+                    const float dist = max(dist3.r, max(dist3.g, dist3.b));
+                    const float invalidity = smoothstep(0.1, 0.5, dist);
+                    r.M = max(0, min(r.M, exp2(log2(float(M_CLAMP)) * (1.0 - invalidity))));
 
-        const float2 octa_coord = octa_encode(traced.direction);
-        const uint2 octa_quant = min(uint2(octa_coord * IRCACHE_OCTA_DIMS), (IRCACHE_OCTA_DIMS - 1).xx);
-        const uint octa_idx = octa_quant.x + octa_quant.y * IRCACHE_OCTA_DIMS;
-
-        const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
-
-        float4 prev_value_and_count =
-            // TODO: not correct unless we process every cell just once
-            ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
-            * float4((frame_constants.pre_exposure_delta).xxx, 1);
-
-        float3 val_sel = new_value;
-        bool selected_new = true;
-
-        {
-            const uint M_CLAMP = 30;
-
-            Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
-            if (r.M > 0) {
-                r.M = min(r.M, M_CLAMP);
-
-                Vertex prev_entry = unpack_vertex(VertexPacked(ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2]));
-                //prev_entry.position = entry.position;
-
-                // Validate the previous sample
-                if (true) {
-                    IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, /*tangent_to_world, */r.payload, life);
-                    {
-                        const float prev_self_lighting_limiter = 
-                            USE_SELF_LIGHTING_LIMITER
-                            ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(prev_traced.direction, prev_entry.normal)))
-                            : 1.0;
-
-                        const float3 a = prev_traced.incident_radiance * prev_self_lighting_limiter;
-                        const float3 b = prev_value_and_count.rgb;
-                        const float3 dist3 = abs(a - b) / (a + b);
-                        const float dist = max(dist3.r, max(dist3.g, dist3.b));
-                        const float invalidity = smoothstep(0.1, 0.5, dist);
-                        r.M = max(0, min(r.M, exp2(log2(float(M_CLAMP)) * (1.0 - invalidity))));
-
-                        // Update the stored value too.
-                        // TODO: Feels like the W might need to be updated too, because we would
-                        // have picked this sample with a different probability...
-                        prev_value_and_count.rgb = a;
-                    }
-                }
-
-                if (reservoir.update_with_stream(
-                    r, sRGB_to_luminance(prev_value_and_count.rgb), 1.0,
-                    stream_state, r.payload, rng
-                )) {
-                    val_sel = prev_value_and_count.rgb;
-                    selected_new = false;
+                    // Update the stored value too.
+                    // TODO: Feels like the W might need to be updated too, because we would
+                    // have picked this sample with a different probability...
+                    prev_value_and_count.rgb = a;
                 }
             }
+
+            if (reservoir.update_with_stream(
+                r, sRGB_to_luminance(prev_value_and_count.rgb), 1.0,
+                stream_state, r.payload, rng
+            )) {
+                val_sel = prev_value_and_count.rgb;
+                selected_new = false;
+            }
         }
+    }
 
 
-        reservoir.finish_stream(stream_state);
+    reservoir.finish_stream(stream_state);
 
-        ircache_aux_buf[output_idx] = reservoir.as_raw();
-        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = float4(val_sel, reservoir.W);
+    ircache_aux_buf[output_idx] = reservoir.as_raw();
+    ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = float4(val_sel, reservoir.W);
 
-        if (selected_new) {
-            ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2] = packed_entry.data0;
-        }
+    if (selected_new) {
+        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2] = packed_entry.data0;
     }
 }
