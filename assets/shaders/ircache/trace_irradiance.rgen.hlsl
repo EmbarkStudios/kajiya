@@ -323,12 +323,6 @@ void main() {
 
     brdf.albedo = 1.0.xxx;
 
-    if (should_reset) {
-        for (uint i = 0; i < IRCACHE_AUX_STRIDE; ++i) {
-            ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + i] = 0.0.xxxx;
-        }
-    }
-
     // Allocate fewer samples for further bounces
     #if 0
         const uint sample_count_divisor = 

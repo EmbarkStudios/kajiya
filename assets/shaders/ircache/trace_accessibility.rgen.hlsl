@@ -14,7 +14,7 @@
 [[vk::binding(0)]] StructuredBuffer<VertexPacked> ircache_spatial_buf;
 [[vk::binding(1)]] StructuredBuffer<uint> ircache_life_buf;
 [[vk::binding(2)]] RWStructuredBuffer<VertexPacked> ircache_reposition_proposal_buf;
-[[vk::binding(3)]] RWByteAddressBuffer ircache_meta_buf;
+[[vk::binding(3)]] ByteAddressBuffer ircache_meta_buf;
 [[vk::binding(4)]] RWStructuredBuffer<float4> ircache_aux_buf;
 
 [shader("raygeneration")]

@@ -346,6 +346,16 @@ impl IrcacheRenderState {
             indirect_args_buf
         };
 
+        SimpleRenderPass::new_compute(
+            rg.add_pass("ircache reset"),
+            "/shaders/ircache/reset_entry.hlsl",
+        )
+        .read(&self.ircache_life_buf)
+        .read(&mut self.ircache_meta_buf)
+        .read(&mut self.ircache_irradiance_buf)
+        .write(&mut self.ircache_aux_buf)
+        .dispatch_indirect(&indirect_args_buf, 16 * 2);
+
         SimpleRenderPass::new_rt(
             rg.add_pass("ircache trace access"),
             ShaderSource::hlsl("/shaders/ircache/trace_accessibility.rgen.hlsl"),
@@ -359,7 +369,7 @@ impl IrcacheRenderState {
         .read(&self.ircache_spatial_buf)
         .read(&self.ircache_life_buf)
         .write(&mut self.ircache_reposition_proposal_buf)
-        .write(&mut self.ircache_meta_buf)
+        .read(&self.ircache_meta_buf)
         .write(&mut self.ircache_aux_buf)
         .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 1);
 

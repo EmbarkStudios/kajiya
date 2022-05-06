@@ -13,6 +13,6 @@ void main() {
     // Accessibility tracing
     dispatch_args.Store4(16 * 1, uint4(entry_count * IRCACHE_OCTA_DIMS2, 1, 1, 0));
 
-    // Sum up irradiance
+    // Reset, sum up irradiance
     dispatch_args.Store4(16 * 2, uint4((entry_count + 63) / 64, 1, 1, 0));
 }
