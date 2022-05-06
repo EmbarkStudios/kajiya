@@ -16,25 +16,6 @@
 #include "../wrc/bindings.hlsl"
 #include "../inc/color.hlsl"
 
-struct Contribution {
-    float4 sh_rgb[3];
-
-    void add_radiance_in_direction(float3 radiance, float3 direction) {
-        // https://media.contentapi.ea.com/content/dam/eacom/frostbite/files/gdc2018-precomputedgiobalilluminationinfrostbite.pdf
-        // `shEvaluateL1`, plus the `4` factor, with `pi` cancelled out in the evaluation code (BRDF).
-        float4 sh = float4(0.282095, direction * 0.488603) * 4;
-        sh_rgb[0] += sh * radiance.r;
-        sh_rgb[1] += sh * radiance.g;
-        sh_rgb[2] += sh * radiance.b;
-    }
-
-    void scale(float value) {
-        sh_rgb[0] *= value;
-        sh_rgb[1] *= value;
-        sh_rgb[2] *= value;
-    }
-};
-
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
 [[vk::binding(0)]] StructuredBuffer<VertexPacked> ircache_spatial_buf;
@@ -316,26 +297,13 @@ void main() {
         return;
     }
 
-    const uint entry_idx = ircache_entry_indirection_buf[DispatchRaysIndex().x];
+    const uint dispatch_idx = DispatchRaysIndex().x;
+    const uint entry_idx = ircache_entry_indirection_buf[dispatch_idx / IRCACHE_SAMPLES_PER_FRAME];
+    const uint sample_idx = dispatch_idx % IRCACHE_SAMPLES_PER_FRAME;
     const uint life = ircache_life_buf[entry_idx];
     const uint rank = ircache_entry_life_to_rank(life);
 
-    const bool should_reset = all(0.0 == ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE]);
-
-    /*if (should_reset) {
-        for (uint i = 0; i < IRCACHE_AUX_STRIDE; ++i) {
-            ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + i] = 0.0.xxxx;
-        }
-    }*/
-
     VertexPacked packed_entry = ircache_spatial_buf[entry_idx];
-
-    /*if (should_reset) {
-        // HACK; this is for entries which were just allocated in this very pass.
-        // Those `ircache_spatial_buf` will not have been intialized yet by the aging pass.
-        packed_entry = ircache_reposition_proposal_buf[entry_idx];
-    }*/
-        
     const Vertex entry = unpack_vertex(packed_entry);
 
     DiffuseBrdf brdf;
@@ -358,7 +326,8 @@ void main() {
     uint rng = hash1(hash1(entry_idx) + frame_constants.frame_index);
 
     // TODO: consider stratifying within cells
-    for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx) {
+    //for (uint sample_idx = 0; sample_idx < sample_count; ++sample_idx)
+    {
         const uint sequence_idx = hash1(entry_idx) + sample_idx + frame_constants.frame_index * sample_count;
 
         IrcacheTraceResult traced = ircache_trace(entry, brdf, /*tangent_to_world, */sequence_idx, life);
@@ -400,7 +369,7 @@ void main() {
                 //prev_entry.position = entry.position;
 
                 // Validate the previous sample
-                #if 1
+                if (true) {
                     IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, /*tangent_to_world, */r.payload, life);
                     {
                         const float prev_self_lighting_limiter = 
@@ -420,7 +389,7 @@ void main() {
                         // have picked this sample with a different probability...
                         prev_value_and_count.rgb = a;
                     }
-                #endif
+                }
 
                 if (reservoir.update_with_stream(
                     r, sRGB_to_luminance(prev_value_and_count.rgb), 1.0,
@@ -442,45 +411,4 @@ void main() {
             ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2] = packed_entry.data0;
         }
     }
-
-#if 0
-    Contribution contribution_sum = (Contribution)0;
-    {
-        float valid_samples = 0;
-
-        // TODO: counter distortion
-        for (uint octa_idx = 0; octa_idx < IRCACHE_OCTA_DIMS2; ++octa_idx) {
-            const float2 octa_coord = (float2(octa_idx % IRCACHE_OCTA_DIMS, octa_idx / IRCACHE_OCTA_DIMS) + 0.5) / IRCACHE_OCTA_DIMS;
-            const float3 dir = octa_decode(octa_coord);
-            const float4 contrib = ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + IRCACHE_OCTA_DIMS2 + octa_idx];
-
-            contribution_sum.add_radiance_in_direction(
-                contrib.rgb * contrib.w,
-                dir
-            );
-
-            valid_samples += contrib.w > 0 ? 1.0 : 0.0;
-        }
-
-        contribution_sum.scale(1.0 / max(1.0, valid_samples));
-    }
-
-    for (uint basis_i = 0; basis_i < IRCACHE_IRRADIANCE_STRIDE; ++basis_i) {
-        const float4 new_value = contribution_sum.sh_rgb[basis_i];
-        float4 prev_value =
-            ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i]
-            * frame_constants.pre_exposure_delta;
-
-        const bool should_reset = all(0.0 == prev_value);
-        if (should_reset) {
-            prev_value = new_value;
-        }
-
-        //float blend_factor_new = 0.25;
-        float blend_factor_new = 1;
-        const float4 blended_value = lerp(prev_value, new_value, blend_factor_new);
-
-        ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i] = blended_value;
-    }
-#endif
 }
