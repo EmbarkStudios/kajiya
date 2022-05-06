@@ -27,7 +27,7 @@ rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 spirv_headers = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 
 [profile.release]
-debug = true
+debug = 1
 
 #[patch."https://github.com/h3r2tic/rspirv-reflect"]
 #rspirv-reflect = { path = "../rspirv-reflect" }

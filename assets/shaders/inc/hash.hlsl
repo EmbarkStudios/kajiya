@@ -3,6 +3,7 @@
 
 #include "math_const.hlsl"
 
+// Jenkins hash function. TODO: check if we need something better.
 uint hash1(uint x) {
 	x += (x << 10u);
 	x ^= (x >>  6u);
