@@ -429,19 +429,6 @@ void main() {
                     }
                 #endif
 
-                // Reduce weight of samples whose trace origins are not accessible now
-                if (rt_is_shadowed(
-                    acceleration_structure,
-                    new_ray(
-                        entry.position,
-                        prev_entry.position - entry.position,
-                        0.001,
-                        0.999
-                ))) {
-                    r.M *= 0.8;
-                }
-
-
                 if (reservoir.update_with_stream(
                     r, sRGB_to_luminance(prev_value_and_count.rgb), 1.0,
                     stream_state, r.payload, rng

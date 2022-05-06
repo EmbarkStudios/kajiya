@@ -331,7 +331,7 @@ impl IrcacheRenderState {
     ) {
         let indirect_args_buf = {
             let mut indirect_args_buf = rg.create(BufferDesc::new_gpu_only(
-                size_of::<u32>() * 4,
+                (size_of::<u32>() * 4) * 2,
                 vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ));
 
@@ -345,6 +345,23 @@ impl IrcacheRenderState {
 
             indirect_args_buf
         };
+
+        SimpleRenderPass::new_rt(
+            rg.add_pass("ircache trace access"),
+            ShaderSource::hlsl("/shaders/ircache/trace_accessibility.rgen.hlsl"),
+            [
+                // Duplicated because `rt.hlsl` hardcodes miss index to 1
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+            ],
+            std::iter::empty(),
+        )
+        .read(&self.ircache_spatial_buf)
+        .read(&self.ircache_life_buf)
+        .write(&mut self.ircache_reposition_proposal_buf)
+        .write(&mut self.ircache_meta_buf)
+        .write(&mut self.ircache_aux_buf)
+        .trace_rays_indirect(tlas, &indirect_args_buf, 16);
 
         SimpleRenderPass::new_rt(
             rg.add_pass("ircache trace"),
