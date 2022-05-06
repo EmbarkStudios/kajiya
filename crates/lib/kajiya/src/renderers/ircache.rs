@@ -21,6 +21,8 @@ use rg::{BindMutToSimpleRenderPass, BindRgRef, IntoRenderPassPipelineBinding};
 use rust_shaders_shared::frame_constants::{IrcacheCascadeConstants, IRCACHE_CASCADE_COUNT};
 use vk::BufferUsageFlags;
 
+use crate::renderers::prefix_scan::inclusive_prefix_scan_u32_1m;
+
 use super::{wrc::WrcRenderState, GbufferDepth};
 
 const MAX_GRID_CELLS: usize =
@@ -43,6 +45,7 @@ pub struct IrcacheRenderState {
 
     ircache_life_buf: rg::Handle<Buffer>,
     ircache_pool_buf: rg::Handle<Buffer>,
+    ircache_entry_indirection_buf: rg::Handle<Buffer>,
 
     ircache_reposition_proposal_buf: rg::Handle<Buffer>,
     ircache_reposition_proposal_count_buf: rg::Handle<Buffer>,
@@ -162,6 +165,9 @@ impl IrcacheRenderer {
     ) -> IrcacheRenderState {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
+        const INDIRECTION_BUF_ELEM_COUNT: usize = 1024 * 1024;
+        assert!(INDIRECTION_BUF_ELEM_COUNT >= MAX_ENTRIES);
+
         let mut state = IrcacheRenderState {
             // 0: hash grid cell count
             // 1: entry count
@@ -205,6 +211,11 @@ impl IrcacheRenderer {
                 rg,
                 "ircache.pool_buf",
                 size_of::<u32>() * MAX_ENTRIES,
+            ),
+            ircache_entry_indirection_buf: temporal_storage_buffer(
+                rg,
+                "ircache.entry_indirection_buf",
+                size_of::<u32>() * INDIRECTION_BUF_ELEM_COUNT,
             ),
             ircache_reposition_proposal_buf: temporal_storage_buffer(
                 rg,
@@ -294,12 +305,17 @@ impl IrcacheRenderer {
                 rg.add_pass("ircache dispatch args"),
                 "/shaders/ircache/prepare_age_dispatch_args.hlsl",
             )
-            .read(&state.ircache_meta_buf)
+            .write(&mut state.ircache_meta_buf)
             .write(&mut indirect_args_buf)
             .dispatch([1, 1, 1]);
 
             indirect_args_buf
         };
+
+        let mut entry_occupancy_buf = rg.create(BufferDesc::new_gpu_only(
+            size_of::<u32>() * MAX_ENTRIES,
+            vk::BufferUsageFlags::empty(),
+        ));
 
         SimpleRenderPass::new_compute(
             rg.add_pass("age ircache entries"),
@@ -314,6 +330,19 @@ impl IrcacheRenderer {
         .write(&mut state.ircache_reposition_proposal_buf)
         .write(&mut state.ircache_reposition_proposal_count_buf)
         .write(&mut state.ircache_irradiance_buf)
+        .write(&mut entry_occupancy_buf)
+        .dispatch_indirect(&indirect_args_buf, 0);
+
+        inclusive_prefix_scan_u32_1m(rg, &mut entry_occupancy_buf);
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("ircache compact"),
+            "/shaders/ircache/ircache_compact_entries.hlsl",
+        )
+        .write(&mut state.ircache_meta_buf)
+        .write(&mut state.ircache_life_buf)
+        .read(&mut entry_occupancy_buf)
+        .write(&mut state.ircache_entry_indirection_buf)
         .dispatch_indirect(&indirect_args_buf, 0);
 
         state
@@ -354,6 +383,7 @@ impl IrcacheRenderState {
         .read(&mut self.ircache_meta_buf)
         .read(&mut self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
+        .read(&self.ircache_entry_indirection_buf)
         .dispatch_indirect(&indirect_args_buf, 16 * 2);
 
         SimpleRenderPass::new_rt(
@@ -390,9 +420,10 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_reposition_proposal_count_buf)
         .bind(wrc)
         .write(&mut self.ircache_meta_buf)
-        .read(&mut self.ircache_irradiance_buf)
+        .write(&mut self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
         .write(&mut self.ircache_pool_buf)
+        .read(&self.ircache_entry_indirection_buf)
         .write(&mut self.ircache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 0);
@@ -405,7 +436,15 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_meta_buf)
         .write(&mut self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
+        .read(&self.ircache_entry_indirection_buf)
         .dispatch_indirect(&indirect_args_buf, 16 * 2);
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("ircache flush"),
+            "/shaders/ircache/flush_traced_entry_count.hlsl",
+        )
+        .write(&mut self.ircache_meta_buf)
+        .dispatch([1, 1, 1]);
     }
 
     fn draw_trace_origins(

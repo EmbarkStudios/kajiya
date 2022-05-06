@@ -7,6 +7,7 @@
 [[vk::binding(1)]] RWByteAddressBuffer ircache_meta_buf;
 [[vk::binding(2)]] RWStructuredBuffer<float4> ircache_irradiance_buf;
 [[vk::binding(3)]] RWStructuredBuffer<float4> ircache_aux_buf;
+[[vk::binding(4)]] StructuredBuffer<uint> ircache_entry_indirection_buf;
 
 struct Contribution {
     float4 sh_rgb[3];
@@ -28,12 +29,19 @@ struct Contribution {
 };
 
 [numthreads(64, 1, 1)]
-void main(uint entry_idx: SV_DispatchThreadID) {
+void main(uint dispatch_idx: SV_DispatchThreadID) {
     if (IRCACHE_FREEZE) {
         return;
     }
 
-    const uint total_entry_count = ircache_meta_buf.Load(IRCACHE_META_ENTRY_COUNT);
+    const uint total_alloc_count = ircache_meta_buf.Load(IRCACHE_META_ALLOC_COUNT);
+    if (dispatch_idx >= total_alloc_count) {
+        return;
+    }
+
+    const uint entry_idx = ircache_entry_indirection_buf[dispatch_idx];
+
+    const uint total_entry_count = ircache_meta_buf.Load(IRCACHE_META_TRACING_ENTRY_COUNT);
     const uint life = ircache_life_buf[entry_idx];
 
     if (entry_idx >= total_entry_count || !is_ircache_entry_life_valid(life)) {

@@ -23,7 +23,7 @@ void main() {
         return;
     }
 
-    const uint total_entry_count = ircache_meta_buf.Load(IRCACHE_META_ENTRY_COUNT);
+    const uint total_entry_count = ircache_meta_buf.Load(IRCACHE_META_TRACING_ENTRY_COUNT);
     const uint dispatch_idx = DispatchRaysIndex().x;
     const uint entry_idx = dispatch_idx / IRCACHE_OCTA_DIMS2;
     const uint octa_idx = dispatch_idx % IRCACHE_OCTA_DIMS2;

@@ -8,11 +8,17 @@
 
 #define IRCACHE_USE_SPHERICAL_HARMONICS 1
 
-//#define IRCACHE_META_CELL_COUNT (0 * sizeof(uint))
-#define IRCACHE_META_ENTRY_COUNT (1 * sizeof(uint))
-#define IRCACHE_META_ALLOC_COUNT (2 * sizeof(uint))
+// Same as IRCACHE_META_ENTRY_COUNT, but frozen at the rt dispatch args stage.
+#define IRCACHE_META_TRACING_ENTRY_COUNT (0 * sizeof(uint))
 
-static const uint IRCACHE_ENTRY_META_OCCUPIED = 1;
+// Same as IRCACHE_META_TRACED_ENTRY_COUNT, but written after tracing irradiance.
+#define IRCACHE_META_TRACED_ENTRY_COUNT (1 * sizeof(uint))
+
+#define IRCACHE_META_ENTRY_COUNT (2 * sizeof(uint))
+#define IRCACHE_META_ALLOC_COUNT (3 * sizeof(uint))
+
+static const uint IRCACHE_ENTRY_META_OCCUPIED = 1u;
+static const uint IRCACHE_ENTRY_META_JUST_ALLOCATED = 2u;
 
 #define IRCACHE_ENTRY_LIFE_RECYCLE 0x8000000u
 #define IRCACHE_ENTRY_LIFE_RECYCLED (IRCACHE_ENTRY_LIFE_RECYCLE + 1u)
@@ -22,10 +28,6 @@ static const uint IRCACHE_ENTRY_RANK_COUNT = 3;
 
 bool is_ircache_entry_life_valid(uint life) {
     return life < IRCACHE_ENTRY_LIFE_PER_RANK * IRCACHE_ENTRY_RANK_COUNT;
-}
-
-bool ircache_entry_life_needs_aging(uint life) {
-    return life != IRCACHE_ENTRY_LIFE_RECYCLED;
 }
 
 uint ircache_entry_life_to_rank(uint life) {

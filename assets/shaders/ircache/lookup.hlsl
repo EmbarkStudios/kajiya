@@ -34,11 +34,12 @@ IrcacheLookup ircache_lookup(float3 pt_ws, float3 normal_ws) {
 struct IrcacheLookupMaybeAllocate {
     IrcacheLookup lookup;
     Vertex proposal;
-    bool allocated_by_us;
+    bool just_allocated;
 };
 
 IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
     bool allocated_by_us = false;
+    bool just_allocated = false;
 
 #ifndef IRCACHE_LOOKUP_DONT_KEEP_ALIVE
     if (!IRCACHE_FREEZE) {
@@ -59,11 +60,13 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
             query_rank >= IRCACHE_ENTRY_RANK_COUNT
             || (any(was_just_scrolled_in) && query_rank > 0);
 
-        if (!skip_allocation) {
-            const uint cell_idx = rcoord.cell_idx();
-            const uint2 cell_meta = ircache_grid_meta_buf.Load2(sizeof(uint2) * cell_idx);
-            const uint entry_flags = cell_meta.y;
+        const uint cell_idx = rcoord.cell_idx();
+        const uint2 cell_meta = ircache_grid_meta_buf.Load2(sizeof(uint2) * cell_idx);
+        const uint entry_flags = cell_meta.y;
 
+        just_allocated = (entry_flags & IRCACHE_ENTRY_META_JUST_ALLOCATED) != 0;
+
+        if (!skip_allocation) {
             if ((entry_flags & IRCACHE_ENTRY_META_OCCUPIED) == 0) {
                 // Allocate
 
@@ -72,6 +75,7 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
 
                 if ((prev & IRCACHE_ENTRY_META_OCCUPIED) == 0) {
                     // We've allocated it!
+                    just_allocated = true;
                     allocated_by_us = true;
 
                     uint alloc_idx;
@@ -129,7 +133,7 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
 
     IrcacheLookupMaybeAllocate res;
     res.lookup = lookup;
-    res.allocated_by_us = allocated_by_us;
+    res.just_allocated = just_allocated;
     res.proposal = new_entry;
     return res;
 }
@@ -173,7 +177,7 @@ float eval_sh_nope(float4 sh, float3 normal) {
 float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal_ws, uint query_rank, inout uint rng) {
     IrcacheLookupMaybeAllocate lookup = ircache_lookup_maybe_allocate(query_from_ws, pt_ws, normal_ws, query_rank, rng);
 
-    if (lookup.allocated_by_us) {
+    if (lookup.just_allocated) {
         return 0.0.xxx;
     }
 
@@ -185,9 +189,14 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
     const bool should_propose_position = true;
 #endif
 
+    const uint traced_entry_count = ircache_meta_buf.Load(IRCACHE_META_TRACED_ENTRY_COUNT);
+
     [unroll]
     for (uint i = 0; i < IRCACHE_LOOKUP_MAX; ++i) if (i < lookup.lookup.count) {
         const uint entry_idx = lookup.lookup.entry_idx[i];
+        if (entry_idx >= traced_entry_count) {
+            continue;
+        }
 
         float3 irradiance = 0;
 
