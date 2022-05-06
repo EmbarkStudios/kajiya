@@ -8,7 +8,7 @@ void main() {
     const uint entry_count = ircache_meta_buf.Load(IRCACHE_META_ENTRY_COUNT);
     const uint alloc_count = ircache_meta_buf.Load(IRCACHE_META_ALLOC_COUNT);
 
-    ircache_meta_buf.Store(IRCACHE_META_TRACING_ENTRY_COUNT, entry_count);
+    ircache_meta_buf.Store(IRCACHE_META_TRACING_ALLOC_COUNT, alloc_count);
 
     // Main ray tracing
     dispatch_args.Store4(16 * 0, uint4(alloc_count, 1, 1, 0));

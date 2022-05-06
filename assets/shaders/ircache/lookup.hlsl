@@ -189,15 +189,10 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
     const bool should_propose_position = true;
 #endif
 
-    const uint traced_entry_count = ircache_meta_buf.Load(IRCACHE_META_TRACED_ENTRY_COUNT);
-
     [unroll]
     for (uint i = 0; i < IRCACHE_LOOKUP_MAX; ++i) if (i < lookup.lookup.count) {
         const uint entry_idx = lookup.lookup.entry_idx[i];
-        if (entry_idx >= traced_entry_count) {
-            continue;
-        }
-
+        
         float3 irradiance = 0;
 
 #ifdef IRCACHE_LOOKUP_PRECISE

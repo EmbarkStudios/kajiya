@@ -8,11 +8,8 @@
 
 #define IRCACHE_USE_SPHERICAL_HARMONICS 1
 
-// Same as IRCACHE_META_ENTRY_COUNT, but frozen at the rt dispatch args stage.
-#define IRCACHE_META_TRACING_ENTRY_COUNT (0 * sizeof(uint))
-
-// Same as IRCACHE_META_TRACED_ENTRY_COUNT, but written after tracing irradiance.
-#define IRCACHE_META_TRACED_ENTRY_COUNT (1 * sizeof(uint))
+// Same as IRCACHE_META_ALLOC_COUNT, but frozen at the rt dispatch args stage.
+#define IRCACHE_META_TRACING_ALLOC_COUNT (0 * sizeof(uint))
 
 #define IRCACHE_META_ENTRY_COUNT (2 * sizeof(uint))
 #define IRCACHE_META_ALLOC_COUNT (3 * sizeof(uint))

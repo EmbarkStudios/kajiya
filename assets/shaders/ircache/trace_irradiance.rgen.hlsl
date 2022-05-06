@@ -317,14 +317,7 @@ void main() {
     }
 
     const uint entry_idx = ircache_entry_indirection_buf[DispatchRaysIndex().x];
-
-    const uint total_entry_count = ircache_meta_buf.Load(IRCACHE_META_TRACING_ENTRY_COUNT);
     const uint life = ircache_life_buf[entry_idx];
-
-    if (entry_idx >= total_entry_count || !is_ircache_entry_life_valid(life)) {
-        return;
-    }
-
     const uint rank = ircache_entry_life_to_rank(life);
 
     const bool should_reset = all(0.0 == ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE]);

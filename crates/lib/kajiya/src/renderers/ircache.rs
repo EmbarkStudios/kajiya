@@ -438,13 +438,6 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_aux_buf)
         .read(&self.ircache_entry_indirection_buf)
         .dispatch_indirect(&indirect_args_buf, 16 * 2);
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("ircache flush"),
-            "/shaders/ircache/flush_traced_entry_count.hlsl",
-        )
-        .write(&mut self.ircache_meta_buf)
-        .dispatch([1, 1, 1]);
     }
 
     fn draw_trace_origins(
