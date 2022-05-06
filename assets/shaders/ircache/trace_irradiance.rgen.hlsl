@@ -388,7 +388,7 @@ void main() {
 
         const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
 
-        const float4 prev_value_and_count =
+        float4 prev_value_and_count =
             // TODO: not correct unless we process every cell just once
             ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
             * float4((frame_constants.pre_exposure_delta).xxx, 1);
@@ -419,22 +419,17 @@ void main() {
                         const float3 b = prev_value_and_count.rgb;
                         const float3 dist3 = abs(a - b) / (a + b);
                         const float dist = max(dist3.r, max(dist3.g, dist3.b));
-                        const float invalidity = smoothstep(0.1, 0.4, dist);
+                        const float invalidity = smoothstep(0.1, 0.5, dist);
                         r.M = max(0, min(r.M, exp2(log2(float(M_CLAMP)) * (1.0 - invalidity))));
+
+                        // Update the stored value too.
+                        // TODO: Feels like the W might need to be updated too, because we would
+                        // have picked this sample with a different probability...
+                        prev_value_and_count.rgb = a;
                     }
                 #endif
 
                 // Reduce weight of samples whose trace origins are not accessible now
-                /*if (rt_is_shadowed(
-                    acceleration_structure,
-                    new_ray(
-                        entry.position,
-                        prev_traced.hit_pos - entry.position,
-                        0.001,
-                        0.99
-                ))) {
-                    r.M *= 0.5;
-                }*/
                 if (rt_is_shadowed(
                     acceleration_structure,
                     new_ray(
