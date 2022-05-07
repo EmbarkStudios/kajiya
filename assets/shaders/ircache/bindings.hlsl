@@ -12,6 +12,6 @@
     [[vk::binding(b5)]] RWStructuredBuffer<uint> ircache_entry_cell_buf; \
     [[vk::binding(b6)]] StructuredBuffer<VertexPacked> ircache_spatial_buf; \
     [[vk::binding(b7)]] StructuredBuffer<float4> ircache_irradiance_buf; \
-    [[vk::binding(b8)]] RWStructuredBuffer<uint> ircache_life_buf;
+    [[vk::binding(b8)]] RWByteAddressBuffer ircache_life_buf;
 
 #endif  // IRCACHE_BINDINGS_HLSL

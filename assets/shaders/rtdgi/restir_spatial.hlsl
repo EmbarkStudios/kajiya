@@ -248,7 +248,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
 
                 // Depth values only have the front; assume a certain thickness.
-                const float Z_LAYER_THICKNESS = 0.1;
+                const float Z_LAYER_THICKNESS = 0.05;
 
                 float t_step = 1.0 / k_count;
                 float t = 0.5 * t_step;

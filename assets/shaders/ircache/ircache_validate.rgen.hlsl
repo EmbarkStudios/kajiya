@@ -57,72 +57,42 @@ void main() {
 
     brdf.albedo = 1.0.xxx;
 
-    // Allocate fewer samples for further bounces
-    #if 0
-        const uint sample_count_divisor = 
-            rank <= 1
-            ? 1
-            : 4;
-    #else
-        const uint sample_count_divisor = 1;
-    #endif
-
-    const uint sample_count = IRCACHE_SAMPLES_PER_FRAME / sample_count_divisor;
-
-    uint rng = hash1(hash1(entry_idx) + frame_constants.frame_index);
-
     const SampleParams sample_params = SampleParams::from_entry_sample_frame(entry_idx, sample_idx, frame_constants.frame_index);
-
-    IrcacheTraceResult traced = ircache_trace(entry, brdf, sample_params, life);
-
-    const float self_lighting_limiter = 
-        USE_SELF_LIGHTING_LIMITER
-        ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
-        : 1.0;
-
-    const float3 new_value = traced.incident_radiance * self_lighting_limiter;
-    const float new_lum = sRGB_to_luminance(new_value);
-
-    Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
-    Reservoir1spp reservoir = Reservoir1spp::create();
-    reservoir.init_with_stream(new_lum, 1.0, stream_state, sample_params.raw());
-
     const uint octa_idx = sample_params.octa_idx();
     const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
 
-    float4 prev_value_and_count =
-        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
-        * float4((frame_constants.pre_exposure_delta).xxx, 1);
+    Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
 
-    float3 val_sel = new_value;
-    bool selected_new = true;
+    const uint M_CLAMP = 30;
 
-    {
-        const uint M_CLAMP = 30;
+    if (r.M > 0) {
+        float4 prev_value_and_count =
+            ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
+            * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
-        Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
-        if (r.M > 0) {
-            r.M = min(r.M, M_CLAMP);
+        Vertex prev_entry = unpack_vertex(VertexPacked(ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2]));
 
-            Vertex prev_entry = unpack_vertex(VertexPacked(ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2]));
-            //prev_entry.position = entry.position;
+        // Validate the previous sample
+        IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, SampleParams::from_raw(r.payload), life);
 
-            if (reservoir.update_with_stream(
-                r, sRGB_to_luminance(prev_value_and_count.rgb), 1.0,
-                stream_state, r.payload, rng
-            )) {
-                val_sel = prev_value_and_count.rgb;
-                selected_new = false;
-            }
-        }
-    }
+        const float prev_self_lighting_limiter = 
+            USE_SELF_LIGHTING_LIMITER
+            ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(prev_traced.direction, prev_entry.normal)))
+            : 1.0;
 
-    reservoir.finish_stream(stream_state);
+        const float3 a = prev_traced.incident_radiance * prev_self_lighting_limiter;
+        const float3 b = prev_value_and_count.rgb;
+        const float3 dist3 = abs(a - b) / (a + b);
+        const float dist = max(dist3.r, max(dist3.g, dist3.b));
+        const float invalidity = smoothstep(0.1, 0.5, dist);
+        r.M = max(0, min(r.M, exp2(log2(float(M_CLAMP)) * (1.0 - invalidity))));
 
-    ircache_aux_buf[output_idx] = reservoir.as_raw();
-    ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = float4(val_sel, reservoir.W);
+        // Update the stored value too.
+        // TODO: Feels like the W might need to be updated too, because we would
+        // have picked this sample with a different probability...
+        prev_value_and_count.rgb = a;
 
-    if (selected_new) {
-        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2] = packed_entry.data0;
+        ircache_aux_buf[output_idx] = r.as_raw();
+        ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = prev_value_and_count;
     }
 }

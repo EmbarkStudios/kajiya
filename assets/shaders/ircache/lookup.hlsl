@@ -86,14 +86,8 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
 
                     // Clear dead state, mark used.
 
-                    // TODO: this fails to compile on AMD:
-                    //ircache_life_buf[entry_idx] = ircache_entry_life_for_rank(query_rank);
-
-                    // ... but this works:
-                    InterlockedMin(ircache_life_buf[entry_idx], ircache_entry_life_for_rank(query_rank));
-
+                    ircache_life_buf.Store(entry_idx * 4, ircache_entry_life_for_rank(query_rank));
                     ircache_entry_cell_buf[entry_idx] = cell_idx;
-
                     ircache_grid_meta_buf.Store(sizeof(uint2) * cell_idx + 0, entry_idx);
                 }
             }
@@ -225,9 +219,14 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
 
         if (!IRCACHE_FREEZE && should_propose_position) {
             #ifndef IRCACHE_LOOKUP_DONT_KEEP_ALIVE
-                if (ircache_life_buf[entry_idx] < IRCACHE_ENTRY_LIFE_RECYCLE) {
-                    uint prev_life;
-                    InterlockedMin(ircache_life_buf[entry_idx], ircache_entry_life_for_rank(query_rank), prev_life);
+                const uint prev_life = ircache_life_buf.Load(entry_idx * 4);
+
+                if (prev_life < IRCACHE_ENTRY_LIFE_RECYCLE) {
+                    const uint new_life = ircache_entry_life_for_rank(query_rank);
+                    if (new_life < prev_life) {
+                        ircache_life_buf.InterlockedMin(entry_idx * 4, new_life);
+                        //ircache_life_buf.Store(entry_idx * 4, new_life);
+                    }
 
                     const uint prev_rank = ircache_entry_life_to_rank(prev_life);
                     if (query_rank <= prev_rank) {

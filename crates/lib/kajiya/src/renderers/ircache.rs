@@ -404,6 +404,31 @@ impl IrcacheRenderState {
         .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 1);
 
         SimpleRenderPass::new_rt(
+            rg.add_pass("ircache validate"),
+            ShaderSource::hlsl("/shaders/ircache/ircache_validate.rgen.hlsl"),
+            [
+                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+            ],
+            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+        )
+        .read(&self.ircache_spatial_buf)
+        .read(sky_cube)
+        .write(&mut self.ircache_grid_meta_buf)
+        .read(&self.ircache_life_buf)
+        .write(&mut self.ircache_reposition_proposal_buf)
+        .write(&mut self.ircache_reposition_proposal_count_buf)
+        .bind(wrc)
+        .write(&mut self.ircache_meta_buf)
+        .write(&mut self.ircache_irradiance_buf)
+        .write(&mut self.ircache_aux_buf)
+        .write(&mut self.ircache_pool_buf)
+        .read(&self.ircache_entry_indirection_buf)
+        .write(&mut self.ircache_entry_cell_buf)
+        .raw_descriptor_set(1, bindless_descriptor_set)
+        .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 0);
+
+        SimpleRenderPass::new_rt(
             rg.add_pass("ircache trace"),
             ShaderSource::hlsl("/shaders/ircache/trace_irradiance.rgen.hlsl"),
             [
