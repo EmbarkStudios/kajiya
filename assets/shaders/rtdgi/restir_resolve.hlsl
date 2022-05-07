@@ -9,7 +9,7 @@
 #include "../inc/hash.hlsl"
 #include "../inc/reservoir.hlsl"
 #include "../inc/blue_noise.hlsl"
-#include "../rtdgi/near_field_settings.hlsl"
+#include "near_field_settings.hlsl"
 #include "restir_settings.hlsl"
 #include "candidate_ray_dir.hlsl"
 
@@ -85,9 +85,13 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float NEAR_FIELD_FADE_OUT_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * output_tex_size.w * 0.5);
     const float NEAR_FIELD_FADE_OUT_START = NEAR_FIELD_FADE_OUT_END * 0.5;
 
-    // The near field cannot be fully trusted in tight corners because our irradiance cache
-    // has limited resolution, and is likely to create artifacts. Opt on the side of shadowing.
-    const float near_field_influence = center_ssao;
+    #if RTDGI_INTERLEAVED_VALIDATION_ALWAYS_TRACE_NEAR_FIELD
+        // The near field cannot be fully trusted in tight corners because our irradiance cache
+        // has limited resolution, and is likely to create artifacts. Opt on the side of shadowing.
+        const float near_field_influence = center_ssao;
+    #else
+        const float near_field_influence = is_rtdgi_tracing_frame() ? center_ssao : 0;
+    #endif
 
     {for (uint sample_i = 0; sample_i < (USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;

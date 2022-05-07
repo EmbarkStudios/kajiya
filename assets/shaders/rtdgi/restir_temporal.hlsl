@@ -127,7 +127,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     Reservoir1spp reservoir = Reservoir1spp::create();
     const uint reservoir_payload = px.x | (px.y << 16);
 
-    {
+    if (is_rtdgi_tracing_frame()) {
         RayDesc outgoing_ray;
         outgoing_ray.Direction = outgoing_dir;
         outgoing_ray.Origin = refl_ray_origin_ws;
@@ -170,7 +170,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));
 
-    const bool use_resampling = rt_invalidity < 0.1 && DIFFUSE_GI_USE_RESTIR;
+    //const bool use_resampling = rt_invalidity < 0.1 && DIFFUSE_GI_USE_RESTIR;
+    const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
     //const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
 
     // 1 (center) plus offset samples

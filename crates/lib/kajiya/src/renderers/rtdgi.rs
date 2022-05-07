@@ -204,7 +204,7 @@ impl RtdgiRenderer {
             );
 
         let (irradiance_tex, ray_tex, mut temporal_reservoir_tex) = {
-            let (mut irradiance_output_tex, irradiance_history_tex) =
+            let (mut irradiance_output_tex, mut irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
                     rg,
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
@@ -239,6 +239,34 @@ impl RtdgiRenderer {
 
             let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
 
+            let mut rt_history_validity_pre_input_tex =
+                rg.create(gbuffer_desc.half_res().format(vk::Format::R8_UNORM));
+
+            SimpleRenderPass::new_rt(
+                rg.add_pass("rtdgi validate"),
+                ShaderSource::hlsl("/shaders/rtdgi/diffuse_validate.rgen.hlsl"),
+                [
+                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+                ],
+                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+            )
+            .read(&*half_view_normal_tex)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&reprojected_history_tex)
+            .read(&ray_history_tex)
+            .read(ssao_img)
+            .read(reprojection_map)
+            .bind_mut(ircache)
+            .bind(wrc)
+            .read(sky_cube)
+            .write(&mut irradiance_history_tex)
+            .read(&ray_orig_history_tex)
+            .write(&mut rt_history_validity_pre_input_tex)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .trace_rays(tlas, candidate_irradiance_tex.desc().extent);
+
             let mut rt_history_validity_input_tex =
                 rg.create(gbuffer_desc.half_res().format(vk::Format::R8_UNORM));
 
@@ -265,6 +293,7 @@ impl RtdgiRenderer {
             .write(&mut candidate_irradiance_tex)
             .write(&mut candidate_normal_tex)
             .write(&mut candidate_hit_tex)
+            .read(&rt_history_validity_pre_input_tex)
             .write(&mut rt_history_validity_input_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)

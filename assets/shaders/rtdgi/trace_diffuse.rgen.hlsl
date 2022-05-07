@@ -14,21 +14,7 @@
 #include "../ircache/bindings.hlsl"
 #include "../wrc/bindings.hlsl"
 #include "restir_settings.hlsl"
-
-// Should be 1, but rarely matters for the diffuse bounce, so might as well save a few cycles.
-#define USE_SOFT_SHADOWS 0
-
-#define USE_IRCACHE 1
-#define USE_WORLD_RADIANCE_CACHE 0
-
-#define ROUGHNESS_BIAS 0.5
-#define USE_SCREEN_GI_REPROJECTION 1
-#define USE_SWIZZLE_TILE_PIXELS 0
-
-#define USE_EMISSIVE 1
-#define USE_LIGHTS 1
-
-#define USE_SKY_CUBE_TEX 1
+#include "near_field_settings.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 
@@ -46,8 +32,9 @@ DEFINE_WRC_BINDINGS(15)
 [[vk::binding(19)]] RWTexture2D<float4> candidate_irradiance_out_tex;
 [[vk::binding(20)]] RWTexture2D<float4> candidate_normal_out_tex;
 [[vk::binding(21)]] RWTexture2D<float4> candidate_hit_out_tex;
-[[vk::binding(22)]] RWTexture2D<float> rt_history_invalidity_out_tex;
-[[vk::binding(23)]] cbuffer _ {
+[[vk::binding(22)]] Texture2D<float> rt_history_invalidity_in_tex;
+[[vk::binding(23)]] RWTexture2D<float> rt_history_invalidity_out_tex;
+[[vk::binding(24)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -58,224 +45,12 @@ DEFINE_WRC_BINDINGS(15)
 #include "../wrc/lookup.hlsl"
 #include "candidate_ray_dir.hlsl"
 
-static const float SKY_DIST = 1e4;
+#include "diffuse_trace_common.inc.hlsl"
 
-float3 sample_environment_light(float3 dir) {
-    #if USE_SKY_CUBE_TEX
-        return sky_cube_tex.SampleLevel(sampler_llr, dir, 0).rgb;
-    #else
-        return atmosphere_default(dir, SUN_DIRECTION);
-    #endif
-}
-
-uint2 reservoir_payload_to_px(uint payload) {
-    return uint2(payload & 0xffff, payload >> 16);
-}
-
-struct TraceResult {
-    float3 out_value;
-    float3 hit_normal_ws;
-    float hit_t;
-    float inv_pdf;
-};
-
-TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
-    float3 total_radiance = 0.0.xxx;
-    float3 hit_normal_ws = -outgoing_ray.Direction;
-
-    #if USE_WORLD_RADIANCE_CACHE
-        WrcFarField far_field =
-            WrcFarFieldQuery::from_ray(outgoing_ray.Origin, outgoing_ray.Direction)
-                .with_interpolation_urand(float3(
-                    uint_to_u01_float(hash1_mut(rng)),
-                    uint_to_u01_float(hash1_mut(rng)),
-                    uint_to_u01_float(hash1_mut(rng))
-                ))
-                .with_query_normal(normal_ws)
-                .query();
-    #else
-        WrcFarField far_field = WrcFarField::create_miss();
-    #endif
-
-    if (far_field.is_hit()) {
-        outgoing_ray.TMax = far_field.probe_t;
-    }
-
-    float hit_t = outgoing_ray.TMax;
-    float inv_pdf = 1.0;
-
-    #if DIFFUSE_GI_BRDF_SAMPLING
-        inv_pdf /= max(1e-5, dot(outgoing_ray.Direction, normal_ws));
-    #endif
-
-    const float reflected_cone_spread_angle = 0.03;
-    const RayCone ray_cone =
-        pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
-        .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
-
-    // TODO: cone spread angle
-    const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-        .with_cone(ray_cone)
-        .with_cull_back_faces(false)
-        .with_path_length(1)
-        .trace(acceleration_structure);
-
-    if (primary_hit.is_hit) {
-        hit_t = primary_hit.ray_t;
-        GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-        hit_normal_ws = gbuffer.normal;
-
-        // Project the sample into clip space, and check if it's on-screen
-        const float3 primary_hit_cs = position_world_to_sample(primary_hit.position);
-        const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
-        const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
-        //const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
-        //const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
-        bool is_on_screen = true
-            && all(abs(primary_hit_cs.xy) < 1.0)
-            && inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3
-            // TODO
-            //&& dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0
-            //&& dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7
-            ;
-
-        // If it is on-screen, we'll try to use its reprojected radiance from the previous frame
-        float4 reprojected_radiance = 0;
-        if (is_on_screen) {
-            reprojected_radiance =
-                reprojected_gi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0)
-                * frame_constants.pre_exposure_delta;
-
-            // Check if the temporal reprojection is valid.
-            is_on_screen = reprojected_radiance.w > 0;
-        }
-
-        gbuffer.roughness = lerp(gbuffer.roughness, 1.0, ROUGHNESS_BIAS);
-        const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
-        const float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
-        const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
-
-        // Sun
-        float3 sun_radiance = SUN_COLOR;
-        if (any(sun_radiance) > 0) {
-            const float3 to_light_norm = sample_sun_direction(
-                blue_noise_for_pixel(px, rng).xy,
-                USE_SOFT_SHADOWS
-            );
-
-            const bool is_shadowed =
-                rt_is_shadowed(
-                    acceleration_structure,
-                    new_ray(
-                        primary_hit.position,
-                        to_light_norm,
-                        1e-4,
-                        SKY_DIST
-                ));
-
-            const float3 wi = mul(to_light_norm, tangent_to_world);
-            const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-            const float3 light_radiance = is_shadowed ? 0.0 : sun_radiance;
-            total_radiance += brdf_value * light_radiance;
-        }
-
-        if (USE_EMISSIVE) {
-            total_radiance += gbuffer.emissive;
-        }
-
-        if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
-            total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
-        } else {
-            if (USE_LIGHTS) {
-                float2 urand = float2(
-                    uint_to_u01_float(hash1_mut(rng)),
-                    uint_to_u01_float(hash1_mut(rng))
-                );
-
-                for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
-                    TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
-                    LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
-                    const float3 shadow_ray_origin = primary_hit.position;
-                    const float3 to_light_ws = light_sample.pos - shadow_ray_origin;
-                    const float dist_to_light2 = dot(to_light_ws, to_light_ws);
-                    const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
-
-                    const float to_psa_metric =
-                        max(0.0, dot(to_light_norm_ws, gbuffer.normal))
-                        * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
-                        / dist_to_light2;
-
-                    if (to_psa_metric > 0.0) {
-                        const bool is_shadowed =
-                            rt_is_shadowed(
-                                acceleration_structure,
-                                new_ray(
-                                    shadow_ray_origin,
-                                    to_light_norm_ws,
-                                    1e-3,
-                                    sqrt(dist_to_light2) - 2e-3
-                            ));
-
-                        #if 1
-                            const float3 bounce_albedo = lerp(gbuffer.albedo, 1.0.xxx, 0.04);
-                            const float3 brdf_value = bounce_albedo * to_psa_metric / M_PI;
-                        #else
-                            const float3 wi = mul(to_light_norm_ws, tangent_to_world);
-                            const float3 brdf_value = brdf.evaluate(wo, wi) * to_psa_metric;
-                        #endif
-
-                        total_radiance +=
-                            !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
-                    }
-                }
-            }
-
-            if (USE_IRCACHE) {
-                float3 gi = lookup_irradiance_cache(
-                    outgoing_ray.Origin,
-                    primary_hit.position,
-                    gbuffer.normal,
-                    1,
-                    rng
-                );
-
-                total_radiance += gi * gbuffer.albedo;
-            }
-        }
-    } else {
-        if (far_field.is_hit()) {
-            total_radiance += far_field.radiance;
-            hit_t = far_field.approx_surface_t;
-            inv_pdf = far_field.inv_pdf;
-        } else {
-            total_radiance += sample_environment_light(outgoing_ray.Direction);
-        }
-    }
-
-    float3 out_value = total_radiance;
-
-    //out_value /= reservoir.p_sel;
-
-    TraceResult result;
-    result.out_value = out_value;
-    result.hit_t = hit_t;
-    result.hit_normal_ws = hit_normal_ws;
-    result.inv_pdf = inv_pdf;
-    return result;
-}
 
 [shader("raygeneration")]
 void main() {
-    uint2 px;
-    if (USE_SWIZZLE_TILE_PIXELS) {
-        const uint2 orig_px = DispatchRaysIndex().xy;
-
-        // TODO: handle screen edge
-        px = (orig_px & 7) * 8 + ((orig_px / 8) & 7) + (orig_px & ~63u);
-    } else {
-        px = DispatchRaysIndex().xy;
-    }
-
+    const uint2 px = DispatchRaysIndex().xy;
     const uint2 hi_px_subpixels[4] = {
         uint2(0, 0),
         uint2(1, 1),
@@ -297,86 +72,56 @@ void main() {
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
-    const float3 normal_vs = half_view_normal_tex[px];
-    const float3 normal_ws = direction_view_to_world(normal_vs);
-    const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
-    const float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
-    RayDesc outgoing_ray;
-    outgoing_ray.Direction = outgoing_dir;
-    // TODO: use the tighter ray bias
-    outgoing_ray.Origin = view_ray_context.biased_secondary_ray_origin_ws();
-    outgoing_ray.TMin = 0;
-    outgoing_ray.TMax = SKY_DIST;
+    const float NEAR_FIELD_FADE_OUT_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * gbuffer_tex_size.w * 0.5);
 
-    uint rng = hash3(uint3(px, frame_constants.frame_index & 31));
-    TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
+    #if RTDGI_INTERLEAVED_VALIDATION_ALWAYS_TRACE_NEAR_FIELD
+        if (true) {
+    #else
+        if (is_rtdgi_tracing_frame()) {
+    #endif
+        const float3 normal_vs = half_view_normal_tex[px];
+        const float3 normal_ws = direction_view_to_world(normal_vs);
+        const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
+        const float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
+
+        RayDesc outgoing_ray;
+        outgoing_ray.Direction = outgoing_dir;
+        // TODO: use the tighter ray bias
+        outgoing_ray.Origin = view_ray_context.biased_secondary_ray_origin_ws();
+        outgoing_ray.TMin = 0;
+
+        if (is_rtdgi_tracing_frame()) {
+            outgoing_ray.TMax = SKY_DIST;
+        } else {
+            outgoing_ray.TMax = NEAR_FIELD_FADE_OUT_END;
+        }
+
+        uint rng = hash3(uint3(px, frame_constants.frame_index & 31));
+        TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
+
+        #if RTDGI_INTERLEAVED_VALIDATION_ALWAYS_TRACE_NEAR_FIELD
+            if (!is_rtdgi_tracing_frame() && !result.is_hit) {
+                // If we were only tracing short rays, make sure we don't try to output
+                // sky color upon misses.
+                result.out_value = 0;
+                result.hit_t = SKY_DIST;
+            }
+        #endif
+
+        candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
+        candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
+        candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, 1);
+    } else {
+        const float4 reproj = reprojection_tex[hi_px];
+        const int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + 0.5);
+
+        candidate_irradiance_out_tex[px] = 0.0;
+        candidate_normal_out_tex[px] = 0.0;
+        candidate_hit_out_tex[px] = 0.0;
+    }
 
     const float4 reproj = reprojection_tex[hi_px];
     const int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + 0.5);
-
-    const float3 prev_ray_orig = ray_orig_history_tex[reproj_px];
-    const float3 prev_hit_pos = reservoir_ray_history_tex[reproj_px].xyz/* + get_prev_eye_position()*/;
-
-    //bool is_prev_valid = true;
-    float invalidity = 0.0;
-
-    if (RESTIR_USE_PATH_VALIDATION) {
-        const float3 prev_irradiance = max(0.0.xxx, irradiance_history_tex[reproj_px].rgb);
-
-        // Find whether the ray traces the same hit point as previously,
-        // but don't bother for screen edges.
-        //if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)) && length(prev_hit_pos - prev_ray_orig) > 0.1)
-        if (all(uint2(reproj_px) < uint2(gbuffer_tex_size.xy * 0.5)))
-        {
-            #if 0
-            is_prev_valid =
-                !rt_is_shadowed(
-                    acceleration_structure,
-                    new_ray(
-                        prev_ray_orig,
-                        prev_hit_pos - prev_ray_orig,
-                        0.01,
-                        0.999
-                )) &&
-                (
-                    length(prev_hit_pos - prev_ray_orig) > 0.5 * SKY_DIST
-                    ||
-                    rt_is_shadowed(
-                        acceleration_structure,
-                        new_ray(
-                            prev_ray_orig,
-                            prev_hit_pos - prev_ray_orig,
-                            0.99,
-                            2.0
-                    ))
-                );
-            #else
-                RayDesc prev_ray;
-                prev_ray.Direction = normalize(prev_hit_pos - prev_ray_orig);
-                prev_ray.Origin = prev_ray_orig;
-                prev_ray.TMin = 0;
-                prev_ray.TMax = SKY_DIST;
-
-                // TODO: frame index
-                uint rng = hash3(uint3(px, 0));
-
-                TraceResult check_result = do_the_thing(px, normal_ws, rng, prev_ray, normal_ws);
-                const float3 check_radiance = max(0.0.xxx, check_result.out_value);
-
-                const float rad_diff = length(abs(prev_irradiance - check_radiance) / max(1e-3, prev_irradiance + check_radiance));
-                invalidity = smoothstep(0.1, 0.5, rad_diff / length(1.0.xxx));
-                //invalidity = rad_diff < 0.1 * length(1.0.xxx) ? 0 : 1;
-
-                //is_prev_valid = rad_diff < 0.1 * length(1.0.xxx);
-            #endif
-        }
-    }
-
-    //candidate_irradiance_out_tex[px] = float4(result.out_value, is_prev_valid ? result.inv_pdf : -result.inv_pdf);
-    candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
-    candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
-    candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, 1);
-    //rt_history_invalidity_out_tex[px] = is_prev_valid ? 0.0 : 1.0;
-    rt_history_invalidity_out_tex[px] = invalidity;
+    rt_history_invalidity_out_tex[px] = rt_history_invalidity_in_tex[reproj_px];
 }
