@@ -82,7 +82,7 @@ void main() {
         // TODO: frame index
         uint rng = hash3(uint3(px, 0));
 
-        TraceResult check_result = do_the_thing(px, normal_ws, rng, prev_ray, normal_ws);
+        TraceResult check_result = do_the_thing(px, normal_ws, rng, prev_ray);
         const float3 check_radiance = max(0.0.xxx, check_result.out_value);
 
         const float rad_diff = length(abs(prev_irradiance - check_radiance) / max(1e-3, prev_irradiance + check_radiance));

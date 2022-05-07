@@ -35,7 +35,7 @@ struct TraceResult {
     bool is_hit;
 };
 
-TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
+TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc outgoing_ray) {
     float3 total_radiance = 0.0.xxx;
     float3 hit_normal_ws = -outgoing_ray.Direction;
 

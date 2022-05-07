@@ -98,7 +98,7 @@ void main() {
         }
 
         uint rng = hash3(uint3(px, frame_constants.frame_index & 31));
-        TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray, normal_ws);
+        TraceResult result = do_the_thing(px, normal_ws, rng, outgoing_ray);
 
         #if RTDGI_INTERLEAVED_VALIDATION_ALWAYS_TRACE_NEAR_FIELD
             if (!is_rtdgi_tracing_frame() && !result.is_hit) {
