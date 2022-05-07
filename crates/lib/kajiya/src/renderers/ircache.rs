@@ -360,8 +360,8 @@ impl IrcacheRenderState {
     ) {
         let indirect_args_buf = {
             let mut indirect_args_buf = rg.create(BufferDesc::new_gpu_only(
-                (size_of::<u32>() * 4) * 3,
-                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                (size_of::<u32>() * 4) * 4,
+                vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS | vk::BufferUsageFlags::INDIRECT_BUFFER,
             ));
 
             SimpleRenderPass::new_compute(
@@ -401,6 +401,7 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_reposition_proposal_buf)
         .read(&self.ircache_meta_buf)
         .write(&mut self.ircache_aux_buf)
+        .read(&self.ircache_entry_indirection_buf)
         .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 1);
 
         SimpleRenderPass::new_rt(
@@ -420,13 +421,12 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_reposition_proposal_count_buf)
         .bind(wrc)
         .write(&mut self.ircache_meta_buf)
-        .write(&mut self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
         .write(&mut self.ircache_pool_buf)
         .read(&self.ircache_entry_indirection_buf)
         .write(&mut self.ircache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 0);
+        .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 3);
 
         SimpleRenderPass::new_rt(
             rg.add_pass("ircache trace"),
@@ -445,7 +445,6 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_reposition_proposal_count_buf)
         .bind(wrc)
         .write(&mut self.ircache_meta_buf)
-        .write(&mut self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
         .write(&mut self.ircache_pool_buf)
         .read(&self.ircache_entry_indirection_buf)

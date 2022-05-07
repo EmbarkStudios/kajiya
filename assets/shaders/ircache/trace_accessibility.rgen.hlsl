@@ -16,6 +16,7 @@
 [[vk::binding(2)]] RWStructuredBuffer<VertexPacked> ircache_reposition_proposal_buf;
 [[vk::binding(3)]] ByteAddressBuffer ircache_meta_buf;
 [[vk::binding(4)]] RWStructuredBuffer<float4> ircache_aux_buf;
+[[vk::binding(5)]] StructuredBuffer<uint> ircache_entry_indirection_buf;
 
 [shader("raygeneration")]
 void main() {
@@ -24,7 +25,18 @@ void main() {
     }
 
     const uint dispatch_idx = DispatchRaysIndex().x;
-    const uint entry_idx = dispatch_idx / IRCACHE_OCTA_DIMS2;
+
+    // AMD ray-tracing bug workaround; indirect RT seems to be tracing with the same
+    // ray count for multiple dispatches (???)
+    // Search for c804a814-fdc8-4843-b2c8-9d0674c10a6f for other occurences.
+    #if 1
+        const uint alloc_count = ircache_meta_buf.Load(IRCACHE_META_TRACING_ALLOC_COUNT);
+        if (dispatch_idx >= alloc_count * IRCACHE_OCTA_DIMS2) {
+            return;
+        }
+    #endif
+
+    const uint entry_idx = ircache_entry_indirection_buf[dispatch_idx / IRCACHE_OCTA_DIMS2];
     const uint octa_idx = dispatch_idx % IRCACHE_OCTA_DIMS2;
     const uint life = ircache_life_buf[entry_idx];
 

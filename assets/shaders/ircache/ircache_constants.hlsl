@@ -40,7 +40,9 @@ static const uint IRCACHE_OCTA_DIMS2 = IRCACHE_OCTA_DIMS * IRCACHE_OCTA_DIMS;
 static const uint IRCACHE_IRRADIANCE_STRIDE = 3;
 static const uint IRCACHE_AUX_STRIDE = 4 * IRCACHE_OCTA_DIMS2;
 
-static const uint IRCACHE_SAMPLES_PER_FRAME = 8;
+static const uint IRCACHE_SAMPLES_PER_FRAME = 4;
+static const uint IRCACHE_VALIDATION_SAMPLES_PER_FRAME = 4;
+static const uint IRCACHE_RESTIR_M_CLAMP = 30;
 
 
 #endif // IRCACHE_CONSTANTS_HLSL

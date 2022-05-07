@@ -1,7 +1,3 @@
-// Sample straight from the `ircache_aux_buf` instead of the SH.
-#define IRCACHE_LOOKUP_PRECISE
-#include "lookup.hlsl"
-
 // HACK: reduces feedback loops due to the spherical traces.
 // As a side effect, dims down the result a bit, and increases variance.
 // Maybe not needed when using IRCACHE_LOOKUP_PRECISE.
@@ -48,13 +44,16 @@ struct IrcacheTraceResult {
 struct SampleParams {
     uint value;
 
-    static SampleParams from_entry_sample_frame(uint entry_idx, uint sample_idx, uint frame_idx) {
+    static SampleParams from_spf_entry_sample_frame(uint samples_per_frame, uint entry_idx, uint sample_idx, uint frame_idx) {
+        const uint PERIOD = IRCACHE_OCTA_DIMS2 / samples_per_frame;
+
+        uint xy = sample_idx * PERIOD + (frame_idx % PERIOD);
+
         // Checkerboard
-        uint cb = sample_idx * 2u + (frame_idx & 1u);
-        cb ^= (cb & 4u) >> 2u;
+        xy ^= (xy & 4u) >> 2u;
 
         SampleParams res;
-        res.value = cb | ((frame_idx & 0xffff) << 16u) | ((entry_idx & 0xffff) << 4u);
+        res.value = xy + ((frame_idx << 16u) ^ (entry_idx)) * IRCACHE_OCTA_DIMS2;
 
         return res;
     }
@@ -70,12 +69,12 @@ struct SampleParams {
     }
 
     uint octa_idx() {
-        return value & 0x0f;
+        return value % IRCACHE_OCTA_DIMS2;
     }
 
     uint2 octa_quant() {
         uint oi = octa_idx();
-        return uint2(oi & 3, oi >> 2);
+        return uint2(oi % IRCACHE_OCTA_DIMS, oi / IRCACHE_OCTA_DIMS);
     }
 
     uint rng() {

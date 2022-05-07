@@ -26,14 +26,17 @@
 [[vk::binding(5)]] RWStructuredBuffer<uint> ircache_reposition_proposal_count_buf;
 DEFINE_WRC_BINDINGS(6)
 [[vk::binding(7)]] RWByteAddressBuffer ircache_meta_buf;
-[[vk::binding(8)]] RWStructuredBuffer<float4> ircache_irradiance_buf;
-[[vk::binding(9)]] RWStructuredBuffer<float4> ircache_aux_buf;
-[[vk::binding(10)]] RWStructuredBuffer<uint> ircache_pool_buf;
-[[vk::binding(11)]] StructuredBuffer<uint> ircache_entry_indirection_buf;
-[[vk::binding(12)]] RWStructuredBuffer<uint> ircache_entry_cell_buf;
+[[vk::binding(8)]] RWStructuredBuffer<float4> ircache_aux_buf;
+[[vk::binding(9)]] RWStructuredBuffer<uint> ircache_pool_buf;
+[[vk::binding(10)]] StructuredBuffer<uint> ircache_entry_indirection_buf;
+[[vk::binding(11)]] RWStructuredBuffer<uint> ircache_entry_cell_buf;
 
 #include "../inc/sun.hlsl"
 #include "../wrc/lookup.hlsl"
+
+// Sample straight from the `ircache_aux_buf` instead of the SH.
+#define IRCACHE_LOOKUP_PRECISE
+#include "lookup.hlsl"
 
 #include "ircache_trace_common.inc.hlsl"
 
@@ -44,6 +47,17 @@ void main() {
     }
 
     const uint dispatch_idx = DispatchRaysIndex().x;
+
+    // AMD ray-tracing bug workaround; indirect RT seems to be tracing with the same
+    // ray count for multiple dispatches (???)
+    // Search for c804a814-fdc8-4843-b2c8-9d0674c10a6f for other occurences.
+    #if 1
+        const uint alloc_count = ircache_meta_buf.Load(IRCACHE_META_TRACING_ALLOC_COUNT);
+        if (dispatch_idx >= alloc_count * IRCACHE_SAMPLES_PER_FRAME) {
+            return;
+        }
+    #endif
+
     const uint entry_idx = ircache_entry_indirection_buf[dispatch_idx / IRCACHE_SAMPLES_PER_FRAME];
     const uint sample_idx = dispatch_idx % IRCACHE_SAMPLES_PER_FRAME;
     const uint life = ircache_life_buf.Load(entry_idx * 4);
@@ -67,11 +81,13 @@ void main() {
         const uint sample_count_divisor = 1;
     #endif
 
-    const uint sample_count = IRCACHE_SAMPLES_PER_FRAME / sample_count_divisor;
-
     uint rng = hash1(hash1(entry_idx) + frame_constants.frame_index);
 
-    const SampleParams sample_params = SampleParams::from_entry_sample_frame(entry_idx, sample_idx, frame_constants.frame_index);
+    const SampleParams sample_params = SampleParams::from_spf_entry_sample_frame(
+        IRCACHE_SAMPLES_PER_FRAME,
+        entry_idx,
+        sample_idx,
+        frame_constants.frame_index);
 
     IrcacheTraceResult traced = ircache_trace(entry, brdf, sample_params, life);
 

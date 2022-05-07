@@ -16,7 +16,7 @@ struct Reservoir1sppStreamState {
 };
 
 struct Reservoir1spp {
-    float w_sum;
+    float w_sum;    // TODO: doesn't need storing
     uint payload;
     float M;
     float W;
