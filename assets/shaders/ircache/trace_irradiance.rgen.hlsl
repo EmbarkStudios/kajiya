@@ -93,7 +93,7 @@ void main() {
 
     const float self_lighting_limiter = 
         USE_SELF_LIGHTING_LIMITER
-        ? lerp(0.75, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
+        ? lerp(0.5, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
         : 1.0;
 
     const float3 new_value = traced.incident_radiance * self_lighting_limiter;
