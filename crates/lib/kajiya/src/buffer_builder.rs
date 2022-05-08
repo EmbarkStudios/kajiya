@@ -104,7 +104,7 @@ impl BufferBuilder {
         let mut staging_buffer = device.create_buffer(
             BufferDesc::new_cpu_to_gpu(STAGING_BYTES, vk::BufferUsageFlags::TRANSFER_SRC),
             "BufferBuilder staging",
-                None,
+            None,
         )?;
 
         struct UploadChunk {

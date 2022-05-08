@@ -56,7 +56,7 @@ struct SceneInstanceDesc {
     mesh: String,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct SunState {
     theta: f32,
     phi: f32,
@@ -75,7 +75,7 @@ impl SunState {
     }
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 struct LocalLightsState {
     theta: f32,
     phi: f32,
@@ -99,6 +99,18 @@ struct PersistedAppState {
     camera_speed: f32,
     #[serde(default = "default_camera_smoothness")]
     camera_smoothness: f32,
+}
+
+impl PersistedAppState {
+    fn should_reset_path_tracer(&self, other: &PersistedAppState) -> bool {
+        false
+            || self.camera_position != other.camera_position
+            || self.camera_rotation != other.camera_rotation
+            || self.vertical_fov != other.vertical_fov
+            || self.emissive_multiplier != other.emissive_multiplier
+            || self.sun != other.sun
+            || self.lights != other.lights
+    }
 }
 
 fn default_camera_speed() -> f32 {
@@ -151,11 +163,6 @@ fn main() -> anyhow::Result<()> {
     camera.fov = 35.0 * 9.0 / 16.0;
     camera.look_at(Vec3::new(0.0, 0.75, 0.0));*/
 
-    //#[allow(unused_mut)]
-    //let mut camera_state = CameraConvergenceEnforcer::new(camera_state);
-    //camera_state.convergence_sensitivity = 0.0;
-    //let camera = &mut camera_state;
-
     let mut camera = {
         let (position, rotation) = if let Some(state) = &persisted_app_state {
             (state.camera_position, state.camera_rotation)
@@ -172,6 +179,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut mouse: MouseState = Default::default();
     let mut keyboard: KeyboardState = Default::default();
+    let mut reset_path_tracer = false;
 
     let mut keymap = KeyboardMap::new()
         .bind(VirtualKeyCode::W, KeyMap::new("move_fwd", 1.0))
@@ -260,6 +268,17 @@ fn main() -> anyhow::Result<()> {
                 std::thread::sleep(std::time::Duration::from_micros(1_000_000 / max_fps as u64));
             }
 
+            let prev_state = state.clone();
+
+            let smooth = camera.driver_mut::<Smooth>();
+            if ctx.world_renderer.render_mode == RenderMode::Reference {
+                smooth.position_smoothness = 0.0;
+                smooth.rotation_smoothness = 0.0;
+            } else {
+                smooth.position_smoothness = state.camera_smoothness;
+                smooth.rotation_smoothness = state.camera_smoothness;
+            }
+
             keyboard.update(ctx.events);
             mouse.update(ctx.events);
 
@@ -296,25 +315,12 @@ fn main() -> anyhow::Result<()> {
                 camera
                     .driver_mut::<YawPitch>()
                     .rotate_yaw_pitch(-sensitivity * mouse.delta.x, -sensitivity * mouse.delta.y);
-
-                let smooth = camera.driver_mut::<Smooth>();
-                smooth.position_smoothness = state.camera_smoothness;
-                smooth.rotation_smoothness = state.camera_smoothness;
             }
+
             camera
                 .driver_mut::<Position>()
                 .translate(move_vec * ctx.dt_filtered * state.camera_speed);
             camera.update(ctx.dt_filtered);
-
-            state.camera_position = camera.final_transform.position;
-            state.camera_rotation = camera.final_transform.rotation;
-
-            // Reset accumulation of the path tracer whenever the camera moves
-            /*if (!camera.is_converged() || keyboard.was_just_pressed(VirtualKeyCode::Back))
-                && ctx.world_renderer.render_mode == RenderMode::Reference
-            {
-                ctx.world_renderer.reset_reference_accumulation = true;
-            }*/
 
             if keyboard.is_down(VirtualKeyCode::Z) {
                 car_pos.x += mouse.delta.x / 100.0;
@@ -324,12 +330,6 @@ fn main() -> anyhow::Result<()> {
                 car_inst,
                 Affine3A::from_rotation_translation(Quat::from_rotation_y(car_rot), car_pos),
             );
-
-            for inst in &render_instances {
-                ctx.world_renderer
-                    .get_instance_dynamic_parameters_mut(*inst)
-                    .emissive_multiplier = state.emissive_multiplier;
-            }
 
             if keyboard.was_just_pressed(VirtualKeyCode::Space) {
                 match ctx.world_renderer.render_mode {
@@ -368,6 +368,7 @@ fn main() -> anyhow::Result<()> {
                     } /*LeftClickEditMode::MoveLocalLights => {
                           state.lights.theta += theta_delta;
                           state.lights.phi += phi_delta;
+                          reset_path_tracer = true;
                       }*/
                 }
             }
@@ -383,8 +384,18 @@ fn main() -> anyhow::Result<()> {
             //state.sun.phi %= std::f32::consts::TAU;
 
             let sun_direction = state.sun.direction();
-            //sun_direction_interp = Vec3::lerp(sun_direction_interp, sun_direction, 0.1).normalize();
-            sun_direction_interp = sun_direction.normalize();
+            if (sun_direction.dot(sun_direction_interp) - 1.0).abs() > 1e-5 {
+                reset_path_tracer = true;
+            }
+
+            let sun_interp_t = if ctx.world_renderer.render_mode == RenderMode::Reference {
+                1.0
+            } else {
+                0.5
+            };
+
+            sun_direction_interp =
+                Vec3::lerp(sun_direction_interp, sun_direction, sun_interp_t).normalize();
 
             /*#[allow(clippy::comparison_chain)]
             if light_instances.len() > state.lights.count as usize {
@@ -419,20 +430,8 @@ fn main() -> anyhow::Result<()> {
                     .emissive_multiplier = state.lights.multiplier;
             }*/
 
-            let lens = CameraLens {
-                aspect_ratio: ctx.aspect_ratio(),
-                vertical_fov: state.vertical_fov,
-                ..Default::default()
-            };
-
-            let frame_desc = WorldFrameDesc {
-                camera_matrices: camera
-                    .final_transform
-                    .into_position_rotation()
-                    .through(&lens),
-                render_extent: ctx.render_extent,
-                sun_direction: sun_direction_interp,
-            };
+            state.camera_position = camera.final_transform.position;
+            state.camera_rotation = camera.final_transform.rotation;
 
             if keyboard.was_just_pressed(VirtualKeyCode::Tab) {
                 show_gui = !show_gui;
@@ -441,9 +440,8 @@ fn main() -> anyhow::Result<()> {
             if keyboard.was_just_pressed(VirtualKeyCode::C) {
                 println!(
                     "position: {}, look_at: {}",
-                    frame_desc.camera_matrices.eye_position(),
-                    frame_desc.camera_matrices.eye_position()
-                        + frame_desc.camera_matrices.eye_direction(),
+                    state.camera_position,
+                    state.camera_position + state.camera_rotation * -Vec3::Z,
                 );
             }
 
@@ -623,10 +621,41 @@ fn main() -> anyhow::Result<()> {
                 });
             }
 
+            for inst in &render_instances {
+                ctx.world_renderer
+                    .get_instance_dynamic_parameters_mut(*inst)
+                    .emissive_multiplier = state.emissive_multiplier;
+            }
+
             ctx.world_renderer.ev_shift = state.ev_shift;
             ctx.world_renderer.dynamic_exposure.enabled = state.use_dynamic_exposure;
 
-            frame_desc
+            if state.should_reset_path_tracer(&prev_state) {
+                reset_path_tracer = true;
+            }
+
+            // Reset accumulation of the path tracer whenever the camera moves
+            if (reset_path_tracer || keyboard.was_just_pressed(VirtualKeyCode::Back))
+                && ctx.world_renderer.render_mode == RenderMode::Reference
+            {
+                ctx.world_renderer.reset_reference_accumulation = true;
+                reset_path_tracer = false;
+            }
+
+            let lens = CameraLens {
+                aspect_ratio: ctx.aspect_ratio(),
+                vertical_fov: state.vertical_fov,
+                ..Default::default()
+            };
+
+            WorldFrameDesc {
+                camera_matrices: camera
+                    .final_transform
+                    .into_position_rotation()
+                    .through(&lens),
+                render_extent: ctx.render_extent,
+                sun_direction: sun_direction_interp,
+            }
         })?;
     }
 

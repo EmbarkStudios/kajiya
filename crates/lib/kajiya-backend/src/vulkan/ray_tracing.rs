@@ -85,7 +85,7 @@ impl Device {
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
             "Acceleration structure scratch buffer",
-                None,
+            None,
         )?;
 
         Ok(RayTracingAccelerationScratchBuffer {
@@ -227,14 +227,14 @@ impl Device {
                     | ash::vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR,
             ),
             "TLAS instance buffer",
-                unsafe {
-                    (!instances.is_empty()).then(|| {
-                        std::slice::from_raw_parts(
-                            instances.as_ptr() as *const u8,
-                            instance_buffer_size,
-                        )
-                    })
-                },
+            unsafe {
+                (!instances.is_empty()).then(|| {
+                    std::slice::from_raw_parts(
+                        instances.as_ptr() as *const u8,
+                        instance_buffer_size,
+                    )
+                })
+            },
         )?;
 
         let instance_buffer_address = instance_buffer.device_address(self);
@@ -306,10 +306,10 @@ impl Device {
             super::buffer::BufferDesc::new_gpu_only(
                 backing_buffer_size,
                 vk::BufferUsageFlags::ACCELERATION_STRUCTURE_STORAGE_KHR
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
             "Acceleration structure buffer",
-                None,
+            None,
         )?;
 
         let accel_info = ash::vk::AccelerationStructureCreateInfoKHR::builder()
@@ -573,24 +573,24 @@ impl Device {
 
         let create_binding_table =
             |entry_offset: u32,
-                                    entry_count: u32|
+             entry_count: u32|
              -> Result<Option<crate::vulkan::buffer::Buffer>, BackendError> {
-            if 0 == entry_count {
-                return Ok(None);
-            }
+                if 0 == entry_count {
+                    return Ok(None);
+                }
 
                 let mut shader_binding_table_data =
                     vec![0u8; (entry_count as usize * prog_size) as _];
 
-            for dst in 0..(entry_count as usize) {
-                let src = dst + entry_offset as usize;
-                shader_binding_table_data
-                    [dst * prog_size..dst * prog_size + shader_group_handle_size]
-                    .copy_from_slice(
-                        &group_handles[src * shader_group_handle_size
-                            ..src * shader_group_handle_size + shader_group_handle_size],
-                    );
-            }
+                for dst in 0..(entry_count as usize) {
+                    let src = dst + entry_offset as usize;
+                    shader_binding_table_data
+                        [dst * prog_size..dst * prog_size + shader_group_handle_size]
+                        .copy_from_slice(
+                            &group_handles[src * shader_group_handle_size
+                                ..src * shader_group_handle_size + shader_group_handle_size],
+                        );
+                }
 
                 Ok(Some(self.create_buffer(
                     super::buffer::BufferDesc::new_gpu_only(
@@ -602,7 +602,7 @@ impl Device {
                     "SBT sub-buffer",
                     Some(&shader_binding_table_data),
                 )?))
-        };
+            };
 
         let raygen_shader_binding_table = create_binding_table(0, desc.raygen_entry_count)?;
         let miss_shader_binding_table =

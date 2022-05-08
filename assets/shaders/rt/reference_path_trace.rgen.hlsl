@@ -13,7 +13,8 @@
 #include "../inc/lights/triangle.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
-[[vk::binding(0, 0)]] RWTexture2D<float4> output_tex;
+
+[[vk::binding(0)]] RWTexture2D<float4> output_tex;
 
 // Does not include the segment used to connect to the sun
 static const uint MAX_EYE_PATH_LENGTH = 16;
@@ -39,7 +40,7 @@ static const bool SHOW_ALBEDO = !true;
 static const bool USE_LIGHTS = true;
 static const bool USE_EMISSIVE = true;
 static const bool RESET_ACCUMULATION = !true;
-static const bool ROLLING_ACCUMULATION = true;
+static const bool ROLLING_ACCUMULATION = !true;
 
 float3 sample_environment_light(float3 dir) {
     //return 0.5.xxx;
