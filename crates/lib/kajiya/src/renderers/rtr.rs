@@ -72,6 +72,7 @@ pub struct TracedRtr<'a> {
     temporal_output_tex: rg::Handle<Image>,
     history_tex: rg::Handle<Image>,
     ray_len_tex: rg::Handle<Image>,
+    refl_restir_invalidity_tex: rg::Handle<Image>,
     temporal2_tex: &'a mut PingPongTemporalResource,
 }
 
@@ -162,6 +163,9 @@ impl RtrRenderer {
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
+        let mut refl_restir_invalidity_tex =
+            rg.create(refl0_tex.desc().format(vk::Format::R8_UNORM));
+
         let (irradiance_tex, ray_tex, temporal_reservoir_tex) = {
             let (mut hit_normal_output_tex, hit_normal_history_tex) =
                 self.temporal_hit_normal_tex.get_output_and_history(
@@ -175,14 +179,14 @@ impl RtrRenderer {
                     ),
                 );
 
-            let (mut irradiance_output_tex, irradiance_history_tex) =
+            let (mut irradiance_output_tex, mut irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
                     rg,
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
                         .format(vk::Format::R32G32B32A32_SFLOAT),
                 );
 
-            let (mut reservoir_output_tex, reservoir_history_tex) =
+            let (mut reservoir_output_tex, mut reservoir_history_tex) =
                 self.temporal_reservoir_tex.get_output_and_history(
                     rg,
                     ImageDesc::new_2d(
@@ -198,6 +202,31 @@ impl RtrRenderer {
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
                         .format(vk::Format::R32G32B32A32_SFLOAT),
                 );
+
+            SimpleRenderPass::new_rt(
+                rg.add_pass("reflection validate"),
+                ShaderSource::hlsl("/shaders/rtr/reflection_validate.rgen.hlsl"),
+                [
+                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+                ],
+                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+            )
+            .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(rtdgi)
+            .read(sky_cube)
+            .write(&mut refl_restir_invalidity_tex)
+            .bind_mut(ircache)
+            .bind(wrc)
+            .read(&ray_orig_history_tex)
+            .read(&ray_history_tex)
+            .write(&mut irradiance_history_tex)
+            .write(&mut reservoir_history_tex)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .trace_rays(tlas, refl0_tex.desc().half_res().extent);
+            //.trace_rays(tlas, refl0_tex.desc().extent);
 
             SimpleRenderPass::new_compute(
                 rg.add_pass("rtr restir temporal"),
@@ -280,6 +309,7 @@ impl RtrRenderer {
             temporal_output_tex,
             history_tex,
             ray_len_tex: ray_len_output_tex,
+            refl_restir_invalidity_tex,
             temporal2_tex: &mut self.temporal2_tex,
         }
     }
@@ -309,11 +339,14 @@ impl RtrRenderer {
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
         );
 
+        let refl_restir_invalidity_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
+
         TracedRtr {
             resolved_tex,
             temporal_output_tex,
             history_tex,
             ray_len_tex: ray_len_output_tex,
+            refl_restir_invalidity_tex,
             temporal2_tex: &mut self.temporal2_tex,
         }
     }
@@ -355,6 +388,7 @@ impl<'a> TracedRtr<'a> {
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&self.ray_len_tex)
         .read(reprojection_map)
+        .read(&self.refl_restir_invalidity_tex)
         .write(&mut temporal2_output_tex)
         .constants(temporal2_output_tex.desc().extent_inv_extent_2d())
         .dispatch(self.resolved_tex.desc().extent);

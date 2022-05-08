@@ -13,7 +13,6 @@
 #include "../ircache/bindings.hlsl"
 #include "rtr_settings.hlsl"
 
-#define RESTIR_TEMPORAL_M_CLAMP 8.0
 #define RESTIR_RESERVOIR_W_CLAMP 1e20
 #define RESTIR_USE_PATH_VALIDATION !true
 #define RTR_RESTIR_BRDF_SAMPLING 1
@@ -220,7 +219,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        for (uint sample_i = 0; sample_i < ((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) ? 5 : 1) && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+        for (uint sample_i = 0; sample_i < ((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) ? 5 : 1) && M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
@@ -328,7 +327,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // resampling. To fix this, we simply clamp the previous frame’s M
             // to at most 20× of the current frame’s reservoir’s M
 
-            r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
+            r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
 
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
@@ -338,7 +337,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                 const float rel_diff = abs(current_pdf - prev_pdf) / (current_pdf + prev_pdf);
                 //r.M *= saturate(1.0 - rel_diff);
-                r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP
+                r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP
                     * saturate(1.0 - USE_NDF_BASED_M_CLAMP_STRENGTH * rel_diff));
             }
 
@@ -350,7 +349,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     pow(SpecularBrdf::ggx_ndf_0_1(a2, dot(current_wo, prev_wo)), 4);
 
                 r.M *= lerp(wo_similarity, 1.0, sqrt(gbuffer.roughness));
-                //r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * wo_similarity);
+                //r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP * wo_similarity);
             }
 
             float p_q = 1;
@@ -414,7 +413,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 {
                     float dist2 = dot(ray_hit_sel_ws - refl_ray_origin_ws, ray_hit_sel_ws - refl_ray_origin_ws);
                     dist2 = min(dist2, 2 * dist_to_hit_vs_scaled * dist_to_hit_vs_scaled);
-                    r.M = min(r.M, RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
+                    r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP * lerp(saturate(50.0 * dist2), 1.0, gbuffer.roughness * gbuffer.roughness));
                 }
             }
 
@@ -467,8 +466,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 irradiance_sel = prev_irrad.rgb;
 
 // TODO: was `refl_ray_origin_ws`; what should it be?
-                ray_orig_sel = refl_ray_origin_ws;
-                //ray_orig_sel = prev_ray_orig_and_dist.xyz;
+                //ray_orig_sel = refl_ray_origin_ws;
+                ray_orig_sel = prev_ray_orig_and_dist.xyz;
 
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
@@ -478,7 +477,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         if (USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) {
             const float ang_offset = (0.2345 + ((frame_constants.frame_index + 7) * 11) % 32) * M_TAU;
 
-            for (uint sample_i = 1; sample_i <= 5 && M_sum < RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+            for (uint sample_i = 1; sample_i <= 5 && M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
             //for (uint sample_i = 1; sample_i <= 5; ++sample_i) {
                 const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
                 const float rpx_offset_radius = sqrt(

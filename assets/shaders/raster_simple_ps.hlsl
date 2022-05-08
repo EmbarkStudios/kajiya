@@ -66,7 +66,7 @@ PsOut main(PsIn ps) {
     float3 normal_ws; {
         float3 normal_os = ps.normal;
 
-        if (!true) {
+        if (true) {
             if (dot(ps.bitangent, ps.bitangent) > 0.0) {
                 float3x3 tbn = float3x3(ps.tangent, ps.bitangent, ps.normal);
                 normal_os = mul(ts_normal, tbn);
