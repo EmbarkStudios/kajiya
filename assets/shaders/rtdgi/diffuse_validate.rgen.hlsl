@@ -82,13 +82,20 @@ void main() {
         // TODO: frame index
         uint rng = hash3(uint3(px, 0));
 
-        TraceResult check_result = do_the_thing(px, normal_ws, rng, prev_ray);
-        const float3 check_radiance = max(0.0.xxx, check_result.out_value);
+        TraceResult result = do_the_thing(px, normal_ws, rng, prev_ray);
+        const float3 new_radiance = max(0.0.xxx, result.out_value);
 
-        const float rad_diff = length(abs(prev_irradiance - check_radiance) / max(1e-3, prev_irradiance + check_radiance));
+        const float rad_diff = length(abs(prev_irradiance - new_radiance) / max(1e-3, prev_irradiance + new_radiance));
         invalidity = smoothstep(0.1, 0.5, rad_diff / length(1.0.xxx));
 
-        irradiance_history_tex[px] = float4(check_radiance, prev_irradiance_packed.a);
+        const float prev_hit_dist = length(prev_hit_pos - prev_ray_orig);
+
+        // If we hit more or less the same point, replace the hit radiance.
+        // If the hit is different, it's possible that the previous origin point got obscured
+        // by something, in which case we want M-clamping to take care of it instead.
+        if (abs(result.hit_t - prev_hit_dist) / (prev_hit_dist + prev_hit_dist) < 0.2) {
+            irradiance_history_tex[px] = float4(new_radiance, prev_irradiance_packed.a);
+        }
     }
 
     rt_history_invalidity_out_tex[px] = invalidity;
