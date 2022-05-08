@@ -231,6 +231,15 @@ void main(uint2 px : SV_DispatchThreadID) {
             const int2 rpx = permuted_reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
+            const int2 permuted_neighbor_px = floor(
+                (sample_i == 0
+                    ? px
+                    // ditto
+                    : ((px + rpx_offset) ^ permutation_xor_val)) + 0.5);
+
+            const int2 neighbor_px = permuted_neighbor_px + rpx_offset;
+            const uint2 neighbor_px_hi = neighbor_px * 2 + hi_px_offset;
+
             // WRONG. needs previous normal
             // const float3 sample_normal_vs = half_view_normal_tex[rpx];
             // // Note: also doing this for sample 0, as under extreme aliasing,
@@ -246,8 +255,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             //float relevance = sample_i == 0 ? 1 : 0.5;
             float relevance = 1;
 
-            const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
-            const float sample_depth = depth_tex[rpx_hi];
+            //const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
+            const float sample_depth = depth_tex[neighbor_px_hi];
 
             // WRONG: needs previous depth
             // if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -view_ray_context.ray_hit_vs().z) {
@@ -281,7 +290,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 }
             #endif
 
-            const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
+            const float3 sample_normal_vs = half_view_normal_tex[neighbor_px].rgb;
             const float normal_similarity_dot = max(0.0, dot(sample_normal_vs, normal_vs));
 
         // Increases noise, but prevents leaking in areas of geometric complexity
@@ -295,11 +304,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             relevance *= normal_similarity_dot;
 
-            const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+            // TODO: this needs fixing with reprojection
+            //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+
             const float4 sample_hit_ws_and_dist = ray_history_tex[spx]/* + float4(get_prev_eye_position(), 0.0)*/;
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
-            const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
-            const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
+            //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
+            //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
 
             // TODO: Using `prev_dir_to_sample_hit_unnorm_ws` explodes weights.
             const float prev_dist = sample_hit_ws_and_dist.w;
@@ -317,7 +328,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
             const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
-            const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
+            //const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
 
             // Note: also doing this for sample 0, as under extreme aliasing,
             // we can easily get bad samples in.

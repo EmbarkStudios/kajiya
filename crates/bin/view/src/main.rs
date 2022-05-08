@@ -99,13 +99,19 @@ struct PersistedAppState {
     camera_speed: f32,
     #[serde(default = "default_camera_smoothness")]
     camera_smoothness: f32,
+    #[serde(default = "default_sun_rotation_smoothness")]
+    sun_rotation_smoothness: f32,
 }
 
 impl PersistedAppState {
     fn should_reset_path_tracer(&self, other: &PersistedAppState) -> bool {
         false
-            || self.camera_position != other.camera_position
-            || self.camera_rotation != other.camera_rotation
+            || !self
+                .camera_position
+                .abs_diff_eq(other.camera_position, 1e-5)
+            || !self
+                .camera_rotation
+                .abs_diff_eq(other.camera_rotation, 1e-5)
             || self.vertical_fov != other.vertical_fov
             || self.emissive_multiplier != other.emissive_multiplier
             || self.sun != other.sun
@@ -118,6 +124,10 @@ fn default_camera_speed() -> f32 {
 }
 
 fn default_camera_smoothness() -> f32 {
+    1.0
+}
+
+fn default_sun_rotation_smoothness() -> f32 {
     1.0
 }
 
@@ -248,6 +258,7 @@ fn main() -> anyhow::Result<()> {
             use_dynamic_exposure: false,
             camera_speed: default_camera_speed(),
             camera_smoothness: default_camera_smoothness(),
+            sun_rotation_smoothness: default_sun_rotation_smoothness(),
         });
     {
         let state = &mut state;
@@ -391,7 +402,7 @@ fn main() -> anyhow::Result<()> {
             let sun_interp_t = if ctx.world_renderer.render_mode == RenderMode::Reference {
                 1.0
             } else {
-                0.5
+                (-1.0 * state.sun_rotation_smoothness).exp2()
             };
 
             sun_direction_interp =
@@ -482,6 +493,11 @@ fn main() -> anyhow::Result<()> {
                             .range(0.0..=20.0)
                             .speed(0.1)
                             .build(ui, &mut state.camera_smoothness);
+
+                        imgui::Drag::<f32>::new(im_str!("Sun rotation smoothness"))
+                            .range(0.0..=20.0)
+                            .speed(0.1)
+                            .build(ui, &mut state.sun_rotation_smoothness);
 
                         imgui::Drag::<f32>::new(im_str!("Field of view"))
                             .range(1.0..=120.0)
