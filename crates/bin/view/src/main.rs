@@ -84,12 +84,18 @@ struct LocalLightsState {
     multiplier: f32,
 }
 
+fn always_true() -> bool {
+    true
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct PersistedAppState {
     camera_position: Vec3,
     camera_rotation: Quat,
     vertical_fov: f32,
     emissive_multiplier: f32,
+    #[serde(default = "always_true")]
+    enable_emissive: bool,
     sun: SunState,
     lights: LocalLightsState,
     ev_shift: f32,
@@ -198,8 +204,14 @@ fn main() -> anyhow::Result<()> {
         .bind(VirtualKeyCode::D, KeyMap::new("move_right", 1.0))
         .bind(VirtualKeyCode::Q, KeyMap::new("move_up", -1.0))
         .bind(VirtualKeyCode::E, KeyMap::new("move_up", 1.0))
-        .bind(VirtualKeyCode::LShift, KeyMap::new("boost", 1.0))
-        .bind(VirtualKeyCode::LControl, KeyMap::new("boost", -1.0));
+        .bind(
+            VirtualKeyCode::LShift,
+            KeyMap::new("boost", 1.0).activation_time(0.25),
+        )
+        .bind(
+            VirtualKeyCode::LControl,
+            KeyMap::new("boost", -1.0).activation_time(0.5),
+        );
 
     /*let light_mesh = kajiya.world_renderer.add_baked_mesh(
         "/baked/emissive-triangle.mesh",
@@ -242,6 +254,7 @@ fn main() -> anyhow::Result<()> {
             camera_position: camera.final_transform.position,
             camera_rotation: camera.final_transform.rotation,
             emissive_multiplier: 1.0,
+            enable_emissive: true,
             vertical_fov: 52.0,
             sun: SunState {
                 theta: -4.54,
@@ -310,7 +323,7 @@ fn main() -> anyhow::Result<()> {
             let move_vec = camera.final_transform.rotation
                 * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
                     .clamp_length_max(1.0)
-                * 10.0f32.powf(input["boost"]);
+                * 4.0f32.powf(input["boost"]);
 
             if (mouse.buttons_held & (1 << 2)) != 0 {
                 // While we're rotating, the cursor should not move, so that upon revealing it,
@@ -353,6 +366,10 @@ fn main() -> anyhow::Result<()> {
                         ctx.world_renderer.render_mode = RenderMode::Standard;
                     }
                 };
+            }
+
+            if keyboard.was_just_pressed(VirtualKeyCode::L) {
+                state.enable_emissive = !state.enable_emissive;
             }
 
             if keyboard.was_just_pressed(VirtualKeyCode::Delete) {
@@ -479,6 +496,8 @@ fn main() -> anyhow::Result<()> {
                             .speed(0.1)
                             .build(ui, &mut state.emissive_multiplier);
 
+                        ui.checkbox(im_str!("Enable emissive"), &mut state.enable_emissive);
+
                         imgui::Drag::<f32>::new(im_str!("Light intensity multiplier"))
                             .range(0.0..=1000.0)
                             .speed(1.0)
@@ -509,10 +528,10 @@ fn main() -> anyhow::Result<()> {
                             .speed(0.02)
                             .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
 
-                        ui.checkbox(
+                        /*ui.checkbox(
                             im_str!("Show world radiance cache"),
                             &mut ctx.world_renderer.debug_show_wrc,
-                        );
+                        );*/
 
                         /*if ui.radio_button_bool(
                             im_str!("Move sun"),
@@ -558,12 +577,12 @@ fn main() -> anyhow::Result<()> {
                             ctx.world_renderer.debug_mode = RenderDebugMode::None;
                         }
 
-                        if ui.radio_button_bool(
+                        /*if ui.radio_button_bool(
                             im_str!("World radiance cache"),
                             ctx.world_renderer.debug_mode == RenderDebugMode::WorldRadianceCache,
                         ) {
                             ctx.world_renderer.debug_mode = RenderDebugMode::WorldRadianceCache;
-                        }
+                        }*/
 
                         imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
                             ui,
@@ -637,10 +656,11 @@ fn main() -> anyhow::Result<()> {
                 });
             }
 
+            let emissive_toggle_mult = if state.enable_emissive { 1.0 } else { 0.0 };
             for inst in &render_instances {
                 ctx.world_renderer
                     .get_instance_dynamic_parameters_mut(*inst)
-                    .emissive_multiplier = state.emissive_multiplier;
+                    .emissive_multiplier = state.emissive_multiplier * emissive_toggle_mult;
             }
 
             ctx.world_renderer.ev_shift = state.ev_shift;

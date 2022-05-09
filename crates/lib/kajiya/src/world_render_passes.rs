@@ -79,7 +79,7 @@ impl WorldRenderer {
 
         let mut ircache_state = self.ircache.prepare(rg, &mut gbuffer_depth);
 
-        let wrc = if let Some(tlas) = tlas.as_ref() {
+        let wrc = /*if let Some(tlas) = tlas.as_ref() {
             crate::renderers::wrc::wrc_trace(
                 rg,
                 &mut ircache_state,
@@ -87,7 +87,7 @@ impl WorldRenderer {
                 self.bindless_descriptor_set,
                 tlas,
             )
-        } else {
+        } else */{
             crate::renderers::wrc::allocate_dummy_output(rg)
         };
 

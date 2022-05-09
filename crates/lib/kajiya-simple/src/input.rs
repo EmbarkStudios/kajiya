@@ -192,7 +192,7 @@ impl KeyboardMap {
                 }
             }
 
-            *result.entry(s.map.axis).or_default() += s.activation * s.map.multiplier;
+            *result.entry(s.map.axis).or_default() += s.activation.powi(2) * s.map.multiplier;
         }
 
         for value in result.values_mut() {
