@@ -315,8 +315,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 uint2 rpx = sample_px;
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
-                const float3 sample_hit_ws = restir_ray_tex[spx].xyz + get_eye_position();
                 const float3 ray_origin_ws = restir_ray_orig_tex[spx].xyz;
+                const float3 sample_hit_ws = restir_ray_tex[spx].xyz + ray_origin_ws;
                 sample_origin_vs = position_world_to_view(ray_origin_ws);
 
                 const float3 sample_offset = sample_hit_ws - ray_origin_ws;
@@ -394,15 +394,15 @@ void main(uint2 px : SV_DispatchThreadID) {
                 sample_radiance = packed0.xyz;
                 sample_cos_theta = 1;
 
-                #if RTR_RAY_HIT_STORED_AS_POSITION
-                    center_to_hit_vs = packed1.xyz - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
-                    sample_hit_vs = center_to_hit_vs + refl_ray_origin_vs;
-                #else
-                    center_to_hit_vs = packed1.xyz;
+                const float3 real_sample_hit_vs =
+                    #if RTR_RAY_HIT_STORED_AS_POSITION
+                        packed1.xyz;
+                    #else
+                        packed1.xyz + sample_origin_vs;
+                    #endif
 
-                    // TODO
-                    sample_hit_vs = 10000000000000000000;
-                #endif
+                center_to_hit_vs = real_sample_hit_vs - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                sample_hit_vs = center_to_hit_vs + refl_ray_origin_vs;
             }
 
             float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
@@ -436,37 +436,36 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);
 
-        #if RTR_RAY_HIT_STORED_AS_POSITION
-            // Compensate for change in visibility term. Automatic if storing with the surface area metric.
-            #if !RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
-                const float3 sample_to_hit_vs = sample_hit_vs - sample_origin_vs;
-                float sample_to_hit_dist2 = dot(sample_to_hit_vs, sample_to_hit_vs);
+        // Compensate for change in visibility term. Automatic if storing with the surface area metric.
+        #if !RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
+            const float3 sample_to_hit_vs = sample_hit_vs - sample_origin_vs;
+            float sample_to_hit_dist2 = dot(sample_to_hit_vs, sample_to_hit_vs);
 
-                if (dot(sample_normal_vs, sample_to_hit_vs) <= 0) {
-                    continue;
-                }
+            if (dot(sample_normal_vs, sample_to_hit_vs) <= 0) {
+                continue;
+            }
 
-                float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
-                float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_to_hit_vs));
-                if (sample_to_hit_vis <= 1e-5) {
-                    continue;
-                }
+            float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
+            float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_to_hit_vs));
+            if (sample_to_hit_vis <= 1e-5) {
+                continue;
+            }
 
-                // If ReSTIR is used, measure conversion is done when loading sample data
-                if (!USE_RESTIR) {
-                    neighbor_sampling_pdf *= max(1.0, center_to_hit_dist2 / sample_to_hit_dist2);
-                    const float sample_wo_measure_fix = sample_to_hit_vis / center_to_hit_vis;
-                    const float wi_measure_fix = dot(sample_normal_vs, normalize(sample_to_hit_vs)) / wi.z;
-                    
-                    bent_pdf_ndotl_fix *= clamp(wi_measure_fix, 1e-2, 1e2);
+            // If ReSTIR is used, measure conversion is done when loading sample data
+            if (!USE_RESTIR) {
+                neighbor_sampling_pdf *= max(1.0, center_to_hit_dist2 / sample_to_hit_dist2);
+                const float sample_wo_measure_fix = sample_to_hit_vis / center_to_hit_vis;
+                const float wi_measure_fix = dot(sample_normal_vs, normalize(sample_to_hit_vs)) / wi.z;
+                
+                bent_pdf_ndotl_fix *= clamp(wi_measure_fix, 1e-2, 1e2);
 
-                    #if !RTR_APPROX_MEASURE_CONVERSION
-                        neighbor_sampling_pdf *= clamp(sample_wo_measure_fix * wi_measure_fix, 1e-1, 1e1);
-                    #else
-                        neighbor_sampling_pdf *= clamp(sample_wo_measure_fix, 1e-1, 1e1);
-                    #endif
-                }
-            #endif
+                #if !RTR_APPROX_MEASURE_CONVERSION
+                    neighbor_sampling_pdf *= clamp(sample_wo_measure_fix * wi_measure_fix, 1e-1, 1e1);
+                #else
+                    neighbor_sampling_pdf *= clamp(sample_wo_measure_fix, 1e-1, 1e1);
+                #endif
+            }
+        #endif
 
     		float3 surface_offset = sample_origin_vs - refl_ray_origin_vs;
             #if USE_APPROXIMATE_SAMPLE_SHADOWING
@@ -474,12 +473,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         			rejection_bias *= sample_i == 0 ? 1 : 0;
         		}
             #endif
-        #else
-            #if REJECT_NEGATIVE_HEMISPHERE_REUSE
-                const float3 sample_hit_vs = sample_origin_vs + center_to_hit_vs;
-                rejection_bias *= dot(sample_hit_vs - refl_ray_origin_vs, normal_vs) > 0.0;
-            #endif
-        #endif
 
             BrdfValue spec = specular_brdf.evaluate(wo, wi);
 

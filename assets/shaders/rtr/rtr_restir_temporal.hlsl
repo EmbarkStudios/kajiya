@@ -71,7 +71,7 @@ uint2 reservoir_payload_to_px(uint payload) {
 struct TraceResult {
     float3 out_value;
     float3 hit_normal_ws;
-    float3 hit_pos_vs;
+    float3 hit_vs;
     float hit_t;
     float pdf;
     float ratio_estimator_factor;
@@ -87,10 +87,7 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
     result.out_value = hit0.rgb;
     result.pdf = min(hit1.a, RTR_RESTIR_MAX_PDF_CLAMP);
     result.ratio_estimator_factor = rtr_decode_ratio_estimator_factor_from_fp16(hit0.a);
-    #if !RTR_RAY_HIT_STORED_AS_POSITION
-        todo
-    #endif
-    result.hit_pos_vs = hit1.xyz;
+    result.hit_vs = hit1.xyz;
     result.hit_t = length(hit1.xyz);
     result.hit_normal_ws = direction_view_to_world(hit2.xyz);
     result.prev_sample_valid = true;
@@ -183,7 +180,13 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     {
         TraceResult result = do_the_thing(px, normal_ws);
-        outgoing_dir = normalize(position_view_to_world(result.hit_pos_vs) - refl_ray_origin_ws);
+
+        #if RTR_RAY_HIT_STORED_AS_POSITION
+            outgoing_dir = normalize(position_view_to_world(result.hit_vs) - refl_ray_origin_ws);
+        #else
+            outgoing_dir = normalize(direction_view_to_world(result.hit_vs));
+        #endif
+
         float3 wi = normalize(mul(outgoing_dir, tangent_to_world));
 
         const float p_q = p_q_sel = 1
@@ -202,7 +205,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         
         irradiance_sel = result.out_value;
         ray_orig_sel = refl_ray_origin_ws;
-        ray_hit_sel_ws = position_view_to_world(result.hit_pos_vs);
+
+        #if RTR_RAY_HIT_STORED_AS_POSITION
+            ray_hit_sel_ws = position_view_to_world(result.hit_vs);
+        #else
+            ray_hit_sel_ws = direction_view_to_world(result.hit_vs) + refl_ray_origin_ws;
+        #endif
+
         hit_normal_sel = result.hit_normal_ws;
         prev_sample_valid = result.prev_sample_valid;
 
@@ -316,7 +325,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float4 sample_hit_ws_and_pdf_packed = ray_history_tex[spx];
             const float prev_pdf = sample_hit_ws_and_pdf_packed.a;
 
-            const float3 sample_hit_ws = sample_hit_ws_and_pdf_packed.xyz + get_prev_eye_position();
+            const float3 sample_hit_ws = sample_hit_ws_and_pdf_packed.xyz + prev_ray_orig_and_dist.xyz;
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
             const float prev_dist = prev_ray_orig_and_dist.w;
@@ -542,7 +551,13 @@ void main(uint2 px : SV_DispatchThreadID) {
                 }
 
                 TraceResult result = do_the_thing(rpx, normal_ws);
-                const float3 dir_to_sample_hit = normalize(position_view_to_world(result.hit_pos_vs) - refl_ray_origin_ws);
+
+                #if RTR_RAY_HIT_STORED_AS_POSITION
+                    const float3 dir_to_sample_hit = normalize(position_view_to_world(result.hit_vs) - refl_ray_origin_ws);
+                #else
+                    const float3 dir_to_sample_hit = normalize(direction_view_to_world(result.hit_vs));
+                #endif
+
                 float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
                 const float p_q = 1
@@ -575,7 +590,11 @@ void main(uint2 px : SV_DispatchThreadID) {
                         ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
                         irradiance_sel = result.out_value;
                         ray_orig_sel = refl_ray_origin_ws;
-                        ray_hit_sel_ws = position_view_to_world(result.hit_pos_vs);
+                        #if RTR_RAY_HIT_STORED_AS_POSITION
+                            ray_hit_sel_ws = position_view_to_world(result.hit_vs);
+                        #else
+                            ray_hit_sel_ws = direction_view_to_world(result.hit_vs) + refl_ray_origin_ws;
+                        #endif
                         hit_normal_sel = result.hit_normal_ws;
                         prev_sample_valid = result.prev_sample_valid;
                     }
@@ -594,8 +613,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     outgoing_ray.Direction = outgoing_dir;
     outgoing_ray.Origin = refl_ray_origin_ws;
     outgoing_ray.TMin = 0;
-
-    //TraceResult result = do_the_thing(px, rng, outgoing_ray, gbuffer);
 
     const float4 hit_normal_ws_dot = float4(hit_normal_sel, -dot(hit_normal_sel, outgoing_ray.Direction));
 
@@ -616,7 +633,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - ray_orig_sel));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
-    ray_output_tex[px] = float4(ray_hit_sel_ws - get_eye_position(), pdf_sel);
+    ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel, pdf_sel);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }
