@@ -171,8 +171,7 @@ impl RtrRenderer {
                     rg,
                     Self::temporal_tex_desc(
                         gbuffer_desc
-                            // TODO: should really be rgba8
-                            .format(vk::Format::R16G16B16A16_SFLOAT)
+                            .format(vk::Format::R8G8B8A8_UNORM)
                             .half_res()
                             .extent_2d(),
                     ),

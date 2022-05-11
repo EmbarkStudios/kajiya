@@ -97,6 +97,14 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
     return result;
 }
 
+float4 decode_hit_normal_and_dot(float4 val) {
+    return float4(val.xyz * 2 - 1, val.w);
+}
+
+float4 encode_hit_normal_and_dot(float4 val) {
+    return float4(val.xyz * 0.5 + 0.5, val.w);
+}
+
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
     const uint2 hi_px_subpixels[4] = {
@@ -307,7 +315,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
-            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
+            const float4 sample_hit_normal_ws_dot = decode_hit_normal_and_dot(hit_normal_history_tex[spx]);
 
             const float3 dir_to_sample_hit_unnorm = sample_hit_ws - refl_ray_origin_ws;
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
@@ -606,7 +614,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     irradiance_out_tex[px] = float4(irradiance_sel, pdf_sel);
     ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - ray_orig_sel));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
-    hit_normal_output_tex[px] = hit_normal_ws_dot;
+    hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, ratio_estimator_factor);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
