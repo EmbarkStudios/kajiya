@@ -205,8 +205,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         kernel_size_ws,
         kernel_t1, kernel_t2);
 
-    uint rng = hash3(uint3(px, frame_constants.frame_index));
-
     // Offset to avoid correlation with ray generation
     float4 blue = blue_noise_for_pixel(half_px + 16, frame_constants.frame_index);
 
