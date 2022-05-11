@@ -106,9 +106,8 @@ impl RtrRenderer {
         );
 
         // When using PDFs stored wrt to the surface area metric, their values can be tiny or giant,
-        // so fp32 is necessary. The projected solid angle metric is less sensitive, but that shader
-        // variant is heavier. Overall the surface area metric and fp32 combo is faster on my RTX 2080.
-        let mut refl1_tex = rg.create(refl0_tex.desc().format(vk::Format::R32G32B32A32_SFLOAT));
+        // so fp32 is necessary. The projected solid angle metric is less sensitive.
+        let mut refl1_tex = rg.create(refl0_tex.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
         let mut refl2_tex = rg.create(refl0_tex.desc().format(vk::Format::R8G8B8A8_SNORM));
 
