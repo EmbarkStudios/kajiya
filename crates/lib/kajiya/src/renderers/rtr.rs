@@ -102,7 +102,7 @@ impl RtrRenderer {
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
                 // TODO: slim down
-                .format(vk::Format::R32G32B32A32_SFLOAT),
+                .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
         // When using PDFs stored wrt to the surface area metric, their values can be tiny or giant,
