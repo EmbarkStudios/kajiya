@@ -114,8 +114,7 @@ void main() {
     }
 #endif
 
-    const float ratio_estimator_factor = normalize(wo + brdf_sample.wi).z;
-    //const float ratio_estimator_factor = brdf_sample.pdf;
+    const float cos_theta = normalize(wo + brdf_sample.wi).z;
 
     if (brdf_sample.is_valid()) {
         //const bool use_short_ray = gbuffer.roughness > 0.55 && USE_SHORT_RAYS_FOR_ROUGH;
@@ -150,7 +149,7 @@ void main() {
             #endif
             brdf_sample.pdf;
 
-        out0_tex[px] = float4(result.total_radiance, rtr_encode_ratio_estimator_factor_for_fp16(ratio_estimator_factor));
+        out0_tex[px] = float4(result.total_radiance, rtr_encode_cos_theta_for_fp16(cos_theta));
         out1_tex[px] = float4(hit_vs, pdf);
         out2_tex[px] = float4(result.hit_normal_vs, 0);
     } else {

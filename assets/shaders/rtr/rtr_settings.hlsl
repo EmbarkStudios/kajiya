@@ -51,12 +51,12 @@
 
 #define RTR_USE_TIGHTER_RAY_BIAS 1
 
-float rtr_encode_ratio_estimator_factor_for_fp16(float x) {
+float rtr_encode_cos_theta_for_fp16(float x) {
     return 1 - x;
     //return log(x);
 }
 
-float rtr_decode_ratio_estimator_factor_from_fp16(float x) {
+float rtr_decode_cos_theta_from_fp16(float x) {
     return 1 - x;
     //return exp(x);
 }

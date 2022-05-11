@@ -329,7 +329,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 //center_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + position_world_to_view(ray_origin_ws);
-                sample_cos_theta = rtr_decode_ratio_estimator_factor_from_fp16(restir_irradiance_tex[spx].a);
+                sample_cos_theta = rtr_decode_cos_theta_from_fp16(restir_irradiance_tex[spx].a);
 
                 // Perform measure conversion
 

@@ -74,7 +74,7 @@ struct TraceResult {
     float3 hit_vs;
     float hit_t;
     float pdf;
-    float ratio_estimator_factor;
+    float cos_theta;
     bool prev_sample_valid;
 };
 
@@ -86,7 +86,7 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
     TraceResult result;
     result.out_value = hit0.rgb;
     result.pdf = min(hit1.a, RTR_RESTIR_MAX_PDF_CLAMP);
-    result.ratio_estimator_factor = rtr_decode_ratio_estimator_factor_from_fp16(hit0.a);
+    result.cos_theta = rtr_decode_cos_theta_from_fp16(hit0.a);
     result.hit_vs = hit1.xyz;
     result.hit_t = length(hit1.xyz);
     result.hit_normal_ws = direction_view_to_world(hit2.xyz);
@@ -166,7 +166,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     float p_q_sel = 0;
     float pdf_sel = 0;
-    float ratio_estimator_factor = 0;
+    float cos_theta = 0;
     float3 irradiance_sel = 0;
     float3 ray_orig_sel = 0;
     float3 ray_hit_sel_ws = 1;
@@ -201,7 +201,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float inv_pdf_q = 1.0 / result.pdf;
 
         pdf_sel = result.pdf;
-        ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
+        cos_theta = result.cos_theta;
         
         irradiance_sel = result.out_value;
         ray_orig_sel = refl_ray_origin_ws;
@@ -314,12 +314,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 #endif
 
-            const float4 prev_irrad_and_rf =
+            const float4 prev_irrad_and_cos_theta =
                 irradiance_history_tex[spx]
                 * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
-            const float3 prev_irrad = prev_irrad_and_rf.rgb;
-            const float prev_ratio_estimator_factor = rtr_decode_ratio_estimator_factor_from_fp16(prev_irrad_and_rf.a);
+            const float3 prev_irrad = prev_irrad_and_cos_theta.rgb;
+            const float prev_cos_theta = rtr_decode_cos_theta_from_fp16(prev_irrad_and_cos_theta.a);
 
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float4 sample_hit_ws_and_pdf_packed = ray_history_tex[spx];
@@ -480,7 +480,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
                 pdf_sel = prev_pdf;
-                ratio_estimator_factor = prev_ratio_estimator_factor;
+                cos_theta = prev_cos_theta;
                 irradiance_sel = prev_irrad.rgb;
 
 // TODO: was `refl_ray_origin_ws`; what should it be?
@@ -587,7 +587,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                         outgoing_dir = dir_to_sample_hit;
                         p_q_sel = p_q;
                         pdf_sel = result.pdf;
-                        ratio_estimator_factor = result.ratio_estimator_factor;//clamp(result.inv_pdf, 1e-5, 1e5);
+                        cos_theta = result.cos_theta;
                         irradiance_sel = result.out_value;
                         ray_orig_sel = refl_ray_origin_ws;
                         #if RTR_RAY_HIT_STORED_AS_POSITION
@@ -629,7 +629,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     }*/
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
-    irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_ratio_estimator_factor_for_fp16(ratio_estimator_factor));
+    irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_cos_theta_for_fp16(cos_theta));
     ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - ray_orig_sel));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
