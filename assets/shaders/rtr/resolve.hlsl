@@ -317,7 +317,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 uint2 rpx = sample_px;
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
-                const float3 sample_hit_ws = restir_ray_tex[spx].xyz;
+                const float3 sample_hit_ws = restir_ray_tex[spx].xyz + get_eye_position();
                 const float3 ray_origin_ws = restir_ray_orig_tex[spx].xyz;
                 sample_origin_vs = position_world_to_view(ray_origin_ws);
 
@@ -326,12 +326,12 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float3 sample_dir = sample_offset / sample_dist;
 
                 sample_radiance = restir_irradiance_tex[spx].rgb;
-                sample_ray_pdf = restir_irradiance_tex[spx].a;
+                sample_ray_pdf = restir_ray_tex[spx].a;
                 neighbor_sampling_pdf = 1.0 / r.W;
                 //center_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + position_world_to_view(ray_origin_ws);
-                sample_cos_theta = restir_ray_tex[spx].a;
+                sample_cos_theta = rtr_decode_ratio_estimator_factor_from_fp16(restir_irradiance_tex[spx].a);
 
                 // Perform measure conversion
 

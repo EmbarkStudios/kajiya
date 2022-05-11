@@ -305,10 +305,18 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 #endif
 
-            //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-            const float4 sample_hit_ws_and_dist = ray_history_tex[spx];/* + float4(get_prev_eye_position(), 0.0)*/
+            const float4 prev_irrad_and_rf =
+                irradiance_history_tex[spx]
+                * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
-            const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
+            const float3 prev_irrad = prev_irrad_and_rf.rgb;
+            const float prev_ratio_estimator_factor = rtr_decode_ratio_estimator_factor_from_fp16(prev_irrad_and_rf.a);
+
+            //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+            const float4 sample_hit_ws_and_pdf_packed = ray_history_tex[spx];
+            const float prev_pdf = sample_hit_ws_and_pdf_packed.a;
+
+            const float3 sample_hit_ws = sample_hit_ws_and_pdf_packed.xyz + get_prev_eye_position();
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
             const float prev_dist = prev_ray_orig_and_dist.w;
@@ -321,12 +329,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
             const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
             
-            const float4 prev_irrad_pdf =
-                irradiance_history_tex[spx]
-                * float4((frame_constants.pre_exposure_delta).xxx, 1);
-
-            const float3 prev_irrad = prev_irrad_pdf.rgb;
-
             // From the ReSTIR paper:
             // With temporal reuse, the number of candidates M contributing to the
             // pixel can in theory grow unbounded, as each frame always combines
@@ -341,7 +343,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             if (USE_NDF_BASED_M_CLAMP_STRENGTH > 0) {
                 const float current_pdf = specular_brdf.evaluate(wo, wi).pdf;
-                const float prev_pdf = prev_irrad_pdf.a;
 
                 const float rel_diff = abs(current_pdf - prev_pdf) / (current_pdf + prev_pdf);
                 //r.M *= saturate(1.0 - rel_diff);
@@ -367,7 +368,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             #else
                 p_q *= step(0, dot(dir_to_sample_hit, normal_ws));
             #endif
-            p_q *= prev_irrad_pdf.w;
+            p_q *= prev_pdf;
             //p_q *= sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value);
 
             float visibility = 1;
@@ -469,8 +470,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             if (reservoir.update(p_q * r.W * r.M * visibility, reservoir_payload, rng)) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
-                pdf_sel = prev_irrad_pdf.w;
-                ratio_estimator_factor = ray_history_tex[spx].w;//1.0 / specular_brdf.evaluate(wo, wi).value.x;
+                pdf_sel = prev_pdf;
+                ratio_estimator_factor = prev_ratio_estimator_factor;
                 irradiance_sel = prev_irrad.rgb;
 
 // TODO: was `refl_ray_origin_ws`; what should it be?
@@ -611,11 +612,11 @@ void main(uint2 px : SV_DispatchThreadID) {
     }*/
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
-    irradiance_out_tex[px] = float4(irradiance_sel, pdf_sel);
+    irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_ratio_estimator_factor_for_fp16(ratio_estimator_factor));
     ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - ray_orig_sel));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
-    ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, ratio_estimator_factor);
+    ray_output_tex[px] = float4(ray_hit_sel_ws - get_eye_position(), pdf_sel);
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

@@ -86,7 +86,7 @@ void main() {
     const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
 
     const float3 ray_orig_ws = ray_orig_history_tex[px].xyz;
-    const float3 ray_hit_ws = ray_history_tex[px].xyz;
+    const float3 ray_hit_ws = ray_history_tex[px].xyz + get_prev_eye_position();
 
     RayDesc outgoing_ray;
     outgoing_ray.Direction = normalize(ray_hit_ws - ray_orig_ws);

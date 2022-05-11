@@ -198,7 +198,7 @@ impl RtrRenderer {
                 self.temporal_ray_tex.get_output_and_history(
                     rg,
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
-                        .format(vk::Format::R32G32B32A32_SFLOAT),
+                        .format(vk::Format::R16G16B16A16_SFLOAT),
                 );
 
             SimpleRenderPass::new_rt(
