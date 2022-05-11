@@ -13,6 +13,7 @@
 #include "../ircache/bindings.hlsl"
 #include "near_field_settings.hlsl"
 #include "restir_settings.hlsl"
+#include "rtdgi_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -317,7 +318,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: `hit_normal_history_tex` is not reprojected.
-            const float4 sample_hit_normal_ws_dot = hit_normal_history_tex[spx];
+            const float4 sample_hit_normal_ws_dot = decode_hit_normal_and_dot(hit_normal_history_tex[spx]);
 
             /*if (sample_i > 0 && !(prev_dist > 1e-4)) {
                 continue;
@@ -482,7 +483,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
     ray_orig_output_tex[px] = ray_orig_sel_ws;
-    hit_normal_output_tex[px] = hit_normal_ws_dot;
+    hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, length(ray_hit_sel_ws - refl_ray_origin_ws));
     reservoir_out_tex[px] = reservoir.as_raw();
 }

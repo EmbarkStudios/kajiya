@@ -14,19 +14,18 @@
 #include "candidate_ray_dir.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
-[[vk::binding(1)]] Texture2D<float4> hit_normal_tex;
-[[vk::binding(2)]] Texture2D<float4> ray_tex;
-[[vk::binding(3)]] Texture2D<float4> reservoir_input_tex;
-[[vk::binding(4)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(5)]] Texture2D<float> depth_tex;
-[[vk::binding(6)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(7)]] Texture2D<float> half_depth_tex;
-[[vk::binding(8)]] Texture2D<float4> ssao_tex;
-[[vk::binding(9)]] Texture2D<float4> candidate_irradiance_tex;
-[[vk::binding(10)]] Texture2D<float4> candidate_normal_tex;
-[[vk::binding(11)]] Texture2D<float4> candidate_hit_tex;
-[[vk::binding(12)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(1)]] Texture2D<float4> ray_tex;
+[[vk::binding(2)]] Texture2D<float4> reservoir_input_tex;
+[[vk::binding(3)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(4)]] Texture2D<float> depth_tex;
+[[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(6)]] Texture2D<float> half_depth_tex;
+[[vk::binding(7)]] Texture2D<float4> ssao_tex;
+[[vk::binding(8)]] Texture2D<float4> candidate_irradiance_tex;
+[[vk::binding(9)]] Texture2D<float4> candidate_normal_tex;
+[[vk::binding(10)]] Texture2D<float4> candidate_hit_tex;
+[[vk::binding(11)]] RWTexture2D<float4> irradiance_output_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
 };

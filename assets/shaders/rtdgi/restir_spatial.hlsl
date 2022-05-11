@@ -9,6 +9,7 @@
 #include "../inc/hash.hlsl"
 #include "../inc/reservoir.hlsl"
 #include "restir_settings.hlsl"
+#include "rtdgi_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
 [[vk::binding(1)]] Texture2D<float4> hit_normal_tex;
@@ -283,7 +284,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     		}
         }
 
-        const float4 sample_hit_normal_ws_dot = hit_normal_tex[spx];
+        const float4 sample_hit_normal_ws_dot = decode_hit_normal_and_dot(hit_normal_tex[spx]);
         const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
         const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
 
