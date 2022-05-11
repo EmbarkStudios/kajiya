@@ -222,11 +222,8 @@ impl RtdgiRenderer {
             let (mut reservoir_output_tex, reservoir_history_tex) =
                 self.temporal_reservoir_tex.get_output_and_history(
                     rg,
-                    ImageDesc::new_2d(
-                        vk::Format::R32G32B32A32_SFLOAT,
-                        gbuffer_desc.half_res().extent_2d(),
-                    )
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                    ImageDesc::new_2d(vk::Format::R32G32_UINT, gbuffer_desc.half_res().extent_2d())
+                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
                 );
 
             let (mut ray_output_tex, ray_history_tex) =
@@ -356,13 +353,13 @@ impl RtdgiRenderer {
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
                     .half_res()
-                    .format(vk::Format::R32G32B32A32_SFLOAT),
+                    .format(vk::Format::R32G32_UINT),
             );
             let mut reservoir_output_tex1 = rg.create(
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
                     .half_res()
-                    .format(vk::Format::R32G32B32A32_SFLOAT),
+                    .format(vk::Format::R32G32_UINT),
             );
 
             let mut reservoir_input_tex = &mut temporal_reservoir_tex;

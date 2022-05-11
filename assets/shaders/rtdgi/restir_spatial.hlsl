@@ -14,13 +14,13 @@
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
 [[vk::binding(1)]] Texture2D<float4> hit_normal_tex;
 [[vk::binding(2)]] Texture2D<float4> ray_tex;
-[[vk::binding(3)]] Texture2D<float4> reservoir_input_tex;
+[[vk::binding(3)]] Texture2D<uint2> reservoir_input_tex;
 [[vk::binding(4)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(6)]] Texture2D<float> half_depth_tex;
 [[vk::binding(7)]] Texture2D<float4> ssao_tex;
 [[vk::binding(8)]] Texture2D<float4> candidate_input_tex;
-[[vk::binding(9)]] RWTexture2D<float4> reservoir_output_tex;
+[[vk::binding(9)]] RWTexture2D<uint2> reservoir_output_tex;
 [[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
@@ -113,7 +113,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         const int2 rpx = px + rpx_offset;
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
 
-        // After the ReSTIR GI paper
         r.M = min(r.M, 500);
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
@@ -144,11 +143,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float normal_cutoff = 0.1;
         #endif
 
-        // Note: Waaaaaay more loose than the ReSTIR papers. Reduces noise in
-        // areas of high geometric complexity. The resulting bias tends to brighten edges,
-        // and we clamp that effect later. The artifacts is less prounounced normal map detail.
-        // TODO: detect this first, and sharpen the threshold. The poor normal counting below
-        // is a shitty take at that.
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
         if (!is_center_sample && normal_similarity_dot < normal_cutoff) {
             continue;
@@ -209,7 +203,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         {
             // Raymarch to check occlusion
-            if (RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
+            if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
                 const float2 ray_orig_uv = get_uv(
                     spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
                     gbuffer_tex_size);

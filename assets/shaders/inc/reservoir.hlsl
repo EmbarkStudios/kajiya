@@ -16,7 +16,7 @@ struct Reservoir1sppStreamState {
 };
 
 struct Reservoir1spp {
-    float w_sum;    // TODO: doesn't need storing
+    float w_sum;    // Doesn't need storing. TODO: maybe move to Reservoir1sppStreamState.
     uint payload;
     float M;
     float W;
@@ -30,17 +30,18 @@ struct Reservoir1spp {
         return res;
     }
 
-    static Reservoir1spp from_raw(float4 raw) {
+    static Reservoir1spp from_raw(uint2 raw) {
         Reservoir1spp res;
-        res.w_sum = raw.x;
-        res.payload = asuint(raw.y);
-        res.M = raw.z;
-        res.W = raw.w;
+        res.w_sum = 0;
+        res.payload = raw.x;
+        const float2 MW = unpack_2x16f_uint(raw.y);
+        res.M = MW[0];
+        res.W = MW[1];
         return res;
     }
 
-    float4 as_raw() {
-        return float4(w_sum, asfloat(payload), M, W);
+    uint2 as_raw() {
+        return uint2(payload, pack_2x16f_uint(float2(M, W)));
     }
 
     bool update(float w, uint sample_payload, inout uint rng) {

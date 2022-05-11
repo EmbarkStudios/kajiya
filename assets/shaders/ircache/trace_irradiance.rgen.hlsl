@@ -116,7 +116,7 @@ void main() {
     {
         const uint M_CLAMP = 30;
 
-        Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
+        Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[output_idx].xy));
         if (r.M > 0) {
             r.M = min(r.M, M_CLAMP);
 
@@ -135,7 +135,7 @@ void main() {
 
     reservoir.finish_stream(stream_state);
 
-    ircache_aux_buf[output_idx] = reservoir.as_raw();
+    ircache_aux_buf[output_idx].xy = asfloat(reservoir.as_raw());
     ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = float4(val_sel, reservoir.W);
 
     if (selected_new) {

@@ -15,7 +15,7 @@
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
 [[vk::binding(1)]] Texture2D<float4> ray_tex;
-[[vk::binding(2)]] Texture2D<float4> reservoir_input_tex;
+[[vk::binding(2)]] Texture2D<uint2> reservoir_input_tex;
 [[vk::binding(3)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(4)]] Texture2D<float> depth_tex;
 [[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;

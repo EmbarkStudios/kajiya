@@ -77,7 +77,9 @@ void main() {
     float invalidity = 0;
 
     {
-        Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
+        // TODO: wz not used. slim down.
+        Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[output_idx].xy));
+
         if (r.M > 0) {
             float4 prev_value_and_count =
                 ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2]
@@ -105,7 +107,7 @@ void main() {
             // have picked this sample with a different probability...
             prev_value_and_count.rgb = a;
 
-            ircache_aux_buf[output_idx] = r.as_raw();
+            ircache_aux_buf[output_idx].xy = asfloat(r.as_raw());
             ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2] = prev_value_and_count;
         }
     }
@@ -119,9 +121,9 @@ void main() {
 
                 for (uint xor = OTHER_PERIOD; xor < PERIOD; xor *= 2) {
                     const uint idx = output_idx ^ xor;
-                    Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[idx]);
+                    Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[idx].xy));
                     r.M = max(0, min(r.M, exp2(log2(float(IRCACHE_RESTIR_M_CLAMP)) * (1.0 - invalidity))));
-                    ircache_aux_buf[idx] = r.as_raw();
+                    ircache_aux_buf[idx].xy = asfloat(r.as_raw());
                 }
             }
         }

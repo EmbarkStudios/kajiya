@@ -48,7 +48,7 @@
 [[vk::binding(6)]] Texture2D<float4> irradiance_history_tex;
 [[vk::binding(7)]] Texture2D<float4> ray_orig_history_tex;
 [[vk::binding(8)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(9)]] Texture2D<float4> reservoir_history_tex;
+[[vk::binding(9)]] Texture2D<uint2> reservoir_history_tex;
 [[vk::binding(10)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(11)]] Texture2D<float4> hit_normal_history_tex;
 //[[vk::binding(11)]] Texture2D<float4> candidate_history_tex;
@@ -56,7 +56,7 @@
 [[vk::binding(13)]] RWTexture2D<float4> ray_orig_output_tex;
 [[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
 [[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
-[[vk::binding(16)]] RWTexture2D<float4> reservoir_out_tex;
+[[vk::binding(16)]] RWTexture2D<uint2> reservoir_out_tex;
 //[[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
 [[vk::binding(17)]] cbuffer _ {
     float4 gbuffer_tex_size;
@@ -119,7 +119,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     if (0.0 == depth) {
         irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
         hit_normal_output_tex[px] = 0.0.xxxx;
-        reservoir_out_tex[px] = 0.0.xxxx;
+        reservoir_out_tex[px] = 0;
         return;
     }
 

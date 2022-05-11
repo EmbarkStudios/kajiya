@@ -48,7 +48,7 @@ void main() {
 
     const uint output_idx = entry_idx * IRCACHE_AUX_STRIDE + octa_idx;
 
-    Reservoir1spp r = Reservoir1spp::from_raw(ircache_aux_buf[output_idx]);
+    Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[output_idx].xy));
     Vertex prev_entry = unpack_vertex(VertexPacked(ircache_aux_buf[output_idx + IRCACHE_OCTA_DIMS2 * 2]));
 
     // Reduce weight of samples whose trace origins are not accessible now
@@ -61,6 +61,6 @@ void main() {
             0.999
     ))) {
         r.M *= 0.8;
-        ircache_aux_buf[output_idx] = r.as_raw();
+        ircache_aux_buf[output_idx].xy = asfloat(r.as_raw());
     }
 }

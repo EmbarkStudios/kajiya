@@ -27,7 +27,7 @@ DEFINE_WRC_BINDINGS(14)
 [[vk::binding(15)]] Texture2D<float4> ray_orig_history_tex;
 [[vk::binding(16)]] Texture2D<float4> ray_history_tex;
 [[vk::binding(17)]] RWTexture2D<float4> irradiance_history_tex;
-[[vk::binding(18)]] RWTexture2D<float4> reservoir_history_tex;
+[[vk::binding(18)]] RWTexture2D<uint2> reservoir_history_tex;
 [[vk::binding(19)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };

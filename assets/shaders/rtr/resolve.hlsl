@@ -23,7 +23,7 @@
 [[vk::binding(9)]] Texture2D<float2> ray_len_history_tex;
 [[vk::binding(10)]] Texture2D<float4> restir_irradiance_tex;
 [[vk::binding(11)]] Texture2D<float4> restir_ray_tex;
-[[vk::binding(12)]] Texture2D<float4> restir_reservoir_tex;
+[[vk::binding(12)]] Texture2D<uint2> restir_reservoir_tex;
 [[vk::binding(13)]] Texture2D<float4> restir_ray_orig_tex;
 [[vk::binding(14)]] RWTexture2D<float4> output_tex;
 [[vk::binding(15)]] RWTexture2D<float2> ray_len_output_tex;
