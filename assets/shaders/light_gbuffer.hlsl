@@ -236,11 +236,11 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const float u = float(px.x + 0.5) * output_tex_size.z;
             
             if (px.y < 25) {
-                if (entry_alloc_count > u * 256 * 1024) {
+                if (entry_alloc_count > u * 64 * 1024) {
                     output = float3(0.05, 1, .2) * 4;
                 }
             } else {
-                if (entry_count > u * 256 * 1024) {
+                if (entry_count > u * 64 * 1024) {
                     output = float3(1, 0.1, 0.05) * 4;
                 }
             }

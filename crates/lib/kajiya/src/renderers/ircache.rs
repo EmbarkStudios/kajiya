@@ -27,7 +27,7 @@ use super::{wrc::WrcRenderState, GbufferDepth};
 
 const MAX_GRID_CELLS: usize =
     IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_COUNT;
-const MAX_ENTRIES: usize = 1024 * 256;
+const MAX_ENTRIES: usize = 1024 * 64;
 
 const IRCACHE_GRID_CELL_DIAMETER: f32 = 0.16 * 0.5;
 const IRCACHE_CASCADE_SIZE: usize = 32;
