@@ -115,7 +115,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
-        TemporalReservoirOutput spx_packed = TemporalReservoirOutput::from_raw(temporal_reservoir_packed_tex[spx]);
+        const TemporalReservoirOutput spx_packed = TemporalReservoirOutput::from_raw(temporal_reservoir_packed_tex[spx]);
 
         // TODO: to recover tiny highlights, consider raymarching first, and then using the screen-space
         // irradiance value instead of this.

@@ -223,7 +223,7 @@ impl RtdgiRenderer {
                     .format(vk::Format::R16G16_SFLOAT),
             );
 
-        let (irradiance_tex, ray_tex, mut temporal_reservoir_tex) = {
+        let (irradiance_tex, mut temporal_reservoir_tex) = {
             let (mut irradiance_output_tex, mut irradiance_history_tex) =
                 self.temporal_irradiance_tex.get_output_and_history(
                     rg,
@@ -251,7 +251,7 @@ impl RtdgiRenderer {
                 self.temporal_ray_tex.get_output_and_history(
                     rg,
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
-                        .format(vk::Format::R32G32B32A32_SFLOAT),
+                        .format(vk::Format::R16G16B16A16_SFLOAT),
                 );
 
             let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
@@ -298,7 +298,6 @@ impl RtdgiRenderer {
             .read(&*half_view_normal_tex)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&reprojected_history_tex)
-            .read(&ray_history_tex)
             .read(reprojection_map)
             .bind_mut(ircache)
             .bind(wrc)
@@ -357,7 +356,7 @@ impl RtdgiRenderer {
             .raw_descriptor_set(1, bindless_descriptor_set)
             .dispatch(irradiance_output_tex.desc().extent);
 
-            (irradiance_output_tex, ray_output_tex, reservoir_output_tex)
+            (irradiance_output_tex, reservoir_output_tex)
         };
 
         let irradiance_tex = {
@@ -411,7 +410,6 @@ impl RtdgiRenderer {
                 "/shaders/rtdgi/restir_resolve.hlsl",
             )
             .read(&irradiance_tex)
-            .read(&ray_tex)
             .read(reservoir_input_tex)
             .read(&gbuffer_depth.gbuffer)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
@@ -421,6 +419,7 @@ impl RtdgiRenderer {
             .read(&candidate_irradiance_tex)
             .read(&candidate_normal_tex)
             .read(&candidate_hit_tex)
+            .read(&temporal_reservoir_packed_tex)
             .write(&mut irradiance_output_tex)
             .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((

@@ -309,7 +309,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // TODO: this needs fixing with reprojection
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
 
-            const float4 sample_hit_ws_and_dist = ray_history_tex[spx]/* + float4(get_prev_eye_position(), 0.0)*/;
+            const float4 sample_hit_ws_and_dist = ray_history_tex[spx] + float4(prev_ray_orig, 0.0);
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
@@ -485,7 +485,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
     ray_orig_output_tex[px] = ray_orig_sel_ws;
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
-    ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, length(ray_hit_sel_ws - refl_ray_origin_ws));
+    ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel_ws, length(ray_hit_sel_ws - refl_ray_origin_ws));
     reservoir_out_tex[px] = reservoir.as_raw();
 
     TemporalReservoirOutput res_packed;

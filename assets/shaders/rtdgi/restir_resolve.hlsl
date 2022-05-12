@@ -11,19 +11,19 @@
 #include "../inc/blue_noise.hlsl"
 #include "near_field_settings.hlsl"
 #include "restir_settings.hlsl"
-#include "candidate_ray_dir.hlsl"
+#include "rtdgi_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;
-[[vk::binding(1)]] Texture2D<float4> ray_tex;
-[[vk::binding(2)]] Texture2D<uint2> reservoir_input_tex;
-[[vk::binding(3)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(4)]] Texture2D<float> depth_tex;
-[[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(6)]] Texture2D<float> half_depth_tex;
-[[vk::binding(7)]] Texture2D<float4> ssao_tex;
-[[vk::binding(8)]] Texture2D<float4> candidate_irradiance_tex;
-[[vk::binding(9)]] Texture2D<float4> candidate_normal_tex;
-[[vk::binding(10)]] Texture2D<float4> candidate_hit_tex;
+[[vk::binding(1)]] Texture2D<uint2> reservoir_input_tex;
+[[vk::binding(2)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(3)]] Texture2D<float> depth_tex;
+[[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(5)]] Texture2D<float> half_depth_tex;
+[[vk::binding(6)]] Texture2D<float4> ssao_tex;
+[[vk::binding(7)]] Texture2D<float4> candidate_irradiance_tex;
+[[vk::binding(8)]] Texture2D<float4> candidate_normal_tex;
+[[vk::binding(9)]] Texture2D<float4> candidate_hit_tex;
+[[vk::binding(10)]] Texture2D<uint4> temporal_reservoir_packed_tex;
 [[vk::binding(11)]] RWTexture2D<float4> irradiance_output_tex;
 [[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
@@ -104,8 +104,16 @@ void main(uint2 px : SV_DispatchThreadID) {
         Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
+        const TemporalReservoirOutput spx_packed = TemporalReservoirOutput::from_raw(temporal_reservoir_packed_tex[spx]);
+
+        const float2 spx_uv = get_uv(
+            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            gbuffer_tex_size);
+        const ViewRayContext spx_ray_ctx = ViewRayContext::from_uv_and_depth(spx_uv, spx_packed.depth);
+
         {
-            const float3 hit_ws = ray_tex[spx].xyz;// + get_eye_position();
+            const float spx_depth = spx_packed.depth;
+            const float3 hit_ws = spx_packed.ray_hit_offset_ws + spx_ray_ctx.ray_hit_ws();
             const float3 sample_offset = hit_ws - view_ray_context.ray_hit_ws();
             const float sample_dist = length(sample_offset);
             const float3 sample_dir = sample_offset / sample_dist;
@@ -126,12 +134,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float3 contribution = radiance * geometric_term * r.W;
 
-            float sample_depth = half_depth_tex[spx];
             float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
 
             float w = 1;
             w *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
-            w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
+            w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / spx_depth - 1.0)));
 
             weighted_irradiance += contribution * w;
             w_sum += w;

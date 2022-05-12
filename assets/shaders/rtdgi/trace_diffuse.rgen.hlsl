@@ -21,19 +21,18 @@
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> reprojected_gi_tex;
-[[vk::binding(3)]] Texture2D<float4> reservoir_ray_history_tex;
-[[vk::binding(4)]] Texture2D<float4> reprojection_tex;
-DEFINE_IRCACHE_BINDINGS(5, 6, 7, 8, 9, 10, 11, 12, 13)
-DEFINE_WRC_BINDINGS(14)
-[[vk::binding(15)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(16)]] Texture2D<float4> irradiance_history_tex;
-[[vk::binding(17)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(18)]] RWTexture2D<float4> candidate_irradiance_out_tex;
-[[vk::binding(19)]] RWTexture2D<float4> candidate_normal_out_tex;
-[[vk::binding(20)]] RWTexture2D<float4> candidate_hit_out_tex;
-[[vk::binding(21)]] Texture2D<float> rt_history_invalidity_in_tex;
-[[vk::binding(22)]] RWTexture2D<float> rt_history_invalidity_out_tex;
-[[vk::binding(23)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float4> reprojection_tex;
+DEFINE_IRCACHE_BINDINGS(4, 5, 6, 7, 8, 9, 10, 11, 12)
+DEFINE_WRC_BINDINGS(13)
+[[vk::binding(14)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(15)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(16)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(17)]] RWTexture2D<float4> candidate_irradiance_out_tex;
+[[vk::binding(18)]] RWTexture2D<float4> candidate_normal_out_tex;
+[[vk::binding(19)]] RWTexture2D<float4> candidate_hit_out_tex;
+[[vk::binding(20)]] Texture2D<float> rt_history_invalidity_in_tex;
+[[vk::binding(21)]] RWTexture2D<float> rt_history_invalidity_out_tex;
+[[vk::binding(22)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 

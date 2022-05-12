@@ -67,7 +67,7 @@ void main() {
         const float3 normal_ws = direction_view_to_world(normal_vs);
 
         const float3 prev_ray_orig = ray_orig_history_tex[px];
-        const float3 prev_hit_pos = reservoir_ray_history_tex[px].xyz/* + get_prev_eye_position()*/;
+        const float3 prev_hit_pos = reservoir_ray_history_tex[px].xyz + prev_ray_orig;
 
         const float4 prev_irradiance_packed = irradiance_history_tex[px];
         const float3 prev_irradiance = max(0.0.xxx, prev_irradiance_packed.rgb);
