@@ -11,21 +11,19 @@
 #include "restir_settings.hlsl"
 #include "rtdgi_common.hlsl"
 
-[[vk::binding(0)]] Texture2D<float4> irradiance_tex;
-[[vk::binding(1)]] Texture2D<float4> hit_normal_tex;
-[[vk::binding(2)]] Texture2D<float4> ray_tex;
-[[vk::binding(3)]] Texture2D<uint2> reservoir_input_tex;
-[[vk::binding(4)]] Texture2D<float4> gbuffer_tex;
-[[vk::binding(5)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(6)]] Texture2D<float> half_depth_tex;
-[[vk::binding(7)]] Texture2D<float4> ssao_tex;
-[[vk::binding(8)]] Texture2D<float4> candidate_input_tex;
-[[vk::binding(9)]] RWTexture2D<uint2> reservoir_output_tex;
-[[vk::binding(10)]] cbuffer _ {
+[[vk::binding(0)]] Texture2D<uint2> reservoir_input_tex;
+[[vk::binding(1)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(2)]] Texture2D<float> half_depth_tex;
+[[vk::binding(3)]] Texture2D<float> half_ssao_tex;
+[[vk::binding(4)]] Texture2D<uint4> temporal_reservoir_packed_tex;
+[[vk::binding(5)]] RWTexture2D<uint2> reservoir_output_tex;
+[[vk::binding(6)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
     uint spatial_reuse_pass_idx;
 };
+
+#define USE_SSAO_WEIGHING 1
 
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
@@ -51,7 +49,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 center_normal_vs = half_view_normal_tex[px].rgb;
     const float3 center_normal_ws = direction_view_to_world(center_normal_vs);
     const float center_depth = half_depth_tex[px];
-    const float center_ssao = ssao_tex[px * 2].r;
+    const float center_ssao = half_ssao_tex[px].r;
 
     Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
     Reservoir1spp reservoir = Reservoir1spp::create();
@@ -117,9 +115,12 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
+        TemporalReservoirOutput spx_packed = TemporalReservoirOutput::from_raw(temporal_reservoir_packed_tex[spx]);
+
         // TODO: to recover tiny highlights, consider raymarching first, and then using the screen-space
         // irradiance value instead of this.
-        float4 prev_irrad = irradiance_tex[spx];
+        const float prev_luminance = spx_packed.luminance;
+
         float visibility = 1;
         float relevance = 1;
 
@@ -150,29 +151,36 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         relevance *= normal_similarity_dot;
 
-        const float sample_ssao = ssao_tex[rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3]].r;
-        relevance *= 1 - abs(sample_ssao - center_ssao);
+        const float sample_ssao = half_ssao_tex[rpx];
 
-        const float2 sample_uv = get_uv(
+        #if USE_SSAO_WEIGHING
+            relevance *= 1 - abs(sample_ssao - center_ssao);
+        #endif
+
+        const float2 rpx_uv = get_uv(
             rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
             gbuffer_tex_size);
-        const float sample_depth = half_depth_tex[rpx];
+        const float rpx_depth = half_depth_tex[rpx];
         
-        if (sample_depth == 0.0) {
+        if (rpx_depth == 0.0) {
             continue;
         }
 
-        const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
+        const ViewRayContext rpx_ray_ctx = ViewRayContext::from_uv_and_depth(rpx_uv, rpx_depth);
 
-        const float4 sample_hit_ws_and_dist = ray_tex[spx];// + float4(get_eye_position(), 0.0);
-        const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
-        const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
+        const float2 spx_uv = get_uv(
+            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            gbuffer_tex_size);
+        const ViewRayContext spx_ray_ctx = ViewRayContext::from_uv_and_depth(spx_uv, spx_packed.depth);
+        const float3 sample_hit_ws = spx_packed.ray_hit_offset_ws + spx_ray_ctx.ray_hit_ws();
 
-        // Note: `sample_hit_ws_and_dist.w` represents the original ray, but we want
-        // the neighbor's sample, which might have been resampled already.
+        const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - rpx_ray_ctx.ray_hit_ws();
+
+        //const float prev_luminance = sample_hit_ws_and_luminance.a;
+
+        // Note: we want the neighbor's sample, which might have been resampled already.
         const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
         const float3 prev_dir_to_sample_hit_ws = prev_dir_to_sample_hit_unnorm_ws / prev_dist;
-        //const float prev_dist = sample_hit_ws_and_dist.w;
 
         // Reject hits too close to the surface
         if (!is_center_sample && !(prev_dist > 1e-8)) {
@@ -191,7 +199,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // Reject neighbors with vastly different depths
         if (!is_center_sample) {
             // Clamp the normal_vs.z so that we don't get arbitrarily loose depth comparison at grazing angles.
-            const float depth_diff = abs(max(0.3, center_normal_vs.z) * (center_depth / sample_depth - 1.0));
+            const float depth_diff = abs(max(0.3, center_normal_vs.z) * (center_depth / rpx_depth - 1.0));
 
             const float depth_threshold =
                 spatial_reuse_pass_idx == 0
@@ -204,13 +212,12 @@ void main(uint2 px : SV_DispatchThreadID) {
         {
             // Raymarch to check occlusion
             if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
-                const float2 ray_orig_uv = get_uv(
-                    spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
-                    gbuffer_tex_size);
+                const float2 ray_orig_uv = spx_uv;
 
-        		//const float surface_offset_len = length(sample_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs());
+        		//const float surface_offset_len = length(spx_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs());
                 const float surface_offset_len = length(
                     // Use the center depth for simplicity; this doesn't need to be exact.
+                    // Faster, looks about the same.
                     ViewRayContext::from_uv_and_depth(ray_orig_uv, depth).ray_hit_vs() - view_ray_context.ray_hit_vs()
                 );
 
@@ -278,12 +285,12 @@ void main(uint2 px : SV_DispatchThreadID) {
     		}
         }
 
-        const float4 sample_hit_normal_ws_dot = decode_hit_normal_and_dot(hit_normal_tex[spx]);
-        const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
-        const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
+        const float3 sample_hit_normal_ws = spx_packed.hit_normal_ws;
+        const float center_to_hit_vis = -dot(sample_hit_normal_ws, dir_to_sample_hit);
+        const float prev_to_hit_vis = -dot(sample_hit_normal_ws, prev_dir_to_sample_hit_ws);
 
         float p_q = 1;
-        p_q *= max(0, sRGB_to_luminance(prev_irrad.rgb));
+        p_q *= prev_luminance;
 
         // Actually looks more noisy with this the N dot L when using BRDF sampling.
         // With (hemi)spherical sampling, it's fine.

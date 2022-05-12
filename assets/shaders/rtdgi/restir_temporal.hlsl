@@ -33,7 +33,8 @@
 [[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
 [[vk::binding(16)]] RWTexture2D<uint2> reservoir_out_tex;
 [[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(18)]] cbuffer _ {
+[[vk::binding(18)]] RWTexture2D<uint4> temporal_reservoir_packed_tex;
+[[vk::binding(19)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -486,4 +487,11 @@ void main(uint2 px : SV_DispatchThreadID) {
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws/* - get_eye_position()*/, length(ray_hit_sel_ws - refl_ray_origin_ws));
     reservoir_out_tex[px] = reservoir.as_raw();
+
+    TemporalReservoirOutput res_packed;
+    res_packed.depth = depth;
+    res_packed.ray_hit_offset_ws = ray_hit_sel_ws - view_ray_context.ray_hit_ws();
+    res_packed.luminance = max(0.0, sRGB_to_luminance(irradiance_sel));
+    res_packed.hit_normal_ws = hit_normal_ws_dot.xyz;
+    temporal_reservoir_packed_tex[px] = res_packed.as_raw();
 }

@@ -135,6 +135,21 @@ impl RtdgiRenderer {
         tlas: &rg::Handle<RayTracingAcceleration>,
         ssao_img: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
+        let mut half_ssao_tex = rg.create(
+            ssao_img
+                .desc()
+                .half_res()
+                .usage(vk::ImageUsageFlags::empty())
+                .format(vk::Format::R8_SNORM),
+        );
+        SimpleRenderPass::new_compute(
+            rg.add_pass("extract ssao/2"),
+            "/shaders/extract_half_res_ssao.hlsl",
+        )
+        .read(ssao_img)
+        .write(&mut half_ssao_tex)
+        .dispatch(half_ssao_tex.desc().extent);
+
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
         let (temporal_output_tex, history_tex) = self
@@ -191,6 +206,12 @@ impl RtdgiRenderer {
             gbuffer_desc
                 .half_res()
                 .format(vk::Format::R32G32B32A32_SFLOAT),
+        );
+
+        let mut temporal_reservoir_packed_tex = rg.create(
+            gbuffer_desc
+                .half_res()
+                .format(vk::Format::R32G32B32A32_UINT),
         );
 
         let half_depth_tex = gbuffer_depth.half_depth(rg);
@@ -251,7 +272,6 @@ impl RtdgiRenderer {
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&reprojected_history_tex)
             .read(&ray_history_tex)
-            .read(ssao_img)
             .read(reprojection_map)
             .bind_mut(ircache)
             .bind(wrc)
@@ -279,7 +299,6 @@ impl RtdgiRenderer {
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&reprojected_history_tex)
             .read(&ray_history_tex)
-            .read(ssao_img)
             .read(reprojection_map)
             .bind_mut(ircache)
             .bind(wrc)
@@ -333,6 +352,7 @@ impl RtdgiRenderer {
             .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
             .write(&mut candidate_output_tex)
+            .write(&mut temporal_reservoir_packed_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
             .dispatch(irradiance_output_tex.desc().extent);
@@ -342,12 +362,6 @@ impl RtdgiRenderer {
 
         let irradiance_tex = {
             let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
-
-            let mut irradiance_output_tex = rg.create(
-                gbuffer_desc
-                    .usage(vk::ImageUsageFlags::empty())
-                    .format(COLOR_BUFFER_FORMAT),
-            );
 
             let mut reservoir_output_tex0 = rg.create(
                 gbuffer_desc
@@ -369,15 +383,11 @@ impl RtdgiRenderer {
                     rg.add_pass("restir spatial"),
                     "/shaders/rtdgi/restir_spatial.hlsl",
                 )
-                .read(&irradiance_tex)
-                .read(&hit_normal_output_tex)
-                .read(&ray_tex)
                 .read(reservoir_input_tex)
-                .read(&gbuffer_depth.gbuffer)
                 .read(&*half_view_normal_tex)
                 .read(&*half_depth_tex)
-                .read(ssao_img)
-                .read(&candidate_output_tex)
+                .read(&half_ssao_tex)
+                .read(&temporal_reservoir_packed_tex)
                 .write(&mut reservoir_output_tex0)
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),
@@ -389,6 +399,12 @@ impl RtdgiRenderer {
                 std::mem::swap(&mut reservoir_output_tex0, &mut reservoir_output_tex1);
                 reservoir_input_tex = &mut reservoir_output_tex1;
             }
+
+            let mut irradiance_output_tex = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::empty())
+                    .format(COLOR_BUFFER_FORMAT),
+            );
 
             SimpleRenderPass::new_compute(
                 rg.add_pass("restir resolve"),
