@@ -158,8 +158,14 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
         const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));
 
+        const float2 rpx_uv = get_uv(
+            rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            gbuffer_tex_size);
+        const float rpx_depth = half_depth_tex[rpx];
+        const ViewRayContext rpx_ray_ctx = ViewRayContext::from_uv_and_depth(rpx_uv, rpx_depth);
+
         if (USE_SPLIT_RT_NEAR_FIELD) {
-            const float3 hit_ws = candidate_hit_tex[rpx].xyz;
+            const float3 hit_ws = candidate_hit_tex[rpx].xyz + rpx_ray_ctx.ray_hit_ws();
             const float3 sample_offset = hit_ws - view_ray_context.ray_hit_ws();
             const float sample_dist = length(sample_offset);
             const float3 sample_dir = sample_offset / sample_dist;
@@ -176,12 +182,11 @@ void main(uint2 px : SV_DispatchThreadID) {
             float3 contribution = candidate_irradiance_tex[rpx].rgb * geometric_term;
             contribution *= lerp(0.0, atten, near_field_influence);
 
-            float sample_depth = half_depth_tex[rpx];
             float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
             float w = 1;
             w *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
-            w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / sample_depth - 1.0)));
+            w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / rpx_depth - 1.0)));
 
             weighted_irradiance += contribution * w;
             w_sum += w;

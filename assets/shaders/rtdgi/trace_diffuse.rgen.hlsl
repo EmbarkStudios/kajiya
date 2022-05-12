@@ -109,7 +109,7 @@ void main() {
 
         candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
         candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
-        candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t, 1);
+        candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t - view_ray_context.ray_hit_ws(), 1);
     } else {
         const float4 reproj = reprojection_tex[hi_px];
         const int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + 0.5);
