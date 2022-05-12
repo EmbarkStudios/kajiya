@@ -118,12 +118,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float sample_dist = length(sample_offset);
             const float3 sample_dir = sample_offset / sample_dist;
 
-        #if DIFFUSE_GI_BRDF_SAMPLING
-            const float geometric_term = 1;
-        #else
             const float geometric_term =
                 2 * max(0.0, dot(center_normal_ws, sample_dir));
-        #endif
 
             float3 radiance = irradiance_tex[spx].rgb;
 
@@ -170,12 +166,8 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float sample_dist = length(sample_offset);
             const float3 sample_dir = sample_offset / sample_dist;
 
-            #if DIFFUSE_GI_BRDF_SAMPLING
-                const float geometric_term = 1;
-            #else
-                const float geometric_term =
-                    2 * max(0.0, dot(center_normal_ws, sample_dir));
-            #endif
+            const float geometric_term =
+                2 * max(0.0, dot(center_normal_ws, sample_dir));
 
             const float atten = smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, sample_dist);
 

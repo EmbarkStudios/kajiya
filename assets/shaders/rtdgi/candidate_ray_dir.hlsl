@@ -11,22 +11,7 @@ float3 rtdgi_candidate_ray_dir(uint2 px, float3x3 tangent_to_world) {
             uint_to_u01_float(hash1_mut(rng))
         );
     #endif
-    float3 outgoing_dir;
 
-#if DIFFUSE_GI_BRDF_SAMPLING
-    {
-        DiffuseBrdf brdf;
-        brdf.albedo = 1.0.xxx;
-        BrdfSample brdf_sample = brdf.sample(float3(0, 0, 1), urand);
-        float3 wi = brdf_sample.wi;
-        outgoing_dir = mul(tangent_to_world, wi);
-    }
-#else
-    {
-        float3 wi = uniform_sample_hemisphere(urand);
-        outgoing_dir = mul(tangent_to_world, wi);
-    }
-#endif
-
-    return outgoing_dir;
+    float3 wi = uniform_sample_hemisphere(urand);
+    return mul(tangent_to_world, wi);
 }

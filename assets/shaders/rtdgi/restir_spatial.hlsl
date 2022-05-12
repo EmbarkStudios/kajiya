@@ -138,11 +138,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float sample_dist2 = dot(sample_offset, sample_offset);
         const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
-        #if DIFFUSE_GI_BRDF_SAMPLING
-            const float normal_cutoff = 0.9;
-        #else
-            const float normal_cutoff = 0.1;
-        #endif
+        const float normal_cutoff = 0.1;
 
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
         if (!is_center_sample && normal_similarity_dot < normal_cutoff) {
@@ -291,13 +287,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         float p_q = 1;
         p_q *= prev_luminance;
-
-        // Actually looks more noisy with this the N dot L when using BRDF sampling.
-        // With (hemi)spherical sampling, it's fine.
-        #if !DIFFUSE_GI_BRDF_SAMPLING
-            p_q *= max(0, dot(dir_to_sample_hit, center_normal_ws));
-            //p_q *= step(0, dot(dir_to_sample_hit, center_normal_ws));
-        #endif
+        p_q *= max(0, dot(dir_to_sample_hit, center_normal_ws));
 
         float jacobian = 1;
 
@@ -312,14 +302,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         // jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
         // Correct:
         jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
-
-        #if DIFFUSE_GI_BRDF_SAMPLING
-            // N dot L. Useful for normal maps, micro detail.
-            // The min(const, _) should not be here, but it prevents fireflies and brightening of edges
-            // when we don't use a harsh normal cutoff to exchange reservoirs with.
-            //jacobian *= min(1.2, max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws));
-            //jacobian *= max(0.0, prev_irrad.a) / dot(dir_to_sample_hit, center_normal_ws);
-        #endif
 
         if (is_center_sample) {
             jacobian = 1;

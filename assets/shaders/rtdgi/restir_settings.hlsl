@@ -1,5 +1,4 @@
 #define DIFFUSE_GI_USE_RESTIR 1
-#define DIFFUSE_GI_BRDF_SAMPLING 0
 #define RESTIR_TEMPORAL_M_CLAMP 10.0
 
 // Reduces fireflies, but causes darkening in corners

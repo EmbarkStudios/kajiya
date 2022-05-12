@@ -60,10 +60,6 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     float hit_t = outgoing_ray.TMax;
     float inv_pdf = 1.0;
 
-    #if DIFFUSE_GI_BRDF_SAMPLING
-        inv_pdf /= max(1e-5, dot(outgoing_ray.Direction, normal_ws));
-    #endif
-
     const float reflected_cone_spread_angle = 0.03;
     const RayCone ray_cone =
         pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
