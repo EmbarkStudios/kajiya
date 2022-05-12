@@ -100,7 +100,7 @@ impl RtdgiRenderer {
         rg: &mut rg::TemporalRenderGraph,
         input_color: &rg::Handle<Image>,
         gbuffer_depth: &GbufferDepth,
-        ssao_img: &rg::Handle<Image>,
+        ssao_tex: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
     ) -> rg::Handle<Image> {
         let mut spatial_filtered_tex =
@@ -112,7 +112,7 @@ impl RtdgiRenderer {
         )
         .read(input_color)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .read(ssao_img)
+        .read(ssao_tex)
         .read(&gbuffer_depth.geometric_normal)
         .write(&mut spatial_filtered_tex)
         .constants((spatial_filtered_tex.desc().extent_inv_extent_2d(),))
@@ -133,10 +133,10 @@ impl RtdgiRenderer {
         ircache: &mut IrcacheRenderState,
         wrc: &WrcRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        ssao_img: &rg::Handle<Image>,
+        ssao_tex: &rg::Handle<Image>,
     ) -> rg::ReadOnlyHandle<Image> {
         let mut half_ssao_tex = rg.create(
-            ssao_img
+            ssao_tex
                 .desc()
                 .half_res()
                 .usage(vk::ImageUsageFlags::empty())
@@ -146,7 +146,7 @@ impl RtdgiRenderer {
             rg.add_pass("extract ssao/2"),
             "/shaders/extract_half_res_ssao.hlsl",
         )
-        .read(ssao_img)
+        .read(ssao_tex)
         .write(&mut half_ssao_tex)
         .dispatch(half_ssao_tex.desc().extent);
 
@@ -415,7 +415,7 @@ impl RtdgiRenderer {
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&*half_view_normal_tex)
             .read(&*half_depth_tex)
-            .read(ssao_img)
+            .read(ssao_tex)
             .read(&candidate_irradiance_tex)
             .read(&candidate_normal_tex)
             .read(&candidate_hit_tex)
@@ -431,41 +431,9 @@ impl RtdgiRenderer {
             irradiance_output_tex
         };
 
-        /*let filtered_tex = self.temporal(
-            rg,
-            &irradiance_tex,
-            gbuffer_depth,
-            reprojection_map,
-            sky_cube,
-        );
-        let filtered_tex = Self::spatial(rg, &filtered_tex, gbuffer_depth, ssao_img);
-
-        let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
-        let half_depth_tex = gbuffer_depth.half_depth(rg);
-
-        let mut upsampled_tex = rg.create(gbuffer_desc.format(vk::Format::R16G16B16A16_SFLOAT));
-        SimpleRenderPass::new_compute(
-            rg.add_pass("rtdgi upsample"),
-            "/shaders/rtdgi/upsample.hlsl",
-        )
-        .read(&filtered_tex)
-        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .read(&gbuffer_depth.gbuffer)
-        .read(&*half_view_normal_tex)
-        .read(&*half_depth_tex)
-        .read(ssao_img)
-        .write(&mut upsampled_tex)
-        .constants((
-            upsampled_tex.desc().extent_inv_extent_2d(),
-            super::rtr::SPATIAL_RESOLVE_OFFSETS,
-        ))
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .dispatch(upsampled_tex.desc().extent);*/
-        let upsampled_tex = irradiance_tex;
-
         let filtered_tex = self.temporal(
             rg,
-            &upsampled_tex,
+            &irradiance_tex,
             gbuffer_depth,
             reprojection_map,
             &reprojected_history_tex,
@@ -477,7 +445,7 @@ impl RtdgiRenderer {
             rg,
             &filtered_tex,
             gbuffer_depth,
-            ssao_img,
+            ssao_tex,
             bindless_descriptor_set,
         );
 
