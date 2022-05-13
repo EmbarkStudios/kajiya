@@ -9,6 +9,7 @@
 #include "../inc/hash.hlsl"
 #include "../inc/blue_noise.hlsl"
 #include "../inc/reservoir.hlsl"
+#include "../inc/morton.hlsl"
 #include "rtr_settings.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
@@ -25,12 +26,16 @@
 [[vk::binding(11)]] Texture2D<float4> restir_ray_tex;
 [[vk::binding(12)]] Texture2D<uint2> restir_reservoir_tex;
 [[vk::binding(13)]] Texture2D<float4> restir_ray_orig_tex;
-[[vk::binding(14)]] RWTexture2D<float3> output_tex;
-[[vk::binding(15)]] RWTexture2D<float2> ray_len_output_tex;
-[[vk::binding(16)]] cbuffer _ {
+[[vk::binding(14)]] Texture2D<float4> restir_hit_normal_tex;
+[[vk::binding(15)]] RWTexture2D<float3> output_tex;
+[[vk::binding(16)]] RWTexture2D<float2> ray_len_output_tex;
+[[vk::binding(17)]] cbuffer _ {
     float4 output_tex_size;
     int4 spatial_resolve_offsets[16 * 4 * 8];
 };
+
+// Skip some calculations if not visually relevant.
+#define CUT_CORNERS_IN_MATH 1
 
 #define SHUFFLE_SUBPIXELS 1
 #define BORROW_SAMPLES 1
@@ -54,6 +59,11 @@ uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
 }
 
+float3 decode_restir_hit_normal(float3 val) {
+    return val.xyz * 2 - 1;
+}
+
+
 // Get tangent vectors for the basis for specular filtering.
 // Based on "Fast Denoising with Self Stabilizing Recurrent Blurs" by Dmitry Zhdan
 void get_specular_filter_kernel_basis(float3 v, float3 n, float roughness, float scale, out float3 t1, out float3 t2) {
@@ -65,7 +75,18 @@ void get_specular_filter_kernel_basis(float3 v, float3 n, float roughness, float
 }
 
 [numthreads(8, 8, 1)]
-void main(uint2 px : SV_DispatchThreadID) {
+void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_within_group: SV_GroupIndex) {
+    //px = decode_morton_2d(idx_within_group) + px_tile * 8;
+    //px = (px & ~3) | ((px & 1) << 1) | ((px & 2) >> 1);
+
+    // Note: must match the raygen
+    static const uint2 hi_px_subpixels[4] = {
+        uint2(0, 0),
+        uint2(1, 1),
+        uint2(1, 0),
+        uint2(0, 1),
+    };
+
     const uint2 half_px = px / 2;
 
     const float2 uv = get_uv(px, output_tex_size);
@@ -265,13 +286,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         const bool is_valid_sample = USE_RESTIR || (packed0.w > 0 && sample_depth != 0);
 
         if (is_valid_sample) {
-            // Note: must match the raygen
-            static const uint2 hi_px_subpixels[4] = {
-                uint2(0, 0),
-                uint2(1, 1),
-                uint2(1, 0),
-                uint2(0, 1),
-            };
             const float2 sample_uv = get_uv(
                 sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
                 output_tex_size);
@@ -279,14 +293,26 @@ void main(uint2 px : SV_DispatchThreadID) {
             //const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
             //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
-            const float3 sample_hit_normal_vs = hit2_tex[sample_px].xyz;
-            const float3 sample_normal_vs = normalize(half_view_normal_tex[sample_px].xyz);
+            float3 sample_hit_normal_vs;    // only valid without ReSTIR
+            if (!USE_RESTIR) {
+                sample_hit_normal_vs = hit2_tex[sample_px].xyz;
+            }
 
+            #if CUT_CORNERS_IN_MATH
+                const float3 sample_normal_vs = half_view_normal_tex[sample_px].xyz;
+            #else
+                const float3 sample_normal_vs = normalize(half_view_normal_tex[sample_px].xyz);
+            #endif
+
+            float3 sample_hit_normal_ws;
+
+            float3 sample_origin_ws;    // only valid with ReSTIR
             float3 sample_origin_vs;
             float3 sample_radiance;
             float sample_ray_pdf = 1;
             float neighbor_sampling_pdf;
             float3 center_to_hit_vs;
+            float3 center_to_hit_ws;    // only valid with ReSTIR
             float sample_cos_theta;
             float3 sample_hit_vs;
 
@@ -309,26 +335,28 @@ void main(uint2 px : SV_DispatchThreadID) {
                 uint2 rpx = sample_px;
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
-                const float3 ray_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
-                const float3 sample_hit_ws = restir_ray_tex[spx].xyz + ray_origin_ws;
-                sample_origin_vs = position_world_to_view(ray_origin_ws);
+                sample_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
+                const float3 sample_hit_ws = restir_ray_tex[spx].xyz + sample_origin_ws;
+                sample_origin_vs = position_world_to_view(sample_origin_ws);
 
-                const float3 sample_offset = sample_hit_ws - ray_origin_ws;
+                sample_hit_normal_ws = decode_restir_hit_normal(restir_hit_normal_tex[spx].xyz);
+
+                const float3 sample_offset = sample_hit_ws - sample_origin_ws;
                 const float sample_dist = length(sample_offset);
                 const float3 sample_dir = sample_offset / sample_dist;
 
                 sample_radiance = restir_irradiance_tex[spx].rgb;
                 sample_ray_pdf = restir_ray_tex[spx].a;
                 neighbor_sampling_pdf = 1.0 / r.W;
-                //center_to_hit_vs = position_world_to_view(sample_hit_ws) - sample_origin_vs;
                 center_to_hit_vs = position_world_to_view(sample_hit_ws) - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
-                sample_hit_vs = center_to_hit_vs + position_world_to_view(ray_origin_ws);
+                center_to_hit_ws = sample_hit_ws - lerp(refl_ray_origin_ws, sample_origin_ws, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
+                sample_hit_vs = center_to_hit_vs + position_world_to_view(sample_origin_ws);
                 sample_cos_theta = rtr_decode_cos_theta_from_fp16(restir_irradiance_tex[spx].a);
 
                 // Perform measure conversion
 
                 const float center_to_hit_dist = length(center_to_hit_vs);
-                const float sample_to_hit_dist = length(sample_hit_ws - ray_origin_ws);
+                const float sample_to_hit_dist = length(sample_hit_ws - sample_origin_ws);
 
                 if (RTR_USE_BULLSHIT_TO_FIX_EDGE_HALOS) {
                     // Looks almost correct without this entire term, but then at certain roughness levels,
@@ -361,9 +389,17 @@ void main(uint2 px : SV_DispatchThreadID) {
                     );
                 }
 
-                float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
-                float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_hit_vs - sample_origin_vs));
-                neighbor_sampling_pdf /= clamp(center_to_hit_vis / sample_to_hit_vis, 1e-1, 1e1);
+                #if !CUT_CORNERS_IN_MATH
+                    if (USE_RESTIR) {
+                        float center_to_hit_vis = dot(sample_hit_normal_ws, -normalize(center_to_hit_ws));
+                        float sample_to_hit_vis = dot(sample_hit_normal_ws, -normalize(sample_hit_ws - sample_origin_ws));
+                        neighbor_sampling_pdf /= clamp(center_to_hit_vis / sample_to_hit_vis, 1e-1, 1e1);
+                    } else {
+                        float center_to_hit_vis = dot(sample_hit_normal_vs, -normalize(center_to_hit_vs));
+                        float sample_to_hit_vis = dot(sample_hit_normal_vs, -normalize(sample_hit_vs - sample_origin_vs));
+                        neighbor_sampling_pdf /= clamp(center_to_hit_vis / sample_to_hit_vis, 1e-1, 1e1);
+                    }
+                #endif
 
                 #if !RTR_APPROX_MEASURE_CONVERSION
                     float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
@@ -380,6 +416,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                     bent_pdf_ndotl_fix *= clamp(wi_measure_fix, 1e-2, 1e2);
                 #endif
             } else {
+                // The pure ratio estimator (non-ReSTIR) path.
+
                 const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_biased_depth(sample_uv, sample_depth);
                 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
                 
@@ -399,26 +437,37 @@ void main(uint2 px : SV_DispatchThreadID) {
                 sample_hit_vs = center_to_hit_vs + refl_ray_origin_vs;
             }
 
-            float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
+            float rejection_bias = 1;
 
-            if (wi.z < 1e-5
-                || dot(normal_vs, sample_normal_vs) <= 0
-                // Discard hit samples which face away from the center pixel
-                || dot(sample_hit_normal_vs, -center_to_hit_vs) <= 0
-            ) {
-                continue;
+            const float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
+
+            if (USE_RESTIR) {
+                if (wi.z < 1e-5
+                    // Discard hit samples which face away from the center pixel
+                #if !CUT_CORNERS_IN_MATH
+                    || dot(sample_hit_normal_ws, -center_to_hit_ws) <= 0
+                #endif
+                ) {
+                    continue;
+                }
+            } else {
+                if (wi.z < 1e-5
+                    // Discard hit samples which face away from the center pixel
+                    || dot(sample_hit_normal_vs, -center_to_hit_vs) <= 0
+                ) {
+                    continue;
+                }
             }
             
-        #if 0
-            float rejection_bias = 1;
-        #else
-            float rejection_bias = 1;
+        #if 1
             // Soft directional falloff
-            rejection_bias *= max(1e-2, SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)));
+            #if !CUT_CORNERS_IN_MATH
+                rejection_bias *= max(1e-2, SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)));
+            #endif
 
             // Hard cutoff below a pretty wide angle, to prevent contributions from
             // widely different samples than the center.
-            rejection_bias *= dot(normal_vs, sample_normal_vs) > 0.8;
+            rejection_bias *= dot(normal_vs, sample_normal_vs) > 0.7;
 
             // Depth
             rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
@@ -501,7 +550,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // At low roughness this can result in noise in the FG estimate, causing darkening.
                 const float pdf_lerp_t = smoothstep(0.4, 0.7, sqrt(gbuffer.roughness)) * smoothstep(0.0, 0.1, ray_len_avg / eye_to_surf_dist);
 
-                float3 pdfs[2] = {
+                const float3 pdfs[2] = {
                     float3(
                         min(bent_sample_pdf, RTR_RESTIR_MAX_PDF_CLAMP) * bent_pdf_ndotl_fix,
                         neighbor_sampling_pdf * pdf0_mult,

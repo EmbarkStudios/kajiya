@@ -165,7 +165,7 @@ impl RtrRenderer {
         let mut refl_restir_invalidity_tex =
             rg.create(refl0_tex.desc().format(vk::Format::R8_UNORM));
 
-        let (irradiance_tex, ray_tex, temporal_reservoir_tex) = {
+        let (irradiance_tex, ray_tex, temporal_reservoir_tex, restir_hit_normal_tex) = {
             let (mut hit_normal_output_tex, hit_normal_history_tex) =
                 self.temporal_hit_normal_tex.get_output_and_history(
                     rg,
@@ -250,7 +250,12 @@ impl RtrRenderer {
             .raw_descriptor_set(1, bindless_descriptor_set)
             .dispatch(irradiance_output_tex.desc().extent);
 
-            (irradiance_output_tex, ray_output_tex, reservoir_output_tex)
+            (
+                irradiance_output_tex,
+                ray_output_tex,
+                reservoir_output_tex,
+                hit_normal_output_tex,
+            )
         };
 
         let mut resolved_tex = rg.create(
@@ -290,6 +295,7 @@ impl RtrRenderer {
         .read(&ray_tex)
         .read(&temporal_reservoir_tex)
         .read(&ray_orig_output_tex)
+        .read(&restir_hit_normal_tex)
         .write(&mut resolved_tex)
         .write(&mut ray_len_output_tex)
         .raw_descriptor_set(1, bindless_descriptor_set)
