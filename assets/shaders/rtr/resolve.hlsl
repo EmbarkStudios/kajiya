@@ -230,8 +230,8 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
     // Feeds into the `pow` to remap sample index to radius.
     // At 0.5 (sqrt), it's disk sampling, with higher values becoming conical.
     // Must be constant, so the `pow` can be const-folded.
-    //const float KERNEL_SHARPNESS = 0.666;
-    const float KERNEL_SHARPNESS = 0.5;
+    const float KERNEL_SHARPNESS = 0.666;
+    //const float KERNEL_SHARPNESS = 0.5;
     const float RADIUS_SAMPLE_MULT = 1.0 / pow(float(MAX_SAMPLE_COUNT), KERNEL_SHARPNESS);
 
     //const float ang_offset = blue.x;
