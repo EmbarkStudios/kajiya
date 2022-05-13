@@ -9,11 +9,11 @@
 #include "../inc/working_color_space.hlsl"
 
 // TODO: use this after tweaking all the spec.
-//#define linear_to_working linear_rgb_to_crunched_luma_chroma
-//#define working_to_linear crunched_luma_chroma_to_linear_rgb
+#define linear_to_working linear_rgb_to_crunched_luma_chroma
+#define working_to_linear crunched_luma_chroma_to_linear_rgb
 
-#define linear_to_working linear_rgb_to_linear_rgb
-#define working_to_linear linear_rgb_to_linear_rgb
+//#define linear_to_working linear_rgb_to_linear_rgb
+//#define working_to_linear linear_rgb_to_linear_rgb
 
 #define USE_DUAL_REPROJECTION 1
 #define USE_NEIGHBORHOOD_CLAMP 1
