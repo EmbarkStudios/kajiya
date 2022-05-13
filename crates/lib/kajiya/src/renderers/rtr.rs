@@ -258,7 +258,7 @@ impl RtrRenderer {
                 .gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R16G16B16A16_SFLOAT),
+                .format(vk::Format::B10G11R11_UFLOAT_PACK32),
         );
 
         let (temporal_output_tex, history_tex) = self

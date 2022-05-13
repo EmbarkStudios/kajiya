@@ -303,7 +303,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx];
+            const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx] + float4(get_prev_eye_position(), 0);
 
 #if 0
             // TODO: nuke?. the ndf and jacobian-based rejection seem enough
@@ -630,7 +630,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_cos_theta_for_fp16(cos_theta));
-    ray_orig_output_tex[px] = float4(ray_orig_sel, length(ray_hit_sel_ws - ray_orig_sel));
+    ray_orig_output_tex[px] = float4(ray_orig_sel - get_eye_position(), length(ray_hit_sel_ws - ray_orig_sel));
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel, pdf_sel);
