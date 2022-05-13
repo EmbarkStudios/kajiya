@@ -236,20 +236,29 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
 
     Reservoir1spp center_r = Reservoir1spp::from_raw(restir_reservoir_tex[half_px]);
 
-    // Go from the outside to the inside. This is important for sampling of the central contribution,
-    // as we might need to disable jitter for it based on the suitability of the neighborhood.
-    for (int sample_i = sample_count - 1; sample_i >= 0; --sample_i) {
+    // Instead of directly increasing the sampling radius, we'll do something adaptive.
+    // If a sample gets rejected, we only increase the radius of the next sample by a fraction
+    // of what we would do otherwise. This keeps the radius from expanding too quickly
+    // on small or thin elements, slightly reducing their noise.
+    static const float RADIUS_INC_ON_FAIL = 0.25;
+
+    // We skip the first center sample initially, and then evaluate it last, using
+    // information that we gather along the way to decide how to sample the center.
+    float sample_radius_accum = 1;
+
+    for (int sample_i = 1; sample_i <= sample_count; ++sample_i, sample_radius_accum += RADIUS_INC_ON_FAIL) {
+        const bool is_center_sample = sample_i == sample_count;
+
         int2 sample_offset; {
             float ang = (sample_i + ang_offset) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
-
-            float sample_i_with_jitter = sample_i;
+            float sample_i_with_jitter = sample_radius_accum;
 
             // If we've arrived at the central sample, and haven't found satisfactory
             // contributions yet, load the candidate directly from `half_px`.
             // Otherwise jitter the location to avoid half-pixel artifacts.
             // This additional check reduces undersampling on thin shiny surfaces,
             // which otherwise causes them to appear black.
-            if (sample_i == 0) {
+            if (is_center_sample) {
                 const bool offset_center_pixel = true
                     // roughness check is a HACK. it's only there because not offsetting
                     // the center pixel on rough surfaces causes pixellation.
@@ -259,7 +268,9 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                     ;
 
                 if (offset_center_pixel) {
-                    sample_i_with_jitter += blue.y;
+                    sample_i_with_jitter = blue.y;
+                } else {
+                    sample_i_with_jitter = 0;
                 }
             } else {
                 sample_i_with_jitter += blue.y;
@@ -511,7 +522,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
     		const float3 surface_offset = sample_origin_vs - refl_ray_origin_vs;
             #if USE_APPROXIMATE_SAMPLE_SHADOWING
         		if (dot(center_to_hit_vs, normal_vs) * 0.2 / length(center_to_hit_vs) < dot(surface_offset, normal_vs) / length(surface_offset)) {
-        			rejection_bias *= sample_i == 0 ? 1 : 0;
+        			rejection_bias *= is_center_sample ? 1 : 0;
         		}
             #endif
 
@@ -594,6 +605,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
 
             // Aggressively bias towards closer hits
             ray_len_accum += exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;
+            sample_radius_accum += 1.0 - RADIUS_INC_ON_FAIL;
         }
     }
 
