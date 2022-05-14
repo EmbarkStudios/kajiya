@@ -4,26 +4,24 @@ use std::{mem::size_of, sync::Arc};
 use glam::{IVec3, Vec3};
 use kajiya_backend::{
     ash::vk,
-    vk_sync::AccessType,
     vulkan::{
         buffer::{Buffer, BufferDesc},
         image::*,
         ray_tracing::RayTracingAcceleration,
         shader::{
-            create_render_pass, PipelineShaderDesc, RasterPipelineDesc, RenderPass,
-            RenderPassAttachmentDesc, RenderPassDesc, ShaderPipelineStage, ShaderSource,
+            create_render_pass, RenderPass, RenderPassAttachmentDesc, RenderPassDesc, ShaderSource,
         },
     },
     Device,
 };
 use kajiya_rg::{self as rg, GetOrCreateTemporal, SimpleRenderPass};
-use rg::{BindMutToSimpleRenderPass, BindRgRef, IntoRenderPassPipelineBinding};
+use rg::BindMutToSimpleRenderPass;
 use rust_shaders_shared::frame_constants::{IrcacheCascadeConstants, IRCACHE_CASCADE_COUNT};
 use vk::BufferUsageFlags;
 
 use crate::renderers::prefix_scan::inclusive_prefix_scan_u32_1m;
 
-use super::{wrc::WrcRenderState, GbufferDepth};
+use super::wrc::WrcRenderState;
 
 const MAX_GRID_CELLS: usize =
     IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_COUNT;
@@ -50,7 +48,7 @@ pub struct IrcacheRenderState {
     ircache_reposition_proposal_buf: rg::Handle<Buffer>,
     ircache_reposition_proposal_count_buf: rg::Handle<Buffer>,
 
-    pub debug_out: rg::Handle<Image>,
+    pending_irradiance_sum: bool,
 }
 
 impl<'rg, RgPipelineHandle> BindMutToSimpleRenderPass<'rg, RgPipelineHandle>
@@ -60,15 +58,17 @@ impl<'rg, RgPipelineHandle> BindMutToSimpleRenderPass<'rg, RgPipelineHandle>
         &mut self,
         pass: SimpleRenderPass<'rg, RgPipelineHandle>,
     ) -> SimpleRenderPass<'rg, RgPipelineHandle> {
-        pass.write(&mut self.ircache_meta_buf)
-            .write(&mut self.ircache_pool_buf)
-            .write(&mut self.ircache_reposition_proposal_buf)
-            .write(&mut self.ircache_reposition_proposal_count_buf)
-            .write(&mut self.ircache_grid_meta_buf)
-            .write(&mut self.ircache_entry_cell_buf)
+        assert!(!self.pending_irradiance_sum);
+
+        pass.write_no_sync(&mut self.ircache_meta_buf)
+            .write_no_sync(&mut self.ircache_pool_buf)
+            .write_no_sync(&mut self.ircache_reposition_proposal_buf)
+            .write_no_sync(&mut self.ircache_reposition_proposal_count_buf)
+            .write_no_sync(&mut self.ircache_grid_meta_buf)
+            .write_no_sync(&mut self.ircache_entry_cell_buf)
             .read(&self.ircache_spatial_buf)
             .read(&self.ircache_irradiance_buf)
-            .write(&mut self.ircache_life_buf)
+            .write_no_sync(&mut self.ircache_life_buf)
     }
 }
 
@@ -158,13 +158,7 @@ impl IrcacheRenderer {
 }
 
 impl IrcacheRenderer {
-    pub fn prepare(
-        &mut self,
-        rg: &mut rg::TemporalRenderGraph,
-        gbuffer_depth: &mut GbufferDepth,
-    ) -> IrcacheRenderState {
-        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
-
+    pub fn prepare(&mut self, rg: &mut rg::TemporalRenderGraph) -> IrcacheRenderState {
         const INDIRECTION_BUF_ELEM_COUNT: usize = 1024 * 1024;
         assert!(INDIRECTION_BUF_ELEM_COUNT >= MAX_ENTRIES);
 
@@ -227,7 +221,7 @@ impl IrcacheRenderer {
                 "ircache.reposition_proposal_count_buf",
                 size_of::<u32>() * MAX_ENTRIES,
             ),
-            debug_out: rg.create(gbuffer_desc.format(vk::Format::R16G16B16A16_SFLOAT)),
+            pending_irradiance_sum: false,
         };
 
         if 1 == self.parity {
@@ -349,7 +343,12 @@ impl IrcacheRenderer {
     }
 }
 
+pub struct IrcacheIrradiancePendingSummation {
+    indirect_args_buf: rg::Handle<Buffer>,
+}
+
 impl IrcacheRenderState {
+    #[must_use]
     pub fn trace_irradiance(
         &mut self,
         rg: &mut rg::RenderGraph,
@@ -357,7 +356,7 @@ impl IrcacheRenderState {
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
         wrc: &WrcRenderState,
-    ) {
+    ) -> IrcacheIrradiancePendingSummation {
         let indirect_args_buf = {
             let mut indirect_args_buf = rg.create(BufferDesc::new_gpu_only(
                 (size_of::<u32>() * 4) * 4,
@@ -398,9 +397,11 @@ impl IrcacheRenderState {
         )
         .read(&self.ircache_spatial_buf)
         .read(&self.ircache_life_buf)
-        .write(&mut self.ircache_reposition_proposal_buf)
-        .read(&self.ircache_meta_buf)
-        .write(&mut self.ircache_aux_buf)
+        .write_no_sync(&mut self.ircache_reposition_proposal_buf)
+        // Only read-access necessary, but if we use `write_no_sync`, we can overlap
+        // with the next pass. The next pass does not modify any data that this one reads.
+        .write_no_sync(&mut self.ircache_meta_buf)
+        .write_no_sync(&mut self.ircache_aux_buf)
         .read(&self.ircache_entry_indirection_buf)
         .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 1);
 
@@ -415,18 +416,20 @@ impl IrcacheRenderState {
         )
         .read(&self.ircache_spatial_buf)
         .read(sky_cube)
-        .write(&mut self.ircache_grid_meta_buf)
+        .write_no_sync(&mut self.ircache_grid_meta_buf)
         .read(&self.ircache_life_buf)
-        .write(&mut self.ircache_reposition_proposal_buf)
-        .write(&mut self.ircache_reposition_proposal_count_buf)
+        .write_no_sync(&mut self.ircache_reposition_proposal_buf)
+        .write_no_sync(&mut self.ircache_reposition_proposal_count_buf)
         .bind(wrc)
-        .write(&mut self.ircache_meta_buf)
-        .write(&mut self.ircache_aux_buf)
-        .write(&mut self.ircache_pool_buf)
+        .write_no_sync(&mut self.ircache_meta_buf)
+        .write_no_sync(&mut self.ircache_aux_buf)
+        .write_no_sync(&mut self.ircache_pool_buf)
         .read(&self.ircache_entry_indirection_buf)
-        .write(&mut self.ircache_entry_cell_buf)
+        .write_no_sync(&mut self.ircache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 3);
+        .trace_rays(tlas, [MAX_ENTRIES as u32, 1, 1]);
+        // TODO: seems rather broken on AMD
+        //.trace_rays_indirect(tlas, &indirect_args_buf, 16 * 3);
 
         SimpleRenderPass::new_rt(
             rg.add_pass("ircache trace"),
@@ -439,18 +442,36 @@ impl IrcacheRenderState {
         )
         .read(&self.ircache_spatial_buf)
         .read(sky_cube)
-        .write(&mut self.ircache_grid_meta_buf)
+        .write_no_sync(&mut self.ircache_grid_meta_buf)
         .read(&self.ircache_life_buf)
-        .write(&mut self.ircache_reposition_proposal_buf)
-        .write(&mut self.ircache_reposition_proposal_count_buf)
+        .write_no_sync(&mut self.ircache_reposition_proposal_buf)
+        .write_no_sync(&mut self.ircache_reposition_proposal_count_buf)
         .bind(wrc)
-        .write(&mut self.ircache_meta_buf)
-        .write(&mut self.ircache_aux_buf)
-        .write(&mut self.ircache_pool_buf)
+        .write_no_sync(&mut self.ircache_meta_buf)
+        .write_no_sync(&mut self.ircache_aux_buf)
+        .write_no_sync(&mut self.ircache_pool_buf)
         .read(&self.ircache_entry_indirection_buf)
-        .write(&mut self.ircache_entry_cell_buf)
+        .write_no_sync(&mut self.ircache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays_indirect(tlas, &indirect_args_buf, 16 * 0);
+        .trace_rays(tlas, [MAX_ENTRIES as u32, 1, 1]);
+        // TODO: seems rather broken on AMD
+        //.trace_rays_indirect(tlas, &indirect_args_buf, 16 * 0);
+
+        self.pending_irradiance_sum = true;
+
+        IrcacheIrradiancePendingSummation { indirect_args_buf }
+    }
+
+    // Split from the RT passes, so that we don't immediately try to access the ray-traced data,
+    // draining the GPU waves in the process.
+    // TODO: doing this is a bit sketchy. Ideally the render graph would be flexible enough
+    // to automatically allow re-scheduling of passes to hide latency.
+    pub fn sum_up_irradiance_for_sampling(
+        &mut self,
+        rg: &mut rg::RenderGraph,
+        pending: IrcacheIrradiancePendingSummation,
+    ) {
+        assert!(self.pending_irradiance_sum);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("ircache sum"),
@@ -461,10 +482,12 @@ impl IrcacheRenderState {
         .write(&mut self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
         .read(&self.ircache_entry_indirection_buf)
-        .dispatch_indirect(&indirect_args_buf, 16 * 2);
+        .dispatch_indirect(&pending.indirect_args_buf, 16 * 2);
+
+        self.pending_irradiance_sum = false;
     }
 
-    fn draw_trace_origins(
+    /*fn draw_trace_origins(
         &mut self,
         rg: &mut rg::RenderGraph,
         render_pass: Arc<RenderPass>,
@@ -558,5 +581,5 @@ impl IrcacheRenderState {
 
             api.end_render_pass();
         });
-    }
+    }*/
 }

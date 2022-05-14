@@ -318,6 +318,18 @@ impl<'rg, RgPipelineHandle> SimpleRenderPass<'rg, RgPipelineHandle> {
         self
     }
 
+    pub fn write_no_sync<Res>(mut self, handle: &mut Handle<Res>) -> Self
+    where
+        Res: Resource + 'static,
+        Ref<Res, GpuUav>: BindRgRef,
+    {
+        let handle_ref = self.pass.write_no_sync(handle, AccessType::AnyShaderWrite);
+
+        self.state.bindings.push(BindRgRef::bind(&handle_ref));
+
+        self
+    }
+
     pub fn write_view(
         mut self,
         handle: &mut Handle<Image>,

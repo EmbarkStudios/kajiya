@@ -90,7 +90,7 @@ impl ResourceDesc for RayTracingAccelerationDesc {
     type Resource = RayTracingAcceleration;
 }
 
-#[derive(Clone, Copy, Eq, PartialEq, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
 pub(crate) struct GraphRawResourceHandle {
     pub(crate) id: u32,
     pub(crate) version: u32,

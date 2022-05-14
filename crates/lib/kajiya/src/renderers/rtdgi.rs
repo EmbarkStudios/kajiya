@@ -43,6 +43,11 @@ impl RtdgiRenderer {
     }
 }
 
+pub struct ReprojectedRtdgi {
+    reprojected_history_tex: rg::Handle<Image>,
+    temporal_output_tex: rg::Handle<Image>,
+}
+
 impl RtdgiRenderer {
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
         ImageDesc::new_2d(COLOR_BUFFER_FORMAT, extent)
@@ -122,10 +127,43 @@ impl RtdgiRenderer {
         spatial_filtered_tex
     }
 
+    pub fn reproject(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        reprojection_map: &rg::Handle<Image>,
+    ) -> ReprojectedRtdgi {
+        let gbuffer_extent = reprojection_map.desc().extent_2d();
+
+        let (temporal_output_tex, history_tex) = self
+            .temporal2_tex
+            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_extent));
+
+        let mut reprojected_history_tex = rg.create(Self::temporal_tex_desc(gbuffer_extent));
+
+        SimpleRenderPass::new_compute(
+            rg.add_pass("rtdgi reproject"),
+            "/shaders/rtdgi/fullres_reproject.hlsl",
+        )
+        .read(&history_tex)
+        .read(reprojection_map)
+        .write(&mut reprojected_history_tex)
+        .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
+        .dispatch(reprojected_history_tex.desc().extent);
+
+        ReprojectedRtdgi {
+            reprojected_history_tex,
+            temporal_output_tex,
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
+        ReprojectedRtdgi {
+            reprojected_history_tex,
+            temporal_output_tex,
+        }: ReprojectedRtdgi,
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         sky_cube: &rg::Handle<Image>,
@@ -151,23 +189,6 @@ impl RtdgiRenderer {
         .dispatch(half_ssao_tex.desc().extent);
 
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
-
-        let (temporal_output_tex, history_tex) = self
-            .temporal2_tex
-            .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
-
-        let mut reprojected_history_tex =
-            rg.create(Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("rtdgi reproject"),
-            "/shaders/rtdgi/fullres_reproject.hlsl",
-        )
-        .read(&history_tex)
-        .read(reprojection_map)
-        .write(&mut reprojected_history_tex)
-        .constants((reprojected_history_tex.desc().extent_inv_extent_2d(),))
-        .dispatch(reprojected_history_tex.desc().extent);
 
         let (mut hit_normal_output_tex, hit_normal_history_tex) =
             self.temporal_hit_normal_tex.get_output_and_history(
@@ -240,13 +261,6 @@ impl RtdgiRenderer {
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
                 );
 
-            let (mut reservoir_output_tex, reservoir_history_tex) =
-                self.temporal_reservoir_tex.get_output_and_history(
-                    rg,
-                    ImageDesc::new_2d(vk::Format::R32G32_UINT, gbuffer_desc.half_res().extent_2d())
-                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                );
-
             let (mut ray_output_tex, ray_history_tex) =
                 self.temporal_ray_tex.get_output_and_history(
                     rg,
@@ -302,7 +316,6 @@ impl RtdgiRenderer {
             .bind_mut(ircache)
             .bind(wrc)
             .read(sky_cube)
-            .read(&irradiance_history_tex)
             .read(&ray_orig_history_tex)
             .write(&mut candidate_irradiance_tex)
             .write(&mut candidate_normal_tex)
@@ -328,6 +341,13 @@ impl RtdgiRenderer {
                 validity_output_tex.desc().extent_inv_extent_2d(),
             ))
             .dispatch(validity_output_tex.desc().extent);
+
+            let (mut reservoir_output_tex, reservoir_history_tex) =
+                self.temporal_reservoir_tex.get_output_and_history(
+                    rg,
+                    ImageDesc::new_2d(vk::Format::R32G32_UINT, gbuffer_desc.half_res().extent_2d())
+                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                );
 
             SimpleRenderPass::new_compute(
                 rg.add_pass("restir temporal"),

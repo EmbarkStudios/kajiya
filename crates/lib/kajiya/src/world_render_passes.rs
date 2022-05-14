@@ -35,7 +35,7 @@ impl WorldRenderer {
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
-        let (mut gbuffer_depth, velocity_img) = {
+        let (gbuffer_depth, velocity_img) = {
             let mut gbuffer_depth = {
                 let normal = rg.create(ImageDesc::new_2d(
                     vk::Format::A2R10G10B10_UNORM_PACK32,
@@ -77,24 +77,6 @@ impl WorldRenderer {
             (gbuffer_depth, velocity_img)
         };
 
-        let mut ircache_state = self.ircache.prepare(rg, &mut gbuffer_depth);
-
-        let wrc = /*if let Some(tlas) = tlas.as_ref() {
-            crate::renderers::wrc::wrc_trace(
-                rg,
-                &mut ircache_state,
-                &sky_cube,
-                self.bindless_descriptor_set,
-                tlas,
-            )
-        } else */{
-            crate::renderers::wrc::allocate_dummy_output(rg)
-        };
-
-        if let Some(tlas) = tlas.as_ref() {
-            ircache_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc);
-        }
-
         let reprojection_map = crate::renderers::reprojection::calculate_reprojection_map(
             rg,
             &gbuffer_depth,
@@ -110,11 +92,31 @@ impl WorldRenderer {
         );
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
 
+        let mut ircache_state = self.ircache.prepare(rg);
+
+        let wrc = /*if let Some(tlas) = tlas.as_ref() {
+            crate::renderers::wrc::wrc_trace(
+                rg,
+                &mut ircache_state,
+                &sky_cube,
+                self.bindless_descriptor_set,
+                tlas,
+            )
+        } else */{
+            crate::renderers::wrc::allocate_dummy_output(rg)
+        };
+
+        let traced_ircache = tlas.as_ref().map(|tlas| {
+            ircache_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc)
+        });
+
         let sun_shadow_mask = if let Some(tlas) = tlas.as_ref() {
             trace_sun_shadow_mask(rg, &gbuffer_depth, tlas, self.bindless_descriptor_set)
         } else {
             rg.create(gbuffer_depth.depth.desc().format(vk::Format::R8_UNORM))
         };
+
+        let reprojected_rtdgi = self.rtdgi.reproject(rg, &reprojection_map);
 
         let denoised_shadow_mask = if self.sun_size_multiplier > 0.0f32 {
             self.shadow_denoise
@@ -123,9 +125,14 @@ impl WorldRenderer {
             sun_shadow_mask.into()
         };
 
+        if let Some(traced_ircache) = traced_ircache {
+            ircache_state.sum_up_irradiance_for_sampling(rg, traced_ircache);
+        }
+
         let rtdgi = if let Some(tlas) = tlas.as_ref() {
             self.rtdgi.render(
                 rg,
+                reprojected_rtdgi,
                 &gbuffer_depth,
                 &reprojection_map,
                 &sky_cube,
