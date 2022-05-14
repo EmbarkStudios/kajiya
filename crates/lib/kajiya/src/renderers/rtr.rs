@@ -364,41 +364,24 @@ impl<'a> TracedRtr<'a> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("reflection temporal"),
-            "/shaders/rtr/temporal_filter.hlsl",
+            rg.add_pass("reflection temporal2"),
+            "/shaders/rtr/temporal_filter2.hlsl",
         )
         .read(&self.resolved_tex)
         .read(&self.history_tex)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&self.ray_len_tex)
         .read(reprojection_map)
+        .read(&self.refl_restir_invalidity_tex)
         .write(&mut self.temporal_output_tex)
         .constants(self.temporal_output_tex.desc().extent_inv_extent_2d())
-        .dispatch(self.resolved_tex.desc().extent);
-
-        let (mut temporal2_output_tex, history2_tex) = self
-            .temporal2_tex
-            .get_output_and_history(rg, RtrRenderer::temporal_tex_desc(gbuffer_desc.extent_2d()));
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("reflection temporal2"),
-            "/shaders/rtr/temporal_filter2.hlsl",
-        )
-        .read(&self.temporal_output_tex)
-        .read(&history2_tex)
-        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .read(&self.ray_len_tex)
-        .read(reprojection_map)
-        .read(&self.refl_restir_invalidity_tex)
-        .write(&mut temporal2_output_tex)
-        .constants(temporal2_output_tex.desc().extent_inv_extent_2d())
         .dispatch(self.resolved_tex.desc().extent);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection cleanup"),
             "/shaders/rtr/spatial_cleanup.hlsl",
         )
-        .read(&temporal2_output_tex)
+        .read(&self.temporal_output_tex)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&gbuffer_depth.geometric_normal)
         .write(&mut self.resolved_tex) // reuse

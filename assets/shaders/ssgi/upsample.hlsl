@@ -22,7 +22,10 @@ float4 process_sample(float2 soffset, float4 ssgi, float depth, float3 normal, f
 
         float w = 1;
         w *= depth_factor;  // TODO: differentials
-        w *= normal_factor;
+        
+        // Not super relevant when only using AO for a guide map.
+        //w *= normal_factor;
+
         w *= exp(-dot(soffset, soffset));
 
         w_sum += w;

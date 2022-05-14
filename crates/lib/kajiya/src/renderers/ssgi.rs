@@ -101,12 +101,12 @@ impl SsgiRenderer {
 
             if USE_RUST_SHADERS {
                 SimpleRenderPass::new_compute_rust(
-                    rg.add_pass("ssgi spatial"),
+                    rg.add_pass("ssao spatial"),
                     "ssgi::spatial_filter_cs",
                 )
             } else {
                 SimpleRenderPass::new_compute(
-                    rg.add_pass("ssgi spatial"),
+                    rg.add_pass("ssao spatial"),
                     "/shaders/ssgi/spatial_filter.hlsl",
                 )
             }
@@ -131,12 +131,12 @@ impl SsgiRenderer {
 
         if USE_RUST_SHADERS {
             SimpleRenderPass::new_compute_rust(
-                rg.add_pass("ssgi temporal"),
+                rg.add_pass("ssao temporal"),
                 "ssgi::temporal_filter_cs",
             )
         } else {
             SimpleRenderPass::new_compute(
-                rg.add_pass("ssgi temporal"),
+                rg.add_pass("ssao temporal"),
                 "/shaders/ssgi/temporal_filter.hlsl",
             )
         }
@@ -165,10 +165,10 @@ impl SsgiRenderer {
         let mut output_tex = rg.create(gbuffer.desc().format(INTERNAL_TEX_FMT));
 
         if USE_RUST_SHADERS {
-            SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi upsample"), "ssgi::upsample_cs")
+            SimpleRenderPass::new_compute_rust(rg.add_pass("ssao upsample"), "ssgi::upsample_cs")
         } else {
             SimpleRenderPass::new_compute(
-                rg.add_pass("ssgi upsample"),
+                rg.add_pass("ssao upsample"),
                 "/shaders/ssgi/upsample.hlsl",
             )
         }
