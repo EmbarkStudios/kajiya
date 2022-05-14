@@ -346,7 +346,7 @@ impl Device {
 
             // println!("regions: {:#?}", buffer_copy_regions);
 
-            self.with_setup_cb(|cb| unsafe {
+            let copy_result = self.with_setup_cb(|cb| unsafe {
                 super::barrier::record_image_barrier(
                     self,
                     cb,
@@ -377,7 +377,11 @@ impl Device {
                         vk::ImageAspectFlags::COLOR,
                     ),
                 )
-            })?;
+            });
+
+            self.immediate_destroy_buffer(image_buffer);
+
+            copy_result?;
         }
 
         /*        let handle = self.storage.insert(Image {
