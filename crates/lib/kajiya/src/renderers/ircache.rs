@@ -297,7 +297,7 @@ impl IrcacheRenderer {
             ));
 
             SimpleRenderPass::new_compute(
-                rg.add_pass("ircache dispatch args"),
+                rg.add_pass("_ircache dispatch args"),
                 "/shaders/ircache/prepare_age_dispatch_args.hlsl",
             )
             .write(&mut state.ircache_meta_buf)
@@ -365,7 +365,7 @@ impl IrcacheRenderState {
             ));
 
             SimpleRenderPass::new_compute(
-                rg.add_pass("ircache dispatch args"),
+                rg.add_pass("_ircache dispatch args"),
                 "/shaders/ircache/prepare_trace_dispatch_args.hlsl",
             )
             .read(&self.ircache_meta_buf)

@@ -147,7 +147,7 @@ impl PostProcessRenderer {
             .extent;
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("clear histogram"),
+            rg.add_pass("_clear histogram"),
             "/shaders/post/luminance_histogram_clear.hlsl",
         )
         .write(&mut tmp_histogram)
@@ -169,7 +169,7 @@ impl PostProcessRenderer {
 
         let mut dst_histogram = rg.import(self.histogram_buffer.clone(), AccessType::Nothing);
         SimpleRenderPass::new_compute(
-            rg.add_pass("copy histogram"),
+            rg.add_pass("_copy histogram"),
             "/shaders/post/luminance_histogram_copy.hlsl",
         )
         .read(&tmp_histogram)
