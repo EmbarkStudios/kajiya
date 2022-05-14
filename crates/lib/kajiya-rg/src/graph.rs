@@ -1031,13 +1031,15 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         debug: bool,
         dbg_str: &str,
     ) {
-        if resource.access_type == access.access_type
-            && matches!(
-                access.sync_type,
-                PassResourceAccessSyncType::SkipSyncIfSameAccessType
-            )
-        {
-            return;
+        if unsafe { RG_ALLOW_PASS_OVERLAP } {
+            if resource.access_type == access.access_type
+                && matches!(
+                    access.sync_type,
+                    PassResourceAccessSyncType::SkipSyncIfSameAccessType
+                )
+            {
+                return;
+            }
         }
 
         if debug {
@@ -1219,3 +1221,5 @@ impl RecordedPass {
         }
     }
 }
+
+pub static mut RG_ALLOW_PASS_OVERLAP: bool = true;

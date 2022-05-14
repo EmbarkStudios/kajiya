@@ -234,13 +234,15 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const uint entry_alloc_count = ircache_meta_buf.Load(IRCACHE_META_ALLOC_COUNT);
             
             const float u = float(px.x + 0.5) * output_tex_size.z;
+
+            const uint MAX_ENTRY_COUNT = 64 * 1024;
             
             if (px.y < 25) {
-                if (entry_alloc_count > u * 64 * 1024) {
+                if (entry_alloc_count > u * MAX_ENTRY_COUNT) {
                     output = float3(0.05, 1, .2) * 4;
                 }
             } else {
-                if (entry_count > u * 64 * 1024) {
+                if (entry_count > u * MAX_ENTRY_COUNT) {
                     output = float3(1, 0.1, 0.05) * 4;
                 }
             }

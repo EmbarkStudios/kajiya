@@ -600,6 +600,10 @@ fn main() -> anyhow::Result<()> {
                         imgui::Drag::<u32>::new(im_str!("Max FPS"))
                             .range(1..=MAX_FPS_LIMIT)
                             .build(ui, &mut max_fps);
+
+                        ui.checkbox(im_str!("Allow pass overlap"), unsafe {
+                            &mut kajiya::rg::RG_ALLOW_PASS_OVERLAP
+                        });
                     }
 
                     if imgui::CollapsingHeader::new(im_str!("GPU passes"))
