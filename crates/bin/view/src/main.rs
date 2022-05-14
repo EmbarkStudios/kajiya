@@ -50,9 +50,15 @@ struct SceneDesc {
     instances: Vec<SceneInstanceDesc>,
 }
 
+fn default_instance_scale() -> [f32; 3] {
+    [1.0, 1.0, 1.0]
+}
+
 #[derive(serde::Deserialize)]
 struct SceneInstanceDesc {
     position: [f32; 3],
+    #[serde(default = "default_instance_scale")]
+    scale: [f32; 3],
     mesh: String,
 }
 
@@ -234,7 +240,11 @@ fn main() -> anyhow::Result<()> {
 
         render_instances.push(kajiya.world_renderer.add_instance(
             mesh,
-            Affine3A::from_rotation_translation(Quat::IDENTITY, instance.position.into()),
+            Affine3A::from_scale_rotation_translation(
+                instance.scale.into(),
+                Quat::IDENTITY,
+                instance.position.into(),
+            ),
         ));
     }
 

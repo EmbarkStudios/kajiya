@@ -2,7 +2,7 @@ use kajiya_backend::{ash::vk, vulkan::image::*};
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
 pub fn render_sky_cube(rg: &mut rg::RenderGraph) -> rg::Handle<Image> {
-    let width = 32;
+    let width = 64;
     let mut sky_tex = rg.create(ImageDesc::new_cube(vk::Format::R16G16B16A16_SFLOAT, width));
 
     SimpleRenderPass::new_compute_rust(rg.add_pass("sky cube"), "sky::comp_sky_cube_cs")

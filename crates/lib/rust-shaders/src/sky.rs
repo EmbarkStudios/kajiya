@@ -36,7 +36,7 @@ pub fn comp_sky_cube_cs(
     #[spirv(global_invocation_id)] px: UVec3,
 ) {
     let face = px.z;
-    let uv = (Vec2::new(px.x as f32 + 0.5, px.y as f32 + 0.5)) / 32.0;
+    let uv = (Vec2::new(px.x as f32 + 0.5, px.y as f32 + 0.5)) / 64.0;
     let dir = CUBE_MAP_FACE_ROTATIONS[face as usize] * (uv * 2.0 - Vec2::ONE).extend(-1.0);
 
     let output = atmosphere_default(

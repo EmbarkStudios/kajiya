@@ -1,7 +1,9 @@
 #include "../inc/hash.hlsl"
 #include "ircache_constants.hlsl"
 
-static const float IRCACHE_GRID_CELL_DIAMETER = 0.16 * 0.5;
+// Must match CPU side
+static const float IRCACHE_GRID_CELL_DIAMETER = 0.16 * 0.125;
+
 static const uint IRCACHE_CASCADE_SIZE = 32;
 static const uint IRCACHE_CASCADE_COUNT = 12;
 

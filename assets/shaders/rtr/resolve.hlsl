@@ -157,11 +157,11 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
 
     const float4 reprojection_params = reprojection_tex[px];
 
-    const float RAY_SQUISH_STRENGTH = 4;
+    const float ray_squish_scale = 16.0 / max(1e-5, eye_to_surf_dist);
     const float ray_len_avg = exponential_unsquish(lerp(
-        exponential_squish(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, RAY_SQUISH_STRENGTH),
-        exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH),
-        0.1), RAY_SQUISH_STRENGTH);
+        exponential_squish(ray_len_history_tex.SampleLevel(sampler_lnc, uv + reprojection_params.xy, 0).y, ray_squish_scale),
+        exponential_squish(surf_to_hit_dist, ray_squish_scale),
+        0.1), ray_squish_scale);
 
     const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
 
@@ -608,7 +608,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
             //ex2 += lum * lum * contrib_wt;
 
             // Aggressively bias towards closer hits
-            ray_len_accum += exponential_squish(surf_to_hit_dist, RAY_SQUISH_STRENGTH) * contrib_wt;
+            ray_len_accum += exponential_squish(surf_to_hit_dist, ray_squish_scale) * contrib_wt;
             sample_radius_accum += 1.0 - RADIUS_INC_ON_FAIL;
         }
     }
@@ -633,7 +633,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
 
     contrib_accum.rgb *= brdf_lut.preintegrated_reflection_mult;
 
-    ray_len_accum = exponential_unsquish(ray_len_accum, RAY_SQUISH_STRENGTH);
+    ray_len_accum = exponential_unsquish(ray_len_accum, ray_squish_scale);
     
     float3 out_color = contrib_accum.rgb;
 

@@ -62,13 +62,13 @@ float inverse_depth_relative_diff(float primary_depth, float secondary_depth) {
 }
 
 // Encode a scalar a space which heavily favors small values.
-float exponential_squish(float len, float squish_strength) {
-    return exp2(-clamp(squish_strength * len, 0, 100));
+float exponential_squish(float len, float squish_scale) {
+    return exp2(-clamp(squish_scale * len, 0, 100));
 }
 
 // Ditto, decode.
-float exponential_unsquish(float len, float squish_strength) {
-    return max(0.0, -1.0 / squish_strength * log2(1e-30 + len));
+float exponential_unsquish(float len, float squish_scale) {
+    return max(0.0, -1.0 / squish_scale * log2(1e-30 + len));
 }
 
 float3 uniform_sample_hemisphere(float2 urand) {

@@ -27,7 +27,8 @@ const MAX_GRID_CELLS: usize =
     IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_COUNT;
 const MAX_ENTRIES: usize = 1024 * 64;
 
-const IRCACHE_GRID_CELL_DIAMETER: f32 = 0.16 * 0.5;
+// Must match GPU side
+const IRCACHE_GRID_CELL_DIAMETER: f32 = 0.16 * 0.125;
 const IRCACHE_CASCADE_SIZE: usize = 32;
 
 pub struct IrcacheRenderState {
