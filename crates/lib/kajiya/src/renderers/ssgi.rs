@@ -42,7 +42,7 @@ impl SsgiRenderer {
         );
 
         if USE_RUST_SHADERS {
-            SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi"), "ssgi::ssgi_cs")
+            SimpleRenderPass::new_compute_rust(rg.add_pass("ssao"), "ssgi::ssgi_cs")
                 .read(&gbuffer_depth.gbuffer)
                 .read(&*half_depth_tex)
                 .read(&*half_view_normal_tex)
@@ -56,7 +56,7 @@ impl SsgiRenderer {
                 // .raw_descriptor_set(1, bindless_descriptor_set)
                 .dispatch(ssgi_tex.desc().extent);
         } else {
-            SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/shaders/ssgi/ssgi.hlsl")
+            SimpleRenderPass::new_compute(rg.add_pass("ssao"), "/shaders/ssgi/ssgi.hlsl")
                 .read(&gbuffer_depth.gbuffer)
                 .read(&*half_depth_tex)
                 .read(&*half_view_normal_tex)
