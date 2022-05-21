@@ -10,7 +10,7 @@
 #include "../inc/reservoir.hlsl"
 #include "../inc/blue_noise.hlsl"
 #include "near_field_settings.hlsl"
-#include "restir_settings.hlsl"
+#include "rtdgi_restir_settings.hlsl"
 #include "rtdgi_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> irradiance_tex;

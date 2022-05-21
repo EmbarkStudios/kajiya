@@ -2,7 +2,7 @@
 #include "../inc/hash.hlsl"
 #include "../inc/quasi_random.hlsl"
 #include "../inc/math.hlsl"
-#include "restir_settings.hlsl"
+#include "rtdgi_restir_settings.hlsl"
 
 #define USE_SSAO_STEERING 1
 #define USE_DYNAMIC_KERNEL_RADIUS 0

@@ -13,7 +13,7 @@
 #include "../inc/reservoir.hlsl"
 #include "../ircache/bindings.hlsl"
 #include "../wrc/bindings.hlsl"
-#include "restir_settings.hlsl"
+#include "rtdgi_restir_settings.hlsl"
 
 [[vk::binding(0, 3)]] RaytracingAccelerationStructure acceleration_structure;
 

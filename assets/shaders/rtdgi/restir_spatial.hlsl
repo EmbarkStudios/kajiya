@@ -8,7 +8,7 @@
 #include "../inc/uv.hlsl"
 #include "../inc/hash.hlsl"
 #include "../inc/reservoir.hlsl"
-#include "restir_settings.hlsl"
+#include "rtdgi_restir_settings.hlsl"
 #include "rtdgi_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<uint2> reservoir_input_tex;
