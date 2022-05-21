@@ -48,7 +48,7 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 
 ## Technical details
 
-* Global illumination overview (TODO)
+* [Global illumination overview](docs/gi-overview.md)
 * Repository highlights:
   * HLSL shaders: [`assets/shaders/`](assets/shaders)
   * Rust shaders: [`crates/lib/rust-shaders/`](crates/lib/rust-shaders)
