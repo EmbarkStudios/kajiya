@@ -107,12 +107,10 @@ impl MouseState {
                 },
                 Event::DeviceEvent {
                     device_id: _,
-                    event,
+                    event: winit::event::DeviceEvent::MouseMotion { delta },
                 } => {
-                    if let winit::event::DeviceEvent::MouseMotion { delta } = event {
-                        self.delta.x += delta.0 as f32;
-                        self.delta.y += delta.1 as f32;
-                    }
+                    self.delta.x += delta.0 as f32;
+                    self.delta.y += delta.1 as f32;
                 }
                 _ => (),
             }

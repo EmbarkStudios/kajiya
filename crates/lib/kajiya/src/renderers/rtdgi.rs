@@ -26,8 +26,8 @@ pub struct RtdgiRenderer {
 
 const COLOR_BUFFER_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 
-impl RtdgiRenderer {
-    pub fn new() -> Self {
+impl Default for RtdgiRenderer {
+    fn default() -> Self {
         Self {
             temporal_irradiance_tex: PingPongTemporalResource::new("rtdgi.irradiance"),
             temporal_ray_orig_tex: PingPongTemporalResource::new("rtdgi.ray_orig"),

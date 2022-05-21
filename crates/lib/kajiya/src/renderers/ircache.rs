@@ -159,6 +159,8 @@ impl IrcacheRenderer {
 }
 
 impl IrcacheRenderer {
+    #[allow(clippy::assertions_on_constants)]
+    #[allow(clippy::manual_bits)] // multiplying by 8 is not always for bits, Clippy
     pub fn prepare(&mut self, rg: &mut rg::TemporalRenderGraph) -> IrcacheRenderState {
         const INDIRECTION_BUF_ELEM_COUNT: usize = 1024 * 1024;
         assert!(INDIRECTION_BUF_ELEM_COUNT >= MAX_ENTRIES);
@@ -247,7 +249,7 @@ impl IrcacheRenderer {
                 rg.add_pass("scroll cascades"),
                 "/shaders/ircache/scroll_cascades.hlsl",
             )
-            .read(&mut state.ircache_grid_meta_buf)
+            .read(&state.ircache_grid_meta_buf)
             .write(&mut state.ircache_grid_meta_buf2)
             .write(&mut state.ircache_entry_cell_buf)
             .write(&mut state.ircache_irradiance_buf)
@@ -336,7 +338,7 @@ impl IrcacheRenderer {
         )
         .write(&mut state.ircache_meta_buf)
         .write(&mut state.ircache_life_buf)
-        .read(&mut entry_occupancy_buf)
+        .read(&entry_occupancy_buf)
         .write(&mut state.ircache_entry_indirection_buf)
         .dispatch_indirect(&indirect_args_buf, 0);
 
@@ -349,6 +351,7 @@ pub struct IrcacheIrradiancePendingSummation {
 }
 
 impl IrcacheRenderState {
+    #[allow(clippy::identity_op)]
     #[must_use]
     pub fn trace_irradiance(
         &mut self,
@@ -380,8 +383,8 @@ impl IrcacheRenderState {
             "/shaders/ircache/reset_entry.hlsl",
         )
         .read(&self.ircache_life_buf)
-        .read(&mut self.ircache_meta_buf)
-        .read(&mut self.ircache_irradiance_buf)
+        .read(&self.ircache_meta_buf)
+        .read(&self.ircache_irradiance_buf)
         .write(&mut self.ircache_aux_buf)
         .read(&self.ircache_entry_indirection_buf)
         .dispatch_indirect(&indirect_args_buf, 16 * 2);

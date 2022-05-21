@@ -117,10 +117,9 @@ struct PersistedAppState {
 
 impl PersistedAppState {
     fn should_reset_path_tracer(&self, other: &PersistedAppState) -> bool {
-        false
-            || !self
-                .camera_position
-                .abs_diff_eq(other.camera_position, 1e-5)
+        !self
+            .camera_position
+            .abs_diff_eq(other.camera_position, 1e-5)
             || !self
                 .camera_rotation
                 .abs_diff_eq(other.camera_rotation, 1e-5)
@@ -254,19 +253,17 @@ fn main() -> anyhow::Result<()> {
 
     let mut test_obj_pos = Vec3::Y * -0.01;
     let mut test_obj_rot = 0.0f32;
-    let test_obj_inst;
-
-    if USE_TEST_DYNAMIC_OBJECT {
+    let test_obj_inst = if USE_TEST_DYNAMIC_OBJECT {
         let test_obj_mesh = kajiya
             .world_renderer
             .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::default())?;
-        test_obj_inst = Some(kajiya.world_renderer.add_instance(
+        Some(kajiya.world_renderer.add_instance(
             test_obj_mesh,
             Affine3A::from_rotation_translation(Quat::IDENTITY, test_obj_pos),
-        ));
+        ))
     } else {
-        test_obj_inst = None;
-    }
+        None
+    };
 
     let mut state = persisted_app_state
         .clone()

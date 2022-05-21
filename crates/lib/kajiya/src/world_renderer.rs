@@ -446,13 +446,13 @@ impl WorldRenderer {
             supersample_offsets,
 
             post: PostProcessRenderer::new(backend.device.as_ref())?,
-            ssgi: Default::default(),
+            ssgi: SsgiRenderer::default(),
             rtr: RtrRenderer::new(backend.device.as_ref())?,
             lighting: LightingRenderer::new(),
             ircache: IrcacheRenderer::new(backend.device.as_ref()),
-            rtdgi: RtdgiRenderer::new(),
+            rtdgi: RtdgiRenderer::default(),
             taa: TaaRenderer::new(),
-            shadow_denoise: Default::default(),
+            shadow_denoise: ShadowDenoiseRenderer::default(),
 
             #[cfg(feature = "dlss")]
             dlss,

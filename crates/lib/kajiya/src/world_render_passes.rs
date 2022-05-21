@@ -139,7 +139,7 @@ impl WorldRenderer {
                 self.bindless_descriptor_set,
                 &mut ircache_state,
                 &wrc,
-                &tlas,
+                tlas,
                 &ssgi_tex,
             )
         } else {
@@ -160,7 +160,7 @@ impl WorldRenderer {
                 &reprojection_map,
                 &sky_cube,
                 self.bindless_descriptor_set,
-                &tlas,
+                tlas,
                 &rtdgi,
                 &mut ircache_state,
                 &wrc,
