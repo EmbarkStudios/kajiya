@@ -29,9 +29,10 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 
 * Hybrid rendering using a mixture of raster, compute, and ray-tracing
 * Dynamic global illumination
-  * Multi-bounce temporally-recurrent voxel-based diffuse
-  * Short-range ray-traced diffuse for high-frequency details
-  * Single bounce specular, falling back to diffuse after the first hit
+  * Fully dynamic geometry and lighting without precomputation
+  * Volumetric temporally-recurrent irradiance cache for "infinite" bounces
+  * Ray-traced diffuse final gather for high-frequency details
+  * Ray-traced specular, falling back to diffuse after the first hit
 * Sun with ray-traced soft shadows
 * Standard PBR with GGX and roughness/metalness
   * Energy-preserving multi-scattering BRDF
@@ -45,15 +46,15 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 * GLTF mesh loading (no animations yet)
 * A render graph running it all
 
-## Technical overview
+## Technical details
 
-* [A quick presentation](https://docs.google.com/presentation/d/1LWo5TtWUAH9d62sGY9Sjmu1JqIs8BsxLbVDxLuhhX8U/edit?usp=sharing) about the renderer
+* Global illumination overview (TODO)
 * Repository highlights:
   * HLSL shaders: [`assets/shaders/`](assets/shaders)
   * Rust shaders: [`crates/lib/rust-shaders/`](crates/lib/rust-shaders)
   * Main render graph passes: [`world_render_passes.rs`](crates/lib/kajiya/src/world_render_passes.rs)
 
-## Platforms
+## Primary platforms
 
 `kajiya` currently works on a limited range of operating systems and hardware.
 
@@ -67,6 +68,20 @@ Operating systems:
 
 * Windows
 * Linux
+
+## Secondary Platforms
+
+`kajiya` has a rudimentary "RTX Off" mode which runs on a wider range of systems, but most of its visual features are disabled.
+
+Hardware:
+
+* Older GPUs with support for Vulkan 1.2
+
+Operating systems:
+
+* macOS
+
+## Dependencies
 
 ### (Some) Linux dependencies
 
@@ -85,12 +100,12 @@ To build `kajiya` and its tools, [you need Rust](https://www.rust-lang.org/tools
 There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:
 
 * Windows: `bake.cmd`
-* Linux: `./bake.sh`
+* Linux & macOS: `./bake.sh`
 
 When done, run the renderer demo (`view` app from `crates/bin/view`) via:
 
 * Windows: `build_and_run.cmd [scene_name]`
-* Linux: `./build_and_run.sh [scene_name]`
+* Linux & macOS: `./build_and_run.sh [scene_name]`
 
 Where `[scene_name]` is one of the file names in `assets/scenes`, without the `.ron` extension, e.g.:
 
@@ -157,9 +172,6 @@ To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the fol
 * Vulkan API usage is extremely basic. Resources are usually not released, and barriers aren't optimal.
 * There are hard limit on mesh data and instance counts. Exceeding those limits will result in panics and Vulkan validation errors / driver crashes.
 * Window (framebuffer) resizing is not yet implemented.
-* The voxel GI uses a fixed-size volume around the origin by default.
-  * Use `--gi-volume-scale` to change its extent in the `view` app
-  * It can be configured to use camera-centered cascades at an extra performance cost (see `CASCADE_COUNT` and `SCROLL_CASCADES` in [`csgi.rs`](../crates/lib/kajiya/src/renderers/csgi.rs`))
 * Denoising needs more work (always).
 
 ## Acknowledgments

@@ -51,10 +51,10 @@ struct FrameConstants {
     float4 sun_color_multiplier;
     float4 sky_ambient;
 
-    float world_gi_scale;
     float pre_exposure;
     float pre_exposure_prev;
     float pre_exposure_delta;
+    float pad0;
 
     float4 ircache_grid_center;
     IrcacheCascadeConstants ircache_cascades[12];
