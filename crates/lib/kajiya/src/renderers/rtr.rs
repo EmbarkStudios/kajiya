@@ -16,7 +16,6 @@ use blue_noise_sampler::spp64::*;
 
 pub struct RtrRenderer {
     temporal_tex: PingPongTemporalResource,
-    temporal2_tex: PingPongTemporalResource,
     ray_len_tex: PingPongTemporalResource,
 
     temporal_irradiance_tex: PingPongTemporalResource,
@@ -51,7 +50,6 @@ impl RtrRenderer {
     pub fn new(device: &Device) -> Result<Self, BackendError> {
         Ok(Self {
             temporal_tex: PingPongTemporalResource::new("rtr.temporal"),
-            temporal2_tex: PingPongTemporalResource::new("rtr.temporal2"),
             ray_len_tex: PingPongTemporalResource::new("rtr.ray_len"),
 
             temporal_irradiance_tex: PingPongTemporalResource::new("rtr.irradiance"),
@@ -67,13 +65,12 @@ impl RtrRenderer {
     }
 }
 
-pub struct TracedRtr<'a> {
+pub struct TracedRtr {
     pub resolved_tex: rg::Handle<Image>,
     temporal_output_tex: rg::Handle<Image>,
     history_tex: rg::Handle<Image>,
     ray_len_tex: rg::Handle<Image>,
     refl_restir_invalidity_tex: rg::Handle<Image>,
-    temporal2_tex: &'a mut PingPongTemporalResource,
 }
 
 impl RtrRenderer {
@@ -311,7 +308,6 @@ impl RtrRenderer {
             history_tex,
             ray_len_tex: ray_len_output_tex,
             refl_restir_invalidity_tex,
-            temporal2_tex: &mut self.temporal2_tex,
         }
     }
 
@@ -348,12 +344,11 @@ impl RtrRenderer {
             history_tex,
             ray_len_tex: ray_len_output_tex,
             refl_restir_invalidity_tex,
-            temporal2_tex: &mut self.temporal2_tex,
         }
     }
 }
 
-impl<'a> TracedRtr<'a> {
+impl TracedRtr {
     #[allow(clippy::too_many_arguments)]
     pub fn filter_temporal(
         mut self,
@@ -361,8 +356,6 @@ impl<'a> TracedRtr<'a> {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
-
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection temporal2"),
             "/shaders/rtr/temporal_filter2.hlsl",

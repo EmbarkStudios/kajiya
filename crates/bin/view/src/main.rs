@@ -151,6 +151,10 @@ enum LeftClickEditMode {
 
 const APP_STATE_CONFIG_FILE_PATH: &str = "view_state.ron";
 
+// If true, have an additional test/debug object in the scene, whose position can be changed by holding `Z` and moving the mouse.
+const USE_TEST_DYNAMIC_OBJECT: bool = false;
+const SPIN_TEST_DYNAMIC_OBJECT: bool = false;
+
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
 
@@ -248,15 +252,21 @@ fn main() -> anyhow::Result<()> {
         ));
     }
 
-    let car_mesh = kajiya
-        .world_renderer
-        .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::default())?;
-    let mut car_pos = Vec3::Y * -0.01;
-    let car_rot = 0.0f32;
-    let car_inst = kajiya.world_renderer.add_instance(
-        car_mesh,
-        Affine3A::from_rotation_translation(Quat::IDENTITY, car_pos),
-    );
+    let mut test_obj_pos = Vec3::Y * -0.01;
+    let mut test_obj_rot = 0.0f32;
+    let test_obj_inst;
+
+    if USE_TEST_DYNAMIC_OBJECT {
+        let test_obj_mesh = kajiya
+            .world_renderer
+            .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::default())?;
+        test_obj_inst = Some(kajiya.world_renderer.add_instance(
+            test_obj_mesh,
+            Affine3A::from_rotation_translation(Quat::IDENTITY, test_obj_pos),
+        ));
+    } else {
+        test_obj_inst = None;
+    }
 
     let mut state = persisted_app_state
         .clone()
@@ -357,13 +367,22 @@ fn main() -> anyhow::Result<()> {
             camera.update(ctx.dt_filtered);
 
             if keyboard.is_down(VirtualKeyCode::Z) {
-                car_pos.x += mouse.delta.x / 100.0;
+                test_obj_pos.x += mouse.delta.x / 100.0;
             }
-            //car_rot += 0.5 * ctx.dt;
-            ctx.world_renderer.set_instance_transform(
-                car_inst,
-                Affine3A::from_rotation_translation(Quat::from_rotation_y(car_rot), car_pos),
-            );
+
+            if SPIN_TEST_DYNAMIC_OBJECT {
+                test_obj_rot += 0.5 * ctx.dt_filtered;
+            }
+
+            if let Some(test_obj_inst) = test_obj_inst {
+                ctx.world_renderer.set_instance_transform(
+                    test_obj_inst,
+                    Affine3A::from_rotation_translation(
+                        Quat::from_rotation_y(test_obj_rot),
+                        test_obj_pos,
+                    ),
+                );
+            }
 
             if keyboard.was_just_pressed(VirtualKeyCode::Space) {
                 match ctx.world_renderer.render_mode {
