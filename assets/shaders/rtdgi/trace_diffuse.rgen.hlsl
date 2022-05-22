@@ -106,8 +106,8 @@ void main() {
             }
         #endif
 
-        candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);
-        candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);
+        candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);    // TOD: inv_pdf is always 1
+        candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);  // TODO: hit_t is redundant
         candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t - view_ray_context.ray_hit_ws(), 1);
     } else {
         const float4 reproj = reprojection_tex[hi_px];

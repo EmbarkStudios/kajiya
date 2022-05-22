@@ -111,6 +111,7 @@ void main() {
 
     // TODO: also update hit point and normal
     // TODO: does this also need a hit_t check as in rtdgi restir validation?
+    // TOD:: rename to radiance
     irradiance_history_tex[px] = float4(check_radiance, prev_irradiance_packed.a);
 
     refl_restir_invalidity_tex[px] = invalidity;

@@ -468,6 +468,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float4 hit_normal_ws_dot = float4(hit_normal_sel, -dot(hit_normal_sel, outgoing_ray.Direction));
 
+    // TODO: rename to radiance
     irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
     ray_orig_output_tex[px] = ray_orig_sel_ws;
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);

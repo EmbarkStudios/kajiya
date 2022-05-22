@@ -273,6 +273,13 @@ impl RtdgiRenderer {
             let mut rt_history_validity_pre_input_tex =
                 rg.create(gbuffer_desc.half_res().format(vk::Format::R8_UNORM));
 
+            let (mut reservoir_output_tex, mut reservoir_history_tex) =
+                self.temporal_reservoir_tex.get_output_and_history(
+                    rg,
+                    ImageDesc::new_2d(vk::Format::R32G32_UINT, gbuffer_desc.half_res().extent_2d())
+                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                );
+
             SimpleRenderPass::new_rt(
                 rg.add_pass("rtdgi validate"),
                 ShaderSource::hlsl("/shaders/rtdgi/diffuse_validate.rgen.hlsl"),
@@ -285,6 +292,7 @@ impl RtdgiRenderer {
             .read(&*half_view_normal_tex)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&reprojected_history_tex)
+            .write(&mut reservoir_history_tex)
             .read(&ray_history_tex)
             .read(reprojection_map)
             .bind_mut(ircache)
@@ -341,13 +349,6 @@ impl RtdgiRenderer {
                 validity_output_tex.desc().extent_inv_extent_2d(),
             ))
             .dispatch(validity_output_tex.desc().extent);
-
-            let (mut reservoir_output_tex, reservoir_history_tex) =
-                self.temporal_reservoir_tex.get_output_and_history(
-                    rg,
-                    ImageDesc::new_2d(vk::Format::R32G32_UINT, gbuffer_desc.half_res().extent_2d())
-                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-                );
 
             SimpleRenderPass::new_compute(
                 rg.add_pass("restir temporal"),
