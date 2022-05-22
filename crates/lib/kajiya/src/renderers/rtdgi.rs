@@ -15,7 +15,7 @@ pub struct RtdgiRenderer {
     temporal_reservoir_tex: PingPongTemporalResource,
     temporal_candidate_tex: PingPongTemporalResource,
 
-    temporal_validity_tex: PingPongTemporalResource,
+    temporal_invalidity_tex: PingPongTemporalResource,
 
     temporal2_tex: PingPongTemporalResource,
     temporal2_variance_tex: PingPongTemporalResource,
@@ -34,7 +34,7 @@ impl Default for RtdgiRenderer {
             temporal_ray_tex: PingPongTemporalResource::new("rtdgi.ray"),
             temporal_reservoir_tex: PingPongTemporalResource::new("rtdgi.reservoir"),
             temporal_candidate_tex: PingPongTemporalResource::new("rtdgi.candidate"),
-            temporal_validity_tex: PingPongTemporalResource::new("rtdgi.validity"),
+            temporal_invalidity_tex: PingPongTemporalResource::new("rtdgi.invalidity"),
             temporal2_tex: PingPongTemporalResource::new("rtdgi.temporal2"),
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
             temporal_hit_normal_tex: PingPongTemporalResource::new("rtdgi.hit_normal"),
@@ -62,7 +62,7 @@ impl RtdgiRenderer {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         reprojected_history_tex: &rg::Handle<Image>,
-        rt_history_validity_tex: &rg::Handle<Image>,
+        rt_history_invalidity_tex: &rg::Handle<Image>,
         mut temporal_output_tex: rg::Handle<Image>,
     ) -> rg::Handle<Image> {
         let (mut temporal_variance_output_tex, variance_history_tex) =
@@ -88,7 +88,7 @@ impl RtdgiRenderer {
         .read(reprojected_history_tex)
         .read(&variance_history_tex)
         .read(reprojection_map)
-        .read(rt_history_validity_tex)
+        .read(rt_history_invalidity_tex)
         .write(&mut temporal_filtered_tex)
         .write(&mut temporal_output_tex)
         .write(&mut temporal_variance_output_tex)
@@ -237,8 +237,8 @@ impl RtdgiRenderer {
 
         let half_depth_tex = gbuffer_depth.half_depth(rg);
 
-        let (mut validity_output_tex, validity_history_tex) =
-            self.temporal_validity_tex.get_output_and_history(
+        let (mut invalidity_output_tex, invalidity_history_tex) =
+            self.temporal_invalidity_tex.get_output_and_history(
                 rg,
                 Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
                     .format(vk::Format::R16G16_SFLOAT),
@@ -339,16 +339,16 @@ impl RtdgiRenderer {
                 "/shaders/rtdgi/temporal_validity_integrate.hlsl",
             )
             .read(&rt_history_validity_input_tex)
-            .read(&validity_history_tex)
+            .read(&invalidity_history_tex)
             .read(reprojection_map)
             .read(&*half_view_normal_tex)
             .read(&*half_depth_tex)
-            .write(&mut validity_output_tex)
+            .write(&mut invalidity_output_tex)
             .constants((
                 gbuffer_desc.extent_inv_extent_2d(),
-                validity_output_tex.desc().extent_inv_extent_2d(),
+                invalidity_output_tex.desc().extent_inv_extent_2d(),
             ))
-            .dispatch(validity_output_tex.desc().extent);
+            .dispatch(invalidity_output_tex.desc().extent);
 
             SimpleRenderPass::new_compute(
                 rg.add_pass("restir temporal"),
@@ -365,7 +365,7 @@ impl RtdgiRenderer {
             .read(reprojection_map)
             .read(&hit_normal_history_tex)
             .read(&candidate_history_tex)
-            .read(&validity_output_tex)
+            .read(&invalidity_output_tex)
             .write(&mut irradiance_output_tex)
             .write(&mut ray_orig_output_tex)
             .write(&mut ray_output_tex)
@@ -458,7 +458,7 @@ impl RtdgiRenderer {
             gbuffer_depth,
             reprojection_map,
             &reprojected_history_tex,
-            &validity_output_tex,
+            &invalidity_output_tex,
             temporal_output_tex,
         );
 

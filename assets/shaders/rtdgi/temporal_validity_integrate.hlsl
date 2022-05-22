@@ -60,7 +60,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             const float4 reproj = reprojection_tex[sample_px];
             const float sample_depth = half_depth_tex[sample_px_half];
 
-            if (reproj.w == 0 || inverse_depth_relative_diff(center_depth, sample_depth) > 0.1) {
+            if (reproj.w < 0 || inverse_depth_relative_diff(center_depth, sample_depth) > 0.1) {
                 edge = 0;
                 break;
             }
@@ -112,7 +112,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     //float history = history_tex[reproj_px];
 
     output_tex[px] = float2(
-        max(history * (7.0 / 8.0), invalid_blurred.x),
+        max(history * 0.75, invalid_blurred.x),
         input_tex[px]
     );
 }

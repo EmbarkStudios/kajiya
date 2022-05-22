@@ -24,7 +24,7 @@
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float2> variance_history_tex;
 [[vk::binding(3)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(4)]] Texture2D<float> rt_history_validity_tex;
+[[vk::binding(4)]] Texture2D<float2> rt_history_invalidity_tex;
 [[vk::binding(5)]] RWTexture2D<float4> output_tex;
 [[vk::binding(6)]] RWTexture2D<float4> history_output_tex;
 [[vk::binding(7)]] RWTexture2D<float2> variance_history_output_tex;
@@ -168,22 +168,18 @@ void main(uint2 px: SV_DispatchThreadID) {
                 //float w = 1;
                 float w = exp2(-0.05 * dot(offset, offset));
                 w_sum += w;
-                rt_invalid += rt_history_validity_tex[px / 2 + offset] * w;
+                rt_invalid += rt_history_invalidity_tex[px / 2 + offset] * w;
             }
         }
         rt_invalid /= w_sum;
         //rt_invalid = WaveActiveMax(rt_invalid);
     }    */
-    const float rt_invalid = sqrt(saturate(rt_history_validity_tex[px / 2]));
-
-    //float current_sample_count = min(history.a, 32);
-    float current_sample_count = min(history.a, 1024 * 16);
+    const float rt_invalid = saturate(sqrt(rt_history_invalidity_tex[px / 2].x) * 4);
+    const float current_sample_count = history.a;
 
     float clamp_box_size = 1
-        * lerp(0.25, 1.0, 1.0 - rt_invalid)
-        //* lerp(0.25, 1.0, pow(saturate(current_sample_count / 32.0), 2))
-
-        
+        * lerp(0.25, 2.0, 1.0 - rt_invalid)
+        * saturate(reproj.w)
         * 2
         ;
     clamp_box_size = max(clamp_box_size, 0.5);
@@ -256,9 +252,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output = max_sample_count / 32.0;
     //output.rgb = temporal_change * 0.1;
     //output.rgb = variance_adjusted_temporal_change * 0.1;
-    //output.rgb = rt_history_validity_tex[px / 2];
+    //output.rgb = rt_history_invalidity_tex[px / 2];
     //output.rgb = lerp(output.rgb, rt_invalid, 0.9);
     //output.rgb = lerp(output.rgb, pow(output_sample_count / 32.0, 4), 0.9);
+    //output.r = 1-reproj.w;
 
     output_tex[px] = float4(output.rgb, saturate(output_sample_count / 32.0));
 

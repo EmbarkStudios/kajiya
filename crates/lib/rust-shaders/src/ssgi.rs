@@ -223,7 +223,7 @@ pub fn temporal_filter_cs(
     let ex2 = vsum2 / wsum;
     let dev = (Vec4::ZERO.max(ex2 - ex * ex)).sqrt();
 
-    let box_size = FloatExt::lerp(0.05f32, 1.0, reproj.w);
+    let box_size = 0.5;
 
     let n_deviations = 5.0;
     let nmin = center.lerp(ex, box_size * box_size) - dev * box_size * n_deviations;
