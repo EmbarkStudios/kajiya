@@ -631,6 +631,15 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
         contrib_accum.rgb /= brdf_lut.preintegrated_reflection;
     #endif
 
+    // When sampling the BRDF in a path tracer, a certain fraction of samples
+    // taken will be invalid. In the specular filtering pipe we force them all to be valid
+    // in order to get the most out of our kernels.
+    // Here we adjust the value back to what it would be if a fraction was returned invalid
+    contrib_accum.rgb *= brdf_lut.valid_sample_fraction;
+
+    // The invalid samples are in reality multi-scater events, and here we adjust for that.
+    // Note that while the `valid_sample_fraction` is a grayscale multiplier,
+    // this is chromatic, and will cause an increase in saturation on conductors.
     contrib_accum.rgb *= brdf_lut.preintegrated_reflection_mult;
 
     ray_len_accum = exponential_unsquish(ray_len_accum, ray_squish_scale);

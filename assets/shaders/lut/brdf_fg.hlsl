@@ -1,9 +1,9 @@
 #include "../inc/brdf.hlsl"
 #include "../inc/quasi_random.hlsl"
 
-[[vk::binding(0)]] RWTexture2D<float2> output_tex;
+[[vk::binding(0)]] RWTexture2D<float3> output_tex;
 
-float2 integrate_brdf(float roughness, float ndotv) {
+float3 integrate_brdf(float roughness, float ndotv) {
     float3 wo = float3(sqrt(1.0 - ndotv * ndotv), 0, ndotv);
 
     float a = 0;
@@ -16,6 +16,9 @@ float2 integrate_brdf(float roughness, float ndotv) {
     SpecularBrdf brdf_b = brdf_a;
     brdf_b.albedo = 0.0;
 
+    // TODO: consider splitting into its own LUT, as hardly anything needs this.
+    float valid = 0;
+
     static const uint num_samples = 1024;
     for (uint i = 0; i < num_samples; ++i) {
         float2 urand = hammersley(i, num_samples);
@@ -26,10 +29,11 @@ float2 integrate_brdf(float roughness, float ndotv) {
 
             a += (v_a.value_over_pdf.x - v_b.value_over_pdf.x);
             b += v_b.value_over_pdf.x;
+            valid += 1;
         }
     }
 
-    return float2(a, b) / num_samples;
+    return float3(a, b, valid) / num_samples;
 }
 
 [numthreads(8, 8, 1)]

@@ -102,7 +102,9 @@ void main() {
 
     BrdfSample brdf_sample = specular_brdf.sample(wo, urand);
     
-#if USE_TEMPORAL_JITTER && !USE_GGX_VNDF_SAMPLING
+// VNDF still returns a lot of invalid samples on rough surfaces at F0 angles!
+// TODO: move this to a separate sample preparation compute shader
+#if USE_TEMPORAL_JITTER// && !USE_GGX_VNDF_SAMPLING
     [loop] for (uint retry_i = 0; retry_i < 4 && !brdf_sample.is_valid(); ++retry_i) {
         urand = float2(
             uint_to_u01_float(hash1_mut(rng)),
@@ -153,7 +155,7 @@ void main() {
         out1_tex[px] = float4(hit_vs, pdf);
         out2_tex[px] = float4(result.hit_normal_vs, 0);
     } else {
-        out0_tex[px] = float4(0.0.xxx, 0);
+        out0_tex[px] = float4(float3(1, 0, 1), 0);
         out1_tex[px] = 0.0.xxxx;
     }
 }

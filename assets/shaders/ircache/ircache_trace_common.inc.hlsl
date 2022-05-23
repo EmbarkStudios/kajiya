@@ -18,13 +18,7 @@ static const uint MAX_PATH_LENGTH = 1;
 static const uint SAMPLER_SEQUENCE_LENGTH = 1024;
 
 float3 sample_environment_light(float3 dir) {
-    //return 0.0.xxx;
     return sky_cube_tex.SampleLevel(sampler_llr, dir, 0).rgb;
-    /*return atmosphere_default(dir, SUN_DIRECTION);
-
-    float3 col = (dir.zyx * float3(1, 1, -1) * 0.5 + float3(0.6, 0.5, 0.5)) * 0.75;
-    col = lerp(col, 1.3.xxx * sRGB_to_luminance(col), smoothstep(-0.2, 1.0, dir.y).xxx);
-    return col;*/
 }
 
 float pack_dist(float x) {
