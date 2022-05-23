@@ -71,7 +71,10 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
                 // Allocate
 
                 uint prev = 0;
-                ircache_grid_meta_buf.InterlockedOr(sizeof(uint2) * cell_idx + sizeof(uint), IRCACHE_ENTRY_META_OCCUPIED, prev);
+                ircache_grid_meta_buf.InterlockedOr(
+                    sizeof(uint2) * cell_idx + sizeof(uint),
+                    IRCACHE_ENTRY_META_OCCUPIED | IRCACHE_ENTRY_META_JUST_ALLOCATED,
+                    prev);
 
                 if ((prev & IRCACHE_ENTRY_META_OCCUPIED) == 0) {
                     // We've allocated it!
