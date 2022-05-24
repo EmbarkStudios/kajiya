@@ -20,6 +20,8 @@
 #define USE_RTDGI 1
 
 // Loses rim lighting on rough surfaces, but can be cleaner, especially without reflection restir
+// ...
+// Some of that rim lighting seems to be rtr ReSTIR artifacts though :S Needs investigation.
 #define USE_DIFFUSE_GI_FOR_ROUGH_SPEC 0
 #define USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS 0.7
 
@@ -182,7 +184,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             rtr_radiance = lerp(
                 rtr_radiance,
                 gi_irradiance * brdf.energy_preservation.preintegrated_reflection,
-                smoothstep(USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS, 1.0, gbuffer.roughness));
+                smoothstep(USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS, lerp(USE_DIFFUSE_GI_FOR_ROUGH_SPEC_MIN_ROUGHNESS, 1.0, 0.5), gbuffer.roughness));
         }
 
         [branch]

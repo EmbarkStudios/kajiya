@@ -105,6 +105,11 @@ void main() {
             const float lum_new = sRGB_to_luminance(new_radiance);
             r.M *= clamp(lum_old / max(1e-8, lum_new), 0.03, 1.0);
 
+            // Allow the new value to be greater than the old one up to a certain scale,
+            // then dim it down by reducing `W`. It will recover over time.
+            const float allowed_luminance_increment = 10.0;
+            r.W *= clamp(lum_old / max(1e-8, lum_new) * allowed_luminance_increment, 0.01, 1.0);
+
             reservoir_tex[px] = r.as_raw();
         }
     }
