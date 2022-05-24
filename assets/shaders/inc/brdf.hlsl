@@ -180,6 +180,7 @@ struct SpecularBrdf {
     }
 
     // From https://github.com/NVIDIAGameWorks/Falcor/blob/c0729e806045731d71cfaae9d31a992ac62070e7/Source/Falcor/Experimental/Scene/Material/Microfacet.slang
+    // https://jcgt.org/published/0007/04/01/paper.pdf
     NdfSample sample_vndf(float alpha, float3 wo, float2 urand) {
         float alpha_x = alpha, alpha_y = alpha;
         float a2 = alpha_x * alpha_y;
