@@ -213,7 +213,8 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
         const float scale_factor = eye_to_surf_dist * eye_ray_z_scale * frame_constants.view_constants.clip_to_view[1][1];
 
         // Clamp the kernel size so we don't sample the same point, but also don't thrash all the caches.
-        kernel_size_ws = clamp(kernel_size_ws, output_tex_size.w * 2.0 * scale_factor, 0.1 * scale_factor);
+        kernel_size_ws = min(kernel_size_ws, 0.1 * scale_factor);
+        kernel_size_ws = max(kernel_size_ws, output_tex_size.w * 4.0 * scale_factor);
     }
     
     float3 kernel_t1, kernel_t2;
@@ -267,8 +268,8 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                     // roughness check is a HACK. it's only there because not offsetting
                     // the center pixel on rough surfaces causes pixellation.
                     // it can happen for thin features, or features seen at an angle.
-                    && (contrib_accum.w > 1e-8 || gbuffer.roughness > 0.1)
-//                    && reprojection_params.z == 1.0
+                    //&& (contrib_accum.w > 1e-8 || gbuffer.roughness > 0.1)
+                    && contrib_accum.w > 1e-8
                     ;
 
                 if (offset_center_pixel) {
@@ -295,18 +296,24 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
         }
 
         const int2 sample_px = half_px + sample_offset;
+
+        // Only used in the non-ReSTIR path
         const float sample_depth = half_depth_tex[sample_px];
+
+        // Only used in the non-ReSTIR path
         const float4 packed0 = hit0_tex[sample_px];
 
         const bool is_valid_sample = USE_RESTIR || (packed0.w > 0 && sample_depth != 0);
 
         if (is_valid_sample) {
+            float rejection_bias = 1;
+
             const float2 sample_uv = get_uv(
                 sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
                 output_tex_size);
 
-            //const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
-            //GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
+            // const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
+            // GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
             float3 sample_hit_normal_vs;    // only valid without ReSTIR
             if (!USE_RESTIR) {
@@ -351,6 +358,16 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
                 sample_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
+                const float sample_roughness = restir_ray_orig_tex[spx].w;
+
+                if (sample_roughness > gbuffer.roughness * 4) {
+                    // Reject samples with much lower roughness
+                    // TODO: find why this is necessar; without it, smooth surfaces surrounded by
+                    // rough surfaces can get darkened. Looks like the bent lobe PDF calculation might be at fault.
+
+                    continue;
+                }
+
                 const float3 sample_hit_ws = restir_ray_tex[spx].xyz + sample_origin_ws;
                 sample_origin_vs = position_world_to_view(sample_origin_ws);
 
@@ -452,8 +469,6 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 sample_hit_vs = center_to_hit_vs + refl_ray_origin_vs;
             }
 
-            float rejection_bias = 1;
-
             const float3 wi = normalize(mul(direction_view_to_world(center_to_hit_vs), tangent_to_world));
 
             if (USE_RESTIR) {
@@ -484,8 +499,11 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
             // widely different samples than the center.
             rejection_bias *= dot(normal_vs, sample_normal_vs) > 0.7;
 
-            // Depth
-            rejection_bias *= exp2(-30.0 * abs(depth / sample_depth - 1.0));
+            // Depth-based rejection
+            {
+                const float depth_diff = abs(refl_ray_origin_vs.z - sample_origin_vs.z) / max(1e-10, kernel_size_ws);
+                rejection_bias *= exp2(-max(0.3, normal_vs.z) * depth_diff * depth_diff);
+            }
         #endif
 
         float center_to_hit_dist2 = dot(center_to_hit_vs, center_to_hit_vs);

@@ -303,12 +303,12 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            const float4 prev_ray_orig_and_dist = ray_orig_history_tex[spx] + float4(get_prev_eye_position(), 0);
+            const float4 prev_ray_orig_and_roughness = ray_orig_history_tex[spx] + float4(get_prev_eye_position(), 0);
 
 #if 0
             // TODO: nuke?. the ndf and jacobian-based rejection seem enough
             // except when also using spatial reservoir samples
-            if (length(prev_ray_orig_and_dist.xyz - refl_ray_origin_ws) > 0.1 * -refl_ray_origin_vs.z) {
+            if (length(prev_ray_orig_and_roughness.xyz - refl_ray_origin_ws) > 0.1 * -refl_ray_origin_vs.z) {
                 // Reject disocclusions
                 continue;
             }
@@ -325,10 +325,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float4 sample_hit_ws_and_pdf_packed = ray_history_tex[spx];
             const float prev_pdf = sample_hit_ws_and_pdf_packed.a;
 
-            const float3 sample_hit_ws = sample_hit_ws_and_pdf_packed.xyz + prev_ray_orig_and_dist.xyz;
+            const float3 sample_hit_ws = sample_hit_ws_and_pdf_packed.xyz + prev_ray_orig_and_roughness.xyz;
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-            const float prev_dist = prev_ray_orig_and_dist.w;
+            const float prev_dist = length(sample_hit_ws_and_pdf_packed.xyz);
             //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: needs `spx` since `hit_normal_history_tex` is not reprojected.
@@ -485,7 +485,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
 // TODO: was `refl_ray_origin_ws`; what should it be?
                 //ray_orig_sel = refl_ray_origin_ws;
-                ray_orig_sel = prev_ray_orig_and_dist.xyz;
+                ray_orig_sel = prev_ray_orig_and_roughness.xyz;
 
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
@@ -630,7 +630,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_cos_theta_for_fp16(cos_theta));
-    ray_orig_output_tex[px] = float4(ray_orig_sel - get_eye_position(), length(ray_hit_sel_ws - ray_orig_sel));
+    ray_orig_output_tex[px] = float4(ray_orig_sel - get_eye_position(), gbuffer.roughness);
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel, pdf_sel);
