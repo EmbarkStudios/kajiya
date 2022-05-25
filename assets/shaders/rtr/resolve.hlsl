@@ -355,16 +355,20 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
 
             if (USE_RESTIR) {
                 uint2 rpx = sample_px;
-                Reservoir1spp r = Reservoir1spp::from_raw(restir_reservoir_tex[rpx]);
+                const uint2 reservoir_raw = restir_reservoir_tex[rpx];
+                Reservoir1spp r = Reservoir1spp::from_raw(reservoir_raw);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
                 sample_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
                 const float sample_roughness = restir_ray_orig_tex[spx].w;
 
-                if (sample_roughness > gbuffer.roughness * 4) {
+                if (
+                    // Reject invalid, e.g. on sky.
+                    reservoir_raw.x == 0
                     // Reject samples with much lower roughness
                     // TODO: find why this is necessar; without it, smooth surfaces surrounded by
                     // rough surfaces can get darkened. Looks like the bent lobe PDF calculation might be at fault.
-
+                    || sample_roughness > gbuffer.roughness * 2)
+                {
                     continue;
                 }
 
