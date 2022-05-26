@@ -1420,7 +1420,7 @@ checksum = "744c24117572563a98a7e9168a5ac1ee4a1ca7f702211258797bbe0ed0346c3c"
 
 [[package]]
 name = "kajiya"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "array-init",
