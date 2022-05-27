@@ -1,7 +1,6 @@
 use anyhow::Context;
 
 use dolly::prelude::*;
-use imgui::im_str;
 use kajiya::{
     rg::GraphDebugHook,
     world_renderer::{AddMeshOptions, InstanceHandle, MeshHandle, WorldRenderer},
@@ -12,25 +11,25 @@ use crate::{opt::Opt, scene::SceneDesc, PersistedState};
 
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
-const MAX_FPS_LIMIT: u32 = 256;
+pub const MAX_FPS_LIMIT: u32 = 256;
 
 pub struct RuntimeState {
-    camera: CameraRig,
-    mouse: MouseState,
-    keyboard: KeyboardState,
-    keymap: KeyboardMap,
+    pub camera: CameraRig,
+    pub mouse: MouseState,
+    pub keyboard: KeyboardState,
+    pub keymap: KeyboardMap,
 
-    render_instances: Vec<InstanceHandle>,
+    pub render_instances: Vec<InstanceHandle>,
 
-    show_gui: bool,
-    sun_direction_interp: Vec3,
-    left_click_edit_mode: LeftClickEditMode,
+    pub show_gui: bool,
+    pub sun_direction_interp: Vec3,
+    pub left_click_edit_mode: LeftClickEditMode,
 
-    max_fps: u32,
-    locked_rg_debug_hook: Option<GraphDebugHook>,
-    grab_cursor_pos: winit::dpi::PhysicalPosition<f64>,
+    pub max_fps: u32,
+    pub locked_rg_debug_hook: Option<GraphDebugHook>,
+    pub grab_cursor_pos: winit::dpi::PhysicalPosition<f64>,
 
-    reset_path_tracer: bool,
+    pub reset_path_tracer: bool,
 }
 
 impl RuntimeState {
@@ -325,201 +324,6 @@ impl RuntimeState {
         }*/
     }
 
-    fn do_gui(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
-        if self.keyboard.was_just_pressed(VirtualKeyCode::Tab) {
-            self.show_gui = !self.show_gui;
-        }
-
-        ctx.world_renderer.rg_debug_hook = self.locked_rg_debug_hook.clone();
-
-        if self.show_gui {
-            ctx.imgui.take().unwrap().frame(|ui| {
-                if imgui::CollapsingHeader::new(im_str!("Tweaks"))
-                    .default_open(true)
-                    .build(ui)
-                {
-                    imgui::Drag::<f32>::new(im_str!("EV shift"))
-                        .range(-8.0..=12.0)
-                        .speed(0.01)
-                        .build(ui, &mut persisted.exposure.ev_shift);
-
-                    ui.checkbox(
-                        im_str!("Use dynamic exposure"),
-                        &mut persisted.exposure.use_dynamic_adaptation,
-                    );
-
-                    imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
-                        .range(0.0..=10.0)
-                        .speed(0.1)
-                        .build(ui, &mut persisted.light.emissive_multiplier);
-
-                    ui.checkbox(
-                        im_str!("Enable emissive"),
-                        &mut persisted.light.enable_emissive,
-                    );
-
-                    imgui::Drag::<f32>::new(im_str!("Light intensity multiplier"))
-                        .range(0.0..=1000.0)
-                        .speed(1.0)
-                        .build(ui, &mut persisted.light.local_lights.multiplier);
-
-                    imgui::Drag::<f32>::new(im_str!("Camera speed"))
-                        .range(0.0..=10.0)
-                        .speed(0.025)
-                        .build(ui, &mut persisted.movement.camera_speed);
-
-                    imgui::Drag::<f32>::new(im_str!("Camera smoothness"))
-                        .range(0.0..=20.0)
-                        .speed(0.1)
-                        .build(ui, &mut persisted.movement.camera_smoothness);
-
-                    imgui::Drag::<f32>::new(im_str!("Sun rotation smoothness"))
-                        .range(0.0..=20.0)
-                        .speed(0.1)
-                        .build(ui, &mut persisted.movement.sun_rotation_smoothness);
-
-                    imgui::Drag::<f32>::new(im_str!("Field of view"))
-                        .range(1.0..=120.0)
-                        .speed(0.25)
-                        .build(ui, &mut persisted.camera.vertical_fov);
-
-                    imgui::Drag::<f32>::new(im_str!("Sun size"))
-                        .range(0.0..=10.0)
-                        .speed(0.02)
-                        .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
-
-                    /*ui.checkbox(
-                        im_str!("Show world radiance cache"),
-                        &mut ctx.world_renderer.debug_show_wrc,
-                    );*/
-
-                    /*if ui.radio_button_bool(
-                        im_str!("Move sun"),
-                        left_click_edit_mode == LeftClickEditMode::MoveSun,
-                    ) {
-                        left_click_edit_mode = LeftClickEditMode::MoveSun;
-                    }
-
-                    if ui.radio_button_bool(
-                        im_str!("Move local lights"),
-                        left_click_edit_mode == LeftClickEditMode::MoveLocalLights,
-                    ) {
-                        left_click_edit_mode = LeftClickEditMode::MoveLocalLights;
-                    }
-
-                    imgui::Drag::<u32>::new(im_str!("Light count"))
-                        .range(0..=10)
-                        .build(ui, &mut state.lights.count);*/
-
-                    ui.checkbox(
-                        im_str!("Scroll irradiance cache"),
-                        &mut ctx.world_renderer.ircache.enable_scroll,
-                    );
-
-                    imgui::Drag::<u32>::new(im_str!("GI spatial reuse passes"))
-                        .range(1..=3)
-                        .build(ui, &mut ctx.world_renderer.rtdgi.spatial_reuse_pass_count);
-
-                    #[cfg(feature = "dlss")]
-                    {
-                        ui.checkbox(im_str!("Use DLSS"), &mut ctx.world_renderer.use_dlss);
-                    }
-                }
-
-                if imgui::CollapsingHeader::new(im_str!("Debug"))
-                    .default_open(false)
-                    .build(ui)
-                {
-                    if ui.radio_button_bool(
-                        im_str!("Scene geometry"),
-                        ctx.world_renderer.debug_mode == RenderDebugMode::None,
-                    ) {
-                        ctx.world_renderer.debug_mode = RenderDebugMode::None;
-                    }
-
-                    /*if ui.radio_button_bool(
-                        im_str!("World radiance cache"),
-                        ctx.world_renderer.debug_mode == RenderDebugMode::WorldRadianceCache,
-                    ) {
-                        ctx.world_renderer.debug_mode = RenderDebugMode::WorldRadianceCache;
-                    }*/
-
-                    imgui::ComboBox::new(im_str!("Shading")).build_simple_string(
-                        ui,
-                        &mut ctx.world_renderer.debug_shading_mode,
-                        &[
-                            im_str!("Default"),
-                            im_str!("No base color"),
-                            im_str!("Diffuse GI"),
-                            im_str!("Reflections"),
-                            im_str!("RTX OFF"),
-                            im_str!("Irradiance cache"),
-                        ],
-                    );
-
-                    imgui::Drag::<u32>::new(im_str!("Max FPS"))
-                        .range(1..=MAX_FPS_LIMIT)
-                        .build(ui, &mut self.max_fps);
-
-                    ui.checkbox(im_str!("Allow pass overlap"), unsafe {
-                        &mut kajiya::rg::RG_ALLOW_PASS_OVERLAP
-                    });
-                }
-
-                if imgui::CollapsingHeader::new(im_str!("GPU passes"))
-                    .default_open(true)
-                    .build(ui)
-                {
-                    let gpu_stats = gpu_profiler::get_stats();
-                    ui.text(format!("CPU frame time: {:.3}ms", ctx.dt_filtered * 1000.0));
-
-                    let ordered_scopes = gpu_stats.get_ordered();
-                    let gpu_time_ms: f64 = ordered_scopes.iter().map(|(_, ms)| ms).sum();
-
-                    ui.text(format!("GPU frame time: {:.3}ms", gpu_time_ms));
-
-                    for (scope, ms) in ordered_scopes {
-                        if scope.name == "debug" || scope.name.starts_with('_') {
-                            continue;
-                        }
-
-                        let style = self.locked_rg_debug_hook.as_ref().and_then(|hook| {
-                            if hook.render_scope == scope {
-                                Some(ui.push_style_color(
-                                    imgui::StyleColor::Text,
-                                    [1.0, 1.0, 0.1, 1.0],
-                                ))
-                            } else {
-                                None
-                            }
-                        });
-
-                        ui.text(format!("{}: {:.3}ms", scope.name, ms));
-
-                        if let Some(style) = style {
-                            style.pop(ui);
-                        }
-
-                        if ui.is_item_hovered() {
-                            ctx.world_renderer.rg_debug_hook = Some(kajiya::rg::GraphDebugHook {
-                                render_scope: scope.clone(),
-                            });
-
-                            if ui.is_item_clicked(imgui::MouseButton::Left) {
-                                if self.locked_rg_debug_hook == ctx.world_renderer.rg_debug_hook {
-                                    self.locked_rg_debug_hook = None;
-                                } else {
-                                    self.locked_rg_debug_hook =
-                                        ctx.world_renderer.rg_debug_hook.clone();
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-        }
-    }
-
     pub fn frame(
         &mut self,
         mut ctx: FrameContext,
@@ -588,7 +392,7 @@ impl RuntimeState {
 }
 
 #[derive(PartialEq, Eq)]
-enum LeftClickEditMode {
+pub enum LeftClickEditMode {
     MoveSun,
     //MoveLocalLights,
 }
