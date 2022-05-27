@@ -1,16 +1,17 @@
-use kajiya_simple::{Quat, Vec3, Vec3Swizzles};
+use kajiya_simple::{Mat2, Quat, Vec2, Vec3, Vec3Swizzles};
+
+use crate::misc::smoothstep;
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SunState {
-    // Not normalized. The scale is relevant to user input non-linearity.
-    pub towards_sun: Vec3,
+    pub controller_xz: Vec2,
     pub size_multiplier: f32,
 }
 
 impl Default for SunState {
     fn default() -> Self {
         Self {
-            towards_sun: Vec3::Y,
+            controller_xz: Vec2::ZERO,
             size_multiplier: 1.0,
         }
     }
@@ -18,39 +19,51 @@ impl Default for SunState {
 
 impl SunState {
     pub fn towards_sun(&self) -> Vec3 {
-        self.towards_sun.normalize()
+        let mut xz = self.controller_xz;
+        let len = xz.length();
+
+        let ysgn = if len > 1.0 {
+            // First outer ring: the sun goes below the horizon
+            xz *= (2.0 - len) / len;
+            -1.0
+        } else {
+            // Inner disk
+            1.0
+        };
+
+        const SQUISH: f32 = 0.2;
+        let y = SQUISH * ysgn * (1.0 - xz.length_squared());
+        Vec3::new(xz.x, y, xz.y).normalize()
     }
 
     pub fn rotate(&mut self, ref_frame: &Quat, delta_x: f32, delta_y: f32) {
-        // Project to the XZ plane, disregarding the Y component
-        let mut xz = self.towards_sun.xz();
-
-        // If the sun is below the horizon, we'll flip the movement direction
-        let mut ysgn = if self.towards_sun.y >= 0.0 { 1.0 } else { -1.0 };
+        let mut xz = self.controller_xz;
 
         const MOVE_SPEED: f32 = 0.2;
 
-        // Working in projective geometry, add the new input
-        xz += (*ref_frame * Vec3::new(-delta_x, 0.0, -delta_y) * (ysgn * MOVE_SPEED)).xz();
+        let xz_norm = xz.normalize_or_zero();
 
-        // Our projective space is a unit disk with an associated sign. If we go outside the disk,
-        // we wrap around and flip the sign, putting the sun on the other side of the horizon.
+        // The controller has a singularity in the second outer ring.
+        // This rotation will kick it out.
+        let rotation_strength = smoothstep(1.2, 1.5, xz.length());
+        let delta = *ref_frame * Vec3::new(-delta_x, 0.0, -delta_y);
+        let move_align = delta.xz().perp_dot(xz_norm);
+
+        // Working in projective geometry, add the new input
+        xz += (delta * MOVE_SPEED).xz();
+
+        let rm = Mat2::from_angle(move_align * rotation_strength);
+        xz = rm * xz;
+
         {
             let len = xz.length();
-            if len > 1.0 {
-                ysgn *= -1.0;
-
-                // Reflect off the edge of the disk
-                xz *= (2.0 - len) / len;
+            if len > 2.0 {
+                // Second outer ring; reflect to the other side.
+                xz *= -(4.0 - len) / len;
             }
         }
 
-        // Parabola-shaped Y projection giving flat and close-to-linear control
-        // with the sun high above, and a gentle roll-off towards the horizon.
-        const SQUISH: f32 = 0.3;
-        let y = SQUISH * ysgn * (1.0 - xz.length_squared());
-
-        self.towards_sun = Vec3::new(xz.x, y, xz.y);
+        self.controller_xz = xz;
     }
 }
 
@@ -63,8 +76,10 @@ pub struct LocalLightsState {
     pub multiplier: f32,
 }
 
-trait ShouldResetPathTracer {
-    fn should_reset_path_tracer(&self, other: &Self) -> bool;
+pub trait ShouldResetPathTracer {
+    fn should_reset_path_tracer(&self, _: &Self) -> bool {
+        false
+    }
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -120,6 +135,7 @@ impl Default for LightState {
 impl ShouldResetPathTracer for LightState {
     fn should_reset_path_tracer(&self, other: &Self) -> bool {
         self.emissive_multiplier != other.emissive_multiplier
+            || self.enable_emissive != other.enable_emissive
             || self.sun != other.sun
             || self.local_lights != other.local_lights
     }
@@ -137,10 +153,12 @@ impl Default for MovementState {
         Self {
             camera_speed: 2.5,
             camera_smoothness: 1.0,
-            sun_rotation_smoothness: 1.0,
+            sun_rotation_smoothness: 0.0,
         }
     }
 }
+
+impl ShouldResetPathTracer for MovementState {}
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExposureState {
@@ -158,10 +176,21 @@ impl Default for ExposureState {
     }
 }
 
-#[derive(Default, serde::Serialize, serde::Deserialize)]
+impl ShouldResetPathTracer for ExposureState {}
+
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PersistedState {
     pub camera: CameraState,
-    pub exposure: ExposureState,
     pub light: LightState,
+    pub exposure: ExposureState,
     pub movement: MovementState,
+}
+
+impl ShouldResetPathTracer for PersistedState {
+    fn should_reset_path_tracer(&self, other: &Self) -> bool {
+        self.camera.should_reset_path_tracer(&other.camera)
+            || self.exposure.should_reset_path_tracer(&other.exposure)
+            || self.light.should_reset_path_tracer(&other.light)
+            || self.movement.should_reset_path_tracer(&other.movement)
+    }
 }

@@ -83,7 +83,7 @@ void main() {
         prev = RESET_ACCUMULATION ? 0 : output_tex[px];
     }
 
-    if (prev.w < 10000)
+    if (prev.w < 1000)
     {
         float4 radiance_sample_count_packed = 0.0;
         uint rng = hash_combine2(hash_combine2(px.x, hash1(px.y)), frame_constants.frame_index);

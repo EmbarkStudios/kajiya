@@ -7,7 +7,7 @@ use kajiya::{
 };
 use kajiya_simple::*;
 
-use crate::{opt::Opt, scene::SceneDesc, PersistedState};
+use crate::{opt::Opt, persisted::ShouldResetPathTracer as _, scene::SceneDesc, PersistedState};
 
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
@@ -347,6 +347,8 @@ impl RuntimeState {
         self.keyboard.update(ctx.events);
         self.mouse.update(ctx.events);
 
+        let orig_persisted_state = persisted.clone();
+
         /*if state.keyboard.was_just_pressed(VirtualKeyCode::Delete) {
             if let Some(persisted_app_state) = persisted_app_state.as_ref() {
                 *state = persisted_app_state.clone();
@@ -368,10 +370,9 @@ impl RuntimeState {
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
 
-        // TODO
-        /*if state.should_reset_path_tracer(&prev_state) {
-            reset_path_tracer = true;
-        }*/
+        if persisted.should_reset_path_tracer(&orig_persisted_state) {
+            self.reset_path_tracer = true;
+        }
 
         // Reset accumulation of the path tracer whenever the camera moves
         if (self.reset_path_tracer || self.keyboard.was_just_pressed(VirtualKeyCode::Back))
@@ -403,12 +404,4 @@ impl RuntimeState {
 pub enum LeftClickEditMode {
     MoveSun,
     //MoveLocalLights,
-}
-
-#[allow(dead_code)]
-fn smoothstep(edge0: f32, edge1: f32, mut x: f32) -> f32 {
-    // Scale, bias and saturate x to 0..1 range
-    x = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
-    // Evaluate polynomial
-    x * x * (3.0 - 2.0 * x)
 }

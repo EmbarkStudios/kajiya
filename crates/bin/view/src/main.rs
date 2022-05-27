@@ -1,4 +1,5 @@
 mod gui;
+mod misc;
 mod opt;
 mod persisted;
 mod runtime;
