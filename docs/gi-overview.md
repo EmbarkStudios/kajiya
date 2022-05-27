@@ -112,6 +112,8 @@ The output of this pass is not merely radiance but also:
 
 The results are not used directly for lighting calculations, but fed into [ReSTIR][ReSTIR paper] reservoirs.
 
+_ReSTIR ELI5: Each reservoir remembers its favorite sample. Every frame (ish) you feed new candidates into reservoirs, and they maybe change their minds. They can also gossip between each other (spatial resampling). `W` makes the math happy. `M` controls the length of the reservoirs' memory. With just the temporal part, you get slowdown of noise, but lower variance; that means slower temporal convergence though! Spatial resampling speeds it up again because neighbors likely contain "just as good" samples, and favorites flip often again. Spatial reduces quality unless you're VERY careful and also use ray tracing to check visibility. Clamp `M` to reduce the reservoirs' memory, and don't feed spatial back into temporal unless starved for samples._
+
 One-sample reservoirs are stored at half resolution, and along with them, additional information needed for ReSTIR:
 * Origin of the ray currently selected by the reservoir;
 * Incident radiance seen through the selected ray;
