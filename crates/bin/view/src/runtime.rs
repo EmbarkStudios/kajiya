@@ -135,18 +135,7 @@ impl RuntimeState {
         Ok(())
     }
 
-    pub fn frame(
-        &mut self,
-        mut ctx: FrameContext,
-        persisted: &mut PersistedState,
-    ) -> WorldFrameDesc {
-        // Limit framerate. Not particularly precise.
-        if self.max_fps != MAX_FPS_LIMIT {
-            std::thread::sleep(std::time::Duration::from_micros(
-                1_000_000 / self.max_fps as u64,
-            ));
-        }
-
+    fn update_camera(&mut self, persisted: &mut PersistedState, ctx: &FrameContext) {
         let smooth = self.camera.driver_mut::<Smooth>();
         if ctx.world_renderer.render_mode == RenderMode::Reference {
             smooth.position_smoothness = 0.0;
@@ -155,9 +144,6 @@ impl RuntimeState {
             smooth.position_smoothness = persisted.movement.camera_smoothness;
             smooth.rotation_smoothness = persisted.movement.camera_smoothness;
         }
-
-        self.keyboard.update(ctx.events);
-        self.mouse.update(ctx.events);
 
         // When starting camera rotation, hide the mouse cursor, and capture it to the window.
         if (self.mouse.buttons_pressed & (1 << 2)) != 0 {
@@ -200,52 +186,19 @@ impl RuntimeState {
             .translate(move_vec * ctx.dt_filtered * persisted.movement.camera_speed);
         self.camera.update(ctx.dt_filtered);
 
-        /*if self.keyboard.is_down(VirtualKeyCode::Z) {
-            test_obj_pos.x += mouse.delta.x / 100.0;
-        }
+        persisted.camera.position = self.camera.final_transform.position;
+        persisted.camera.rotation = self.camera.final_transform.rotation;
 
-        if SPIN_TEST_DYNAMIC_OBJECT {
-            test_obj_rot += 0.5 * ctx.dt_filtered;
-        }
-
-        if let Some(test_obj_inst) = test_obj_inst {
-            ctx.world_renderer.set_instance_transform(
-                test_obj_inst,
-                Affine3A::from_rotation_translation(
-                    Quat::from_rotation_y(test_obj_rot),
-                    test_obj_pos,
-                ),
+        if self.keyboard.was_just_pressed(VirtualKeyCode::C) {
+            println!(
+                "position: {}, look_at: {}",
+                persisted.camera.position,
+                persisted.camera.position + persisted.camera.rotation * -Vec3::Z,
             );
-        }*/
-
-        if self.keyboard.was_just_pressed(VirtualKeyCode::Space) {
-            match ctx.world_renderer.render_mode {
-                RenderMode::Standard => {
-                    //camera.convergence_sensitivity = 1.0;
-                    ctx.world_renderer.render_mode = RenderMode::Reference;
-                }
-                RenderMode::Reference => {
-                    //camera.convergence_sensitivity = 0.0;
-                    ctx.world_renderer.render_mode = RenderMode::Standard;
-                }
-            };
         }
+    }
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::L) {
-            persisted.light.enable_emissive = !persisted.light.enable_emissive;
-        }
-
-        /*if state.keyboard.was_just_pressed(VirtualKeyCode::Delete) {
-            if let Some(persisted_app_state) = persisted_app_state.as_ref() {
-                *state = persisted_app_state.clone();
-
-                camera
-                    .driver_mut::<YawPitch>()
-                    .set_rotation_quat(state.camera_rotation);
-                camera.driver_mut::<Position>().position = state.camera_position;
-            }
-        }*/
-
+    fn update_sun(&mut self, persisted: &mut PersistedState, ctx: &FrameContext) {
         if self.mouse.buttons_held & 1 != 0 {
             let theta_delta =
                 (self.mouse.delta.x / ctx.render_extent[0] as f32) * -std::f32::consts::TAU;
@@ -263,13 +216,6 @@ impl RuntimeState {
             }
         }
 
-        /*if self.keyboard.is_down(VirtualKeyCode::Z) {
-            persisted.light.local_lights.distance /= 0.99;
-        }
-        if self.keyboard.is_down(VirtualKeyCode::X) {
-            persisted.light.local_lights.distance *= 0.99;
-        }*/
-
         //state.sun.phi += dt;
         //state.sun.phi %= std::f32::consts::TAU;
 
@@ -286,6 +232,32 @@ impl RuntimeState {
 
         self.sun_direction_interp =
             Vec3::lerp(self.sun_direction_interp, sun_direction, sun_interp_t).normalize();
+    }
+
+    fn update_lights(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
+        if self.keyboard.was_just_pressed(VirtualKeyCode::Space) {
+            match ctx.world_renderer.render_mode {
+                RenderMode::Standard => {
+                    //camera.convergence_sensitivity = 1.0;
+                    ctx.world_renderer.render_mode = RenderMode::Reference;
+                }
+                RenderMode::Reference => {
+                    //camera.convergence_sensitivity = 0.0;
+                    ctx.world_renderer.render_mode = RenderMode::Standard;
+                }
+            };
+        }
+
+        if self.keyboard.was_just_pressed(VirtualKeyCode::L) {
+            persisted.light.enable_emissive = !persisted.light.enable_emissive;
+        }
+
+        /*if self.keyboard.is_down(VirtualKeyCode::Z) {
+            persisted.light.local_lights.distance /= 0.99;
+        }
+        if self.keyboard.is_down(VirtualKeyCode::X) {
+            persisted.light.local_lights.distance *= 0.99;
+        }*/
 
         /*#[allow(clippy::comparison_chain)]
         if light_instances.len() > state.lights.count as usize {
@@ -319,20 +291,43 @@ impl RuntimeState {
                 .get_instance_dynamic_parameters_mut(*inst)
                 .emissive_multiplier = state.lights.multiplier;
         }*/
+    }
 
-        persisted.camera.position = self.camera.final_transform.position;
-        persisted.camera.rotation = self.camera.final_transform.rotation;
+    fn update_objects(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
+        let emissive_toggle_mult = if persisted.light.enable_emissive {
+            1.0
+        } else {
+            0.0
+        };
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::Tab) {
-            self.show_gui = !self.show_gui;
+        for inst in &self.render_instances {
+            ctx.world_renderer
+                .get_instance_dynamic_parameters_mut(*inst)
+                .emissive_multiplier = persisted.light.emissive_multiplier * emissive_toggle_mult;
         }
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::C) {
-            println!(
-                "position: {}, look_at: {}",
-                persisted.camera.position,
-                persisted.camera.position + persisted.camera.rotation * -Vec3::Z,
+        /*if self.keyboard.is_down(VirtualKeyCode::Z) {
+            test_obj_pos.x += mouse.delta.x / 100.0;
+        }
+
+        if SPIN_TEST_DYNAMIC_OBJECT {
+            test_obj_rot += 0.5 * ctx.dt_filtered;
+        }
+
+        if let Some(test_obj_inst) = test_obj_inst {
+            ctx.world_renderer.set_instance_transform(
+                test_obj_inst,
+                Affine3A::from_rotation_translation(
+                    Quat::from_rotation_y(test_obj_rot),
+                    test_obj_pos,
+                ),
             );
+        }*/
+    }
+
+    fn do_gui(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
+        if self.keyboard.was_just_pressed(VirtualKeyCode::Tab) {
+            self.show_gui = !self.show_gui;
         }
 
         ctx.world_renderer.rg_debug_hook = self.locked_rg_debug_hook.clone();
@@ -523,18 +518,40 @@ impl RuntimeState {
                 }
             });
         }
+    }
 
-        let emissive_toggle_mult = if persisted.light.enable_emissive {
-            1.0
-        } else {
-            0.0
-        };
-
-        for inst in &self.render_instances {
-            ctx.world_renderer
-                .get_instance_dynamic_parameters_mut(*inst)
-                .emissive_multiplier = persisted.light.emissive_multiplier * emissive_toggle_mult;
+    pub fn frame(
+        &mut self,
+        mut ctx: FrameContext,
+        persisted: &mut PersistedState,
+    ) -> WorldFrameDesc {
+        // Limit framerate. Not particularly precise.
+        if self.max_fps != MAX_FPS_LIMIT {
+            std::thread::sleep(std::time::Duration::from_micros(
+                1_000_000 / self.max_fps as u64,
+            ));
         }
+
+        self.keyboard.update(ctx.events);
+        self.mouse.update(ctx.events);
+
+        /*if state.keyboard.was_just_pressed(VirtualKeyCode::Delete) {
+            if let Some(persisted_app_state) = persisted_app_state.as_ref() {
+                *state = persisted_app_state.clone();
+
+                camera
+                    .driver_mut::<YawPitch>()
+                    .set_rotation_quat(state.camera_rotation);
+                camera.driver_mut::<Position>().position = state.camera_position;
+            }
+        }*/
+
+        self.do_gui(persisted, &mut ctx);
+        self.update_lights(persisted, &mut ctx);
+        self.update_objects(persisted, &mut ctx);
+
+        self.update_camera(persisted, &ctx);
+        self.update_sun(persisted, &ctx);
 
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
