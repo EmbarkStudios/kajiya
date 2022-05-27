@@ -125,3 +125,11 @@ impl Default for ExposureState {
         }
     }
 }
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
+pub struct PersistedState {
+    pub camera: CameraState,
+    pub exposure: ExposureState,
+    pub light: LightState,
+    pub movement: MovementState,
+}
