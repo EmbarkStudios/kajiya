@@ -351,6 +351,40 @@ They're denoised using a slightly modified version of AMD's [FidelityFX Shadow D
 
 The denoised shadow mask is used in a deferred pass, and attenuates both the diffuse and specular contribution from the sun (sorry, @self_shadow...)
 
+# Miscellaneous
+
+## Screen-space ambient occlusion: ~0.17ms
+
+`kajiya` uses screen-space ambient occlusion, but not for directly modulating any lighting. Instead, the AO informs certain passes, e.g. as a cross-bilateral guide in indirect diffuse denoising, and for determining the kernel radius in spatial reservoir resampling.
+
+It is based on [GTAO](https://iryoku.com/downloads/Practical-Realtime-Strategies-for-Accurate-Indirect-Occlusion.pdf), but keeps the radius fixed in screen-space. Due to how it's used, we can get away with low sample counts and sloppy denoising:
+
+![image](https://user-images.githubusercontent.com/16522064/170668256-bf380f87-0663-49d2-87ab-00d970080580.png)
+
+Without using a feature guide like this, it's easy to over-filter detail:
+
+![image](https://user-images.githubusercontent.com/16522064/170670833-d15f8389-a808-4019-986f-7613aedbdb0e.png)
+
+With the cheap and simple SSAO-based guiding, we get better feature definition:
+
+![image](https://user-images.githubusercontent.com/16522064/170670955-d6703c87-85a2-4b3b-8882-140b17f54228.png)
+
+Note that normally, `kajiya` uses very little in terms of spatial filtering, but it's forced to do it when ReSTIR reservoirs are starved for samples (e.g. upon camera jumps). If we force the spatial filters to actually run, the difference is a lot more pronounced.
+
+Without the SSAO guide:
+
+![image](https://user-images.githubusercontent.com/16522064/170674450-f55baa2b-afc7-482e-9699-fabcb08faf41.png)
+
+And with:
+
+![image](https://user-images.githubusercontent.com/16522064/170674525-4d480d28-ff54-4d9e-8eee-ae575eb163c6.png)
+
+## Sky & atmosphere: ~0.1ms
+
+Atmospheric scattering directly uses [Felix Westin's MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere). It drives both the sky and sun color.
+
+A tiny 64x64x6 cube map is generated every frame for the sky. It is used for reflection rays and for sky pixels directly visible to the camera. An even smaller, 16x16x6 cube map is also convolved from this one, and used for diffuse rays.
+
 # Known issues
 
 As alluded to earlier, the global illumination described here is far from perfect. It is a spare-time research project of one person. Getting it to a shippable state would be a journey of its own.
