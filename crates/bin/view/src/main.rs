@@ -4,6 +4,8 @@ mod persisted;
 mod runtime;
 mod scene;
 
+use std::fs::File;
+
 use kajiya_simple::*;
 use opt::*;
 use persisted::*;
@@ -48,37 +50,39 @@ impl AppState {
             .load_scene(&mut self.kajiya.world_renderer, scene_name)
     }
 
-    fn run(self) -> anyhow::Result<()> {
+    fn run(self) -> anyhow::Result<PersistedState> {
         let Self {
             mut persisted,
             mut runtime,
             kajiya,
         } = self;
 
-        kajiya.run(|ctx| runtime.frame(ctx, &mut persisted))
+        kajiya.run(|ctx| runtime.frame(ctx, &mut persisted))?;
+
+        Ok(persisted)
     }
 }
 
 const APP_STATE_CONFIG_FILE_PATH: &str = "view_state.ron";
 
-// If true, have an additional test/debug object in the scene, whose position can be changed by holding `Z` and moving the mouse.
-const USE_TEST_DYNAMIC_OBJECT: bool = false;
-const SPIN_TEST_DYNAMIC_OBJECT: bool = false;
-
 fn main() -> anyhow::Result<()> {
     let opt = Opt::from_args();
-    let persisted: PersistedState = Default::default();
+
+    let persisted: PersistedState = File::open(APP_STATE_CONFIG_FILE_PATH)
+        .map_err(|err| anyhow::anyhow!(err))
+        .and_then(|file| Ok(ron::de::from_reader(file)?))
+        .unwrap_or_default();
 
     let mut state = AppState::new(persisted, &opt)?;
 
     state.load_scene(&opt.scene)?;
-    state.run()?;
+    let state = state.run()?;
 
-    /*ron::ser::to_writer_pretty(
+    ron::ser::to_writer_pretty(
         File::create(APP_STATE_CONFIG_FILE_PATH)?,
         &state,
         Default::default(),
-    )?;*/
+    )?;
 
     Ok(())
 }
