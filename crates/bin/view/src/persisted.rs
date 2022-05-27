@@ -1,21 +1,56 @@
-use kajiya_simple::{Quat, Vec3};
+use kajiya_simple::{Quat, Vec3, Vec3Swizzles};
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SunState {
-    pub theta: f32,
-    pub phi: f32,
+    // Not normalized. The scale is relevant to user input non-linearity.
+    pub towards_sun: Vec3,
+    pub size_multiplier: f32,
+}
+
+impl Default for SunState {
+    fn default() -> Self {
+        Self {
+            towards_sun: Vec3::Y,
+            size_multiplier: 1.0,
+        }
+    }
 }
 
 impl SunState {
-    pub fn direction(&self) -> Vec3 {
-        fn spherical_to_cartesian(theta: f32, phi: f32) -> Vec3 {
-            let x = phi.sin() * theta.cos();
-            let y = phi.cos();
-            let z = phi.sin() * theta.sin();
-            Vec3::new(x, y, z)
+    pub fn towards_sun(&self) -> Vec3 {
+        self.towards_sun.normalize()
+    }
+
+    pub fn rotate(&mut self, ref_frame: &Quat, delta_x: f32, delta_y: f32) {
+        // Project to the XZ plane, disregarding the Y component
+        let mut xz = self.towards_sun.xz();
+
+        // If the sun is below the horizon, we'll flip the movement direction
+        let mut ysgn = if self.towards_sun.y >= 0.0 { 1.0 } else { -1.0 };
+
+        const MOVE_SPEED: f32 = 0.2;
+
+        // Working in projective geometry, add the new input
+        xz += (*ref_frame * Vec3::new(-delta_x, 0.0, -delta_y) * (ysgn * MOVE_SPEED)).xz();
+
+        // Our projective space is a unit disk with an associated sign. If we go outside the disk,
+        // we wrap around and flip the sign, putting the sun on the other side of the horizon.
+        {
+            let len = xz.length();
+            if len > 1.0 {
+                ysgn *= -1.0;
+
+                // Reflect off the edge of the disk
+                xz *= (2.0 - len) / len;
+            }
         }
 
-        spherical_to_cartesian(self.theta, self.phi)
+        // Parabola-shaped Y projection giving flat and close-to-linear control
+        // with the sun high above, and a gentle roll-off towards the horizon.
+        const SQUISH: f32 = 0.3;
+        let y = SQUISH * ysgn * (1.0 - xz.length_squared());
+
+        self.towards_sun = Vec3::new(xz.x, y, xz.y);
     }
 }
 
@@ -70,10 +105,7 @@ impl Default for LightState {
         Self {
             emissive_multiplier: 1.0,
             enable_emissive: true,
-            sun: SunState {
-                theta: -4.54,
-                phi: 1.48,
-            },
+            sun: SunState::default(),
             local_lights: LocalLightsState {
                 theta: 1.0,
                 phi: 1.0,
@@ -121,7 +153,7 @@ impl Default for ExposureState {
     fn default() -> Self {
         Self {
             ev_shift: 0.0,
-            use_dynamic_adaptation: true,
+            use_dynamic_adaptation: false,
         }
     }
 }

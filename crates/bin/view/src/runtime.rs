@@ -64,7 +64,7 @@ impl RuntimeState {
                 KeyMap::new("boost", -1.0).activation_time(0.5),
             );
 
-        let sun_direction_interp = persisted.light.sun.direction();
+        let sun_direction_interp = persisted.light.sun.towards_sun();
 
         Self {
             camera,
@@ -197,17 +197,23 @@ impl RuntimeState {
         }
     }
 
-    fn update_sun(&mut self, persisted: &mut PersistedState, ctx: &FrameContext) {
+    fn update_sun(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
         if self.mouse.buttons_held & 1 != 0 {
-            let theta_delta =
-                (self.mouse.delta.x / ctx.render_extent[0] as f32) * -std::f32::consts::TAU;
-            let phi_delta =
-                (self.mouse.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
+            let delta_x =
+                (self.mouse.delta.x / ctx.render_extent[0] as f32) * std::f32::consts::TAU;
+            let delta_y = (self.mouse.delta.y / ctx.render_extent[1] as f32) * std::f32::consts::PI;
 
             match self.left_click_edit_mode {
                 LeftClickEditMode::MoveSun => {
-                    persisted.light.sun.theta += theta_delta;
-                    persisted.light.sun.phi += phi_delta;
+                    let ref_frame = Quat::from_xyzw(
+                        0.0,
+                        persisted.camera.rotation.y,
+                        0.0,
+                        persisted.camera.rotation.w,
+                    )
+                    .normalize();
+
+                    persisted.light.sun.rotate(&ref_frame, delta_x, delta_y);
                 } /*LeftClickEditMode::MoveLocalLights => {
                       persisted.light.lights.theta += theta_delta;
                       persisted.light.lights.phi += phi_delta;
@@ -218,7 +224,7 @@ impl RuntimeState {
         //state.sun.phi += dt;
         //state.sun.phi %= std::f32::consts::TAU;
 
-        let sun_direction = persisted.light.sun.direction();
+        let sun_direction = persisted.light.sun.towards_sun();
         if (sun_direction.dot(self.sun_direction_interp) - 1.0).abs() > 1e-5 {
             self.reset_path_tracer = true;
         }
@@ -231,6 +237,8 @@ impl RuntimeState {
 
         self.sun_direction_interp =
             Vec3::lerp(self.sun_direction_interp, sun_direction, sun_interp_t).normalize();
+
+        ctx.world_renderer.sun_size_multiplier = persisted.light.sun.size_multiplier;
     }
 
     fn update_lights(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
@@ -353,9 +361,9 @@ impl RuntimeState {
         self.do_gui(persisted, &mut ctx);
         self.update_lights(persisted, &mut ctx);
         self.update_objects(persisted, &mut ctx);
+        self.update_sun(persisted, &mut ctx);
 
         self.update_camera(persisted, &ctx);
-        self.update_sun(persisted, &ctx);
 
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
@@ -395,4 +403,12 @@ impl RuntimeState {
 pub enum LeftClickEditMode {
     MoveSun,
     //MoveLocalLights,
+}
+
+#[allow(dead_code)]
+fn smoothstep(edge0: f32, edge1: f32, mut x: f32) -> f32 {
+    // Scale, bias and saturate x to 0..1 range
+    x = ((x - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    // Evaluate polynomial
+    x * x * (3.0 - 2.0 * x)
 }

@@ -68,7 +68,7 @@ impl RuntimeState {
                     imgui::Drag::<f32>::new(im_str!("Sun size"))
                         .range(0.0..=10.0)
                         .speed(0.02)
-                        .build(ui, &mut ctx.world_renderer.sun_size_multiplier);
+                        .build(ui, &mut persisted.light.sun.size_multiplier);
 
                     /*ui.checkbox(
                         im_str!("Show world radiance cache"),
