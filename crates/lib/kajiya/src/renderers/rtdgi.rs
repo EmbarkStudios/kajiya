@@ -82,7 +82,7 @@ impl RtdgiRenderer {
 
         SimpleRenderPass::new_compute(
             rg.add_pass("rtdgi temporal"),
-            "/shaders/rtdgi/temporal_filter2.hlsl",
+            "/shaders/rtdgi/temporal_filter.hlsl",
         )
         .read(input_color)
         .read(reprojected_history_tex)
@@ -101,7 +101,7 @@ impl RtdgiRenderer {
         temporal_filtered_tex
     }
 
-    fn spatial2(
+    fn spatial(
         rg: &mut rg::TemporalRenderGraph,
         input_color: &rg::Handle<Image>,
         gbuffer_depth: &GbufferDepth,
@@ -112,8 +112,8 @@ impl RtdgiRenderer {
             rg.create(Self::temporal_tex_desc(input_color.desc().extent_2d()));
 
         SimpleRenderPass::new_compute(
-            rg.add_pass("rtdgi spatial2"),
-            "/shaders/rtdgi/spatial_filter2.hlsl",
+            rg.add_pass("rtdgi spatial"),
+            "/shaders/rtdgi/spatial_filter.hlsl",
         )
         .read(input_color)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
@@ -462,7 +462,7 @@ impl RtdgiRenderer {
             temporal_output_tex,
         );
 
-        let filtered_tex = Self::spatial2(
+        let filtered_tex = Self::spatial(
             rg,
             &filtered_tex,
             gbuffer_depth,

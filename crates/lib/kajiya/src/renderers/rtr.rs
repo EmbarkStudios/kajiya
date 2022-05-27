@@ -357,8 +357,8 @@ impl TracedRtr {
         reprojection_map: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
         SimpleRenderPass::new_compute(
-            rg.add_pass("reflection temporal2"),
-            "/shaders/rtr/temporal_filter2.hlsl",
+            rg.add_pass("reflection temporal"),
+            "/shaders/rtr/temporal_filter.hlsl",
         )
         .read(&self.resolved_tex)
         .read(&self.history_tex)
