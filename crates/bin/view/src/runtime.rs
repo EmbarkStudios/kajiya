@@ -64,7 +64,7 @@ impl RuntimeState {
                 KeyMap::new("boost", -1.0).activation_time(0.5),
             );
 
-        let sun_direction_interp = persisted.light.sun.towards_sun();
+        let sun_direction_interp = persisted.light.sun.controller.towards_sun();
 
         Self {
             camera,
@@ -213,7 +213,11 @@ impl RuntimeState {
                     )
                     .normalize();
 
-                    persisted.light.sun.rotate(&ref_frame, delta_x, delta_y);
+                    persisted
+                        .light
+                        .sun
+                        .controller
+                        .view_space_rotate(&ref_frame, delta_x, delta_y);
                 } /*LeftClickEditMode::MoveLocalLights => {
                       persisted.light.lights.theta += theta_delta;
                       persisted.light.lights.phi += phi_delta;
@@ -224,7 +228,7 @@ impl RuntimeState {
         //state.sun.phi += dt;
         //state.sun.phi %= std::f32::consts::TAU;
 
-        let sun_direction = persisted.light.sun.towards_sun();
+        let sun_direction = persisted.light.sun.controller.towards_sun();
         if (sun_direction.dot(self.sun_direction_interp) - 1.0).abs() > 1e-5 {
             self.reset_path_tracer = true;
         }

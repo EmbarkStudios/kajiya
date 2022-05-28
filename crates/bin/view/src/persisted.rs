@@ -4,40 +4,95 @@ use crate::misc::smoothstep;
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SunState {
-    pub controller_xz: Vec2,
+    pub controller: SunController,
     pub size_multiplier: f32,
 }
 
 impl Default for SunState {
     fn default() -> Self {
         Self {
-            controller_xz: Vec2::ZERO,
+            controller: SunController::default(),
             size_multiplier: 1.0,
         }
     }
 }
 
-impl SunState {
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct SunController {
+    #[serde(skip)]
+    latent: Option<Vec2>,
+    towards_sun: Vec3,
+}
+
+impl PartialEq for SunController {
+    fn eq(&self, other: &Self) -> bool {
+        self.towards_sun == other.towards_sun
+    }
+}
+
+impl Default for SunController {
+    fn default() -> Self {
+        Self {
+            latent: None,
+            towards_sun: Vec3::Y,
+        }
+    }
+}
+
+const SUN_CONTROLLER_SQUISH: f32 = 0.2;
+
+impl SunController {
     pub fn towards_sun(&self) -> Vec3 {
-        let mut xz = self.controller_xz;
+        self.towards_sun
+    }
+
+    pub fn set_towards_sun(&mut self, towards_sun: Vec3) {
+        self.towards_sun = towards_sun;
+        self.latent = None;
+    }
+
+    fn calculate_towards_sun(latent: Vec2) -> Vec3 {
+        let mut xz = latent;
         let len = xz.length();
 
         let ysgn = if len > 1.0 {
-            // First outer ring: the sun goes below the horizon
             xz *= (2.0 - len) / len;
             -1.0
         } else {
-            // Inner disk
             1.0
         };
 
-        const SQUISH: f32 = 0.2;
-        let y = SQUISH * ysgn * (1.0 - xz.length_squared());
+        let y = SUN_CONTROLLER_SQUISH * ysgn * (1.0 - xz.length_squared());
         Vec3::new(xz.x, y, xz.y).normalize()
     }
 
-    pub fn rotate(&mut self, ref_frame: &Quat, delta_x: f32, delta_y: f32) {
-        let mut xz = self.controller_xz;
+    fn calculate_latent(towards_sun: Vec3) -> Vec2 {
+        let t = SUN_CONTROLLER_SQUISH;
+        let t2 = t * t;
+
+        let y2 = towards_sun.y * towards_sun.y;
+        let y4 = y2 * y2;
+
+        // Mathematica goes brrrrrrr
+        let a = -y2 + 2.0 * t2 * (-1.0 + y2) + (y4 - 4.0 * t2 * y2 * (-1.0 + y2)).sqrt();
+        let b = 2.0 * t2 * (-1.0 + y2);
+        let xz_len = (a / b).sqrt();
+
+        let xz_len = if xz_len.is_finite() { xz_len } else { 0.0 };
+
+        let mut xz = towards_sun.xz() * (xz_len / towards_sun.xz().length().max(1e-10));
+
+        if towards_sun.y < 0.0 {
+            xz *= (2.0 - xz_len) / xz_len;
+        }
+
+        xz
+    }
+
+    pub fn view_space_rotate(&mut self, ref_frame: &Quat, delta_x: f32, delta_y: f32) {
+        let mut xz = *self
+            .latent
+            .get_or_insert_with(|| Self::calculate_latent(self.towards_sun));
 
         const MOVE_SPEED: f32 = 0.2;
 
@@ -63,7 +118,8 @@ impl SunState {
             }
         }
 
-        self.controller_xz = xz;
+        self.latent = Some(xz);
+        self.towards_sun = Self::calculate_towards_sun(xz);
     }
 }
 
