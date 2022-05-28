@@ -113,7 +113,7 @@ impl RuntimeState {
                     .build(ui)
                 {
                     if ui.button(im_str!("Add key"), [0.0, 0.0]) {
-                        self.add_camera_keyframe(persisted);
+                        self.add_sequence_keyframe(persisted);
                     }
 
                     ui.same_line(0.0);
@@ -140,7 +140,7 @@ impl RuntimeState {
                     }
                     let mut cmd = Cmd::None;
 
-                    persisted.camera_sequence.each_key(|i, k| {
+                    persisted.camera_sequence.each_key(|i, item| {
                         let active = Some(i) == self.active_camera_key;
 
                         let label = if active {
@@ -155,11 +155,26 @@ impl RuntimeState {
 
                         ui.same_line(0.0);
                         ui.set_next_item_width(60.0);
-                        imgui::InputFloat::new(ui, &im_str!("duration##{}", i), &mut k.duration)
+                        imgui::InputFloat::new(ui, &im_str!("duration##{}", i), &mut item.duration)
                             .build();
 
                         ui.same_line(0.0);
-                        if ui.button(&im_str!("Delete##{}:", i), [0.0, 0.0]) {
+                        ui.checkbox(
+                            &im_str!("Pos##{}", i),
+                            &mut item.value.camera_position.is_some,
+                        );
+
+                        ui.same_line(0.0);
+                        ui.checkbox(
+                            &im_str!("Dir##{}", i),
+                            &mut item.value.camera_direction.is_some,
+                        );
+
+                        ui.same_line(0.0);
+                        ui.checkbox(&im_str!("Sun##{}", i), &mut item.value.towards_sun.is_some);
+
+                        ui.same_line(0.0);
+                        if ui.button(&im_str!("Delete##{}", i), [0.0, 0.0]) {
                             cmd = Cmd::DeleteKey(i);
                         }
 
@@ -170,7 +185,7 @@ impl RuntimeState {
                     });
 
                     match cmd {
-                        Cmd::JumpToKey(i) => self.jump_to_camera_sequence_key(persisted, i),
+                        Cmd::JumpToKey(i) => self.jump_to_sequence_key(persisted, i),
                         Cmd::DeleteKey(i) => self.delete_camera_sequence_key(persisted, i),
                         Cmd::ReplaceKey(i) => self.replace_camera_sequence_key(persisted, i),
                         Cmd::None => {}

@@ -8,8 +8,11 @@ use kajiya::{
 use kajiya_simple::*;
 
 use crate::{
-    opt::Opt, persisted::ShouldResetPathTracer as _, scene::SceneDesc,
-    sequence::CameraPlaybackSequence, PersistedState,
+    opt::Opt,
+    persisted::ShouldResetPathTracer as _,
+    scene::SceneDesc,
+    sequence::{CameraPlaybackSequence, MemOption, SequenceValue},
+    PersistedState,
 };
 
 use std::{collections::HashMap, fs::File, path::PathBuf};
@@ -211,13 +214,18 @@ impl RuntimeState {
                 smooth.rotation_smoothness = persisted.movement.camera_smoothness;
             }
 
-            if let Some((position, direction)) = sequence.sample(t.max(0.0)) {
-                self.camera.driver_mut::<Position>().position = position;
+            if let Some(value) = sequence.sample(t.max(0.0)) {
+                self.camera.driver_mut::<Position>().position = value.camera_position;
                 self.camera
                     .driver_mut::<YawPitch>()
                     .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
-                        direction,
+                        value.camera_direction,
                     ));
+                persisted
+                    .light
+                    .sun
+                    .controller
+                    .set_towards_sun(value.towards_sun);
                 *t += ctx.dt_filtered;
             } else {
                 self.camera_playback = SequencePlaybackState::NotPlaying;
@@ -394,17 +402,6 @@ impl RuntimeState {
 
         let orig_persisted_state = persisted.clone();
 
-        /*if state.keyboard.was_just_pressed(VirtualKeyCode::Delete) {
-            if let Some(persisted_app_state) = persisted_app_state.as_ref() {
-                *state = persisted_app_state.clone();
-
-                camera
-                    .driver_mut::<YawPitch>()
-                    .set_rotation_quat(state.camera_rotation);
-                camera.driver_mut::<Position>().position = state.camera_position;
-            }
-        }*/
-
         self.do_gui(persisted, &mut ctx);
         self.update_lights(persisted, &mut ctx);
         self.update_objects(persisted, &mut ctx);
@@ -415,7 +412,7 @@ impl RuntimeState {
         if self.keyboard.was_just_pressed(VirtualKeyCode::K)
             || (self.mouse.buttons_pressed & (1 << 1)) != 0
         {
-            self.add_camera_keyframe(persisted);
+            self.add_sequence_keyframe(persisted);
         }
 
         if self.keyboard.was_just_pressed(VirtualKeyCode::P) {
@@ -475,7 +472,7 @@ impl RuntimeState {
 
         let t = self
             .active_camera_key
-            .and_then(|i| Some(persisted.camera_sequence.get_value(i)?.0))
+            .and_then(|i| Some(persisted.camera_sequence.get_item(i)?.t))
             .unwrap_or(-PLAYBACK_WARMUP_DURATION);
 
         self.camera_playback = SequencePlaybackState::Playing {
@@ -484,11 +481,14 @@ impl RuntimeState {
         };
     }
 
-    pub fn add_camera_keyframe(&mut self, persisted: &mut PersistedState) {
+    pub fn add_sequence_keyframe(&mut self, persisted: &mut PersistedState) {
         persisted.camera_sequence.add_keyframe(
             self.active_camera_key,
-            self.camera.final_transform.position,
-            self.camera.final_transform.rotation * -Vec3::Z,
+            SequenceValue {
+                camera_position: MemOption::new(persisted.camera.position),
+                camera_direction: MemOption::new(persisted.camera.rotation * -Vec3::Z),
+                towards_sun: MemOption::new(persisted.light.sun.controller.towards_sun()),
+            },
         );
 
         if let Some(idx) = &mut self.active_camera_key {
@@ -496,29 +496,53 @@ impl RuntimeState {
         }
     }
 
-    pub fn jump_to_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
-        if let Some((_t, position, direction)) = persisted.camera_sequence.get_value(idx) {
-            self.camera.driver_mut::<Position>().position = position;
-            self.camera
-                .driver_mut::<YawPitch>()
-                .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
-                    direction,
-                ));
-            self.camera.update(1e10);
+    pub fn jump_to_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
+        let exact_item = if let Some(item) = persisted.camera_sequence.get_item(idx) {
+            item.clone()
+        } else {
+            return;
+        };
 
-            self.active_camera_key = Some(idx);
-            self.camera_playback = SequencePlaybackState::NotPlaying;
-        }
+        let value = persisted
+            .camera_sequence
+            .to_playback()
+            .sample(exact_item.t)
+            .unwrap();
+
+        self.camera.driver_mut::<Position>().position = exact_item
+            .value
+            .camera_position
+            .unwrap_or(value.camera_position);
+        self.camera
+            .driver_mut::<YawPitch>()
+            .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
+                exact_item
+                    .value
+                    .camera_direction
+                    .unwrap_or(value.camera_direction),
+            ));
+        persisted
+            .light
+            .sun
+            .controller
+            .set_towards_sun(exact_item.value.towards_sun.unwrap_or(value.towards_sun));
+
+        self.camera.update(1e10);
+
+        self.active_camera_key = Some(idx);
+        self.camera_playback = SequencePlaybackState::NotPlaying;
     }
 
     pub fn replace_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
-        persisted.camera_sequence.each_key(|i, key| {
+        persisted.camera_sequence.each_key(|i, item| {
             if idx != i {
                 return;
             }
 
-            key.position = self.camera.final_transform.position;
-            key.rotation = self.camera.final_transform.rotation * -Vec3::Z;
+            // TODO: maybe only replace if thye're Some
+            item.value.camera_position = MemOption::new(persisted.camera.position);
+            item.value.camera_direction = MemOption::new(persisted.camera.rotation * -Vec3::Z);
+            item.value.towards_sun = MemOption::new(persisted.light.sun.controller.towards_sun());
         })
     }
 
