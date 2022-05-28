@@ -26,6 +26,9 @@ exclude = [
 rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 spirv_headers = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 
+# TODO look-at
+dolly = { path = "../dolly" }
+
 [profile.release]
 debug = 1
 

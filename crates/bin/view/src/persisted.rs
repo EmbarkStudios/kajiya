@@ -1,6 +1,6 @@
 use kajiya_simple::{Mat2, Quat, Vec2, Vec3, Vec3Swizzles};
 
-use crate::misc::smoothstep;
+use crate::{misc::smoothstep, sequence::CameraSequence};
 
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SunState {
@@ -46,6 +46,7 @@ impl SunController {
         self.towards_sun
     }
 
+    #[allow(dead_code)]
     pub fn set_towards_sun(&mut self, towards_sun: Vec3) {
         self.towards_sun = towards_sun;
         self.latent = None;
@@ -240,6 +241,7 @@ pub struct PersistedState {
     pub light: LightState,
     pub exposure: ExposureState,
     pub movement: MovementState,
+    pub camera_sequence: CameraSequence,
 }
 
 impl ShouldResetPathTracer for PersistedState {

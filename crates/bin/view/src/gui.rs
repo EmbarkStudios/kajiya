@@ -108,6 +108,75 @@ impl RuntimeState {
                     }
                 }
 
+                if imgui::CollapsingHeader::new(im_str!("Sequence"))
+                    .default_open(false)
+                    .build(ui)
+                {
+                    if ui.button(im_str!("Add key"), [0.0, 0.0]) {
+                        self.add_camera_keyframe(persisted);
+                    }
+
+                    ui.same_line(0.0);
+                    if self.is_sequence_playing() {
+                        if ui.button(im_str!("Stop"), [0.0, 0.0]) {
+                            self.stop_sequence();
+                        }
+                    } else if ui.button(im_str!("Play"), [0.0, 0.0]) {
+                        self.play_sequence(persisted);
+                    }
+
+                    if self.active_camera_key.is_some() {
+                        ui.same_line(0.0);
+                        if ui.button(im_str!("Deselect key"), [0.0, 0.0]) {
+                            self.active_camera_key = None;
+                        }
+                    }
+
+                    enum Cmd {
+                        JumpToKey(usize),
+                        DeleteKey(usize),
+                        ReplaceKey(usize),
+                        None,
+                    }
+                    let mut cmd = Cmd::None;
+
+                    persisted.camera_sequence.each_key(|i, k| {
+                        let active = Some(i) == self.active_camera_key;
+
+                        let label = if active {
+                            im_str!("-> {}:", i)
+                        } else {
+                            im_str!("{}:", i)
+                        };
+
+                        if ui.button(&label, [0.0, 0.0]) {
+                            cmd = Cmd::JumpToKey(i);
+                        }
+
+                        ui.same_line(0.0);
+                        ui.set_next_item_width(60.0);
+                        imgui::InputFloat::new(ui, &im_str!("duration##{}", i), &mut k.duration)
+                            .build();
+
+                        ui.same_line(0.0);
+                        if ui.button(&im_str!("Delete##{}:", i), [0.0, 0.0]) {
+                            cmd = Cmd::DeleteKey(i);
+                        }
+
+                        ui.same_line(0.0);
+                        if ui.button(&im_str!("Replace##{}:", i), [0.0, 0.0]) {
+                            cmd = Cmd::ReplaceKey(i);
+                        }
+                    });
+
+                    match cmd {
+                        Cmd::JumpToKey(i) => self.jump_to_camera_sequence_key(persisted, i),
+                        Cmd::DeleteKey(i) => self.delete_camera_sequence_key(persisted, i),
+                        Cmd::ReplaceKey(i) => self.replace_camera_sequence_key(persisted, i),
+                        Cmd::None => {}
+                    }
+                }
+
                 if imgui::CollapsingHeader::new(im_str!("Debug"))
                     .default_open(false)
                     .build(ui)

@@ -4,6 +4,7 @@ mod opt;
 mod persisted;
 mod runtime;
 mod scene;
+mod sequence;
 
 use std::fs::File;
 

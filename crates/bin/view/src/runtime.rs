@@ -7,7 +7,10 @@ use kajiya::{
 };
 use kajiya_simple::*;
 
-use crate::{opt::Opt, persisted::ShouldResetPathTracer as _, scene::SceneDesc, PersistedState};
+use crate::{
+    opt::Opt, persisted::ShouldResetPathTracer as _, scene::SceneDesc,
+    sequence::CameraPlaybackSequence, PersistedState,
+};
 
 use std::{collections::HashMap, fs::File, path::PathBuf};
 
@@ -30,6 +33,17 @@ pub struct RuntimeState {
     pub grab_cursor_pos: winit::dpi::PhysicalPosition<f64>,
 
     pub reset_path_tracer: bool,
+
+    pub active_camera_key: Option<usize>,
+    camera_playback: SequencePlaybackState,
+}
+
+enum SequencePlaybackState {
+    NotPlaying,
+    Playing {
+        t: f32,
+        sequence: CameraPlaybackSequence,
+    },
 }
 
 impl RuntimeState {
@@ -83,6 +97,9 @@ impl RuntimeState {
             grab_cursor_pos: Default::default(),
 
             reset_path_tracer: false,
+
+            active_camera_key: None,
+            camera_playback: SequencePlaybackState::NotPlaying,
         }
     }
 
@@ -183,6 +200,30 @@ impl RuntimeState {
         self.camera
             .driver_mut::<Position>()
             .translate(move_vec * ctx.dt_filtered * persisted.movement.camera_speed);
+
+        if let SequencePlaybackState::Playing { t, sequence } = &mut self.camera_playback {
+            let smooth = self.camera.driver_mut::<Smooth>();
+            if *t <= 0.0 {
+                smooth.position_smoothness = 0.0;
+                smooth.rotation_smoothness = 0.0;
+            } else {
+                smooth.position_smoothness = persisted.movement.camera_smoothness;
+                smooth.rotation_smoothness = persisted.movement.camera_smoothness;
+            }
+
+            if let Some((position, direction)) = sequence.sample(t.max(0.0)) {
+                self.camera.driver_mut::<Position>().position = position;
+                self.camera
+                    .driver_mut::<YawPitch>()
+                    .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
+                        direction,
+                    ));
+                *t += ctx.dt_filtered;
+            } else {
+                self.camera_playback = SequencePlaybackState::NotPlaying;
+            }
+        }
+
         self.camera.update(ctx.dt_filtered);
 
         persisted.camera.position = self.camera.final_transform.position;
@@ -371,6 +412,23 @@ impl RuntimeState {
 
         self.update_camera(persisted, &ctx);
 
+        if self.keyboard.was_just_pressed(VirtualKeyCode::K)
+            || (self.mouse.buttons_pressed & (1 << 1)) != 0
+        {
+            self.add_camera_keyframe(persisted);
+        }
+
+        if self.keyboard.was_just_pressed(VirtualKeyCode::P) {
+            match self.camera_playback {
+                SequencePlaybackState::NotPlaying => {
+                    self.play_sequence(persisted);
+                }
+                SequencePlaybackState::Playing { .. } => {
+                    self.stop_sequence();
+                }
+            };
+        }
+
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
 
@@ -401,6 +459,73 @@ impl RuntimeState {
             render_extent: ctx.render_extent,
             sun_direction: self.sun_direction_interp,
         }
+    }
+
+    pub fn is_sequence_playing(&self) -> bool {
+        matches!(&self.camera_playback, SequencePlaybackState::Playing { .. })
+    }
+
+    pub fn stop_sequence(&mut self) {
+        self.camera_playback = SequencePlaybackState::NotPlaying;
+    }
+
+    pub fn play_sequence(&mut self, persisted: &mut PersistedState) {
+        // Allow some time at the start of the playback before the camera starts moving
+        const PLAYBACK_WARMUP_DURATION: f32 = 0.5;
+
+        let t = self
+            .active_camera_key
+            .and_then(|i| Some(persisted.camera_sequence.get_value(i)?.0))
+            .unwrap_or(-PLAYBACK_WARMUP_DURATION);
+
+        self.camera_playback = SequencePlaybackState::Playing {
+            t,
+            sequence: persisted.camera_sequence.to_playback(),
+        };
+    }
+
+    pub fn add_camera_keyframe(&mut self, persisted: &mut PersistedState) {
+        persisted.camera_sequence.add_keyframe(
+            self.active_camera_key,
+            self.camera.final_transform.position,
+            self.camera.final_transform.rotation * -Vec3::Z,
+        );
+
+        if let Some(idx) = &mut self.active_camera_key {
+            *idx += 1;
+        }
+    }
+
+    pub fn jump_to_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
+        if let Some((_t, position, direction)) = persisted.camera_sequence.get_value(idx) {
+            self.camera.driver_mut::<Position>().position = position;
+            self.camera
+                .driver_mut::<YawPitch>()
+                .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
+                    direction,
+                ));
+            self.camera.update(1e10);
+
+            self.active_camera_key = Some(idx);
+            self.camera_playback = SequencePlaybackState::NotPlaying;
+        }
+    }
+
+    pub fn replace_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
+        persisted.camera_sequence.each_key(|i, key| {
+            if idx != i {
+                return;
+            }
+
+            key.position = self.camera.final_transform.position;
+            key.rotation = self.camera.final_transform.rotation * -Vec3::Z;
+        })
+    }
+
+    pub fn delete_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
+        persisted.camera_sequence.delete_key(idx);
+
+        self.active_camera_key = None;
     }
 }
 
