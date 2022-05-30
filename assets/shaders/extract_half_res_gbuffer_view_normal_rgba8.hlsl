@@ -14,13 +14,7 @@ float3 normal_ws_at_px(int2 px) {
 
 [numthreads(8, 8, 1)]
 void main(in int2 px : SV_DispatchThreadID) {
-    uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-    const int2 src_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+    const int2 src_px = px * 2 + HALFRES_SUBSAMPLE_OFFSET;
 
     float3 normal_ws = 1;
 

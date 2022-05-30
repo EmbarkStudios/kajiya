@@ -10,9 +10,16 @@
 #define RESTIR_TEMPORAL_USE_PERMUTATIONS true
 #define RESTIR_USE_PATH_VALIDATION true
 
+// Narrow down the spatial resampling kernel when M is already high.
+// TODO: results in boiling noise if variance is high and RESTIR_TEMPORAL_M_CLAMP is low
+#define RTDGI_RESTIR_SPATIAL_USE_KERNEL_NARROWING true
+
 #define RTDGI_RESTIR_SPATIAL_USE_RAYMARCH true
-#define RTDGI_RESTIR_USE_JACOBIAN_BASED_REJECTION true
-#define RTDGI_RESTIR_JACOBIAN_BASED_REJECTION_VALUE 5
+#define RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE true
+#define RTDGI_RESTIR_USE_JACOBIAN_BASED_REJECTION !true
+#define RTDGI_RESTIR_JACOBIAN_BASED_REJECTION_VALUE 8
+
+#define RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER 1
 
 // If `1`, every RTDGI_INTERLEAVED_VALIDATION_PERIOD-th frame is a validation one,
 // where new candidates are not suggested, but the reservoir picks are validated instead.

@@ -211,4 +211,18 @@ RayCone pixel_ray_cone_from_image_height(float image_height) {
     return res;
 }
 
+#if 1
+    static const uint2 hi_px_subpixels[4] = {
+        uint2(0, 0),
+        uint2(1, 1),
+        uint2(1, 0),
+        uint2(0, 1),
+    };
+    #define HALFRES_SUBSAMPLE_INDEX (frame_constants.frame_index & 3)
+    #define HALFRES_SUBSAMPLE_OFFSET (hi_px_subpixels[HALFRES_SUBSAMPLE_INDEX])
+#else
+    #define HALFRES_SUBSAMPLE_OFFSET uint2(0, 0)
+#endif
+
+
 #endif

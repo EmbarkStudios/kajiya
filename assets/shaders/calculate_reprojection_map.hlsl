@@ -124,13 +124,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float accuracy = 1;
     
-    // Sampling away from texel centers causes blurriness
-    accuracy *= lerp(0.75, 1.0, 1.0 - texel_center_offset.x - texel_center_offset.y);
-
     // Reprojection of surfaces which were grazing to the camera
     // causes any noise or features on those surfaces to become smeared,
     // which subsequently is slow to converge.
-    accuracy *= smoothstep(0.8, 0.99, prev_ndotv / ndotv);
+    accuracy *= smoothstep(0.8, 0.95, prev_ndotv / ndotv);
 
     // Mark off-screen reprojections
     if (any(saturate(prev_uv) != prev_uv)) {

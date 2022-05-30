@@ -12,12 +12,15 @@
 #include "rtdgi_common.hlsl"
 
 [[vk::binding(0)]] Texture2D<uint2> reservoir_input_tex;
-[[vk::binding(1)]] Texture2D<float4> half_view_normal_tex;
-[[vk::binding(2)]] Texture2D<float> half_depth_tex;
-[[vk::binding(3)]] Texture2D<float> half_ssao_tex;
-[[vk::binding(4)]] Texture2D<uint4> temporal_reservoir_packed_tex;
-[[vk::binding(5)]] RWTexture2D<uint2> reservoir_output_tex;
-[[vk::binding(6)]] cbuffer _ {
+[[vk::binding(1)]] Texture2D<float3> radiance_input_tex;
+[[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
+[[vk::binding(3)]] Texture2D<float> half_depth_tex;
+[[vk::binding(4)]] Texture2D<float> half_ssao_tex;
+[[vk::binding(5)]] Texture2D<uint4> temporal_reservoir_packed_tex;
+[[vk::binding(6)]] Texture2D<float4> reprojected_gi_tex;
+[[vk::binding(7)]] RWTexture2D<uint2> reservoir_output_tex;
+[[vk::binding(8)]] RWTexture2D<float3> radiance_output_tex;
+[[vk::binding(9)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
     uint spatial_reuse_pass_idx;
@@ -31,13 +34,7 @@ uint2 reservoir_payload_to_px(uint payload) {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
-    const uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-    const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+    const uint2 hi_px = px * 2 + HALFRES_SUBSAMPLE_OFFSET;
     float depth = half_depth_tex[px];
 
     const uint seed = frame_constants.frame_index + spatial_reuse_pass_idx * 123;
@@ -61,11 +58,26 @@ void main(uint2 px : SV_DispatchThreadID) {
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
     // TODO: drive this via variance, shrink when it's low. 80 is a bit of a blur...
-    const float kernel_tightness = (1 - center_ssao);
+    float kernel_tightness = 1.0 - center_ssao;
+
+    const uint SAMPLE_COUNT_PASS0 = 8;
+    const uint SAMPLE_COUNT_PASS1 = 5;
+
+    const float MAX_INPUT_M_IN_PASS0 = RESTIR_TEMPORAL_M_CLAMP;
+    const float MAX_INPUT_M_IN_PASS1 = MAX_INPUT_M_IN_PASS0 * SAMPLE_COUNT_PASS0;
+    const float MAX_INPUT_M_IN_PASS = spatial_reuse_pass_idx == 0 ? MAX_INPUT_M_IN_PASS0 : MAX_INPUT_M_IN_PASS1;
+
+    // TODO: unify with `kernel_tightness`
+    if (RTDGI_RESTIR_SPATIAL_USE_KERNEL_NARROWING) {
+        kernel_tightness *= lerp(
+            1.0, 0.0,
+            smoothstep(MAX_INPUT_M_IN_PASS * 0.5, MAX_INPUT_M_IN_PASS, center_r.M));
+    }
+
     float max_kernel_radius =
         spatial_reuse_pass_idx == 0
-        ? lerp(96.0, 32.0, kernel_tightness)
-        : lerp(32.0, 8.0, kernel_tightness);
+        ? lerp(32.0, 8.0, kernel_tightness)
+        : lerp(16.0, 4.0, kernel_tightness);
 
     // TODO: only run more passes where absolutely necessary
     if (spatial_reuse_pass_idx >= 2) {
@@ -79,17 +91,22 @@ void main(uint2 px : SV_DispatchThreadID) {
     //const float2 kernel_radius = max_kernel_radius;
 
     uint sample_count = DIFFUSE_GI_USE_RESTIR
-        ? (spatial_reuse_pass_idx == 0 ? 8 : 5)
+        ? (spatial_reuse_pass_idx == 0 ? SAMPLE_COUNT_PASS0 : SAMPLE_COUNT_PASS1)
         : 1;
 
     const uint TARGET_M = 512;
 
-    // Scrambling angles here would be nice, but results in bad cache thrashing.
-    // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
-    // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
-    const uint2 ang_offset_seed = spatial_reuse_pass_idx == 0
-        ? (px >> 3)
-        : (px >> 2);
+    #if 1
+        // Scrambling angles here would be nice, but results in bad cache thrashing.
+        // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
+        // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
+        const uint2 ang_offset_seed = spatial_reuse_pass_idx == 0
+            ? (px >> 3)
+            : (px >> 2);
+    #else
+        // Haha, cache go brrrrrrr.
+        const uint2 ang_offset_seed = px;
+    #endif
 
     float ang_offset = uint_to_u01_float(hash3(
         uint3(ang_offset_seed, frame_constants.frame_index * 2 + spatial_reuse_pass_idx)
@@ -99,17 +116,29 @@ void main(uint2 px : SV_DispatchThreadID) {
         sample_count = 1;
     }
 
+    float3 radiance_output = 0;
+
     for (uint sample_i = 0; sample_i < sample_count && stream_state.M_sum < TARGET_M; ++sample_i) {
         //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-        float2 radius = 0 == sample_i ? 0 : float(sample_i + sample_radius_offset) * (kernel_radius / sample_count);
+        float2 radius =
+            0 == sample_i
+            ? 0
+            : (pow(float(sample_i + sample_radius_offset) / sample_count, 0.5) * kernel_radius);
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
 
         const bool is_center_sample = sample_i == 0;
         //const bool is_center_sample = all(rpx_offset == 0);
 
         const int2 rpx = px + rpx_offset;
-        Reservoir1spp r = Reservoir1spp::from_raw(reservoir_input_tex[rpx]);
+
+        const uint2 reservoir_raw = reservoir_input_tex[rpx];
+        if (0 == reservoir_raw.x) {
+            // Invalid reprojectoin
+            continue;
+        }
+
+        Reservoir1spp r = Reservoir1spp::from_raw(reservoir_raw);
 
         r.M = min(r.M, 500);
 
@@ -119,7 +148,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         // TODO: to recover tiny highlights, consider raymarching first, and then using the screen-space
         // irradiance value instead of this.
-        const float prev_luminance = spx_packed.luminance;
+        const float reused_luminance = spx_packed.luminance;
 
         float visibility = 1;
         float relevance = 1;
@@ -138,6 +167,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float sample_dist2 = dot(sample_offset, sample_offset);
         const float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
 
+        float3 sample_radiance;
+        if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
+            sample_radiance = radiance_input_tex[rpx];
+        }
+
         const float normal_cutoff = 0.1;
 
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
@@ -154,7 +188,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         #endif
 
         const float2 rpx_uv = get_uv(
-            rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            rpx * 2 + HALFRES_SUBSAMPLE_OFFSET,
             gbuffer_tex_size);
         const float rpx_depth = half_depth_tex[rpx];
         
@@ -165,21 +199,21 @@ void main(uint2 px : SV_DispatchThreadID) {
         const ViewRayContext rpx_ray_ctx = ViewRayContext::from_uv_and_depth(rpx_uv, rpx_depth);
 
         const float2 spx_uv = get_uv(
-            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            spx * 2 + HALFRES_SUBSAMPLE_OFFSET,
             gbuffer_tex_size);
         const ViewRayContext spx_ray_ctx = ViewRayContext::from_uv_and_depth(spx_uv, spx_packed.depth);
         const float3 sample_hit_ws = spx_packed.ray_hit_offset_ws + spx_ray_ctx.ray_hit_ws();
 
-        const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - rpx_ray_ctx.ray_hit_ws();
+        const float3 reused_dir_to_sample_hit_unnorm_ws = sample_hit_ws - rpx_ray_ctx.ray_hit_ws();
 
-        //const float prev_luminance = sample_hit_ws_and_luminance.a;
+        //const float reused_luminance = sample_hit_ws_and_luminance.a;
 
         // Note: we want the neighbor's sample, which might have been resampled already.
-        const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
-        const float3 prev_dir_to_sample_hit_ws = prev_dir_to_sample_hit_unnorm_ws / prev_dist;
+        const float reused_dist = length(reused_dir_to_sample_hit_unnorm_ws);
+        const float3 reused_dir_to_sample_hit_ws = reused_dir_to_sample_hit_unnorm_ws / reused_dist;
 
         // Reject hits too close to the surface
-        if (!is_center_sample && !(prev_dist > 1e-8)) {
+        if (!is_center_sample && !(reused_dist > 1e-8)) {
             continue;
         }
 
@@ -219,6 +253,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
+                // Multiplier over the surface offset from the center to the neighbor
+                const float MAX_RAYMARCH_DIST_MULT = 2.0;
+
 #if 1
                 // Trace towards the hit point.
 
@@ -226,15 +263,15 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
-                    + raymarch_dir_unnorm_ws * min(1.0, surface_offset_len / length(raymarch_dir_unnorm_ws));
+                    + raymarch_dir_unnorm_ws * min(1.0, MAX_RAYMARCH_DIST_MULT * surface_offset_len / length(raymarch_dir_unnorm_ws));
 #else
                 // Trace in the same direction as the reused ray.
                 // More precise shadowing sometimes, but corner darkening. TODO.
 
-                const float3 raymarch_dir_unnorm_ws = prev_dir_to_sample_hit_unnorm_ws;
+                const float3 raymarch_dir_unnorm_ws = reused_dir_to_sample_hit_unnorm_ws;
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
-                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), surface_offset_len) / length(prev_dist);
+                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), MAX_RAYMARCH_DIST_MULT * surface_offset_len) / length(reused_dist);
 #endif
 
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
@@ -265,10 +302,25 @@ void main(uint2 px : SV_DispatchThreadID) {
                         // TODO, BUG: if the hit surface is emissive, this ends up casting a shadow from it,
                         // without taking the emission into consideration.
 
-                        visibility *= smoothstep(
-                            Z_LAYER_THICKNESS * 0.5,
+                        const float hit = smoothstep(
                             Z_LAYER_THICKNESS,
+                            Z_LAYER_THICKNESS * 0.5,
                             depth_diff);
+
+                        if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
+                            const float3 hit_radiance = reprojected_gi_tex.SampleLevel(sampler_llc, cs_to_uv(interp_pos_cs.xy), 0).rgb;
+                            const float hit_luminance = sRGB_to_luminance(hit_radiance);
+
+                            sample_radiance = lerp(sample_radiance, hit_radiance, hit);
+
+                            // Heuristic: don't allow getting _brighter_ from accidental
+                            // hits reused from neighbors. This can cause some darkening,
+                            // but also fixes reduces noise (expecting to hit dark, hitting bright),
+                            // and improves a few cases that otherwise look unshadowed.
+                            visibility *= min(1.0, reused_luminance / hit_luminance);
+                        } else {
+                            visibility *= 1 - hit;
+                        }
 
                         if (depth_diff > Z_LAYER_THICKNESS) {
                             // Going behind an object; could be sketchy.
@@ -282,26 +334,42 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         const float3 sample_hit_normal_ws = spx_packed.hit_normal_ws;
+
+        // phi_2^r in the ReSTIR GI paper
         const float center_to_hit_vis = -dot(sample_hit_normal_ws, dir_to_sample_hit);
-        const float prev_to_hit_vis = -dot(sample_hit_normal_ws, prev_dir_to_sample_hit_ws);
+
+        // phi_2^q
+        const float reused_to_hit_vis = -dot(sample_hit_normal_ws, reused_dir_to_sample_hit_ws);
 
         float p_q = 1;
-        p_q *= prev_luminance;
+        if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
+            p_q *= sRGB_to_luminance(sample_radiance);
+        } else {
+            p_q *= reused_luminance;
+        }
+
+        // Unlike in temporal reuse, here we can (and should) be running this.
         p_q *= max(0, dot(dir_to_sample_hit, center_normal_ws));
 
         float jacobian = 1;
 
         // Distance falloff. Needed to avoid leaks.
-        //jacobian *= max(0.0, prev_dist) / max(1e-4, dist_to_sample_hit);
-        jacobian *= prev_dist / dist_to_sample_hit;
+        jacobian *= reused_dist / dist_to_sample_hit;
         jacobian *= jacobian;
 
         // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
         //
-        // Wrong: must use neighbor's data, not the original ray.
-        // jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
-        // Correct:
-        jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
+        // Note: importantly, using the neighbor's data, not the original ray.
+        jacobian *= clamp(center_to_hit_vis / reused_to_hit_vis, 0, 1e4);
+
+        // Clearly wrong, but!:
+        // The Jacobian introduces additional noise in corners, which is difficult to filter.
+        // We still need something _resembling_ the jacobian in order to get directional cutoff,
+        // and avoid leaks behind surfaces, but we don't actually need the precise Jacobian.
+        // This causes us to lose some energy very close to corners, but with the near field split,
+        // we don't need it anyway -- and it's better not to have the larger dark halos near corners,
+        // which fhe full jacobian can cause due to imperfect integration (color bbox filters, etc).
+        jacobian = sqrt(jacobian);
 
         if (is_center_sample) {
             jacobian = 1;
@@ -323,19 +391,18 @@ void main(uint2 px : SV_DispatchThreadID) {
             #endif
         }
 
-        if (!(p_q > 0)) {
+        if (!(p_q >= 0)) {
             continue;
         }
 
         r.M *= relevance;
 
-        const float w = p_q * r.W * r.M * jacobian;
-
         if (reservoir.update_with_stream(
-            r, p_q, jacobian * visibility,
+            r, p_q, visibility * jacobian,
             stream_state, r.payload, rng
         )) {
             dir_sel = dir_to_sample_hit;
+            radiance_output = sample_radiance;
         }
     }
 
@@ -343,4 +410,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
 
     reservoir_output_tex[px] = reservoir.as_raw();
+
+    if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
+        radiance_output_tex[px] = radiance_output;
+    }
 }

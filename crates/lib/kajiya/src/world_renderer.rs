@@ -34,6 +34,8 @@ use rust_shaders_shared::{
 use std::{collections::HashMap, mem::size_of, sync::Arc};
 use vulkan::buffer::{Buffer, BufferDesc};
 
+const USE_TAA_JITTER: bool = true;
+
 #[cfg(feature = "dlss")]
 use crate::renderers::dlss::DlssRenderer;
 
@@ -932,9 +934,12 @@ impl WorldRenderer {
 
         match self.render_mode {
             RenderMode::Standard => {
-                self.taa.current_supersample_offset = self.supersample_offsets
-                    [self.frame_idx as usize % self.supersample_offsets.len()];
-                //self.taa.current_supersample_offset = Vec2::ZERO;
+                if USE_TAA_JITTER {
+                    self.taa.current_supersample_offset = self.supersample_offsets
+                        [self.frame_idx as usize % self.supersample_offsets.len()];
+                } else {
+                    self.taa.current_supersample_offset = Vec2::ZERO;
+                }
 
                 #[cfg(feature = "dlss")]
                 {

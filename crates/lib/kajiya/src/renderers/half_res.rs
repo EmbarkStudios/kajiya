@@ -33,9 +33,9 @@ pub fn extract_half_res_depth(
             .usage(vk::ImageUsageFlags::empty())
             .format(vk::Format::R32_SFLOAT),
     );
-    SimpleRenderPass::new_compute_rust(
+    SimpleRenderPass::new_compute(
         rg.add_pass("extract half depth"),
-        "extract_half_res_depth::extract_half_res_depth",
+        "/shaders/extract_half_res_depth.hlsl",
     )
     .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
     .write(&mut output_tex)

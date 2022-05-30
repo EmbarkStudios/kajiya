@@ -396,7 +396,21 @@ impl RtdgiRenderer {
                     .format(vk::Format::R32G32_UINT),
             );
 
+            let mut radiance_output_tex0 = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
+                    .half_res()
+                    .format(vk::Format::B10G11R11_UFLOAT_PACK32),
+            );
+            let mut radiance_output_tex1 = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
+                    .half_res()
+                    .format(vk::Format::B10G11R11_UFLOAT_PACK32),
+            );
+
             let mut reservoir_input_tex = &mut temporal_reservoir_tex;
+            let mut radiance_input_tex = &irradiance_tex;
 
             for spatial_reuse_pass_idx in 0..self.spatial_reuse_pass_count {
                 SimpleRenderPass::new_compute(
@@ -404,11 +418,14 @@ impl RtdgiRenderer {
                     "/shaders/rtdgi/restir_spatial.hlsl",
                 )
                 .read(reservoir_input_tex)
+                .read(radiance_input_tex)
                 .read(&*half_view_normal_tex)
                 .read(&*half_depth_tex)
                 .read(&half_ssao_tex)
                 .read(&temporal_reservoir_packed_tex)
+                .read(&reprojected_history_tex)
                 .write(&mut reservoir_output_tex0)
+                .write(&mut radiance_output_tex0)
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),
                     reservoir_output_tex0.desc().extent_inv_extent_2d(),
@@ -417,7 +434,10 @@ impl RtdgiRenderer {
                 .dispatch(reservoir_output_tex0.desc().extent);
 
                 std::mem::swap(&mut reservoir_output_tex0, &mut reservoir_output_tex1);
+                std::mem::swap(&mut radiance_output_tex0, &mut radiance_output_tex1);
+
                 reservoir_input_tex = &mut reservoir_output_tex1;
+                radiance_input_tex = &mut radiance_output_tex1;
             }
 
             let mut irradiance_output_tex = rg.create(
@@ -441,6 +461,7 @@ impl RtdgiRenderer {
             .read(&candidate_normal_tex)
             .read(&candidate_hit_tex)
             .read(&temporal_reservoir_packed_tex)
+            .read(&radiance_input_tex)
             .write(&mut irradiance_output_tex)
             .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((

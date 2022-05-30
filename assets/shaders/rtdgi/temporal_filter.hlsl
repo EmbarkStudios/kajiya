@@ -55,9 +55,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output_tex[px] = center;
     //return;
     
-    // TODO
-    const float light_stability = 1;//center.w;
-
 #if 1
 	float4 vsum = 0.0.xxxx;
 	float4 vsum2 = 0.0.xxxx;
@@ -94,6 +91,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 ex = vsum / wsum;
 	float4 ex2 = vsum2 / wsum;
 	float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
+
     hist_diff /= wsum;
     hist_vsum /= wsum;
     hist_vsum2 /= wsum;
@@ -153,11 +151,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     nmax.rgb = lerp(nmid, nmax.rgb, 3.0);
 #endif
 
-    //const float light_stability = 1.0 - 0.8 * smoothstep(0.1, 0.5, history_dist);
-    //const float light_stability = 1.0 - step(0.01, history_dist);
-    //const float light_stability = 1;
-    //const float light_stability = center.w > 0.0 ? 1.0 : 0.0;
-
     /*float rt_invalid = 0;
 	{
         const int k = 3;
@@ -179,7 +172,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float clamp_box_size = 1
         * lerp(0.25, 2.0, 1.0 - rt_invalid)
-        * saturate(reproj.w)
+        * lerp(0.333, 1.0, saturate(reproj.w))
         * 2
         ;
     clamp_box_size = max(clamp_box_size, 0.5);
@@ -195,6 +188,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         history.a
     );
 #endif
+
     /*const float3 history_dist = abs(history.rgb - ex.rgb) / max(0.1, dev.rgb * 0.5);
     const float3 closest_pt = clamp(history.rgb, center.rgb - dev.rgb * 0.5, center.rgb + dev.rgb * 0.5);
     clamped_history = float4(
@@ -211,11 +205,10 @@ void main(uint2 px: SV_DispatchThreadID) {
     float max_sample_count = 32;
     max_sample_count = lerp(max_sample_count, 4, variance_adjusted_temporal_change);
     //max_sample_count = lerp(max_sample_count, 1, smoothstep(0.01, 0.6, 10 * temporal_change * (center_dev / max(1e-5, center_luma))));
-    max_sample_count *= light_stability;
     max_sample_count *= lerp(1.0, 0.5, rt_invalid);
 
 // hax
-//max_sample_count = 32;// * 1024;
+//max_sample_count = 32;
 
     float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
     //float3 res = lerp(clamped_history.rgb, center.rgb, 1.0 / 32);
@@ -257,7 +250,13 @@ void main(uint2 px: SV_DispatchThreadID) {
     //output.rgb = lerp(output.rgb, pow(output_sample_count / 32.0, 4), 0.9);
     //output.r = 1-reproj.w;
 
-    output_tex[px] = float4(output.rgb, saturate(output_sample_count / 32.0));
+    output_tex[px] = float4(
+        output.rgb,
+        saturate(
+            output_sample_count
+            * lerp(1.0, 0.5, rt_invalid)
+            * smoothstep(0.3, 0, temporal_change)
+            / 32.0));
 
     //output_tex[px] = float4(output.rgb, output_sample_count);
     //output_tex[px] = float4(output.rgb, 1.0 - rt_invalid);

@@ -44,19 +44,12 @@ void main() {
         return;
     }
 
-    uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-
     // Validation at half-res
-    const uint2 px = DispatchRaysIndex().xy * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+    const uint2 px = DispatchRaysIndex().xy * 2 + HALFRES_SUBSAMPLE_OFFSET;
     //const uint2 px = DispatchRaysIndex().xy;
 
     // Standard jitter from the other reflection passes
-    const uint2 hi_px = px * 2 + hi_px_subpixels[frame_constants.frame_index & 3];
+    const uint2 hi_px = px * 2 + HALFRES_SUBSAMPLE_OFFSET;
     float depth = depth_tex[hi_px];
 
     //refl_restir_invalidity_tex[px] = 0;
@@ -121,8 +114,8 @@ void main() {
     #if 1
         for (uint i = 1; i <= 3; ++i) {
             //const uint2 main_px = px;
-            //const uint2 px = (main_px & ~1u) + hi_px_subpixels[(frame_constants.frame_index + i) & 3];
-            const uint2 px = DispatchRaysIndex().xy * 2 + hi_px_subpixels[(frame_constants.frame_index + i) & 3];
+            //const uint2 px = (main_px & ~1u) + HALFRES_SUBSAMPLE_OFFSET;
+            const uint2 px = DispatchRaysIndex().xy * 2 + HALFRES_SUBSAMPLE_OFFSET;
 
             const float4 neighbor_prev_irradiance_packed = irradiance_history_tex[px];
             {

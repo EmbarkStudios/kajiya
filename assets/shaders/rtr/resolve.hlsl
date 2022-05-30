@@ -79,14 +79,6 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
     //px = decode_morton_2d(idx_within_group) + px_tile * 8;
     //px = (px & ~3) | ((px & 1) << 1) | ((px & 2) >> 1);
 
-    // Note: must match the raygen
-    static const uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-
     const uint2 half_px = px / 2;
 
     const float2 uv = get_uv(px, output_tex_size);
@@ -309,10 +301,10 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
             float rejection_bias = 1;
 
             const float2 sample_uv = get_uv(
-                sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+                sample_px * 2 + HALFRES_SUBSAMPLE_OFFSET,
                 output_tex_size);
 
-            // const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3]];
+            // const float4 sample_gbuffer_packed = gbuffer_tex[sample_px * 2 + HALFRES_SUBSAMPLE_OFFSET];
             // GbufferData sample_gbuffer = GbufferDataPacked::from_uint4(asuint(sample_gbuffer_packed)).unpack();
 
             float3 sample_hit_normal_vs;    // only valid without ReSTIR

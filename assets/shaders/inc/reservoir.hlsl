@@ -93,7 +93,7 @@ struct Reservoir1spp {
 
     void finish_stream(Reservoir1sppStreamState state) {
         M = state.M_sum;
-        W = (1.0 / max(1e-5, state.p_q_sel)) * (w_sum / max(1e-5, M));
+        W = w_sum / (max(1e-8, M * state.p_q_sel));
     }
 };
 

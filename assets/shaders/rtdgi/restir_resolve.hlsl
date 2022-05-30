@@ -24,13 +24,12 @@
 [[vk::binding(8)]] Texture2D<float4> candidate_normal_tex;
 [[vk::binding(9)]] Texture2D<float4> candidate_hit_tex;
 [[vk::binding(10)]] Texture2D<uint4> temporal_reservoir_packed_tex;
-[[vk::binding(11)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(12)]] cbuffer _ {
+[[vk::binding(11)]] Texture2D<float3> spatial_radiance_input_tex;
+[[vk::binding(12)]] RWTexture2D<float4> irradiance_output_tex;
+[[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
 };
-
-#define USE_RESOLVE_SPATIAL_FILTER 1
 
 static float ggx_ndf_unnorm(float a2, float cos_theta) {
 	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
@@ -43,14 +42,7 @@ uint2 reservoir_payload_to_px(uint payload) {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
-    const uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-
-    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    const int2 hi_px_offset = HALFRES_SUBSAMPLE_OFFSET;
 
     float depth = depth_tex[px];
     if (0 == depth) {
@@ -92,10 +84,10 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float near_field_influence = is_rtdgi_tracing_frame() ? center_ssao : 0;
     #endif
 
-    {for (uint sample_i = 0; sample_i < (USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
+    {for (uint sample_i = 0; sample_i < (RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
         const float radius =
-            USE_RESOLVE_SPATIAL_FILTER
+            RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
             ? (pow(float(sample_i), 0.666) * 1.0 + 0.4)
             : 0.0;
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
@@ -107,7 +99,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         const TemporalReservoirOutput spx_packed = TemporalReservoirOutput::from_raw(temporal_reservoir_packed_tex[spx]);
 
         const float2 spx_uv = get_uv(
-            spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            spx * 2 + HALFRES_SUBSAMPLE_OFFSET,
             gbuffer_tex_size);
         const ViewRayContext spx_ray_ctx = ViewRayContext::from_uv_and_depth(spx_uv, spx_packed.depth);
 
@@ -121,7 +113,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float geometric_term =
                 2 * max(0.0, dot(center_normal_ws, sample_dir));
 
-            float3 radiance = irradiance_tex[spx].rgb;
+            float3 radiance;
+            if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
+                radiance = spatial_radiance_input_tex[rpx];
+            } else {
+                radiance = irradiance_tex[spx].rgb;
+            }
 
             if (USE_SPLIT_RT_NEAR_FIELD) {
                 const float atten = smoothstep(NEAR_FIELD_FADE_OUT_START, NEAR_FIELD_FADE_OUT_END, sample_dist);
@@ -145,17 +142,17 @@ void main(uint2 px : SV_DispatchThreadID) {
     weighted_irradiance = 0;
     w_sum = 0;
 
-    for (uint sample_i = 0; sample_i < (USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
+    for (uint sample_i = 0; sample_i < (RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
         const float radius =
-            USE_RESOLVE_SPATIAL_FILTER
+            RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
             ? (pow(float(sample_i), 0.666) * 1.0 + 0.4)
             : 0.0;
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
         const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));
 
         const float2 rpx_uv = get_uv(
-            rpx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+            rpx * 2 + HALFRES_SUBSAMPLE_OFFSET,
             gbuffer_tex_size);
         const float rpx_depth = half_depth_tex[rpx];
         const ViewRayContext rpx_ray_ctx = ViewRayContext::from_uv_and_depth(rpx_uv, rpx_depth);

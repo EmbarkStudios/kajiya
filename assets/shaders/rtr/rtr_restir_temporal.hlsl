@@ -104,14 +104,7 @@ float4 encode_hit_normal_and_dot(float4 val) {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
-    const uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-
-    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    const int2 hi_px_offset = HALFRES_SUBSAMPLE_OFFSET;
     const uint2 hi_px = px * 2 + hi_px_offset;
     
     float depth = depth_tex[hi_px];

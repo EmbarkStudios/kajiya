@@ -86,14 +86,7 @@ int2 get_rpx_offset(uint sample_i, uint frame_index) {
 
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
-    const uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-
-    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    const int2 hi_px_offset = HALFRES_SUBSAMPLE_OFFSET;
     const uint2 hi_px = px * 2 + hi_px_offset;
     
     float depth = depth_tex[hi_px];
@@ -147,7 +140,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float p_q = 1.0
             * max(0, sRGB_to_luminance(result.out_value))
-            * max(0, dot(outgoing_dir, normal_ws))
+            // Note: including this term reduces noise in easy areas,
+            // but then increases it in corners by undersampling grazing angles.
+            // Effectively over time the sampling turns cosine-distributed, which
+            // we avoided doing in the first place.
+            //* max(0, dot(outgoing_dir, normal_ws))
             ;
 
         const float inv_pdf_q = result.inv_pdf;
@@ -169,15 +166,16 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));
 
-    //const bool use_resampling = rt_invalidity < 0.1 && DIFFUSE_GI_USE_RESTIR;
     const bool use_resampling = DIFFUSE_GI_USE_RESTIR;
-    //const bool use_resampling = prev_sample_valid && DIFFUSE_GI_USE_RESTIR;
+    //const bool use_resampling = false;
 
     // 1 (center) plus offset samples
     const uint MAX_RESOLVE_SAMPLE_COUNT =
         RESTIR_TEMPORAL_USE_PERMUTATIONS
         ? 5
         : 1;
+
+    float center_M = 0;
 
     if (use_resampling) {
         // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
@@ -187,7 +185,11 @@ void main(uint2 px : SV_DispatchThreadID) {
         // and looks bad. Maybe try using accum at the start, skip the middle, and then engage it once
         // the central reservoir is full, to stabilize the boiling.
 
-        for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT && stream_state.M_sum < RESTIR_TEMPORAL_M_CLAMP * 1.25; ++sample_i) {
+        for (
+            uint sample_i = 0;
+            sample_i < MAX_RESOLVE_SAMPLE_COUNT
+            && stream_state.M_sum < 1.25 * RESTIR_TEMPORAL_M_CLAMP;
+            ++sample_i) {
         //for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 2; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
@@ -282,7 +284,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
 
             #if 1
-                relevance *= 1 - smoothstep(0.05, 0.2, inverse_depth_relative_diff(depth, sample_depth));
+                relevance *= 1 - smoothstep(0.0, 0.1, inverse_depth_relative_diff(depth, sample_depth));
             #else
                 if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
                     continue;
@@ -353,7 +355,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float p_q = 1
                 * max(0, sRGB_to_luminance(prev_irrad.rgb))
-                * max(0, dot(dir_to_sample_hit, normal_ws))
+                // Note: including this term reduces noise in easy areas,
+                // but then increases it in corners by undersampling grazing angles.
+                // Effectively over time the sampling turns cosine-distributed, which
+                // we avoided doing in the first place.
+                //* max(0, dot(dir_to_sample_hit, normal_ws))
                 ;
 
             float jacobian = 1;
@@ -397,7 +403,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // Note: somehow it causes over-darkening of unoccluded stuff. Enable once figured out.
             if (!true && sample_i > 0) {
                 const float2 ray_orig_uv = get_uv(
-                    spx * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+                    spx * 2 + HALFRES_SUBSAMPLE_OFFSET,
                     gbuffer_tex_size);
 
                 const float surface_offset_len = length(
@@ -408,12 +414,17 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
 #if 1
+                // Trace towards the hit point.
+
                 const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
                     + raymarch_dir_unnorm_ws * min(1.0, surface_offset_len / length(raymarch_dir_unnorm_ws));
 #else
+                // Trace in the same direction as the reused ray.
+                // More precise shadowing sometimes, but corner darkening. TODO.
+
                 const float3 raymarch_dir_unnorm_ws = prev_dir_to_sample_hit_unnorm_ws;
                 const float3 raymarch_end_ws =
                     view_ray_context.ray_hit_ws()
@@ -424,7 +435,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float2 raymarch_len_px = (raymarch_end_uv - uv) * gbuffer_tex_size.xy;
 
                 const uint MIN_PX_PER_STEP = 2;
-                const uint MAX_TAPS = 2;
+                const uint MAX_TAPS = 4;
 
                 const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
 
@@ -444,6 +455,10 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             r.M *= relevance;
 
+            if (0 == sample_i) {
+                center_M = r.M;
+            }
+
             if (reservoir.update_with_stream(
                 r, p_q, jacobian * visibility,
                 stream_state, reservoir_payload, rng
@@ -460,6 +475,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         reservoir.finish_stream(stream_state);
         reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
     }
+
+    reservoir.M = center_M + 0.5;
+    //reservoir.M = center_M + 1;
 
     RayDesc outgoing_ray;
     outgoing_ray.Direction = outgoing_dir;

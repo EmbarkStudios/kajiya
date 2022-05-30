@@ -46,14 +46,7 @@ DEFINE_WRC_BINDINGS(15)
 [shader("raygeneration")]
 void main() {
     const uint2 px = DispatchRaysIndex().xy;
-    const uint2 hi_px_subpixels[4] = {
-        uint2(0, 0),
-        uint2(1, 1),
-        uint2(1, 0),
-        uint2(0, 1),
-    };
-
-    const int2 hi_px_offset = hi_px_subpixels[frame_constants.frame_index & 3];
+    const int2 hi_px_offset = HALFRES_SUBSAMPLE_OFFSET;
     const uint2 hi_px = px * 2 + hi_px_offset;
 
     if (0.0 == depth_tex[hi_px]) {

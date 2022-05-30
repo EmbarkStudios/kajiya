@@ -75,6 +75,7 @@ Direct lighting
 # G-buffer pass: ~1.1ms
 
 The geometry is rasterized into a G-buffer packed in a single `RGBA32` image. The four dwords store:
+
 * Albedo (8:8:8, with one byte to spare)
 * Normal (11:10:11)
 * Roughness & metalness (2xf16; could be packed more)
@@ -107,6 +108,7 @@ If the hit point of the ray happens to be visible from the primary camera's poin
 ![image](https://user-images.githubusercontent.com/16522064/170575279-63a06fd6-5265-4003-9361-66430994e8af.png)
 
 The output of this pass is not merely radiance but also:
+
 * Normal of the hit point;
 * Ray offset from the trace origin to the hit point.
 
@@ -115,6 +117,7 @@ The results are not used directly for lighting calculations, but fed into [ReSTI
 _ReSTIR ELI5: Each reservoir remembers its favorite sample. Every frame (ish) you feed new candidates into reservoirs, and they maybe change their minds. They can also gossip between each other (spatial resampling). `W` makes the math happy. `M` controls the length of the reservoirs' memory. With just the temporal part, you get slowdown of noise, but lower variance; that means slower temporal convergence though! Spatial resampling speeds it up again because neighbors likely contain "just as good" samples, and favorites flip often again. Spatial reduces quality unless you're VERY careful and also use ray tracing to check visibility. Clamp `M` to reduce the reservoirs' memory, and don't feed spatial back into temporal unless starved for samples._
 
 One-sample reservoirs are stored at half resolution, and along with them, additional information needed for ReSTIR:
+
 * Origin of the ray currently selected by the reservoir;
 * Incident radiance seen through the selected ray;
 * Normal of the hit point of the selected ray;
@@ -170,7 +173,7 @@ As for the actual validation process: when the old and new radiance differ signi
 
 ## Micro-detail
 
-For the sake of performance, the ReSTIR implementation in `kajiya` is the biased flavor (see [the paper][ReSTIR paper]). Preserving micro-scale light bounce has proven to be difficult. Every spatial resampling pass erodes detail a bit; after the spatiotemporal permutation sampling and two spatial passes, the image is visibly affected.
+For the sake of performance, the ReSTIR implementation in `kajiya` is the biased flavor (see [the paper][ReSTIR paper]). Preserving micro-scale light bounce has proven to be difficult. Unless a very aggressive normal cutoff is used, every spatial resampling pass erodes detail a bit; after the spatiotemporal permutation sampling and two spatial passes, the image is visibly affected.
 
 First the path-traced reference:
 
