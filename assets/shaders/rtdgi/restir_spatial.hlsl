@@ -76,8 +76,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     float max_kernel_radius =
         spatial_reuse_pass_idx == 0
-        ? lerp(32.0, 8.0, kernel_tightness)
-        : lerp(16.0, 4.0, kernel_tightness);
+        ? lerp(32.0, 12.0, kernel_tightness)
+        : lerp(16.0, 6.0, kernel_tightness);
 
     // TODO: only run more passes where absolutely necessary
     if (spatial_reuse_pass_idx >= 2) {

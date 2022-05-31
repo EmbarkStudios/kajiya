@@ -224,7 +224,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     [branch]
     if (debug_shading_mode == SHADING_MODE_DIFFUSE_GI) {
         output = gi_irradiance;
-        output += shadow_mask * SUN_COLOR * 0.1;
     }
 
     [branch]
