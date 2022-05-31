@@ -94,8 +94,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         ? (spatial_reuse_pass_idx == 0 ? SAMPLE_COUNT_PASS0 : SAMPLE_COUNT_PASS1)
         : 1;
 
-    const uint TARGET_M = 512;
-
     #if 1
         // Scrambling angles here would be nice, but results in bad cache thrashing.
         // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
@@ -118,7 +116,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     float3 radiance_output = 0;
 
-    for (uint sample_i = 0; sample_i < sample_count && stream_state.M_sum < TARGET_M; ++sample_i) {
+    for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
         //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float2 radius =
@@ -324,7 +322,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                         if (depth_diff > Z_LAYER_THICKNESS) {
                             // Going behind an object; could be sketchy.
-                            relevance *= 0.2;
+                            //relevance *= 0.2;
                         }
                     }
 
