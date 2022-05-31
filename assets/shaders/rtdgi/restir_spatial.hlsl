@@ -27,9 +27,17 @@
 };
 
 #define USE_SSAO_WEIGHING 1
+#define ALLOW_REUSE_OF_BACKFACING 1
 
 uint2 reservoir_payload_to_px(uint payload) {
     return uint2(payload & 0xffff, payload >> 16);
+}
+
+// Two-thirds of SmeLU
+float normal_inluence_nonlinearity(float x, float b) {
+    return x < -b
+        ? 0
+        : (x + b) * (x + b) / (4 * b);
 }
 
 [numthreads(8, 8, 1)]
@@ -173,11 +181,13 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float normal_cutoff = 0.1;
 
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
-        if (!is_center_sample && normal_similarity_dot < normal_cutoff) {
-            continue;
-        }
-
-        relevance *= normal_similarity_dot;
+        #if ALLOW_REUSE_OF_BACKFACING
+            // Allow reuse even with surfaces that face away, but weigh them down.
+            relevance *= normal_inluence_nonlinearity(normal_similarity_dot, 0.5)
+                / normal_inluence_nonlinearity(1.0, 0.5);
+        #else
+            relevance *= max(0, normal_similarity_dot);
+        #endif
 
         const float sample_ssao = half_ssao_tex[rpx];
 
@@ -210,17 +220,14 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float reused_dist = length(reused_dir_to_sample_hit_unnorm_ws);
         const float3 reused_dir_to_sample_hit_ws = reused_dir_to_sample_hit_unnorm_ws / reused_dist;
 
-        // Reject hits too close to the surface
-        if (!is_center_sample && !(reused_dist > 1e-8)) {
-            continue;
-        }
-
         const float3 dir_to_sample_hit_unnorm = sample_hit_ws - view_ray_context.ray_hit_ws();
         const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
         const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
 
         // Reject hits below the normal plane
-        if (!is_center_sample && dot(dir_to_sample_hit, center_normal_ws) < 1e-5) {
+        const bool is_below_normal_plane = dot(dir_to_sample_hit, center_normal_ws) < 1e-5;
+
+        if ((!is_center_sample && is_below_normal_plane) || !(relevance > 0)) {
             continue;
         }
 
