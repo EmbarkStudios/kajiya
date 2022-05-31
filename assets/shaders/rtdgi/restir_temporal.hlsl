@@ -476,6 +476,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
     }
 
+    // TODO: this results in M being accumulated at a slower rate, although finally reaching
+    // the limit we're after. What it does is practice is slow down the kernel tightening
+    // in the subsequent spatial reservoir resampling.
     reservoir.M = center_M + 0.5;
     //reservoir.M = center_M + 1;
 

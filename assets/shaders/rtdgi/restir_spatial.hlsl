@@ -69,9 +69,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // TODO: unify with `kernel_tightness`
     if (RTDGI_RESTIR_SPATIAL_USE_KERNEL_NARROWING) {
-        kernel_tightness *= lerp(
-            1.0, 0.0,
-            smoothstep(MAX_INPUT_M_IN_PASS * 0.5, MAX_INPUT_M_IN_PASS, center_r.M));
+        kernel_tightness = lerp(
+            kernel_tightness, 1.0,
+            0.5 * smoothstep(MAX_INPUT_M_IN_PASS * 0.5, MAX_INPUT_M_IN_PASS, center_r.M));
     }
 
     float max_kernel_radius =
