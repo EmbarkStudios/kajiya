@@ -113,6 +113,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     output_tex[px] = float2(
         max(history * 0.75, invalid_blurred.x),
+        //invalid_blurred.x,
         input_tex[px]
     );
 }

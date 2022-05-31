@@ -204,12 +204,8 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
             for (uint octa_idx = 0; octa_idx < IRCACHE_OCTA_DIMS2; ++octa_idx) {
                 const float2 octa_coord = (float2(octa_idx % IRCACHE_OCTA_DIMS, octa_idx / IRCACHE_OCTA_DIMS) + 0.5) / IRCACHE_OCTA_DIMS;
 
-                #if IRCACHE_USE_PRECISE_DIRECTION_LOOKUP
-                    const Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + octa_idx].xy));
-                    const float3 dir = SampleParams::from_raw(r.payload).direction();
-                #else
-                    const float3 dir = octa_decode(octa_coord);
-                #endif
+                const Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + octa_idx].xy));
+                const float3 dir = SampleParams::from_raw(r.payload).direction();
 
                 const float wt = dot(dir, normal_ws);
                 if (wt > 0.0) {

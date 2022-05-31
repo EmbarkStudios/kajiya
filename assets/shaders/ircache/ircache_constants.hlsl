@@ -7,7 +7,6 @@
 #define IRCACHE_FREEZE 0
 
 #define IRCACHE_USE_SPHERICAL_HARMONICS 1
-#define IRCACHE_USE_PRECISE_DIRECTION_LOOKUP 1
 
 // Same as IRCACHE_META_ALLOC_COUNT, but frozen at the rt dispatch args stage.
 #define IRCACHE_META_TRACING_ALLOC_COUNT (0 * sizeof(uint))

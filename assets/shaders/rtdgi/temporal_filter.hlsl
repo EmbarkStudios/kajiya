@@ -133,40 +133,6 @@ void main(uint2 px: SV_DispatchThreadID) {
     //temporal_change = WaveActiveSum(temporal_change) / WaveActiveSum(1);
 #endif
 
-#if 0
-	nmin = center;
-	nmax = center;
-
-	{const int k = 2;
-    for (int y = -k; y <= k; ++y) {
-        for (int x = -k; x <= k; ++x) {
-            float4 neigh = (input_tex[px + int2(x, y) * 2]);
-			nmin = min(nmin, neigh);
-            nmax = max(nmax, neigh);
-        }
-    }}
-
-    float3 nmid = lerp(nmin.rgb, nmax.rgb, 0.5);
-    nmin.rgb = lerp(nmid, nmin.rgb, 3.0);
-    nmax.rgb = lerp(nmid, nmax.rgb, 3.0);
-#endif
-
-    /*float rt_invalid = 0;
-	{
-        const int k = 3;
-        float w_sum = 0;
-        for (int y = -k; y <= k; ++y) {
-            for (int x = -k; x <= k; ++x) {
-                const int2 offset = int2(x, y) * 2;
-                //float w = 1;
-                float w = exp2(-0.05 * dot(offset, offset));
-                w_sum += w;
-                rt_invalid += rt_history_invalidity_tex[px / 2 + offset] * w;
-            }
-        }
-        rt_invalid /= w_sum;
-        //rt_invalid = WaveActiveMax(rt_invalid);
-    }    */
     const float rt_invalid = saturate(sqrt(rt_history_invalidity_tex[px / 2].x) * 4);
     const float current_sample_count = history.a;
 
@@ -179,6 +145,29 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 	float4 nmin = center - dev * clamp_box_size;
 	float4 nmax = center + dev * clamp_box_size;
+
+#if 0
+    {
+    	float4 nmin2 = center;
+    	float4 nmax2 = center;
+
+    	{const int k = 2;
+        for (int y = -k; y <= k; ++y) {
+            for (int x = -k; x <= k; ++x) {
+                float4 neigh = linear_to_working(input_tex[px + int2(x, y)]);
+    			nmin2 = min(nmin2, neigh);
+                nmax2 = max(nmax2, neigh);
+            }
+        }}
+
+        float3 nmid = lerp(nmin2.rgb, nmax2.rgb, 0.5);
+        nmin2.rgb = lerp(nmid, nmin2.rgb, 1.0);
+        nmax2.rgb = lerp(nmid, nmax2.rgb, 1.0);
+
+        nmin = max(nmin, nmin2);
+        nmax = min(nmax, nmax2);
+    }
+#endif
 
 #if 1
 	float4 clamped_history = float4(clamp(history.rgb, nmin.rgb, nmax.rgb), history.a);
