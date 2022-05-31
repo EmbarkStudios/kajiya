@@ -1,7 +1,10 @@
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
 #include "../inc/sh.hlsl"
+#include "../inc/quasi_random.hlsl"
+#include "../inc/reservoir.hlsl"
 #include "ircache_constants.hlsl"
+#include "ircache_sampler_common.inc.hlsl"
 
 [[vk::binding(0)]] StructuredBuffer<uint> ircache_life_buf;
 [[vk::binding(1)]] RWByteAddressBuffer ircache_meta_buf;
@@ -49,7 +52,14 @@ void main(uint dispatch_idx: SV_DispatchThreadID) {
         // TODO: counter distortion
         for (uint octa_idx = 0; octa_idx < IRCACHE_OCTA_DIMS2; ++octa_idx) {
             const float2 octa_coord = (float2(octa_idx % IRCACHE_OCTA_DIMS, octa_idx / IRCACHE_OCTA_DIMS) + 0.5) / IRCACHE_OCTA_DIMS;
-            const float3 dir = octa_decode(octa_coord);
+
+            #if IRCACHE_USE_PRECISE_DIRECTION_LOOKUP
+                const Reservoir1spp r = Reservoir1spp::from_raw(asuint(ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + octa_idx].xy));
+                const float3 dir = SampleParams::from_raw(r.payload).direction();
+            #else
+                const float3 dir = octa_decode(octa_coord);
+            #endif
+
             const float4 contrib = ircache_aux_buf[entry_idx * IRCACHE_AUX_STRIDE + IRCACHE_OCTA_DIMS2 + octa_idx];
 
             contribution_sum.add_radiance_in_direction(

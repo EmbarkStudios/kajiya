@@ -38,6 +38,7 @@ DEFINE_WRC_BINDINGS(6)
 #define IRCACHE_LOOKUP_PRECISE
 #include "lookup.hlsl"
 
+#include "ircache_sampler_common.inc.hlsl"
 #include "ircache_trace_common.inc.hlsl"
 
 [shader("raygeneration")]
