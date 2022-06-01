@@ -542,7 +542,6 @@ impl RuntimeState {
                 return;
             }
 
-            // TODO: maybe only replace if thye're Some
             item.value.camera_position = MemOption::new(persisted.camera.position);
             item.value.camera_direction = MemOption::new(persisted.camera.rotation * -Vec3::Z);
             item.value.towards_sun = MemOption::new(persisted.light.sun.controller.towards_sun());

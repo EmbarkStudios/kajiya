@@ -69,7 +69,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     Reservoir1spp center_r = Reservoir1spp::from_raw(reservoir_input_tex[px]);
 
-    // TODO: drive this via variance, shrink when it's low. 80 is a bit of a blur...
     float kernel_tightness = 1.0 - center_ssao;
 
     const uint SAMPLE_COUNT_PASS0 = 8;
@@ -79,7 +78,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float MAX_INPUT_M_IN_PASS1 = MAX_INPUT_M_IN_PASS0 * SAMPLE_COUNT_PASS0;
     const float MAX_INPUT_M_IN_PASS = spatial_reuse_pass_idx == 0 ? MAX_INPUT_M_IN_PASS0 : MAX_INPUT_M_IN_PASS1;
 
-    // TODO: unify with `kernel_tightness`
+    // TODO: consider keeping high in areas of high variance.
     if (RTDGI_RESTIR_SPATIAL_USE_KERNEL_NARROWING) {
         kernel_tightness = lerp(
             kernel_tightness, 1.0,
@@ -91,7 +90,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         ? lerp(32.0, 12.0, kernel_tightness)
         : lerp(16.0, 6.0, kernel_tightness);
 
-    // TODO: only run more passes where absolutely necessary
+    // TODO: only run more passes where absolutely necessary (dispatch in tiles)
     if (spatial_reuse_pass_idx >= 2) {
         max_kernel_radius = 8;
     }
@@ -264,7 +263,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
             const float3 raymarch_end_ws =
                 view_ray_context.ray_hit_ws()
-                // TODO: what's a good max distance to raymarch? Probably need to project some stuff
+                // TODO: what's a good max distance to raymarch?
                 + raymarch_dir_unnorm_ws * min(1.0, MAX_RAYMARCH_DIST_MULT * surface_offset_len / length(raymarch_dir_unnorm_ws));
 
             OcclusionScreenRayMarch raymarch = OcclusionScreenRayMarch::create(

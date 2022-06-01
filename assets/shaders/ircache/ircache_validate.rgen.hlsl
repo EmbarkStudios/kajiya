@@ -104,8 +104,7 @@ void main() {
             r.M = max(0, min(r.M, exp2(log2(float(IRCACHE_RESTIR_M_CLAMP)) * (1.0 - invalidity))));
 
             // Update the stored value too.
-            // TODO: Feels like the W might need to be updated too, because we would
-            // have picked this sample with a different probability...
+            // TODO: try the update heuristics from the diffuse trace
             prev_value_and_count.rgb = a;
 
             ircache_aux_buf[output_idx].xy = asfloat(r.as_raw());

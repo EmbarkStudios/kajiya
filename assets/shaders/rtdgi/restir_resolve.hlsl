@@ -136,6 +136,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     bool has_near = any(total_irradiance > 0);
 
     // TODO: something smarter?
+    // The idea would be to tighten the kernel near detail. Maybe the candidate rays could be used
+    // to estimate a tiny AO, and then narrow down this kernel based on that AO. Screen-space misses too much.
     const float scl = has_near ? 0.5 : 1.0;
     
     for (uint sample_i = 0; sample_i < (RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {

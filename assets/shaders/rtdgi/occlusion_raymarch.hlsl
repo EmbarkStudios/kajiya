@@ -115,9 +115,6 @@ struct OcclusionScreenRayMarch {
             if (depth_at_interp > biased_interp_z) {
                 const float depth_diff = inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp);
 
-                // TODO, BUG: if the hit surface is emissive, this ends up casting a shadow from it,
-                // without taking the emission into consideration.
-
                 float hit = smoothstep(
                     Z_LAYER_THICKNESS,
                     Z_LAYER_THICKNESS * 0.5,

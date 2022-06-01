@@ -9,7 +9,6 @@ pub fn light_gbuffer(
     rg: &mut RenderGraph,
     gbuffer_depth: &GbufferDepth,
     shadow_mask: &rg::Handle<Image>,
-    ssgi: &rg::Handle<Image>,
     rtr: &rg::Handle<Image>,
     rtdgi: &rg::Handle<Image>,
     ircache: &mut IrcacheRenderState,
@@ -26,7 +25,6 @@ pub fn light_gbuffer(
         .read(&gbuffer_depth.gbuffer)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(shadow_mask)
-        .read(ssgi)
         .read(rtr)
         .read(rtdgi)
         .bind_mut(ircache)

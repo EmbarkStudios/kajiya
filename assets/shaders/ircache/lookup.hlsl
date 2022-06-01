@@ -195,7 +195,6 @@ float3 lookup_irradiance_cache(float3 query_from_ws, float3 pt_ws, float3 normal
         
         float3 irradiance = 0;
 
-// TODO: use the restir ray directions
 #ifdef IRCACHE_LOOKUP_PRECISE
         {
             float weight_sum = 0;

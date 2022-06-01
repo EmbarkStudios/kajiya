@@ -11,7 +11,6 @@
 #define RESTIR_USE_PATH_VALIDATION true
 
 // Narrow down the spatial resampling kernel when M is already high.
-// TODO: results in boiling noise if variance is high and RESTIR_TEMPORAL_M_CLAMP is low
 #define RTDGI_RESTIR_SPATIAL_USE_KERNEL_NARROWING true
 
 #define RTDGI_RESTIR_SPATIAL_USE_RAYMARCH true

@@ -98,7 +98,6 @@ impl RtrRenderer {
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
-                // TODO: slim down
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 

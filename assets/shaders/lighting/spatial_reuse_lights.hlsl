@@ -70,7 +70,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         LayeredBrdf layered_brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
         specular_brdf = layered_brdf.specular_brdf;
 
-        // TODO: integrate into te specular BRDF so it doesn't need explicit handling everywhere
+        // TODO: integrate into the specular BRDF so it doesn't need explicit handling everywhere
         energy_preservation_mult = layered_brdf.energy_preservation.preintegrated_reflection_mult;
     }
 

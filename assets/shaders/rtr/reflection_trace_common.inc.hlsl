@@ -78,7 +78,6 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
         pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
         .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
 
-    // TODO: cone spread angle
     const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
         .with_cone(ray_cone)
         .with_cull_back_faces(false)

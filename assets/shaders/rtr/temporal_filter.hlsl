@@ -8,7 +8,7 @@
 
 #include "../inc/working_color_space.hlsl"
 
-// TODO: use this after tweaking all the spec.
+// Use this after tweaking all the spec.
 #define linear_to_working linear_rgb_to_crunched_luma_chroma
 #define working_to_linear crunched_luma_chroma_to_linear_rgb
 

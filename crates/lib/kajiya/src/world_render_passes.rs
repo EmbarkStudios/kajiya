@@ -193,7 +193,6 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &denoised_shadow_mask,
-            &ssgi_tex,
             &rtr,
             &rtdgi,
             &mut ircache_state,

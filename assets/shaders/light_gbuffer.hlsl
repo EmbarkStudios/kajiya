@@ -28,16 +28,15 @@
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float> shadow_mask_tex;
-[[vk::binding(3)]] Texture2D<float4> ssgi_tex;  // TODO: nuke
-[[vk::binding(4)]] Texture2D<float4> rtr_tex;
-[[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-DEFINE_IRCACHE_BINDINGS(6, 7, 8, 9, 10, 11, 12, 13, 14)
-DEFINE_WRC_BINDINGS(15)
-[[vk::binding(16)]] RWTexture2D<float4> temporal_output_tex;
-[[vk::binding(17)]] RWTexture2D<float4> output_tex;
-[[vk::binding(18)]] TextureCube<float4> unconvolved_sky_cube_tex;
-[[vk::binding(19)]] TextureCube<float4> sky_cube_tex;
-[[vk::binding(20)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float4> rtr_tex;
+[[vk::binding(4)]] Texture2D<float4> rtdgi_tex;
+DEFINE_IRCACHE_BINDINGS(5, 6, 7, 8, 9, 10, 11, 12, 13)
+DEFINE_WRC_BINDINGS(14)
+[[vk::binding(15)]] RWTexture2D<float4> temporal_output_tex;
+[[vk::binding(16)]] RWTexture2D<float4> output_tex;
+[[vk::binding(17)]] TextureCube<float4> unconvolved_sky_cube_tex;
+[[vk::binding(18)]] TextureCube<float4> sky_cube_tex;
+[[vk::binding(19)]] cbuffer _ {
     float4 output_tex_size;
     uint debug_shading_mode;
     uint debug_show_wrc;

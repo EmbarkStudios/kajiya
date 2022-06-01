@@ -22,7 +22,7 @@ void age_ircache_entry(uint entry_idx) {
     if (is_ircache_entry_life_valid(new_age)) {
         ircache_life_buf[entry_idx] = new_age;
 
-        // TODO: just `Store` it (AMD doesn't like it)
+        // TODO: just `Store` it (AMD doesn't like it unless it's a byte address buffer)
         const uint cell_idx = ircache_entry_cell_buf[entry_idx];
         ircache_grid_meta_buf.InterlockedAnd(
             sizeof(uint2) * cell_idx + sizeof(uint),
@@ -40,7 +40,7 @@ void age_ircache_entry(uint entry_idx) {
         ircache_meta_buf.InterlockedAdd(IRCACHE_META_ALLOC_COUNT, -1, entry_alloc_count);
         ircache_pool_buf[entry_alloc_count - 1] = entry_idx;
 
-        // TODO: just `Store` it (AMD doesn't like it)
+        // TODO: just `Store` it (AMD doesn't like it unless it's a byte address buffer)
         const uint cell_idx = ircache_entry_cell_buf[entry_idx];
         ircache_grid_meta_buf.InterlockedAnd(
             sizeof(uint2) * cell_idx + sizeof(uint),
