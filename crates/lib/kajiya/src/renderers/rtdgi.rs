@@ -472,7 +472,7 @@ impl RtdgiRenderer {
             .read(&candidate_normal_tex)
             .read(&candidate_hit_tex)
             .read(&temporal_reservoir_packed_tex)
-            .read(&radiance_input_tex)
+            .read(radiance_input_tex)
             .write(&mut irradiance_output_tex)
             .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((

@@ -135,7 +135,7 @@ impl RuntimeState {
 
                     imgui::Drag::<f32>::new(im_str!("Roughness scale"))
                         .range(0.0..=4.0)
-                        .speed(0.025)
+                        .speed(0.001)
                         .build(
                             ui,
                             &mut ctx.world_renderer.render_overrides.material_roughness_scale,

@@ -865,6 +865,7 @@ dependencies = [
 [[package]]
 name = "dolly"
 version = "0.3.0"
+source = "git+https://github.com/h3r2tic/dolly.git?rev=0276fb4b5fe2e11c70919af7dbbcd645711c8f48#0276fb4b5fe2e11c70919af7dbbcd645711c8f48"
 dependencies = [
  "glam",
 ]
@@ -2657,6 +2658,7 @@ dependencies = [
 [[package]]
 name = "splines"
 version = "4.1.0"
+source = "git+https://github.com/h3r2tic/splines.git?rev=aa0ea829b025d908c8621207764601cb6b059911#aa0ea829b025d908c8621207764601cb6b059911"
 dependencies = [
  "glam",
 ]

@@ -16,8 +16,7 @@ log = "0.4"
 ron = "0.6.2"
 serde = { version = "1.0", features = ["derive"] }
 structopt = "0.3"
-#splines = { git = "https://github.com/h3r2tic/splines.git", rev = "714b2a175ab32beea3aa3c69d997d149d1a911b0", features = ["impl-glam"] }
-splines = { path = "../../../../splines", features = ["impl-glam"] }
+splines = { git = "https://github.com/h3r2tic/splines.git", rev = "aa0ea829b025d908c8621207764601cb6b059911", features = ["impl-glam"] }
 
 [features]
 dlss = ["kajiya/dlss"]

@@ -27,7 +27,7 @@ rspirv = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 spirv_headers = { git = "https://github.com/gfx-rs/rspirv.git", rev = "dae552c" }
 
 # TODO look-at
-dolly = { path = "../dolly" }
+dolly = { git = "https://github.com/h3r2tic/dolly.git", rev = "0276fb4b5fe2e11c70919af7dbbcd645711c8f48" }
 
 [profile.release]
 debug = 1
