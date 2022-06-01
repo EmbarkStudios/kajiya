@@ -246,10 +246,6 @@ impl PostProcessRenderer {
 
         //let blurred_luminance = edge_preserving_filter_luminance(rg, input);
 
-        /*SimpleRenderPass::new_compute_rust(
-            rg.add_pass("post combine"),
-            "post_combine::post_combine_cs",
-        )*/
         SimpleRenderPass::new_compute(rg.add_pass("post combine"), "/shaders/post_combine.hlsl")
             .read(input)
             //.read(debug_input)

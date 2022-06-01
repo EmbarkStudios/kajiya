@@ -1,3 +1,5 @@
+// not used
+
 // Derived from atmosphere_felix.hlsl.
 
 use core::f32::consts::PI;
