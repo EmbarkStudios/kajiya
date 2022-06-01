@@ -260,7 +260,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             );
 
             // Multiplier over the surface offset from the center to the neighbor
-            const float MAX_RAYMARCH_DIST_MULT = 2.0;
+            const float MAX_RAYMARCH_DIST_MULT = 3.0;
 
             // Trace towards the hit point.
 
