@@ -61,7 +61,7 @@ void main() {
     }
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_biased_depth(uv, depth);
 
     const float NEAR_FIELD_FADE_OUT_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * gbuffer_tex_size.w * 0.5);
 
@@ -77,8 +77,7 @@ void main() {
 
         RayDesc outgoing_ray;
         outgoing_ray.Direction = outgoing_dir;
-        // TODO: use the tighter ray bias
-        outgoing_ray.Origin = view_ray_context.biased_secondary_ray_origin_ws();
+        outgoing_ray.Origin = view_ray_context.biased_secondary_ray_origin_ws_with_normal(normal_ws);
         outgoing_ray.TMin = 0;
 
         if (is_rtdgi_tracing_frame()) {

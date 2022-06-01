@@ -99,11 +99,11 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
-    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
+    const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_biased_depth(uv, depth);
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
-    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws();
+    const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws_with_normal(normal_ws);
     float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
