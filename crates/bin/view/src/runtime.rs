@@ -401,6 +401,7 @@ impl RuntimeState {
         self.mouse.update(ctx.events);
 
         let orig_persisted_state = persisted.clone();
+        let orig_render_overrides = ctx.world_renderer.render_overrides;
 
         self.do_gui(persisted, &mut ctx);
         self.update_lights(persisted, &mut ctx);
@@ -429,7 +430,9 @@ impl RuntimeState {
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
 
-        if persisted.should_reset_path_tracer(&orig_persisted_state) {
+        if persisted.should_reset_path_tracer(&orig_persisted_state)
+            || ctx.world_renderer.render_overrides != orig_render_overrides
+        {
             self.reset_path_tracer = true;
         }
 

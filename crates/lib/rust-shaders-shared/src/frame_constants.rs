@@ -1,4 +1,4 @@
-use crate::view_constants::ViewConstants;
+use crate::{render_overrides::RenderOverrides, view_constants::ViewConstants};
 use macaw::{IVec4, Vec4};
 
 pub const IRCACHE_CASCADE_COUNT: usize = 12;
@@ -29,6 +29,8 @@ pub struct FrameConstants {
     pub pre_exposure_prev: f32,
     pub pre_exposure_delta: f32,
     pub pad0: f32,
+
+    pub render_overrides: RenderOverrides,
 
     pub ircache_grid_center: Vec4,
     pub ircache_cascades: [IrcacheCascadeConstants; IRCACHE_CASCADE_COUNT],

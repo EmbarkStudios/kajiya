@@ -29,6 +29,7 @@ use rg::renderer::FrameConstantsLayout;
 use rust_shaders_shared::{
     camera::CameraMatrices,
     frame_constants::{FrameConstants, IrcacheCascadeConstants, IRCACHE_CASCADE_COUNT},
+    render_overrides::RenderOverrides,
     view_constants::ViewConstants,
 };
 use std::{collections::HashMap, mem::size_of, sync::Arc};
@@ -190,6 +191,8 @@ pub struct WorldRenderer {
     pub sun_size_multiplier: f32,
     pub sun_color_multiplier: Vec3,
     pub sky_ambient: Vec3,
+
+    pub render_overrides: RenderOverrides,
 
     // One for each render mode
     pub(crate) exposure_state: [ExposureState; 2],
@@ -476,6 +479,8 @@ impl WorldRenderer {
             sun_size_multiplier: 1.0, // Sun as seen from Earth
             sun_color_multiplier: Vec3::ONE,
             sky_ambient: Vec3::ZERO,
+
+            render_overrides: Default::default(),
 
             exposure_state: Default::default(),
         })
@@ -1048,6 +1053,8 @@ impl WorldRenderer {
             pre_exposure_prev: self.exposure_state().pre_mult_prev,
             pre_exposure_delta: self.exposure_state().pre_mult_delta,
             pad0: 0.0,
+
+            render_overrides: self.render_overrides,
 
             ircache_grid_center: self.ircache.grid_center().extend(1.0),
             ircache_cascades,

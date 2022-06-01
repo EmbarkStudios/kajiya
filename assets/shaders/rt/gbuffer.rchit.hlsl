@@ -1,3 +1,4 @@
+#include "../inc/math.hlsl"
 #include "../inc/samplers.hlsl"
 #include "../inc/mesh.hlsl"
 #include "../inc/pack_unpack.hlsl"
@@ -65,7 +66,10 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
 
     const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
-    //normal = surf_normal;
+
+    if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FORCE_FACE_NORMALS)) {
+        normal = surf_normal;
+    }
 
     float4 v_color = 1.0.xxxx;
     if (mesh.vertex_aux_offset != 0) {
@@ -106,44 +110,57 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
     float metalness = metalness_roughness.z * material.metalness_factor;
 
-    //albedo *= lerp(0.75, 1.0, metalness);
+    if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_METAL)) {
+        metalness = 0;
+    }
+
+    if (frame_constants.render_overrides.material_roughness_scale <= 1) {
+        roughness *= frame_constants.render_overrides.material_roughness_scale;
+    } else {
+        roughness = square(lerp(sqrt(roughness), 1.0, 1.0 - 1.0 / frame_constants.render_overrides.material_roughness_scale));
+    }
 
 #if 0
-    float4 v_tangent_packed0 =
-        mesh.vertex_tangent_offset != 0
-            ? asfloat(vertices.Load4(ind.x * sizeof(float4) + mesh.vertex_tangent_offset))
-            : float4(1, 0, 0, 1);            
-    float4 v_tangent_packed1 =
-        mesh.vertex_tangent_offset != 0
-            ? asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_tangent_offset))
-            : float4(1, 0, 0, 1);            
-    float4 v_tangent_packed2 =
-        mesh.vertex_tangent_offset != 0
-            ? asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_tangent_offset))
-            : float4(1, 0, 0, 1);            
+    if (!frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_NORMAL_MAPS)) {
+        float4 v_tangent_packed0 =
+            mesh.vertex_tangent_offset != 0
+                ? asfloat(vertices.Load4(ind.x * sizeof(float4) + mesh.vertex_tangent_offset))
+                : float4(1, 0, 0, 1);            
+        float4 v_tangent_packed1 =
+            mesh.vertex_tangent_offset != 0
+                ? asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_tangent_offset))
+                : float4(1, 0, 0, 1);            
+        float4 v_tangent_packed2 =
+            mesh.vertex_tangent_offset != 0
+                ? asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_tangent_offset))
+                : float4(1, 0, 0, 1);            
 
-    float3 tangent0 = v_tangent_packed0.xyz;
-    float3 bitangent0 = normalize(cross(v0.normal, tangent0) * v_tangent_packed0.w);
+        float3 tangent0 = v_tangent_packed0.xyz;
+        float3 bitangent0 = normalize(cross(v0.normal, tangent0) * v_tangent_packed0.w);
 
-    float3 tangent1 = v_tangent_packed1.xyz;
-    float3 bitangent1 = normalize(cross(v1.normal, tangent1) * v_tangent_packed1.w);
+        float3 tangent1 = v_tangent_packed1.xyz;
+        float3 bitangent1 = normalize(cross(v1.normal, tangent1) * v_tangent_packed1.w);
 
-    float3 tangent2 = v_tangent_packed2.xyz;
-    float3 bitangent2 = normalize(cross(v2.normal, tangent2) * v_tangent_packed2.w);
+        float3 tangent2 = v_tangent_packed2.xyz;
+        float3 bitangent2 = normalize(cross(v2.normal, tangent2) * v_tangent_packed2.w);
 
-    float3 tangent = tangent0 * barycentrics.x + tangent1 * barycentrics.y + tangent2 * barycentrics.z;
-    float3 bitangent = bitangent0 * barycentrics.x + bitangent1 * barycentrics.y + bitangent2 * barycentrics.z;
+        float3 tangent = tangent0 * barycentrics.x + tangent1 * barycentrics.y + tangent2 * barycentrics.z;
+        float3 bitangent = bitangent0 * barycentrics.x + bitangent1 * barycentrics.y + bitangent2 * barycentrics.z;
 
-    float2 normal_uv = transform_material_uv(material, uv, 0);
-    const BindlessTextureWithLod normal_tex =
-        compute_texture_lod(material.normal_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
-    float3 ts_normal = normal_tex.tex.SampleLevel(sampler_llr, normal_uv, normal_tex.lod).xyz * 2.0 - 1.0;
+        float2 normal_uv = transform_material_uv(material, uv, 0);
+        const BindlessTextureWithLod normal_tex =
+            compute_texture_lod(material.normal_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+        float3 ts_normal = normal_tex.tex.SampleLevel(sampler_llr, normal_uv, normal_tex.lod).xyz * 2.0 - 1.0;
+        if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FLIP_NORMAL_MAP_YZ)) {
+            ts_normal.zy *= -1;
+        }
 
-    if (dot(bitangent, bitangent) > 0.0) {
-        float3x3 tbn = float3x3(tangent, bitangent, normal);
-        normal = mul(ts_normal, tbn);
+        if (dot(bitangent, bitangent) > 0.0) {
+            float3x3 tbn = float3x3(tangent, bitangent, normal);
+            normal = mul(ts_normal, tbn);
+        }
+        normal = normalize(normal);
     }
-    normal = normalize(normal);
 #endif
 
     float2 emissive_uv = transform_material_uv(material, uv, 3);
@@ -163,15 +180,10 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
             * frame_constants.pre_exposure;
     }
 
-    //albedo = pow(albedo, 2);
-    //albedo /= max(albedo.r, max(albedo.g, albedo.b)) * 1.2;
-
     GbufferData gbuffer = GbufferData::create_zero();
     gbuffer.albedo = albedo;
     gbuffer.normal = normalize(mul(ObjectToWorld3x4(), float4(normal, 0.0)));
     gbuffer.roughness = roughness;
-    //gbuffer.roughness = 0.02;
-    //gbuffer.metalness = lerp(metalness_roughness.z, 1.0, material.metalness_factor);
     gbuffer.metalness = metalness;
     gbuffer.emissive = emissive;
 
@@ -181,7 +193,6 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     }
 
     //gbuffer.albedo = float3(0.966653, 0.802156, 0.323968); // Au from Mitsuba
-    //gbuffer.albedo = 0.7;
 
     payload.gbuffer_packed = gbuffer.pack();
     payload.t = RayTCurrent();

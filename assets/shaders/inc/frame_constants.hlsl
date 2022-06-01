@@ -38,6 +38,25 @@ struct IrcacheCascadeConstants {
     int4 voxels_scrolled_this_frame;
 };
 
+enum RenderOverrideFlags {
+    FORCE_FACE_NORMALS = 1u << 0,
+    NO_NORMAL_MAPS = 1u << 1,
+    FLIP_NORMAL_MAP_YZ = 1u << 2,
+    NO_METAL = 1u << 3,
+};
+
+struct RenderOverrides {
+    uint flags;
+    float material_roughness_scale;
+
+    uint pad0;
+    uint pad1;
+
+    bool has_flag(RenderOverrideFlags flag) {
+        return (flags & flag) != 0;
+    }
+};
+
 struct FrameConstants {
     ViewConstants view_constants;
 
@@ -55,6 +74,8 @@ struct FrameConstants {
     float pre_exposure_prev;
     float pre_exposure_delta;
     float pad0;
+
+    RenderOverrides render_overrides;
 
     float4 ircache_grid_center;
     IrcacheCascadeConstants ircache_cascades[12];

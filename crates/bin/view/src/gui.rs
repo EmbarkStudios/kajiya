@@ -1,4 +1,5 @@
 use imgui::im_str;
+use kajiya::RenderOverrideFlags;
 use kajiya_simple::*;
 
 use crate::{
@@ -106,6 +107,39 @@ impl RuntimeState {
                     {
                         ui.checkbox(im_str!("Use DLSS"), &mut ctx.world_renderer.use_dlss);
                     }
+                }
+
+                if imgui::CollapsingHeader::new(im_str!("Overrides"))
+                    .default_open(false)
+                    .build(ui)
+                {
+                    macro_rules! do_flag {
+                        ($flag:path, $name:literal) => {
+                            let mut is_set: bool =
+                                ctx.world_renderer.render_overrides.has_flag($flag);
+                            ui.checkbox(im_str!($name), &mut is_set);
+                            ctx.world_renderer.render_overrides.set_flag($flag, is_set);
+                        };
+                    }
+
+                    do_flag!(
+                        RenderOverrideFlags::FORCE_FACE_NORMALS,
+                        "Force face normals"
+                    );
+                    do_flag!(RenderOverrideFlags::NO_NORMAL_MAPS, "No normal maps");
+                    do_flag!(
+                        RenderOverrideFlags::FLIP_NORMAL_MAP_YZ,
+                        "Flip normal map YZ"
+                    );
+                    do_flag!(RenderOverrideFlags::NO_METAL, "No metal");
+
+                    imgui::Drag::<f32>::new(im_str!("Roughness scale"))
+                        .range(0.0..=4.0)
+                        .speed(0.025)
+                        .build(
+                            ui,
+                            &mut ctx.world_renderer.render_overrides.material_roughness_scale,
+                        );
                 }
 
                 if imgui::CollapsingHeader::new(im_str!("Sequence"))

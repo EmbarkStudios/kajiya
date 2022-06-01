@@ -1,3 +1,4 @@
+#include "inc/math.hlsl"
 #include "inc/samplers.hlsl"
 #include "inc/frame_constants.hlsl"
 #include "inc/mesh.hlsl"
@@ -57,16 +58,27 @@ PsOut main(PsIn ps) {
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
     float metalness = metalness_roughness.z * material.metalness_factor;
 
-    Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
-    float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, lod_bias).xyz * 2.0 - 1.0;
+    if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_METAL)) {
+        metalness = 0;
+    }
 
-    // bistro hack
-    //ts_normal.zy *= -1;
+    if (frame_constants.render_overrides.material_roughness_scale <= 1) {
+        roughness *= frame_constants.render_overrides.material_roughness_scale;
+    } else {
+        roughness = square(lerp(sqrt(roughness), 1.0, 1.0 - 1.0 / frame_constants.render_overrides.material_roughness_scale));
+    }
 
     float3 normal_ws; {
         float3 normal_os = ps.normal;
 
-        if (true) {
+        [branch]
+        if (!frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_NORMAL_MAPS)) {
+            Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
+            float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, lod_bias).xyz * 2.0 - 1.0;
+            if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FLIP_NORMAL_MAP_YZ)) {
+                ts_normal.zy *= -1;
+            }
+
             if (dot(ps.bitangent, ps.bitangent) > 0.0) {
                 float3x3 tbn = float3x3(ps.tangent, ps.bitangent, ps.normal);
                 normal_os = mul(ts_normal, tbn);
@@ -88,9 +100,11 @@ PsOut main(PsIn ps) {
     // Fix invalid normals
     if (dot(normal_ws, geometric_normal_ws) < 0.0) {
         normal_ws *= -1;
-        //normal_ws = geometric_normal_ws;
     }
-    //normal_ws = geometric_normal_ws;
+
+    if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FORCE_FACE_NORMALS)) {
+        normal_ws = geometric_normal_ws;
+    }
 
     float2 emissive_uv = transform_material_uv(material, ps.uv, 3);
     Texture2D emissive_tex = bindless_textures[NonUniformResourceIndex(material.emissive_map)];
