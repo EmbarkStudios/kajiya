@@ -26,6 +26,8 @@
     float4 gbuffer_tex_size;
     float4 output_tex_size;
     uint spatial_reuse_pass_idx;
+    // Only done in the last spatial resampling pass
+    uint perform_occlusion_raymarch;
 };
 
 #define USE_SSAO_WEIGHING 1
@@ -247,7 +249,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         // Raymarch to check occlusion
-        if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
+        if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH && perform_occlusion_raymarch) {
             const float2 ray_orig_uv = spx_uv;
 
         	//const float surface_offset_len = length(spx_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs());
@@ -271,10 +273,10 @@ void main(uint2 px : SV_DispatchThreadID) {
             OcclusionScreenRayMarch raymarch = OcclusionScreenRayMarch::create(
                 uv, view_ray_context.ray_hit_cs.xyz, view_ray_context.ray_hit_ws(),
                 raymarch_end_ws,
-                gbuffer_tex_size.xy,
-                output_tex_size.xy,
-                half_depth_tex
-            );
+                gbuffer_tex_size.xy
+            )
+            .with_max_sample_count(6)
+            .with_halfres_depth(output_tex_size.xy, half_depth_tex);
 
             if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
                 raymarch = raymarch.with_color_bounce(reprojected_gi_tex);

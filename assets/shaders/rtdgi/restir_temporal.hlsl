@@ -399,50 +399,6 @@ void main(uint2 px : SV_DispatchThreadID) {
                 #endif
             }
 
-            // Raymarch to check occlusion
-            // Note: somehow it causes over-darkening of unoccluded stuff. Enable once figured out.
-            if (!true && sample_i > 0) {
-                const float2 ray_orig_uv = get_uv(
-                    spx * 2 + HALFRES_SUBSAMPLE_OFFSET,
-                    gbuffer_tex_size);
-
-                const float surface_offset_len = length(
-                    // Use the center depth for simplicity; this doesn't need to be exact.
-                    ViewRayContext::from_uv_and_depth(ray_orig_uv, depth).ray_hit_vs() - view_ray_context.ray_hit_vs()
-                );
-
-                // TODO: finish the derivations, don't perspective-project for every sample.
-
-                // Trace towards the hit point.
-
-                const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
-                const float3 raymarch_end_ws =
-                    view_ray_context.ray_hit_ws()
-                    // TODO: what's a good max distance to raymarch? Probably need to project some stuff
-                    + raymarch_dir_unnorm_ws * min(1.0, surface_offset_len / length(raymarch_dir_unnorm_ws));
-
-                const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
-                const float2 raymarch_len_px = (raymarch_end_uv - uv) * gbuffer_tex_size.xy;
-
-                const uint MIN_PX_PER_STEP = 2;
-                const uint MAX_TAPS = 4;
-
-                const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
-
-                // Depth values only have the front; assume a certain thickness.
-                const float Z_LAYER_THICKNESS = 0.05;
-
-                for (int k = 0; k < k_count; ++k) {
-                    const float t = (k + 0.5) / k_count;
-                    const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
-                    const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
-                    const float depth_at_interp = depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z * 1.003) {
-                        visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
-                    }
-                }
-    		}
-
             r.M *= relevance;
 
             if (0 == sample_i) {

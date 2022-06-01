@@ -413,6 +413,15 @@ impl RtdgiRenderer {
             let mut radiance_input_tex = &irradiance_tex;
 
             for spatial_reuse_pass_idx in 0..self.spatial_reuse_pass_count {
+                // Only do occlusion checks in the final resampling pass.
+                // Otherwise we get accumulation of darkening.
+                let perform_occulsion_raymarch: u32 =
+                    if spatial_reuse_pass_idx + 1 == self.spatial_reuse_pass_count {
+                        1
+                    } else {
+                        0
+                    };
+
                 SimpleRenderPass::new_compute(
                     rg.add_pass("restir spatial"),
                     "/shaders/rtdgi/restir_spatial.hlsl",
@@ -431,6 +440,7 @@ impl RtdgiRenderer {
                     gbuffer_desc.extent_inv_extent_2d(),
                     reservoir_output_tex0.desc().extent_inv_extent_2d(),
                     spatial_reuse_pass_idx as u32,
+                    perform_occulsion_raymarch,
                 ))
                 .dispatch(reservoir_output_tex0.desc().extent);
 
