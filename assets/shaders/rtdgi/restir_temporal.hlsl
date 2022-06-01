@@ -413,7 +413,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                 // TODO: finish the derivations, don't perspective-project for every sample.
 
-#if 1
                 // Trace towards the hit point.
 
                 const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
@@ -421,15 +420,6 @@ void main(uint2 px : SV_DispatchThreadID) {
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
                     + raymarch_dir_unnorm_ws * min(1.0, surface_offset_len / length(raymarch_dir_unnorm_ws));
-#else
-                // Trace in the same direction as the reused ray.
-                // More precise shadowing sometimes, but corner darkening. TODO.
-
-                const float3 raymarch_dir_unnorm_ws = prev_dir_to_sample_hit_unnorm_ws;
-                const float3 raymarch_end_ws =
-                    view_ray_context.ray_hit_ws()
-                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), surface_offset_len) / length(prev_dist);
-#endif
 
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
                 const float2 raymarch_len_px = (raymarch_end_uv - uv) * gbuffer_tex_size.xy;

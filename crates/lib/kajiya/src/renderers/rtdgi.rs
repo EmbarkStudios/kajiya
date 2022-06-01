@@ -421,6 +421,7 @@ impl RtdgiRenderer {
                 .read(radiance_input_tex)
                 .read(&*half_view_normal_tex)
                 .read(&*half_depth_tex)
+                .read(&gbuffer_depth.depth)
                 .read(&half_ssao_tex)
                 .read(&temporal_reservoir_packed_tex)
                 .read(&reprojected_history_tex)

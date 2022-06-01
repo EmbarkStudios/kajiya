@@ -15,12 +15,13 @@
 [[vk::binding(1)]] Texture2D<float3> radiance_input_tex;
 [[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(3)]] Texture2D<float> half_depth_tex;
-[[vk::binding(4)]] Texture2D<float> half_ssao_tex;
-[[vk::binding(5)]] Texture2D<uint4> temporal_reservoir_packed_tex;
-[[vk::binding(6)]] Texture2D<float4> reprojected_gi_tex;
-[[vk::binding(7)]] RWTexture2D<uint2> reservoir_output_tex;
-[[vk::binding(8)]] RWTexture2D<float3> radiance_output_tex;
-[[vk::binding(9)]] cbuffer _ {
+[[vk::binding(4)]] Texture2D<float> depth_tex;
+[[vk::binding(5)]] Texture2D<float> half_ssao_tex;
+[[vk::binding(6)]] Texture2D<uint4> temporal_reservoir_packed_tex;
+[[vk::binding(7)]] Texture2D<float4> reprojected_gi_tex;
+[[vk::binding(8)]] RWTexture2D<uint2> reservoir_output_tex;
+[[vk::binding(9)]] RWTexture2D<float3> radiance_output_tex;
+[[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
     uint spatial_reuse_pass_idx;
@@ -38,6 +39,191 @@ float normal_inluence_nonlinearity(float x, float b) {
     return x < -b
         ? 0
         : (x + b) * (x + b) / (4 * b);
+}
+
+float distanceSquared(float2 a, float2 b) {
+	a -= b;
+	return dot(a, a);
+}
+
+void swap(inout float a, inout float b) {
+    float temp = a;
+    a = b;
+    b = temp;
+}
+
+/**
+   \param csOrigin Camera-space ray origin, which must be
+   within the view volume and must have z < -0.01 and project within the valid screen rectangle
+   \param csDirection Unit length camera-space ray direction
+   \param projectToPixelMatrix A projection matrix that maps to pixel coordinates (not [-1, +1] normalized device coordinates)
+   \param csZBuffer The depth or camera-space Z buffer, depending on the value of \a csZBufferIsHyperbolic
+   \param csZBufferSize Dimensions of csZBuffer
+   \param relativeThickness Camera space thickness to ascribe to each pixel in the depth buffer
+   \param csZBufferIsHyperbolic True if csZBuffer is an OpenGL depth buffer, false (faster) if
+   csZBuffer contains (negative) "linear" camera space z values. Const so that the compiler can evaluate the branch based on it at compile time
+   \param clipInfo See G3D::Camera documentation
+   \param nearPlaneZ Negative number
+   \param stride Step in horizontal or vertical pixels between samples. This is a float
+   because integer math is slow on GPUs, but should be set to an integer >= 1
+   \param jitterFraction  Number between 0 and 1 for how far to bump the ray in stride units
+   to conceal banding artifacts
+   \param maxSteps Maximum number of iterations. Higher gives better images but may be slow
+   \param maxRayTraceDistance Maximum camera-space distance to trace before returning a miss
+   \param hitPixel Pixel coordinates of the first intersection with the scene
+   \param csHitvec Camera space location of the ray hit
+   Single-layer
+*/
+bool traceScreenSpaceRay1b(float3            csOrigin,
+                          float3            csDirection,
+                          float4x4            projectToPixelMatrix,
+                          float2          csZBufferSize,
+                          float           relativeThickness,
+                          float           nearPlaneZ,
+                          float           stride,
+                          float           jitterFraction,
+                          float           maxSteps,
+                          float        maxRayTraceDistance,
+                          out float2        hitPixel,
+                          out float3        csHitvec) {
+
+    // Clip ray to a near plane in 3D (doesn't have to be *the* near plane, although that would be a good idea)
+    float rayLength = ((csOrigin.z + csDirection.z * maxRayTraceDistance) > nearPlaneZ) ?
+        (nearPlaneZ - csOrigin.z) / csDirection.z :
+        maxRayTraceDistance;
+    float3 csEndPoint = csDirection * rayLength + csOrigin;
+
+    // Project into screen space
+    //float4 H0 = mul(projectToPixelMatrix * float4(csOrigin, 1.0);
+    //float4 H1 = projectToPixelMatrix * float4(csEndPoint, 1.0);
+
+	float4 H0 = (mul(projectToPixelMatrix, float4(csOrigin, 1.0)));
+	float4 H1 = (mul(projectToPixelMatrix, float4(csEndPoint, 1.0)));
+
+    // There are a lot of divisions by w that can be turned into multiplications
+    // at some minor precision loss...and we need to interpolate these 1/w values
+    // anyway.
+    //
+    // Because the caller was required to clip to the near plane,
+    // this homogeneous division (projecting from 4D to 2D) is guaranteed
+    // to succeed.
+    float k0 = 1.0 / H0.w;
+    float k1 = 1.0 / H1.w;
+
+    // Switch the original vecs to values that interpolate linearly in 2D
+    float3 Q0 = csOrigin * k0;
+    float3 Q1 = csEndPoint * k1;
+
+    // Screen-space endvecs
+    float2 P0 = H0.xy * k0;
+    float2 P1 = H1.xy * k1;
+
+    P0 = cs_to_uv(P0) * gbuffer_tex_size.xy;
+    P1 = cs_to_uv(P1) * gbuffer_tex_size.xy;
+
+    // [Optional clipping to frustum sides here]
+
+    // Initialize to off screen
+    hitPixel = float2(-1.0, -1.0);
+
+
+    // If the line is degenerate, make it cover at least one pixel
+    // to avoid handling zero-pixel extent as a special case later
+    P1 += (distanceSquared(P0, P1) < 0.0001) ? 0.01 : 0.0;
+
+    float2 delta = P1 - P0;
+
+    // Permute so that the primary iteration is in x to reduce
+    // large branches later
+    bool permute = false;
+    if (abs(delta.x) < abs(delta.y)) {
+        // More-vertical line. Create a permutation that swaps x and y in the output
+        permute = true;
+
+        // Directly swizzle the inputs
+        delta = delta.yx;
+        P1 = P1.yx;
+        P0 = P0.yx;
+    }
+
+    // From now on, "x" is the primary iteration direction and "y" is the secondary one
+
+    float stepDirection = delta.x > 0 ? 1 : -1;
+    float invdx = stepDirection / delta.x;
+    float2 dP = float2(stepDirection, invdx * delta.y);
+
+    // Track the derivatives of Q and k
+    float3 dQ = (Q1 - Q0) * invdx;
+    float   dk = (k1 - k0) * invdx;
+
+    // Scale derivatives by the desired pixel stride
+    dP *= stride; dQ *= stride; dk *= stride;
+
+    // Offset the starting values by the jitter fraction
+    P0 += dP * jitterFraction; Q0 += dQ * jitterFraction; k0 += dk * jitterFraction;
+
+    // Slide P from P0 to P1, (now-homogeneous) Q from Q0 to Q1, and k from k0 to k1
+    float3 Q = Q0;
+    float  k = k0;
+
+    // We track the ray depth at +/- 1/2 pixel to treat pixels as clip-space solid
+    // voxels. Because the depth at -1/2 for a given pixel will be the same as at
+    // +1/2 for the previous iteration, we actually only have to compute one value
+    // per iteration.
+    float prevZMaxEstimate = csOrigin.z;
+    float stepCount = 0.0;
+    float rayZMax = prevZMaxEstimate, rayZMin = prevZMaxEstimate;
+    float sceneZMax = rayZMax + 1e4;
+
+    // P1.x is never modified after this vec, so pre-scale it by
+    // the step direction for a signed comparison
+    float end = P1.x * stepDirection;
+
+    // We only advance the z field of Q in the inner loop, since
+    // Q.xy is never used until after the loop terminates.
+
+    float2 P = P0;
+    for (int kStep= 0; kStep < 100; kStep++) {
+        #if 1
+        if (!(((P.x * stepDirection) <= end) &&
+             (stepCount < maxSteps) &&
+             ((rayZMax < sceneZMax * relativeThickness) ||
+              (rayZMin > sceneZMax * 1.002)) &&
+              (sceneZMax != 0.0)))
+            break;
+        #endif
+
+        hitPixel = permute ? P.yx : P;
+        //hitPixel.y = csZBufferSize.y - hitPixel.y;
+
+        // The depth range that the ray covers within this loop
+        // iteration.  Assume that the ray is moving in increasing z
+        // and swap if backwards.  Because one end of the interval is
+        // shared between adjacent iterations, we track the previous
+        // value and then swap as needed to ensure correct ordering
+        rayZMin = prevZMaxEstimate;
+
+        // Compute the value at 1/2 pixel into the future
+        rayZMax = (dQ.z * 0.5 + Q.z) / (dk * 0.5 + k);
+        prevZMaxEstimate = rayZMax;
+        if (rayZMin > rayZMax) { swap(rayZMin, rayZMax); }
+
+        // Camera-space z of the background
+        sceneZMax = depth_to_view_z(depth_tex[int2(hitPixel)]);
+
+        // depth buffer basic 0.1 hyperbolic opengl itis.
+        //sceneZMax = reconstructCSZ(sceneZMax, clipInfo);
+
+        P += dP; Q.z += dQ.z; k += dk; stepCount += 1.0;
+
+    } // pixel on ray
+
+
+    Q.xy += dQ.xy * stepCount;
+    csHitvec = Q * (1.0 / k);
+
+    // Matches the new loop condition:
+    return (rayZMax >= sceneZMax * relativeThickness) && (rayZMin <= sceneZMax);
 }
 
 [numthreads(8, 8, 1)]
@@ -244,7 +430,67 @@ void main(uint2 px : SV_DispatchThreadID) {
             relevance *= 1 - smoothstep(0.0, depth_threshold, depth_diff);
         }
 
-        {
+        const float USE_DDA = !true;
+
+        if (USE_DDA) {
+            const float2 ray_orig_uv = spx_uv;
+    		//const float surface_offset_len = length(spx_ray_ctx.ray_hit_vs() - view_ray_context.ray_hit_vs());
+            const float surface_offset_len = length(
+                // Use the center depth for simplicity; this doesn't need to be exact.
+                // Faster, looks about the same.
+                ViewRayContext::from_uv_and_depth(ray_orig_uv, depth).ray_hit_vs() - view_ray_context.ray_hit_vs()
+            );
+
+            // TODO: finish the derivations, don't perspective-project for every sample.
+
+            // Multiplier over the surface offset from the center to the neighbor
+            const float MAX_RAYMARCH_DIST_MULT = 2.0;
+
+            // Trace towards the hit point.
+
+            const float3 raymarch_start_ws = view_ray_context.ray_hit_ws();
+            const float3 raymarch_dir_unnorm_ws = sample_hit_ws - raymarch_start_ws;
+            const float3 raymarch_end_ws =
+                raymarch_start_ws
+                // TODO: what's a good max distance to raymarch? Probably need to project some stuff
+                + raymarch_dir_unnorm_ws * min(1.0, MAX_RAYMARCH_DIST_MULT * surface_offset_len / length(raymarch_dir_unnorm_ws));
+
+            const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
+            const float2 raymarch_uv_delta = raymarch_end_uv - uv;
+            const float2 raymarch_len_px = raymarch_uv_delta * output_tex_size.xy;
+
+            //float3 raymarch_end_ws = raymarch_start_ws + float3(0, 1, 0);
+
+            const float3 raymarch_start_vs = position_world_to_view(raymarch_start_ws);
+            const float3 raymarch_end_vs = position_world_to_view(raymarch_end_ws);
+            const float3 raymarch_offset_vs = raymarch_end_vs - raymarch_start_vs;
+
+
+        	float2 hitPixel;
+        	float3 hitPoint;
+
+            const float stride = floor(max(1, length(raymarch_len_px) / 4));
+            const bool hit = traceScreenSpaceRay1b(
+                raymarch_start_vs,
+                normalize(raymarch_offset_vs),
+                frame_constants.view_constants.view_to_sample,
+                output_tex_size.xy,
+                1.04,   //           relativeThickness,
+                0.0,   //           nearPlaneZ,
+                stride,  //           stride,
+                0.5, //           jitterFraction,
+                4, //           maxSteps,
+                length(raymarch_offset_vs),   //        maxRayTraceDistance,
+                hitPixel,
+                hitPoint);
+
+
+            if (hit) {
+                visibility = 0;
+            }
+        }
+
+        if (!USE_DDA) {
             // Raymarch to check occlusion
             if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH && !is_center_sample) {
                 const float2 ray_orig_uv = spx_uv;
@@ -261,7 +507,6 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // Multiplier over the surface offset from the center to the neighbor
                 const float MAX_RAYMARCH_DIST_MULT = 2.0;
 
-#if 1
                 // Trace towards the hit point.
 
                 const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
@@ -269,18 +514,10 @@ void main(uint2 px : SV_DispatchThreadID) {
                     view_ray_context.ray_hit_ws()
                     // TODO: what's a good max distance to raymarch? Probably need to project some stuff
                     + raymarch_dir_unnorm_ws * min(1.0, MAX_RAYMARCH_DIST_MULT * surface_offset_len / length(raymarch_dir_unnorm_ws));
-#else
-                // Trace in the same direction as the reused ray.
-                // More precise shadowing sometimes, but corner darkening. TODO.
-
-                const float3 raymarch_dir_unnorm_ws = reused_dir_to_sample_hit_unnorm_ws;
-                const float3 raymarch_end_ws =
-                    view_ray_context.ray_hit_ws()
-                    + raymarch_dir_unnorm_ws * min(min(dist_to_sample_hit, 1.0), MAX_RAYMARCH_DIST_MULT * surface_offset_len) / length(reused_dist);
-#endif
 
                 const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
-                const float2 raymarch_len_px = (raymarch_end_uv - uv) * output_tex_size.xy;
+                const float2 raymarch_uv_delta = raymarch_end_uv - uv;
+                const float2 raymarch_len_px = raymarch_uv_delta * output_tex_size.xy;
 
                 const uint MIN_PX_PER_STEP = 2;
                 const uint MAX_TAPS = 4;
@@ -290,24 +527,48 @@ void main(uint2 px : SV_DispatchThreadID) {
                 // Depth values only have the front; assume a certain thickness.
                 const float Z_LAYER_THICKNESS = 0.05;
 
+                const float3 raymarch_start_cs = view_ray_context.ray_hit_cs.xyz;
+                const float3 raymarch_end_cs = position_world_to_clip(raymarch_end_ws).xyz;
+                const float depth_step_per_px = (raymarch_end_cs.z - raymarch_start_cs.z) / length(raymarch_len_px);
+                const float depth_step_per_z = (raymarch_end_cs.z - raymarch_start_cs.z) / length(raymarch_end_cs.xy - raymarch_start_cs.xy);
+
                 float t_step = 1.0 / k_count;
                 float t = 0.5 * t_step;
                 for (int k = 0; k < k_count; ++k) {
-                    const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
-                    const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
+                    const float3 interp_pos_cs = lerp(raymarch_start_cs, raymarch_end_cs, t);
 
-                    // TODO: the point-sampled uv (cs) could end up with a quite different depth value.
-                    // TODO: consider using full-res depth
-                    const float depth_at_interp = half_depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
+                    // The point-sampled UV could end up with a quite different depth value
+                    // than the one interpolated along the ray (which is not quantized).
+                    // This finds a conservative bias for the comparison.
+                    const float2 uv_at_interp = cs_to_uv(interp_pos_cs.xy);
+
+#if 0
+                    const uint2 px_at_interp = floor(uv_at_interp * output_tex_size.xy);
+                    const float depth_at_interp = half_depth_tex[px_at_interp];
+                    const float2 quantized_cs_at_interp = uv_to_cs((px_at_interp + 0.5) / output_tex_size.xy);
+#elif 0
+                    const uint2 px_at_interp = floor(uv_at_interp * gbuffer_tex_size.xy);
+                    const float depth_at_interp = depth_tex[px_at_interp];
+                    const float2 quantized_cs_at_interp = uv_to_cs((px_at_interp + 0.5) / gbuffer_tex_size.xy);
+#else
+                    const uint2 px_at_interp = (uint2(floor(uv_at_interp * gbuffer_tex_size.xy)) & ~1u) + HALFRES_SUBSAMPLE_OFFSET;
+                    const float depth_at_interp = half_depth_tex[px_at_interp >> 1u];
+                    const float2 quantized_cs_at_interp = uv_to_cs((px_at_interp + 0.25 + HALFRES_SUBSAMPLE_OFFSET * 0.5) / gbuffer_tex_size.xy);
+#endif
+
+                    const float biased_interp_z = raymarch_start_cs.z + depth_step_per_z * length(quantized_cs_at_interp - raymarch_start_cs.xy);
 
                     // TODO: get this const as low as possible to get micro-shadowing
-                    if (depth_at_interp > interp_pos_cs.z * 1.003) {
+                    //if (depth_at_interp > interp_pos_cs.z)
+                    //if (depth_at_interp > interp_pos_cs.z * 1.003)
+                    if (depth_at_interp > biased_interp_z)
+                    {
                         const float depth_diff = inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp);
 
                         // TODO, BUG: if the hit surface is emissive, this ends up casting a shadow from it,
                         // without taking the emission into consideration.
 
-                        const float hit = smoothstep(
+                        float hit = smoothstep(
                             Z_LAYER_THICKNESS,
                             Z_LAYER_THICKNESS * 0.5,
                             depth_diff);
@@ -329,6 +590,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                         if (depth_diff > Z_LAYER_THICKNESS) {
                             // Going behind an object; could be sketchy.
+                            // Note: maybe nuke.. causes bias around foreground objects.
                             //relevance *= 0.2;
                         }
                     }
