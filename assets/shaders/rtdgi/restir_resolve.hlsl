@@ -13,18 +13,18 @@
 #include "rtdgi_restir_settings.hlsl"
 #include "rtdgi_common.hlsl"
 
-[[vk::binding(0)]] Texture2D<float4> irradiance_tex;
+[[vk::binding(0)]] Texture2D<float4> radiance_tex;
 [[vk::binding(1)]] Texture2D<uint2> reservoir_input_tex;
 [[vk::binding(2)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(3)]] Texture2D<float> depth_tex;
 [[vk::binding(4)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(5)]] Texture2D<float> half_depth_tex;
 [[vk::binding(6)]] Texture2D<float4> ssao_tex;
-[[vk::binding(7)]] Texture2D<float4> candidate_irradiance_tex;
+[[vk::binding(7)]] Texture2D<float4> candidate_radiance_tex;
 [[vk::binding(8)]] Texture2D<float4> candidate_normal_tex;
 [[vk::binding(9)]] Texture2D<float4> candidate_hit_tex;
 [[vk::binding(10)]] Texture2D<uint4> temporal_reservoir_packed_tex;
-[[vk::binding(11)]] Texture2D<float3> spatial_radiance_input_tex;
+[[vk::binding(11)]] Texture2D<float3> bounced_radiance_input_tex;
 [[vk::binding(12)]] RWTexture2D<float4> irradiance_output_tex;
 [[vk::binding(13)]] cbuffer _ {
     float4 gbuffer_tex_size;
@@ -112,7 +112,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float atten = smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, sample_dist);
 
-            float3 contribution = candidate_irradiance_tex[rpx].rgb * geometric_term;
+            float3 contribution = candidate_radiance_tex[rpx].rgb * geometric_term;
             contribution *= lerp(0.0, atten, near_field_influence);
 
             float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
@@ -169,9 +169,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             float3 radiance;
             if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
-                radiance = spatial_radiance_input_tex[rpx];
+                radiance = bounced_radiance_input_tex[rpx];
             } else {
-                radiance = irradiance_tex[spx].rgb;
+                radiance = radiance_tex[spx].rgb;
             }
 
             if (USE_SPLIT_RT_NEAR_FIELD) {

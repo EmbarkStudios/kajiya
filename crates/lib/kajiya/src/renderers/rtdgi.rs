@@ -9,7 +9,7 @@ use super::{
 };
 
 pub struct RtdgiRenderer {
-    temporal_irradiance_tex: PingPongTemporalResource,
+    temporal_radiance_tex: PingPongTemporalResource,
     temporal_ray_orig_tex: PingPongTemporalResource,
     temporal_ray_tex: PingPongTemporalResource,
     temporal_reservoir_tex: PingPongTemporalResource,
@@ -29,7 +29,7 @@ const COLOR_BUFFER_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
 impl Default for RtdgiRenderer {
     fn default() -> Self {
         Self {
-            temporal_irradiance_tex: PingPongTemporalResource::new("rtdgi.irradiance"),
+            temporal_radiance_tex: PingPongTemporalResource::new("rtdgi.radiance"),
             temporal_ray_orig_tex: PingPongTemporalResource::new("rtdgi.ray_orig"),
             temporal_ray_tex: PingPongTemporalResource::new("rtdgi.ray"),
             temporal_reservoir_tex: PingPongTemporalResource::new("rtdgi.reservoir"),
@@ -211,7 +211,7 @@ impl RtdgiRenderer {
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
             );
 
-        let mut candidate_irradiance_tex = rg.create(
+        let mut candidate_radiance_tex = rg.create(
             gbuffer_desc
                 .half_res()
                 .format(vk::Format::R16G16B16A16_SFLOAT),
@@ -244,9 +244,9 @@ impl RtdgiRenderer {
                     .format(vk::Format::R16G16_SFLOAT),
             );
 
-        let (irradiance_tex, mut temporal_reservoir_tex) = {
-            let (mut irradiance_output_tex, mut irradiance_history_tex) =
-                self.temporal_irradiance_tex.get_output_and_history(
+        let (radiance_tex, mut temporal_reservoir_tex) = {
+            let (mut radiance_output_tex, mut radiance_history_tex) =
+                self.temporal_radiance_tex.get_output_and_history(
                     rg,
                     Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d()),
                 );
@@ -298,12 +298,12 @@ impl RtdgiRenderer {
             .bind_mut(ircache)
             .bind(wrc)
             .read(sky_cube)
-            .write(&mut irradiance_history_tex)
+            .write(&mut radiance_history_tex)
             .read(&ray_orig_history_tex)
             .write(&mut rt_history_validity_pre_input_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
-            .trace_rays(tlas, candidate_irradiance_tex.desc().extent);
+            .trace_rays(tlas, candidate_radiance_tex.desc().extent);
 
             let mut rt_history_validity_input_tex =
                 rg.create(gbuffer_desc.half_res().format(vk::Format::R8_UNORM));
@@ -325,14 +325,14 @@ impl RtdgiRenderer {
             .bind(wrc)
             .read(sky_cube)
             .read(&ray_orig_history_tex)
-            .write(&mut candidate_irradiance_tex)
+            .write(&mut candidate_radiance_tex)
             .write(&mut candidate_normal_tex)
             .write(&mut candidate_hit_tex)
             .read(&rt_history_validity_pre_input_tex)
             .write(&mut rt_history_validity_input_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
-            .trace_rays(tlas, candidate_irradiance_tex.desc().extent);
+            .trace_rays(tlas, candidate_radiance_tex.desc().extent);
 
             SimpleRenderPass::new_compute(
                 rg.add_pass("validity integrate"),
@@ -356,9 +356,9 @@ impl RtdgiRenderer {
             )
             .read(&*half_view_normal_tex)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(&candidate_irradiance_tex)
+            .read(&candidate_radiance_tex)
             .read(&candidate_normal_tex)
-            .read(&irradiance_history_tex)
+            .read(&radiance_history_tex)
             .read(&ray_orig_history_tex)
             .read(&ray_history_tex)
             .read(&reservoir_history_tex)
@@ -366,7 +366,7 @@ impl RtdgiRenderer {
             .read(&hit_normal_history_tex)
             .read(&candidate_history_tex)
             .read(&invalidity_output_tex)
-            .write(&mut irradiance_output_tex)
+            .write(&mut radiance_output_tex)
             .write(&mut ray_orig_output_tex)
             .write(&mut ray_output_tex)
             .write(&mut hit_normal_output_tex)
@@ -375,9 +375,9 @@ impl RtdgiRenderer {
             .write(&mut temporal_reservoir_packed_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
             .raw_descriptor_set(1, bindless_descriptor_set)
-            .dispatch(irradiance_output_tex.desc().extent);
+            .dispatch(radiance_output_tex.desc().extent);
 
-            (irradiance_output_tex, reservoir_output_tex)
+            (radiance_output_tex, reservoir_output_tex)
         };
 
         let irradiance_tex = {
@@ -396,13 +396,15 @@ impl RtdgiRenderer {
                     .format(vk::Format::R32G32_UINT),
             );
 
-            let mut radiance_output_tex0 = rg.create(
+            // Note: only needed with `RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE`
+            // Consider making that a CPU-side setting too.
+            let mut bounced_radiance_output_tex0 = rg.create(
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
                     .half_res()
                     .format(vk::Format::B10G11R11_UFLOAT_PACK32),
             );
-            let mut radiance_output_tex1 = rg.create(
+            let mut bounced_radiance_output_tex1 = rg.create(
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
                     .half_res()
@@ -410,7 +412,7 @@ impl RtdgiRenderer {
             );
 
             let mut reservoir_input_tex = &mut temporal_reservoir_tex;
-            let mut radiance_input_tex = &irradiance_tex;
+            let mut bounced_radiance_input_tex = &radiance_tex;
 
             for spatial_reuse_pass_idx in 0..self.spatial_reuse_pass_count {
                 // Only do occlusion checks in the final resampling pass.
@@ -427,7 +429,7 @@ impl RtdgiRenderer {
                     "/shaders/rtdgi/restir_spatial.hlsl",
                 )
                 .read(reservoir_input_tex)
-                .read(radiance_input_tex)
+                .read(bounced_radiance_input_tex)
                 .read(&*half_view_normal_tex)
                 .read(&*half_depth_tex)
                 .read(&gbuffer_depth.depth)
@@ -435,7 +437,7 @@ impl RtdgiRenderer {
                 .read(&temporal_reservoir_packed_tex)
                 .read(&reprojected_history_tex)
                 .write(&mut reservoir_output_tex0)
-                .write(&mut radiance_output_tex0)
+                .write(&mut bounced_radiance_output_tex0)
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),
                     reservoir_output_tex0.desc().extent_inv_extent_2d(),
@@ -445,10 +447,13 @@ impl RtdgiRenderer {
                 .dispatch(reservoir_output_tex0.desc().extent);
 
                 std::mem::swap(&mut reservoir_output_tex0, &mut reservoir_output_tex1);
-                std::mem::swap(&mut radiance_output_tex0, &mut radiance_output_tex1);
+                std::mem::swap(
+                    &mut bounced_radiance_output_tex0,
+                    &mut bounced_radiance_output_tex1,
+                );
 
                 reservoir_input_tex = &mut reservoir_output_tex1;
-                radiance_input_tex = &mut radiance_output_tex1;
+                bounced_radiance_input_tex = &mut bounced_radiance_output_tex1;
             }
 
             let mut irradiance_output_tex = rg.create(
@@ -461,18 +466,18 @@ impl RtdgiRenderer {
                 rg.add_pass("restir resolve"),
                 "/shaders/rtdgi/restir_resolve.hlsl",
             )
-            .read(&irradiance_tex)
+            .read(&radiance_tex)
             .read(reservoir_input_tex)
             .read(&gbuffer_depth.gbuffer)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&*half_view_normal_tex)
             .read(&*half_depth_tex)
             .read(ssao_tex)
-            .read(&candidate_irradiance_tex)
+            .read(&candidate_radiance_tex)
             .read(&candidate_normal_tex)
             .read(&candidate_hit_tex)
             .read(&temporal_reservoir_packed_tex)
-            .read(radiance_input_tex)
+            .read(bounced_radiance_input_tex)
             .write(&mut irradiance_output_tex)
             .raw_descriptor_set(1, bindless_descriptor_set)
             .constants((

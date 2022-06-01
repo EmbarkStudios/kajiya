@@ -13,7 +13,7 @@
 #include "occlusion_raymarch.hlsl"
 
 [[vk::binding(0)]] Texture2D<uint2> reservoir_input_tex;
-[[vk::binding(1)]] Texture2D<float3> radiance_input_tex;
+[[vk::binding(1)]] Texture2D<float3> bounced_radiance_input_tex;
 [[vk::binding(2)]] Texture2D<float4> half_view_normal_tex;
 [[vk::binding(3)]] Texture2D<float> half_depth_tex;
 [[vk::binding(4)]] Texture2D<float> depth_tex;
@@ -21,7 +21,7 @@
 [[vk::binding(6)]] Texture2D<uint4> temporal_reservoir_packed_tex;
 [[vk::binding(7)]] Texture2D<float3> reprojected_gi_tex;
 [[vk::binding(8)]] RWTexture2D<uint2> reservoir_output_tex;
-[[vk::binding(9)]] RWTexture2D<float3> radiance_output_tex;
+[[vk::binding(9)]] RWTexture2D<float3> bounced_radiance_output_tex;
 [[vk::binding(10)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
@@ -155,9 +155,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         const uint2 spx = reservoir_payload_to_px(r.payload);
 
         const TemporalReservoirOutput spx_packed = TemporalReservoirOutput::from_raw(temporal_reservoir_packed_tex[spx]);
-
-        // TODO: to recover tiny highlights, consider raymarching first, and then using the screen-space
-        // irradiance value instead of this.
         const float reused_luminance = spx_packed.luminance;
 
         float visibility = 1;
@@ -179,7 +176,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         float3 sample_radiance;
         if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
-            sample_radiance = radiance_input_tex[rpx];
+            sample_radiance = bounced_radiance_input_tex[rpx];
         }
 
         const float normal_cutoff = 0.1;
@@ -364,6 +361,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     reservoir_output_tex[px] = reservoir.as_raw();
 
     if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
-        radiance_output_tex[px] = radiance_output;
+        bounced_radiance_output_tex[px] = radiance_output;
     }
 }

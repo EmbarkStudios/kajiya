@@ -17,9 +17,9 @@
 
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
-[[vk::binding(2)]] Texture2D<float4> candidate_irradiance_tex;
+[[vk::binding(2)]] Texture2D<float4> candidate_radiance_tex;
 [[vk::binding(3)]] Texture2D<float4> candidate_hit_tex;
-[[vk::binding(4)]] Texture2D<float4> irradiance_history_tex;
+[[vk::binding(4)]] Texture2D<float4> radiance_history_tex;
 [[vk::binding(5)]] Texture2D<float3> ray_orig_history_tex;
 [[vk::binding(6)]] Texture2D<float4> ray_history_tex;
 [[vk::binding(7)]] Texture2D<uint2> reservoir_history_tex;
@@ -27,7 +27,7 @@
 [[vk::binding(9)]] Texture2D<float4> hit_normal_history_tex;
 [[vk::binding(10)]] Texture2D<float4> candidate_history_tex;
 [[vk::binding(11)]] Texture2D<float2> rt_invalidity_tex;
-[[vk::binding(12)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(12)]] RWTexture2D<float4> radiance_out_tex;
 [[vk::binding(13)]] RWTexture2D<float3> ray_orig_output_tex;
 [[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
 [[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
@@ -55,10 +55,10 @@ struct TraceResult {
 };
 
 TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 primary_hit_normal) {
-    const float4 candidate_irradiance_inv_pdf = candidate_irradiance_tex[px];
+    const float4 candidate_radiance_inv_pdf = candidate_radiance_tex[px];
     TraceResult result;
-    result.out_value = candidate_irradiance_inv_pdf.rgb;
-    result.inv_pdf = candidate_irradiance_inv_pdf.a;
+    result.out_value = candidate_radiance_inv_pdf.rgb;
+    result.inv_pdf = candidate_radiance_inv_pdf.a;
     float4 hit = candidate_hit_tex[px];
     result.hit_t = hit.w;
     result.hit_normal_ws = hit.xyz;
@@ -92,7 +92,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     float depth = depth_tex[hi_px];
 
     if (0.0 == depth) {
-        irradiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
+        radiance_out_tex[px] = float4(0.0.xxx, -SKY_DIST);
         hit_normal_output_tex[px] = 0.0.xxxx;
         reservoir_out_tex[px] = 0;
         return;
@@ -108,11 +108,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
 
-    // TODO: use
-    float3 light_radiance = 0.0.xxx;
-
     uint2 src_px_sel = px;
-    float3 irradiance_sel = 0;
+    float3 radiance_sel = 0;
     float3 ray_orig_sel_ws = 0;
     float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
@@ -149,7 +146,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float inv_pdf_q = result.inv_pdf;
 
-        irradiance_sel = result.out_value;
+        radiance_sel = result.out_value;
         ray_orig_sel_ws = outgoing_ray.Origin;
         ray_hit_sel_ws = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
         hit_normal_sel = result.hit_normal_ws;
@@ -160,9 +157,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
         candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
-
-    // TODO: maybe instead of rejecting, apply a jacobian
-    // to the sample, should it change its radiance
 
     const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));
 
@@ -178,22 +172,13 @@ void main(uint2 px : SV_DispatchThreadID) {
     float center_M = 0;
 
     if (use_resampling) {
-        // TODO: accumulating neighbors here causes bias in the subsequent spatial restir. found out why.
-        // could be due to lack of bias compensation (the `Z` term)
-        //
-        // TODO: using the neighbors creates mid-frequency noise while accumulating,
-        // and looks bad. Maybe try using accum at the start, skip the middle, and then engage it once
-        // the central reservoir is full, to stabilize the boiling.
-
         for (
             uint sample_i = 0;
             sample_i < MAX_RESOLVE_SAMPLE_COUNT
+            // Use permutation sampling, but only up to a certain M; those are lower quality,
+            // so we want to be rather conservative.
             && stream_state.M_sum < 1.25 * RESTIR_TEMPORAL_M_CLAMP;
             ++sample_i) {
-        //for (uint sample_i = 0; sample_i < MAX_RESOLVE_SAMPLE_COUNT; ++sample_i) {
-        //for (uint sample_i = 0; sample_i < 2; ++sample_i) {
-        //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
-
             const int2 rpx_offset = get_rpx_offset(sample_i, frame_constants.frame_index);
             if (sample_i > 0 && all(rpx_offset == 0)) {
                 // No point using the center sample twice
@@ -337,8 +322,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 continue;
             }
 
-            const float4 prev_irrad =
-                irradiance_history_tex[spx]
+            const float4 prev_rad =
+                radiance_history_tex[spx]
                 * float4((frame_constants.pre_exposure_delta).xxx, 1);
 
             // From the ReSTIR paper:
@@ -354,7 +339,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             //r.M = min(r.M, 0.1);
 
             const float p_q = 1
-                * max(0, sRGB_to_luminance(prev_irrad.rgb))
+                * max(0, sRGB_to_luminance(prev_rad.rgb))
                 // Note: including this term reduces noise in easy areas,
                 // but then increases it in corners by undersampling grazing angles.
                 // Effectively over time the sampling turns cosine-distributed, which
@@ -411,7 +396,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             )) {
                 outgoing_dir = dir_to_sample_hit;
                 src_px_sel = rpx;
-                irradiance_sel = prev_irrad.rgb;
+                radiance_sel = prev_rad.rgb;
                 ray_orig_sel_ws = prev_ray_orig;
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
@@ -436,7 +421,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float4 hit_normal_ws_dot = float4(hit_normal_sel, -dot(hit_normal_sel, outgoing_ray.Direction));
 
     // TODO: rename to radiance
-    irradiance_out_tex[px] = float4(irradiance_sel, dot(normal_ws, outgoing_ray.Direction));
+    radiance_out_tex[px] = float4(radiance_sel, dot(normal_ws, outgoing_ray.Direction));
     ray_orig_output_tex[px] = ray_orig_sel_ws;
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel_ws, length(ray_hit_sel_ws - refl_ray_origin_ws));
@@ -445,7 +430,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     TemporalReservoirOutput res_packed;
     res_packed.depth = depth;
     res_packed.ray_hit_offset_ws = ray_hit_sel_ws - view_ray_context.ray_hit_ws();
-    res_packed.luminance = max(0.0, sRGB_to_luminance(irradiance_sel));
+    res_packed.luminance = max(0.0, sRGB_to_luminance(radiance_sel));
     res_packed.hit_normal_ws = hit_normal_ws_dot.xyz;
     temporal_reservoir_packed_tex[px] = res_packed.as_raw();
 }
