@@ -4,7 +4,7 @@
 
 ## Test case
 
-Here's a 1920x1080 image rendered by `kajiya` in 8.5 milliseconds on a Radeon RX 6800 XT.
+Here's a 1920x1080 image rendered by `kajiya` in 8.4 milliseconds on a Radeon RX 6800 XT.
 
 ![image][final kajiya frame]
 
@@ -327,7 +327,7 @@ Once again, using half-resolution input results in a pixelated look; the noise l
 
 ![image](https://user-images.githubusercontent.com/16522064/170577988-af972676-41a4-4663-9d7a-c30fd6838199.png)
 
-Combining reservoir resampling with a neighbor-reusing reconstruction filter provides great sample efficiency, although at the expense of implementation complexity. ReSTIR is not directly compatible with the simple _ratio estimation_ techniques used in [some][stochastic all the things] [previous](http://h3.gd/stochastic-ssr/) [work](https://eheitzresearch.wordpress.com/705-2/), but they can be meshed together with enough voodoo magic. Great care is needed to avoid fireflies and black pixels, especially with very smooth materials; more on that in another write up.
+Combining reservoir resampling with a neighbor-reusing reconstruction filter provides great sample efficiency, although at the expense of implementation complexity. ReSTIR is not directly compatible with the simple _ratio estimation_ techniques used in [some](http://h3.gd/stochastic-ssr/) [previous](https://eheitzresearch.wordpress.com/705-2/) [work][stochastic all the things], but they can be mashed together through enough voodoo magic and lerps. Great care is needed to avoid fireflies and black pixels, especially with very smooth materials; more on that in another write up.
 
 This is too noisy, but it's stable enough to feed into a temporal filter. The one here uses [dual-source reprojection][stochastic all the things] and color bounding box clamping (informed by ReSTIR sample validation). Despite its simplicity, it provides decent noise reduction:
 
