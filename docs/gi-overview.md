@@ -4,7 +4,7 @@
 
 ## Test case
 
-Here's a 1920x1080 image rendered by `kajiya` in 8.4 milliseconds on a Radeon RX 6800 XT.
+Here's a 1920x1080 image rendered by `kajiya` in 8.5 milliseconds on a Radeon RX 6800 XT.
 
 ![image][final kajiya frame]
 
@@ -148,7 +148,7 @@ Unlike temporal resampling, spatial resampling passes use the product of luminan
 
 The spatial resampling passes adjust their kernel radius depending on how many samples the reservoirs hold, becoming sharper over time. SSAO is also used to narrow down the kernel in corners. The first resampling pass varies between 12 and 32 pixels in radius, and the second one between 6 and 16. Both use spiral sampling patterns. In order to reduce bias, contributions are weighed based on their normal, depth, and SSAO similarity with the center (half-res) pixel.
 
-To get rid of the 2x2 pixel artifacts, the final ReSTIR resolve uses 4 samples (reservoirs) to reconstruct a full-resolution image. It uses a tiny spiral kernel, jittered per pixel, and scaled depending on proximity to surfaces (estimated from ray tracing). It uses a weighted average over the half-resolution contributions, using normal and depth, and SSAO similarity:
+To get rid of the 2x2 pixel artifacts, the final ReSTIR resolve uses 4 samples (reservoirs) to reconstruct a full-resolution image. It uses a tiny spiral kernel, jittered per pixel, and scaled depending on proximity to surfaces (estimated from ray tracing). It uses a weighted average over the half-resolution contributions, using normal, depth, and SSAO similarity:
 
 ![image](https://user-images.githubusercontent.com/16522064/171693914-2d7b7e61-56c6-4078-99bf-a3afe5aa1710.png)
 
@@ -162,7 +162,7 @@ Additional noise reduction is performed by TAA at the end of the frame:
 
 ## Sample validation
 
-The above is a formula for fairly stable, but very laggy diffuse bounce. If the lighting in the scene changes, the stored reservoir, ray, and radiance information will not be updated, and thus stale radiance values will be reused through the temporal reservoir exchange. To fix this, we must introduce sample validation from [ReSTIR GI][ReSTIR GI].
+The above is a foundation of fairly stable, but very laggy diffuse bounce. If the lighting in the scene changes, the stored reservoir, ray, and radiance information will not be updated, and thus stale radiance values will be reused through the temporal reservoir exchange. To fix this, we must introduce sample validation from [ReSTIR GI][ReSTIR GI].
 
 The basic premise is simple: we must re-trace the samples kept in reservoirs, and check if the radiance they were tracking is still the same.
 
@@ -180,17 +180,17 @@ In order to avoid fireflies, when radiance is updated in this pass, it's only al
 
 For the sake of performance, the ReSTIR implementation in `kajiya` is the biased flavor (see [the paper][ReSTIR paper]). Preserving micro-scale light bounce has proven to be difficult. Unless a very aggressive normal cutoff is used, every spatial resampling pass erodes detail a bit; after the spatiotemporal permutation sampling and two spatial passes, the image is visibly affected.
 
-First the path-traced reference:
+First the path-traced reference at 10k paths/pixel:
 
-![image](https://user-images.githubusercontent.com/16522064/169713676-4e20796f-033c-47d0-9be0-a6cf6dddbf9b.png)
+![image](https://user-images.githubusercontent.com/16522064/171701374-5df2e3d3-f8f2-411f-a21e-2298f3d67635.png)
 
 And a naive real-time version. Notice how the corner on the left is darkened, and that the door frame looks rather artificial:
 
-![image](https://user-images.githubusercontent.com/16522064/169713691-37afd37f-9e1f-4294-8593-d8d720204049.png)
+![image](https://user-images.githubusercontent.com/16522064/171701570-922b1d17-c4b8-4f43-b573-05449861a740.png)
 
 An observation can be made that the corners are not a major source of variance, and don't require all of the ReSTIR machinery:
 
-![image](https://user-images.githubusercontent.com/16522064/169713973-3ebeea21-705e-40b8-9667-bd508ce4414d.png)
+![image](https://user-images.githubusercontent.com/16522064/171701787-f2e3c487-07ad-4050-86b5-c34ce89215e3.png)
 
 Following this observation, the diffuse resolve pass performs a near field - far field split, and constructs the image from two different sources of information:
 
@@ -201,7 +201,7 @@ A smooth blending factor is used to combine the two. "Nearness" is determined ba
 
 With this tweak applied, we are able to recover much of the micro-detail:
 
-![image](https://user-images.githubusercontent.com/16522064/169714197-f845bb73-0c08-499e-9135-a89ec5663a14.png)
+![image](https://user-images.githubusercontent.com/16522064/171701679-6d5200f6-352e-4eff-b4b2-170be7fa2c24.png)
 
 A final complication here comes in the form of the aforementioned ReSTIR sample validation. Since one in three frames does not produce candidates for ReSTIR, it wouldn't have data for the near-field either. While not having new ReSTIR candidates is fine, excluding the near-field from the diffuse resolve pass would bring back some of the darkening and introduce temporal instability. To overcome this, the ray tracing pass is brought back for the validation frame, but it only traces very short rays for the near field. Even with this, the cost of validation frames tends to be lower than that of candidate generation frames.
 
@@ -209,7 +209,7 @@ A final complication here comes in the form of the aforementioned ReSTIR sample 
 
 The diffuse ray tracing described above is not recursive, therefore it only provides a single bounce of light. If that was the entire story, the image would be too dark:
 
-![image](https://user-images.githubusercontent.com/16522064/169664388-5e2971bc-a276-4bd4-a4b3-ad230abad801.png)
+![image](https://user-images.githubusercontent.com/16522064/171704528-01a18976-676c-4425-bcfd-5361ad172237.png)
 
 Compared to the reference:
 
@@ -259,11 +259,11 @@ This can create a situation where irradiance cache entries on the outside of a s
 
 To demonstrate this in practice, we need a more complex scene. Let's consider [Epic's Sun Temple](https://www.unrealengine.com/marketplace/en-US/product/sun-temple), but instantiated a few times:
 
-![image](https://user-images.githubusercontent.com/16522064/170513611-c62008f4-2b56-45cf-b63d-57c390bf6e5e.png)
+![image](https://user-images.githubusercontent.com/16522064/171719253-5879ebfa-52ce-456e-b80f-fe045394631e.png)
 
 On the inside, there is a secluded area lit by emissive torches:
 
-![image](https://user-images.githubusercontent.com/16522064/170514578-5dfc2e5a-9275-4188-a3db-33b18d91732c.png)
+![image](https://user-images.githubusercontent.com/16522064/171719663-0a122875-58d0-463a-934a-621a4401b449.png)
 
 The sun takes many bounces to get there, losing most of its energy. If we disable the torches, then at this exposure level, the image should be black. And yet, the outside votes cause the inside to light up:
 
@@ -371,21 +371,21 @@ It is based on [GTAO](https://iryoku.com/downloads/Practical-Realtime-Strategies
 
 Without using a feature guide like this, it's easy to over-filter detail:
 
-![image](https://user-images.githubusercontent.com/16522064/170670833-d15f8389-a808-4019-986f-7613aedbdb0e.png)
+![image](https://user-images.githubusercontent.com/16522064/171716993-30a5025f-a561-47c8-bf5d-01aa07216a14.png)
 
 With the cheap and simple SSAO-based guiding, we get better feature definition:
 
-![image](https://user-images.githubusercontent.com/16522064/170670955-d6703c87-85a2-4b3b-8882-140b17f54228.png)
+![image][indirect diffuse only]
 
 Note that normally, `kajiya` uses very little in terms of spatial filtering, but it's forced to do it when ReSTIR reservoirs are starved for samples (e.g. upon camera jumps). If we force the spatial filters to actually run, the difference is a lot more pronounced.
 
 Without the SSAO guide:
 
-![image](https://user-images.githubusercontent.com/16522064/170674450-f55baa2b-afc7-482e-9699-fabcb08faf41.png)
+![image](https://user-images.githubusercontent.com/16522064/171717262-64a852a1-881c-4ed2-bf84-7ba1ab1afdd3.png)
 
 And with:
 
-![image](https://user-images.githubusercontent.com/16522064/170674525-4d480d28-ff54-4d9e-8eee-ae575eb163c6.png)
+![image](https://user-images.githubusercontent.com/16522064/171717593-a21316f4-e4a4-4a0e-95e4-91b22b4c0b3d.png)
 
 ## Sky & atmosphere: ~0.1ms
 
@@ -447,7 +447,7 @@ In such circumstances, aggressive spatial filtering could help. Conditionally fe
 
 `kajiya`'s own performance counters averaged over 30 frames; note that there is some overlap between passes, making this not entirely accurate:
 
-![image](https://user-images.githubusercontent.com/16522064/170565478-32a8618b-64b7-417f-824b-6eb6be402ed4.png)
+![image](https://user-images.githubusercontent.com/16522064/171699687-3e4917af-692e-45db-bb98-3868154fd999.png)
 
 # Ray count breakdown
 
