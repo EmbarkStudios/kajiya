@@ -137,11 +137,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         const float p_q = 1.0
             * max(0, sRGB_to_luminance(result.out_value))
-            // Note: including this term reduces noise in easy areas,
+            // Note: using max(0, dot) reduces noise in easy areas,
             // but then increases it in corners by undersampling grazing angles.
             // Effectively over time the sampling turns cosine-distributed, which
             // we avoided doing in the first place.
-            //* max(0, dot(outgoing_dir, normal_ws))
+            * step(0, dot(outgoing_dir, normal_ws))
             ;
 
         const float inv_pdf_q = result.inv_pdf;
@@ -340,11 +340,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float p_q = 1
                 * max(0, sRGB_to_luminance(prev_rad.rgb))
-                // Note: including this term reduces noise in easy areas,
+                // Note: using max(0, dot) reduces noise in easy areas,
                 // but then increases it in corners by undersampling grazing angles.
                 // Effectively over time the sampling turns cosine-distributed, which
                 // we avoided doing in the first place.
-                //* max(0, dot(dir_to_sample_hit, normal_ws))
+                * step(0, dot(dir_to_sample_hit, normal_ws))
                 ;
 
             float jacobian = 1;
