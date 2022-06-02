@@ -170,7 +170,7 @@ Ideally we should do that without a 2x cost on ray tracing.
 
 Due to the spatiotemporal reuse of reservoirs, especially the permutation sampling, we can't do this for a fraction of pixels at a time -- if we update some, they might be replaced by the stale ones in the next frame.
 
-We must instead update all reservoirs at the same time. In order to hide the cost, this happens every third frame, and on that frame, no new candidates are generated for ReSTIR. That is, each frame is either a candidate generation frame, or a validation frame.
+We must instead update all reservoirs at the same time. In order to hide the cost, this happens every third frame, and on that frame, no new candidates are generated for ReSTIR. That is, each frame is either a candidate generation frame, or a validation frame. _Note that this should not be a hard split -- newly disoccluded pixels should be detected and traced instead of validated._
 
 As for the actual validation process: when the old and new radiance differ significantly, the `M` of the corresponding reservoir is reduced. Additionally, whenever the ray hits approximately the same point as before, its tracked radiance is also updated. The `M` clamping ensures that next time new candidates are generated, they will take precedence. The radiance update makes reaction even faster. Its position check is necessary due to the validation rays being shot from old positions, which can cause self-intersection problems on moving geometry.
 
@@ -447,7 +447,7 @@ In such circumstances, aggressive spatial filtering could help. Conditionally fe
 
 `kajiya`'s own performance counters averaged over 30 frames; note that there is some overlap between passes, making this not entirely accurate:
 
-![image](https://user-images.githubusercontent.com/16522064/171699687-3e4917af-692e-45db-bb98-3868154fd999.png)
+![image](https://user-images.githubusercontent.com/16522064/171724757-c1e68241-9499-4ea9-a0b7-1a18db7d7203.png)
 
 # Ray count breakdown
 
