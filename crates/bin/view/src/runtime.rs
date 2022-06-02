@@ -39,6 +39,7 @@ pub struct RuntimeState {
 
     pub active_camera_key: Option<usize>,
     sequence_playback_state: SequencePlaybackState,
+    pub sequence_playback_speed: f32,
 }
 
 enum SequencePlaybackState {
@@ -103,6 +104,7 @@ impl RuntimeState {
 
             active_camera_key: None,
             sequence_playback_state: SequencePlaybackState::NotPlaying,
+            sequence_playback_speed: 1.0,
         }
     }
 
@@ -226,7 +228,8 @@ impl RuntimeState {
                     .sun
                     .controller
                     .set_towards_sun(value.towards_sun);
-                *t += ctx.dt_filtered;
+
+                *t += ctx.dt_filtered * self.sequence_playback_speed;
             } else {
                 self.sequence_playback_state = SequencePlaybackState::NotPlaying;
             }

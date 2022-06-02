@@ -78,167 +78,169 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
         pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
         .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
 
-    const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
-        .with_cone(ray_cone)
-        .with_cull_back_faces(false)
-        .with_path_length(1)
-        .trace(acceleration_structure);
+    if (!LAYERED_BRDF_FORCE_DIFFUSE_ONLY) {
+        const GbufferPathVertex primary_hit = GbufferRaytrace::with_ray(outgoing_ray)
+            .with_cone(ray_cone)
+            .with_cull_back_faces(false)
+            .with_path_length(1)
+            .trace(acceleration_structure);
 
-    if (primary_hit.is_hit) {
-        GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
-        gbuffer.roughness = lerp(gbuffer.roughness, 1.0, roughness_bias);
-        const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
-        const float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
-        const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
+        if (primary_hit.is_hit) {
+            GbufferData gbuffer = primary_hit.gbuffer_packed.unpack();
+            gbuffer.roughness = lerp(gbuffer.roughness, 1.0, roughness_bias);
+            const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
+            const float3 wo = mul(-outgoing_ray.Direction, tangent_to_world);
+            const LayeredBrdf brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
 
-        // Project the sample into clip space, and check if it's on-screen
-        const float3 primary_hit_cs = position_world_to_sample(primary_hit.position);
-        const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
-        const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
-        const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
-        const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
-        const bool is_on_screen =
-            all(abs(primary_hit_cs.xy) < 1.0) &&
-            inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3 &&
-            dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0 &&
-            dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7;
+            // Project the sample into clip space, and check if it's on-screen
+            const float3 primary_hit_cs = position_world_to_sample(primary_hit.position);
+            const float2 primary_hit_uv = cs_to_uv(primary_hit_cs.xy);
+            const float primary_hit_screen_depth = depth_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
+            const GbufferDataPacked primary_hit_screen_gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_tex[int2(primary_hit_uv * gbuffer_tex_size.xy)]));
+            const float3 primary_hit_screen_normal_ws = primary_hit_screen_gbuffer.unpack_normal();
+            const bool is_on_screen =
+                all(abs(primary_hit_cs.xy) < 1.0) &&
+                inverse_depth_relative_diff(primary_hit_cs.z, primary_hit_screen_depth) < 5e-3 &&
+                dot(primary_hit_screen_normal_ws, -outgoing_ray.Direction) > 0.0 &&
+                dot(primary_hit_screen_normal_ws, gbuffer.normal) > 0.7;
 
-        float3 total_radiance = 0.0.xxx;
-        float3 reflected_normal_vs;
-        {
-            // Sun
+            float3 total_radiance = 0.0.xxx;
+            float3 reflected_normal_vs;
             {
-                const float3 to_light_norm = sample_sun_direction(
-                    blue_noise_for_pixel(
-                        px,
-                        USE_SOFT_SHADOWS_TEMPORAL_JITTER
-                        ? frame_constants.frame_index
-                        : 0).xy,
-                    USE_SOFT_SHADOWS
-                );
-
-                const bool is_shadowed =
-                    rt_is_shadowed(
-                        acceleration_structure,
-                        new_ray(
-                            primary_hit.position,
-                            to_light_norm,
-                            1e-4,
-                            SKY_DIST
-                    ));
-
-                const float3 wi = mul(to_light_norm, tangent_to_world);
-
-                const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-                const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
-                total_radiance += brdf_value * light_radiance;
-            }
-
-            reflected_normal_vs = direction_world_to_view(gbuffer.normal);
-
-            if (USE_EMISSIVE) {
-                total_radiance += gbuffer.emissive;
-            }
-
-            if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
-                const float3 reprojected_radiance =
-                    rtdgi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0).rgb
-                    * frame_constants.pre_exposure_delta;
-
-                total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
-            } else {
-                if (USE_LIGHTS) {
-                    float2 urand = float2(
-                        uint_to_u01_float(hash1_mut(rng)),
-                        uint_to_u01_float(hash1_mut(rng))
+                // Sun
+                {
+                    const float3 to_light_norm = sample_sun_direction(
+                        blue_noise_for_pixel(
+                            px,
+                            USE_SOFT_SHADOWS_TEMPORAL_JITTER
+                            ? frame_constants.frame_index
+                            : 0).xy,
+                        USE_SOFT_SHADOWS
                     );
 
-                    for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
-                        TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
-                        LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
-                        const float3 shadow_ray_origin = primary_hit.position;
-                        const float3 to_light_ws = light_sample.pos - shadow_ray_origin;
-                        const float dist_to_light2 = dot(to_light_ws, to_light_ws);
-                        const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+                    const bool is_shadowed =
+                        rt_is_shadowed(
+                            acceleration_structure,
+                            new_ray(
+                                primary_hit.position,
+                                to_light_norm,
+                                1e-4,
+                                SKY_DIST
+                        ));
 
-                        const float to_psa_metric =
-                            max(0.0, dot(to_light_norm_ws, gbuffer.normal))
-                            * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
-                            / dist_to_light2;
+                    const float3 wi = mul(to_light_norm, tangent_to_world);
 
-                        if (to_psa_metric > 0.0) {
-                            const bool is_shadowed =
-                                rt_is_shadowed(
-                                    acceleration_structure,
-                                    new_ray(
-                                        shadow_ray_origin,
-                                        to_light_norm_ws,
-                                        1e-4,
-                                        sqrt(dist_to_light2) - 2e-4
-                                ));
+                    const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
+                    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                    total_radiance += brdf_value * light_radiance;
+                }
 
-                            #if 1
-                                const float3 bounce_albedo = lerp(gbuffer.albedo, 1.0.xxx, 0.04);
-                                const float3 brdf_value = bounce_albedo * to_psa_metric / M_PI;
-                            #else
-                                const float3 wi = mul(to_light_norm_ws, tangent_to_world);
-                                const float3 brdf_value = brdf.evaluate(wo, wi) * to_psa_metric;
-                            #endif
+                reflected_normal_vs = direction_world_to_view(gbuffer.normal);
 
-                            total_radiance +=
-                                !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
+                if (USE_EMISSIVE) {
+                    total_radiance += gbuffer.emissive;
+                }
+
+                if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
+                    const float3 reprojected_radiance =
+                        rtdgi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0).rgb
+                        * frame_constants.pre_exposure_delta;
+
+                    total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
+                } else {
+                    if (USE_LIGHTS) {
+                        float2 urand = float2(
+                            uint_to_u01_float(hash1_mut(rng)),
+                            uint_to_u01_float(hash1_mut(rng))
+                        );
+
+                        for (uint light_idx = 0; light_idx < frame_constants.triangle_light_count; light_idx += 1) {
+                            TriangleLight triangle_light = TriangleLight::from_packed(triangle_lights_dyn[light_idx]);
+                            LightSampleResultArea light_sample = sample_triangle_light(triangle_light.as_triangle(), urand);
+                            const float3 shadow_ray_origin = primary_hit.position;
+                            const float3 to_light_ws = light_sample.pos - shadow_ray_origin;
+                            const float dist_to_light2 = dot(to_light_ws, to_light_ws);
+                            const float3 to_light_norm_ws = to_light_ws * rsqrt(dist_to_light2);
+
+                            const float to_psa_metric =
+                                max(0.0, dot(to_light_norm_ws, gbuffer.normal))
+                                * max(0.0, dot(to_light_norm_ws, -light_sample.normal))
+                                / dist_to_light2;
+
+                            if (to_psa_metric > 0.0) {
+                                const bool is_shadowed =
+                                    rt_is_shadowed(
+                                        acceleration_structure,
+                                        new_ray(
+                                            shadow_ray_origin,
+                                            to_light_norm_ws,
+                                            1e-4,
+                                            sqrt(dist_to_light2) - 2e-4
+                                    ));
+
+                                #if 1
+                                    const float3 bounce_albedo = lerp(gbuffer.albedo, 1.0.xxx, 0.04);
+                                    const float3 brdf_value = bounce_albedo * to_psa_metric / M_PI;
+                                #else
+                                    const float3 wi = mul(to_light_norm_ws, tangent_to_world);
+                                    const float3 brdf_value = brdf.evaluate(wo, wi) * to_psa_metric;
+                                #endif
+
+                                total_radiance +=
+                                    !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
+                            }
                         }
                     }
-                }
 
-                if (USE_IRCACHE) {
-                    float3 gi = lookup_irradiance_cache(
-                        outgoing_ray.Origin,
-                        primary_hit.position,
-                        gbuffer.normal,
-                        1,
-                        rng
-                    );
+                    if (USE_IRCACHE) {
+                        float3 gi = lookup_irradiance_cache(
+                            outgoing_ray.Origin,
+                            primary_hit.position,
+                            gbuffer.normal,
+                            1,
+                            rng
+                        );
 
-                    total_radiance += gi * gbuffer.albedo;
-                }
-           }
+                        total_radiance += gi * gbuffer.albedo;
+                    }
+               }
+            }
+
+            RtrTraceResult result;
+
+            #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
+                result.total_radiance = 0.0.xxx;
+            #else
+                result.total_radiance = total_radiance;
+            #endif
+
+            result.hit_t = primary_hit.ray_t;
+            result.hit_normal_vs = reflected_normal_vs;
+            
+            return result;
         }
-
-        RtrTraceResult result;
-
-        #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
-            result.total_radiance = 0.0.xxx;
-        #else
-            result.total_radiance = total_radiance;
-        #endif
-
-        result.hit_t = primary_hit.ray_t;
-        result.hit_normal_vs = reflected_normal_vs;
-        
-        return result;
-    } else {
-        RtrTraceResult result;
-
-        float hit_t = SKY_DIST;
-        float3 far_gi;
-
-        if (far_field.is_hit()) {
-            far_gi = far_field.radiance * far_field.inv_pdf;
-            hit_t = far_field.approx_surface_t;
-        } else {
-            far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
-        }
-
-        #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
-            result.total_radiance = 2.0.xxx;
-        #else
-            result.total_radiance = far_gi;
-        #endif
-
-        result.hit_t = hit_t;
-        result.hit_normal_vs = -direction_world_to_view(outgoing_ray.Direction);
-
-        return result;
     }
+
+    RtrTraceResult result;
+
+    float hit_t = SKY_DIST;
+    float3 far_gi;
+
+    if (far_field.is_hit()) {
+        far_gi = far_field.radiance * far_field.inv_pdf;
+        hit_t = far_field.approx_surface_t;
+    } else {
+        far_gi = sky_cube_tex.SampleLevel(sampler_llr, outgoing_ray.Direction, 0).rgb;
+    }
+
+    #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
+        result.total_radiance = 2.0.xxx;
+    #else
+        result.total_radiance = far_gi;
+    #endif
+
+    result.hit_t = hit_t;
+    result.hit_normal_vs = -direction_world_to_view(outgoing_ray.Direction);
+
+    return result;
 }

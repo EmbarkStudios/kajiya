@@ -159,6 +159,13 @@ impl RuntimeState {
                         self.play_sequence(persisted);
                     }
 
+                    ui.same_line(0.0);
+                    ui.set_next_item_width(60.0);
+                    imgui::Drag::<f32>::new(im_str!("Speed"))
+                        .range(0.0..=4.0)
+                        .speed(0.01)
+                        .build(ui, &mut self.sequence_playback_speed);
+
                     if self.active_camera_key.is_some() {
                         ui.same_line(0.0);
                         if ui.button(im_str!("Deselect key"), [0.0, 0.0]) {
