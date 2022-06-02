@@ -56,7 +56,7 @@ void main() {
     if (0.0 == depth) {
         candidate_irradiance_out_tex[px] = 0;
         candidate_normal_out_tex[px] = float4(float3(0, 0, 1), SKY_DIST);
-        rt_history_invalidity_out_tex[px] = 1;
+        rt_history_invalidity_out_tex[px] = 0;
         return;
     }
 

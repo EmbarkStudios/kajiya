@@ -81,6 +81,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     #endif
 
     float3 total_irradiance = 0;
+    bool sharpen_gi_kernel = false;
 
     {
     float w_sum = 0;
@@ -111,11 +112,13 @@ void main(uint2 px : SV_DispatchThreadID) {
                 2 * max(0.0, dot(center_normal_ws, sample_dir));
 
             const float atten = smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, sample_dist);
+            sharpen_gi_kernel |= atten > 0.9;
 
             float3 contribution = candidate_radiance_tex[rpx].rgb * geometric_term;
             contribution *= lerp(0.0, atten, near_field_influence);
 
             float3 sample_normal_vs = half_view_normal_tex[rpx].rgb;
+            const float sample_ssao = ssao_tex[rpx * 2 + HALFRES_SUBSAMPLE_OFFSET].r;
 
             float w = 1;
             w *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
@@ -133,19 +136,15 @@ void main(uint2 px : SV_DispatchThreadID) {
     float w_sum = 0;
     float3 weighted_irradiance = 0;
 
-    bool has_near = any(total_irradiance > 0);
-
-    // TODO: something smarter?
-    // The idea would be to tighten the kernel near detail. Maybe the candidate rays could be used
-    // to estimate a tiny AO, and then narrow down this kernel based on that AO. Screen-space misses too much.
-    const float scl = has_near ? 0.5 : 1.0;
+    const float kernel_scale = sharpen_gi_kernel ? 0.5 : 1.0;
     
     for (uint sample_i = 0; sample_i < (RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
         const float radius =
             RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
-            ? (pow(float(sample_i), 0.666) * 1.0 * scl + 0.4 * scl)
+            ? (pow(float(sample_i), 0.666) * 1.0 * kernel_scale + 0.4 * kernel_scale)
             : 0.0;
+
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
         const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));
 
@@ -161,6 +160,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         {
             const float spx_depth = spx_packed.depth;
+            const float rpx_depth = half_depth_tex[rpx];
+
             const float3 hit_ws = spx_packed.ray_hit_offset_ws + spx_ray_ctx.ray_hit_ws();
             const float3 sample_offset = hit_ws - view_ray_context.ray_hit_ws();
             const float sample_dist = length(sample_offset);
@@ -184,10 +185,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 contribution = radiance * geometric_term * r.W;
 
             float3 sample_normal_vs = half_view_normal_tex[spx].rgb;
+            const float sample_ssao = ssao_tex[rpx * 2 + HALFRES_SUBSAMPLE_OFFSET].r;
 
             float w = 1;
             w *= ggx_ndf_unnorm(0.01, saturate(dot(center_normal_vs, sample_normal_vs)));
-            w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / spx_depth - 1.0)));
+            w *= exp2(-200.0 * abs(center_normal_vs.z * (center_depth / rpx_depth - 1.0)));
+            w *= exp2(-20.0 * abs(center_ssao - sample_ssao));
 
             weighted_irradiance += contribution * w;
             w_sum += w;
