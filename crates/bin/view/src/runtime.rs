@@ -38,7 +38,7 @@ pub struct RuntimeState {
     pub reset_path_tracer: bool,
 
     pub active_camera_key: Option<usize>,
-    camera_playback: SequencePlaybackState,
+    sequence_playback_state: SequencePlaybackState,
 }
 
 enum SequencePlaybackState {
@@ -102,7 +102,7 @@ impl RuntimeState {
             reset_path_tracer: false,
 
             active_camera_key: None,
-            camera_playback: SequencePlaybackState::NotPlaying,
+            sequence_playback_state: SequencePlaybackState::NotPlaying,
         }
     }
 
@@ -204,7 +204,7 @@ impl RuntimeState {
             .driver_mut::<Position>()
             .translate(move_vec * ctx.dt_filtered * persisted.movement.camera_speed);
 
-        if let SequencePlaybackState::Playing { t, sequence } = &mut self.camera_playback {
+        if let SequencePlaybackState::Playing { t, sequence } = &mut self.sequence_playback_state {
             let smooth = self.camera.driver_mut::<Smooth>();
             if *t <= 0.0 {
                 smooth.position_smoothness = 0.0;
@@ -228,7 +228,7 @@ impl RuntimeState {
                     .set_towards_sun(value.towards_sun);
                 *t += ctx.dt_filtered;
             } else {
-                self.camera_playback = SequencePlaybackState::NotPlaying;
+                self.sequence_playback_state = SequencePlaybackState::NotPlaying;
             }
         }
 
@@ -417,7 +417,7 @@ impl RuntimeState {
         }
 
         if self.keyboard.was_just_pressed(VirtualKeyCode::P) {
-            match self.camera_playback {
+            match self.sequence_playback_state {
                 SequencePlaybackState::NotPlaying => {
                     self.play_sequence(persisted);
                 }
@@ -462,11 +462,14 @@ impl RuntimeState {
     }
 
     pub fn is_sequence_playing(&self) -> bool {
-        matches!(&self.camera_playback, SequencePlaybackState::Playing { .. })
+        matches!(
+            &self.sequence_playback_state,
+            SequencePlaybackState::Playing { .. }
+        )
     }
 
     pub fn stop_sequence(&mut self) {
-        self.camera_playback = SequencePlaybackState::NotPlaying;
+        self.sequence_playback_state = SequencePlaybackState::NotPlaying;
     }
 
     pub fn play_sequence(&mut self, persisted: &mut PersistedState) {
@@ -475,17 +478,17 @@ impl RuntimeState {
 
         let t = self
             .active_camera_key
-            .and_then(|i| Some(persisted.camera_sequence.get_item(i)?.t))
+            .and_then(|i| Some(persisted.sequence.get_item(i)?.t))
             .unwrap_or(-PLAYBACK_WARMUP_DURATION);
 
-        self.camera_playback = SequencePlaybackState::Playing {
+        self.sequence_playback_state = SequencePlaybackState::Playing {
             t,
-            sequence: persisted.camera_sequence.to_playback(),
+            sequence: persisted.sequence.to_playback(),
         };
     }
 
     pub fn add_sequence_keyframe(&mut self, persisted: &mut PersistedState) {
-        persisted.camera_sequence.add_keyframe(
+        persisted.sequence.add_keyframe(
             self.active_camera_key,
             SequenceValue {
                 camera_position: MemOption::new(persisted.camera.position),
@@ -500,44 +503,41 @@ impl RuntimeState {
     }
 
     pub fn jump_to_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
-        let exact_item = if let Some(item) = persisted.camera_sequence.get_item(idx) {
+        let exact_item = if let Some(item) = persisted.sequence.get_item(idx) {
             item.clone()
         } else {
             return;
         };
 
-        let value = persisted
-            .camera_sequence
-            .to_playback()
-            .sample(exact_item.t)
-            .unwrap();
+        if let Some(value) = persisted.sequence.to_playback().sample(exact_item.t) {
+            self.camera.driver_mut::<Position>().position = exact_item
+                .value
+                .camera_position
+                .unwrap_or(value.camera_position);
+            self.camera
+                .driver_mut::<YawPitch>()
+                .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
+                    exact_item
+                        .value
+                        .camera_direction
+                        .unwrap_or(value.camera_direction),
+                ));
 
-        self.camera.driver_mut::<Position>().position = exact_item
-            .value
-            .camera_position
-            .unwrap_or(value.camera_position);
-        self.camera
-            .driver_mut::<YawPitch>()
-            .set_rotation_quat(dolly::util::look_at::<dolly::handedness::RightHanded>(
-                exact_item
-                    .value
-                    .camera_direction
-                    .unwrap_or(value.camera_direction),
-            ));
-        persisted
-            .light
-            .sun
-            .controller
-            .set_towards_sun(exact_item.value.towards_sun.unwrap_or(value.towards_sun));
+            self.camera.update(1e10);
 
-        self.camera.update(1e10);
+            persisted
+                .light
+                .sun
+                .controller
+                .set_towards_sun(exact_item.value.towards_sun.unwrap_or(value.towards_sun));
+        }
 
         self.active_camera_key = Some(idx);
-        self.camera_playback = SequencePlaybackState::NotPlaying;
+        self.sequence_playback_state = SequencePlaybackState::NotPlaying;
     }
 
     pub fn replace_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
-        persisted.camera_sequence.each_key(|i, item| {
+        persisted.sequence.each_key(|i, item| {
             if idx != i {
                 return;
             }
@@ -549,7 +549,7 @@ impl RuntimeState {
     }
 
     pub fn delete_camera_sequence_key(&mut self, persisted: &mut PersistedState, idx: usize) {
-        persisted.camera_sequence.delete_key(idx);
+        persisted.sequence.delete_key(idx);
 
         self.active_camera_key = None;
     }

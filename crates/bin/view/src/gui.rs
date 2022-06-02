@@ -174,7 +174,7 @@ impl RuntimeState {
                     }
                     let mut cmd = Cmd::None;
 
-                    persisted.camera_sequence.each_key(|i, item| {
+                    persisted.sequence.each_key(|i, item| {
                         let active = Some(i) == self.active_camera_key;
 
                         let label = if active {

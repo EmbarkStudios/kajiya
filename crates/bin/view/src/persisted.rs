@@ -241,7 +241,7 @@ pub struct PersistedState {
     pub light: LightState,
     pub exposure: ExposureState,
     pub movement: MovementState,
-    pub camera_sequence: Sequence,
+    pub sequence: Sequence,
 }
 
 impl ShouldResetPathTracer for PersistedState {
