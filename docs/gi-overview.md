@@ -4,7 +4,7 @@
 
 ## Test case
 
-Here's a 1920x1080 image rendered by `kajiya` in 8.3 milliseconds on a Radeon RX 6800 XT.
+Here's a 1920x1080 image rendered by `kajiya` in 8.4 milliseconds on a Radeon RX 6800 XT.
 
 ![image][final kajiya frame]
 
@@ -16,37 +16,32 @@ For reference, `kajiya`'s built-in path tracer produces the following image in 3
 
 This serves to illustrate both the renderer's strengths, as well as weaknesses.
 
-For example, the renderer tends to preserve roughness map detail, as can be seen here:
+The overall brightness of the scene is similar, with many features preserved, including complex shadowing on rough specular reflections, and roughness map detail (there are no normal maps in those shots):
 
-![image](https://user-images.githubusercontent.com/16522064/170583510-29bddfd9-3e6d-4373-a691-64be99a3a9a7.png) ![image](https://user-images.githubusercontent.com/16522064/170583523-0498182c-ebd3-4984-8de4-2a0ac1708cbf.png)
+![image](https://user-images.githubusercontent.com/16522064/171688955-54d5c977-6a64-4020-811b-47c964a2bfe0.png)
+![image](https://user-images.githubusercontent.com/16522064/171688968-bd819317-57f1-4874-82d9-e2202ba6e882.png)
 
-The overall brightness of the scene is similar, with many features preserved, including complex shadowing on rough specular reflections:
+Rougher surfaces are more difficult to denoise though, and some explicit bias is used, which can distort the shape and intensity of the reflections. This becomes obvious when flipping between the above images.
 
-![image](https://user-images.githubusercontent.com/16522064/170583583-acd3b2dd-fbea-49fe-ac34-0c806da49904.png) ![image](https://user-images.githubusercontent.com/16522064/170583592-a553f9cb-1fb9-4945-8f76-0d36333dbc80.png)
+Sometimes this can manifest as feature loss, for example the thin lines on the floor seemingly disappearing. Note that this is not due to over-filtering but bias in BRDF sampling.
 
-Rougher surfaces are more difficult to denoise though, and some explicit bias is used, which can distort rough reflections (hard to see unless flipping between the images):
-
-![image](https://user-images.githubusercontent.com/16522064/170573439-38cd5a26-c0ca-4620-9aac-adb22a4eee61.png) ![image](https://user-images.githubusercontent.com/16522064/170573456-6ba85635-6952-4cf1-93ac-0063663c67b3.png)
-
-Sometimes this can manifest as feature loss:
-
-![image](https://user-images.githubusercontent.com/16522064/170573574-710ce400-f41f-4ee3-a2bd-b71eca1463f6.png) ![image](https://user-images.githubusercontent.com/16522064/170573584-5e855781-9e2f-4665-bc84-c050858453a8.png)
+![image](https://user-images.githubusercontent.com/16522064/171689485-938cb687-ec9f-45e2-9bd5-58faf2d2e220.png) ![image](https://user-images.githubusercontent.com/16522064/171689510-6276a5bc-d90b-4220-b3c1-ad02fc849487.png)
 
 Indirect shadows tend to be rather blurry:
 
-![image](https://user-images.githubusercontent.com/16522064/170573694-8ceb481a-6401-484e-89fc-f12a146bdc6c.png) ![image](https://user-images.githubusercontent.com/16522064/170573710-ad4b06c1-aa84-4e6c-b72c-0749328a164c.png)
+![image](https://user-images.githubusercontent.com/16522064/171690061-cb2d447b-264c-4a3c-bfd3-452912cb4710.png) ![image](https://user-images.githubusercontent.com/16522064/171690081-89c60fd0-0c53-4324-b976-10b2da2b36a8.png)
 
 Reflections are not traced recursively, resulting in a less punchy look:
 
-![image](https://user-images.githubusercontent.com/16522064/170573846-1b559e3f-ca17-4333-8e6b-f68e40bb7208.png) ![image](https://user-images.githubusercontent.com/16522064/170573852-7e92fd87-2363-4108-a142-e1fe6569e3e1.png)
+![image](https://user-images.githubusercontent.com/16522064/171690273-92d9cd74-4125-46ea-bce3-95297c6819d1.png) ![image](https://user-images.githubusercontent.com/16522064/171690290-63d52abe-334a-4d06-be22-6a3021ce8f28.png)
 
 Complex geometry below a certain scale can result in light leaking and temporal instability:
 
-![image](https://user-images.githubusercontent.com/16522064/170573953-8e113303-5bd4-4770-8053-524e9413dbee.png) ![image](https://user-images.githubusercontent.com/16522064/170573963-67868ebf-f9b1-4230-a7fe-84112f849f95.png)
+![image](https://user-images.githubusercontent.com/16522064/171690527-d0000738-eef7-4ce4-bb55-8eef586fb304.png) ![image](https://user-images.githubusercontent.com/16522064/171690554-c1b7ad26-35a9-4d0b-9711-1329039602c9.png)
 
 And finally, comparing against the reference image _without caustic suppression_, multi-bounce specular light transport turns diffuse, reducing contrast, and clamping potentially important features:
 
-![image](https://user-images.githubusercontent.com/16522064/170574376-7068383e-a520-42d8-ac1a-12f0960bb42c.png) ![image](https://user-images.githubusercontent.com/16522064/170574387-9e35f8bf-6a62-4666-a414-d86af46e45e6.png)
+![image](https://user-images.githubusercontent.com/16522064/171690931-28bf5117-fff5-4d74-a689-60071aea7f07.png) ![image](https://user-images.githubusercontent.com/16522064/171690955-28b8b242-f011-49bf-803a-8118e4bccd67.png)
 
 Some of those will be possible to improve, but ultimately sacrifices will be necessary to have the global illumination update in real time:
 
@@ -58,7 +53,7 @@ _Note that due to how the images are captured here, there's frame-to-frame varia
 
 Lighting only
 
-![image](https://user-images.githubusercontent.com/16522064/170574589-6a32b117-0e2d-483b-928e-08b932538f3a.png)
+![image](https://user-images.githubusercontent.com/16522064/171691232-b0650439-2514-42ef-8838-a4fada5a337a.png)
 
 Indirect diffuse
 
@@ -72,7 +67,7 @@ Direct lighting
 
 ![image](https://user-images.githubusercontent.com/16522064/169663854-293990e9-11ba-4dd1-927b-857437eb3354.png)
 
-# G-buffer pass: ~1.1ms
+# G-buffer pass: ~1.15ms
 
 The geometry is rasterized into a G-buffer packed in a single `RGBA32` image. The four dwords store:
 
@@ -103,7 +98,9 @@ G-buffer normals
 
 Indirect diffuse starts with a half-resolution trace. Rays are launched from the world-space positions corresponding to g-buffer pixels. Since the trace happens at half-resolution, only one in four pixels traces a ray. The pixel in a 2x2 tile chosen for this changes every frame.
 
-If the hit point of the ray happens to be visible from the primary camera's point of view, the irradiance from the previous frame is reprojected. Otherwise the geometric attributes returned in the ray payload are used by the ray generation shader to perform lighting. An additional ray is potentially used for sun shadows.
+Following [ReSTIR GI][ReSTIR GI], rays are traced with a hemispherical distribution (not cosine-shaped).
+
+If the hit point of the ray happens to be visible from the primary camera's point of view, the irradiance from the previous frame is reprojected. Otherwise geometric attributes returned in the ray payload are used by the ray generation shader to perform lighting. An additional ray is potentially used for sun shadows.
 
 ![image](https://user-images.githubusercontent.com/16522064/170575279-63a06fd6-5265-4003-9361-66430994e8af.png)
 
@@ -127,27 +124,33 @@ Through temporal reservoir exchange and _an interpretation_ of [permutation samp
 
 With just temporal reservoir exchange (`M` clamped to 10):
 
-![image](https://user-images.githubusercontent.com/16522064/170576375-75989d99-b350-400a-9ea5-34c803e1953e.png)
+![image](https://user-images.githubusercontent.com/16522064/171696046-e4a51a13-bea5-40de-aea0-2e12e6d98314.png)
 
-And when we add permutation sampling (a form of spatial resampling which gets fed back into temporal resampling in subsequent frames):
+_Temporal resampling here uses only luminance as the target weight function. The Lambertian BRDF terms will only appear later._
 
-![image](https://user-images.githubusercontent.com/16522064/170576464-a608b189-6db0-42f2-a388-4e039e880a26.png)
+When we add permutation sampling (a form of spatial resampling which gets fed back into temporal resampling in subsequent frames):
+
+![image](https://user-images.githubusercontent.com/16522064/171696205-8b82dd4f-8934-4ff9-a848-d440190935e1.png)
 
 Note that we have lost some micro-detail due to naively running the spatial part without any occlusion checks, but our subsequent spatial reuse passes will recover that by being a bit more careful.
 
-After one spatial reuse pass using 7 neighbors:
+After one spatial reuse pass using 8 samples:
 
-![image](https://user-images.githubusercontent.com/16522064/170576587-5c4b97dc-e5c6-4efe-a501-40c681ce026d.png)
+![image](https://user-images.githubusercontent.com/16522064/171693059-1fcc5c7c-4655-4ee2-9c53-16f8fdd9778e.png)
 
-After the second spatial reuse pass using 4 neighbors:
+After the second spatial reuse pass using 5 samples:
 
-![image](https://user-images.githubusercontent.com/16522064/170576624-63b0a58b-0a8c-40ba-a048-ad24957c2125.png)
+![image](https://user-images.githubusercontent.com/16522064/171693154-824bf95c-59e5-4f34-9a63-f9b5660ed593.png)
 
-The micro-shadowing is regained because spatial reuse performs a minimal screen-space ray march between the center pixel and the hit point of the neighbor (max 4 taps into a half-res depth buffer). Such shadowing is hugely approximate and lossy, but considerably cheaper than additional ray tracing would be.
+The micro-shadowing is regained because the final pass of spatial reuse performs a minimal screen-space ray march between the center pixel and the hit point of the neighbor (max 6 taps into a half-res depth buffer). Such shadowing is hugely approximate and lossy, but considerably cheaper than additional ray tracing would be.
 
-To get rid of the 2x2 pixel artifacts, the final ReSTIR resolve uses 4 neighbors (reservoirs) to reconstruct a full-resolution image:
+Unlike temporal resampling, spatial resampling passes use the product of luminance and BRDF weight for the target function. This keeps the samples hemispherically distributed through the temporal phase, and then leans towards cosine-distributed in spatial resampling. This approach results in better directionality and lower noise on small elements, while keeping noise reasonably low. If temporal were to also weigh by the BRDF, small elements would often find themselves without good samples.
 
-![image](https://user-images.githubusercontent.com/16522064/170576733-9c80e460-159b-4303-a234-6e45919f208d.png)
+The spatial resampling passes adjust their kernel radius depending on how many samples the reservoirs hold, becoming sharper over time. SSAO is also used to narrow down the kernel in corners. The first resampling pass varies between 12 and 32 pixels in radius, and the second one between 6 and 16. Both use spiral sampling patterns. In order to reduce bias, contributions are weighed based on their normal, depth, and SSAO similarity with the center (half-res) pixel.
+
+To get rid of the 2x2 pixel artifacts, the final ReSTIR resolve uses 4 samples (reservoirs) to reconstruct a full-resolution image. It uses a tiny spiral kernel, jittered per pixel, and scaled depending on proximity to surfaces (estimated from ray tracing). It uses a weighted average over the half-resolution contributions, using normal and depth, and SSAO similarity:
+
+![image](https://user-images.githubusercontent.com/16522064/171693914-2d7b7e61-56c6-4078-99bf-a3afe5aa1710.png)
 
 This is then thrown at a fairly basic temporal denoiser which uses color bounding box clamping (and is informed by ReSTIR):
 
@@ -170,6 +173,8 @@ Due to the spatiotemporal reuse of reservoirs, especially the permutation sampli
 We must instead update all reservoirs at the same time. In order to hide the cost, this happens every third frame, and on that frame, no new candidates are generated for ReSTIR. That is, each frame is either a candidate generation frame, or a validation frame.
 
 As for the actual validation process: when the old and new radiance differ significantly, the `M` of the corresponding reservoir is reduced. Additionally, whenever the ray hits approximately the same point as before, its tracked radiance is also updated. The `M` clamping ensures that next time new candidates are generated, they will take precedence. The radiance update makes reaction even faster. Its position check is necessary due to the validation rays being shot from old positions, which can cause self-intersection problems on moving geometry.
+
+In order to avoid fireflies, when radiance is updated in this pass, it's only allowed to get 10x brighter than the previous value. This helps low-probability samples from suddenly hitting bright pixels, and their intensity exploding as a product of the high luminance and a large inverse PDF factor.
 
 ## Micro-detail
 
@@ -476,9 +481,9 @@ Therefore, averaging:
 
 (0.65/pixel + 128k) gbuffer rays and (1.65/pixel + 384k) shadow rays per frame.
 
-[final kajiya frame]: https://user-images.githubusercontent.com/16522064/170568385-fe4eb7af-3da3-4a25-a55e-3d18ea05f884.png
+[final kajiya frame]: https://user-images.githubusercontent.com/16522064/171687011-e79fdb79-64fe-4f7d-a9a0-7146975c3a1d.png
 [reference frame]: https://user-images.githubusercontent.com/16522064/170572191-a867ec5a-426b-4092-8e4d-bde45436b801.png
-[indirect diffuse only]: https://user-images.githubusercontent.com/16522064/170574686-07a62b6f-4ad9-4bab-a39c-0535494cb55e.png
+[indirect diffuse only]: https://user-images.githubusercontent.com/16522064/171687090-033acfb3-cc11-42d6-86c2-782ba418b3f7.png
 [reflections only]: https://user-images.githubusercontent.com/16522064/170574776-c26528e9-87fd-4871-96d5-c76a00c0e12d.png
 
 [home interior scene]: https://www.unrealengine.com/marketplace/en-US/product/home-interior-01
