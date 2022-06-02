@@ -413,15 +413,15 @@ It it will be possible to improve the stability of the irradiance cache, and hop
 
 If the scene contains sources of very high variance, ReSTIR will fail to sufficiently reduce it. For example, in [this scene by burunduk](https://sketchfab.com/3d-models/flying-world-battle-of-the-trash-god-350a9b2fac4c4430b883898e7d3c431f) lit by emissive torches and candles:
 
-![extreme-variance-flicker](https://user-images.githubusercontent.com/16522064/170590328-5e4993cf-7efd-482a-b279-070f38df3846.gif)
+![extreme-variance-flicker](https://user-images.githubusercontent.com/16522064/171722358-e01f0918-20bc-4e77-8ee3-277696a09cee.gif)
 
-The artifacts become even more pronounced in motion, as newly revealed pixels will not have good samples in reservoirs yet (frame rate reduced to 10Hz for illustration purposes):
+The artifacts become even more pronounced in motion, as newly revealed pixels will not have good samples in reservoirs yet (render frame rate reduced to 10Hz for illustration purposes):
 
-![extreme-variance-motion](https://user-images.githubusercontent.com/16522064/170590357-02b64276-23a3-4952-96bf-2df5a4434535.gif)
+![extreme-variance-motion](https://user-images.githubusercontent.com/16522064/171723079-103cc74c-88d6-41cd-b8c2-f55ba56ec6cf.gif)
 
-While it might be possible to improve on this with better spatiotemporal reservoir exchange, this is starting to reach limit of what ReSTIR can do. A path traced version of this scene at _one path per pixel_ looks like this:
+While it might be possible to improve on this with better spatiotemporal reservoir exchange, this is starting to reach a limit of what ReSTIR can do with reasonable quality. A path traced version of this scene at _one path per pixel_ looks like this:
 
-![image](https://user-images.githubusercontent.com/16522064/170554333-f3b39bd7-aadf-4374-88f6-6eaccdf4dd45.png)
+![image](https://user-images.githubusercontent.com/16522064/171721558-675e5bc9-a73f-4de3-bfe2-76eafec22d12.png)
 
 Those emissive surfaces should be handled as explicit light sources in the future.
 
@@ -431,11 +431,11 @@ The denoising presented here needs additional work. Especially newly revealed ar
 
 Stable-state frame:
 
-![image](https://user-images.githubusercontent.com/16522064/170558001-537c0ca1-0b0d-4f12-9a13-15812def532a.png)
+![image](https://user-images.githubusercontent.com/16522064/171723998-a54da058-267a-4ba5-bb70-709feebe90c0.png)
 
 After moving a large distance to the left within one frame:
 
-![image](https://user-images.githubusercontent.com/16522064/170558422-c5d25ffe-dbfe-4ea9-a50e-037016993c80.png)
+![image](https://user-images.githubusercontent.com/16522064/171723921-d514306a-1db0-48bd-b609-c00e116b1772.png)
 
 In such circumstances, aggressive spatial filtering could help. Conditionally feeding back the output of spatial reservoir resampling into the temporal reservoirs might also speed up convergence.
 
