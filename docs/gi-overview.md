@@ -217,7 +217,7 @@ Compared to the reference:
 
 One could use path tracing instead of the single-bounce trace, and that's pretty much what [ReSTIR GI][ReSTIR GI] does, however that's a rather expensive proposition. The additional bounces of light are often very blurry, and sometimes (mostly in outdoor scenes) don't significantly contribute to the image.
 
-Instead, `kajiya` uses a low-resolution irradiance cache. It's stored as a set of camera-aligned sparsely-allocated 32x32x32 clip maps.
+Instead, `kajiya` uses a low-resolution irradiance cache. It's stored as a set of 12 camera-aligned sparsely-allocated 32x32x32 clip maps -- meaning that there's a dense top-level 32x32x32x12 indirection array which indexes into a set of payload buffers pre-allocated to a max number (65536) of entries.
 
 ![image](https://user-images.githubusercontent.com/16522064/169664275-9f66ef15-6405-4a4a-b896-91eb6753b608.png)
 
