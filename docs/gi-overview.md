@@ -327,7 +327,7 @@ Once again, using half-resolution input results in a pixelated look; the noise l
 
 ![image](https://user-images.githubusercontent.com/16522064/170577988-af972676-41a4-4663-9d7a-c30fd6838199.png)
 
-Combining reservoir resampling with a neighbor-reusing reconstruction filter provides great sample efficiency, although at the expense of implementation complexity. ReSTIR is not directly compatible with the simple _ratio estimation_ techniques used in [some](http://h3.gd/stochastic-ssr/) [previous](https://eheitzresearch.wordpress.com/705-2/) [work][stochastic all the things], but they can be mashed together through enough voodoo magic and lerps. Great care is needed to avoid fireflies and black pixels, especially with very smooth materials; more on that in another write up.
+Combining reservoir resampling with a neighbor-reusing reconstruction filter provides great sample efficiency, although at the expense of implementation complexity. ReSTIR is not directly compatible with the simple _ratio estimation_ techniques used in [some](http://h3.gd/stochastic-ssr/) [previous](https://eheitzresearch.wordpress.com/705-2/) [work][stochastic all the things], but they can be mashed together through enough voodoo magic and lerps. Great care is needed to avoid fireflies and black pixels, especially with very smooth materials; more on that in another write-up.
 
 This is too noisy, but it's stable enough to feed into a temporal filter. The one here uses [dual-source reprojection][stochastic all the things] and color bounding box clamping (informed by ReSTIR sample validation). Despite its simplicity, it provides decent noise reduction:
 
@@ -475,7 +475,7 @@ Summing it up, we have:
 * Irradiance cache: 128k gbuffer rays and 384k shadow rays
 * Sun shadows: 1 shadow ray per pixel
 * Final gather: 0.25..0.5 gbuffer rays and 0.25..0.5 shadow rays per pixel
-* Reflections gather: 0.3125 gbuffer rays 0.3125 shadow rays per pixel
+* Reflections: 0.3125 gbuffer rays 0.3125 shadow rays per pixel
 
 Therefore, averaging:
 
