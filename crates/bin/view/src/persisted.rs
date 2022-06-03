@@ -222,6 +222,12 @@ pub struct ExposureState {
     pub ev_shift: f32,
     #[serde(default)]
     pub use_dynamic_adaptation: bool,
+    #[serde(default)]
+    pub dynamic_adaptation_speed: f32,
+    #[serde(default)]
+    pub dynamic_adaptation_low_clip: f32,
+    #[serde(default)]
+    pub dynamic_adaptation_high_clip: f32,
 }
 
 impl Default for ExposureState {
@@ -229,6 +235,9 @@ impl Default for ExposureState {
         Self {
             ev_shift: 0.0,
             use_dynamic_adaptation: false,
+            dynamic_adaptation_speed: 0.0,
+            dynamic_adaptation_low_clip: 0.0,
+            dynamic_adaptation_high_clip: 0.0,
         }
     }
 }

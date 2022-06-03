@@ -31,6 +31,21 @@ impl RuntimeState {
                         &mut persisted.exposure.use_dynamic_adaptation,
                     );
 
+                    imgui::Drag::<f32>::new(im_str!("Adaptation speed"))
+                        .range(-4.0..=4.0)
+                        .speed(0.01)
+                        .build(ui, &mut persisted.exposure.dynamic_adaptation_speed);
+
+                    imgui::Drag::<f32>::new(im_str!("Luminance histogram low clip"))
+                        .range(0.0..=1.0)
+                        .speed(0.001)
+                        .build(ui, &mut persisted.exposure.dynamic_adaptation_low_clip);
+
+                    imgui::Drag::<f32>::new(im_str!("Luminance histogram high clip"))
+                        .range(0.0..=1.0)
+                        .speed(0.001)
+                        .build(ui, &mut persisted.exposure.dynamic_adaptation_high_clip);
+
                     imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                         .range(0.0..=10.0)
                         .speed(0.1)

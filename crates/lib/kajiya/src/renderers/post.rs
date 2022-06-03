@@ -4,6 +4,8 @@ use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::image::*, BackendErro
 use kajiya_rg::{self as rg};
 use rg::{Buffer, BufferDesc, RenderGraph, SimpleRenderPass};
 
+use crate::world_renderer::HistogramClipping;
+
 pub fn blur_pyramid(rg: &mut RenderGraph, input: &rg::Handle<Image>) -> rg::Handle<Image> {
     let skip_n_bottom_mips = 1;
     let mut pyramid_desc = input
@@ -179,7 +181,7 @@ impl PostProcessRenderer {
         tmp_histogram
     }
 
-    fn read_back_histogram(&mut self) {
+    fn read_back_histogram(&mut self, exposure_histogram_clipping: HistogramClipping) {
         let mut histogram = [0u32; LUMINANCE_HISTOGRAM_BIN_COUNT];
         {
             let src = if let Some(src) = self.histogram_buffer.allocation.mapped_slice() {
@@ -192,13 +194,14 @@ impl PostProcessRenderer {
         }
 
         // Reject this much from the bottom and top end
-        const OUTLIER_FRAC_LO: f64 = 0.35;
-        const OUTLIER_FRAC_HI: f64 = 0.05;
+        let outlier_frac_lo: f64 = exposure_histogram_clipping.low.min(1.0) as f64;
+        let outlier_frac_hi: f64 =
+            (exposure_histogram_clipping.high as f64).min(1.0 - outlier_frac_lo);
 
         let total_entry_count: u32 = histogram.iter().copied().sum();
-        let reject_lo_entry_count = (total_entry_count as f64 * OUTLIER_FRAC_LO) as u32;
+        let reject_lo_entry_count = (total_entry_count as f64 * outlier_frac_lo) as u32;
         let entry_count_to_use =
-            (total_entry_count as f64 * (1.0 - OUTLIER_FRAC_LO - OUTLIER_FRAC_HI)) as u32;
+            (total_entry_count as f64 * (1.0 - outlier_frac_lo - outlier_frac_hi)) as u32;
 
         let mut sum = 0.0;
         let mut used_count = 0;
@@ -234,8 +237,9 @@ impl PostProcessRenderer {
         //debug_input: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         post_exposure_mult: f32,
+        exposure_histogram_clipping: HistogramClipping,
     ) -> rg::Handle<Image> {
-        self.read_back_histogram();
+        self.read_back_histogram(exposure_histogram_clipping);
 
         let blur_pyramid = blur_pyramid(rg, input);
         let histogram = self.calculate_luminance_histogram(rg, &blur_pyramid);

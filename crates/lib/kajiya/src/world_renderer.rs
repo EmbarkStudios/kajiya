@@ -198,9 +198,18 @@ pub struct WorldRenderer {
     pub(crate) exposure_state: [ExposureState; 2],
 }
 
+#[derive(Default, Clone, Copy)]
+pub struct HistogramClipping {
+    pub low: f32,
+    pub high: f32,
+}
+
 #[derive(Default)]
 pub struct DynamicExposureState {
     pub enabled: bool,
+    pub speed_log2: f32,
+    pub histogram_clipping: HistogramClipping,
+
     ev_fast: f32,
     ev_slow: f32,
 }
@@ -222,6 +231,8 @@ impl DynamicExposureState {
         }
 
         let ev = ev.clamp(-16.0, 16.0);
+
+        let dt = dt * self.speed_log2.exp2();
 
         let t_fast = 1.0 - (-1.0 * dt).exp();
         self.ev_fast = (ev - self.ev_fast) * t_fast + self.ev_fast;

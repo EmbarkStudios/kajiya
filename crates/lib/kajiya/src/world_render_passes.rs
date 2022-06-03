@@ -257,6 +257,7 @@ impl WorldRenderer {
             //&anti_aliased,
             self.bindless_descriptor_set,
             self.exposure_state().post_mult,
+            self.dynamic_exposure.histogram_clipping,
         );
 
         rg.debugged_resource.take().unwrap_or(post_processed)
@@ -295,6 +296,7 @@ impl WorldRenderer {
             //&accum_img, // hack
             self.bindless_descriptor_set,
             self.exposure_state().post_mult,
+            self.dynamic_exposure.histogram_clipping,
         )
     }
 }

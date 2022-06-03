@@ -134,7 +134,12 @@ impl RuntimeState {
                 mesh,
                 Affine3A::from_scale_rotation_translation(
                     instance.scale.into(),
-                    Quat::IDENTITY,
+                    Quat::from_euler(
+                        EulerRot::YXZ,
+                        instance.rotation[1].to_radians(),
+                        instance.rotation[0].to_radians(),
+                        instance.rotation[2].to_radians(),
+                    ),
                     instance.position.into(),
                 ),
             ));
@@ -432,6 +437,12 @@ impl RuntimeState {
 
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
+        ctx.world_renderer.dynamic_exposure.speed_log2 =
+            persisted.exposure.dynamic_adaptation_speed;
+        ctx.world_renderer.dynamic_exposure.histogram_clipping.low =
+            persisted.exposure.dynamic_adaptation_low_clip;
+        ctx.world_renderer.dynamic_exposure.histogram_clipping.high =
+            persisted.exposure.dynamic_adaptation_high_clip;
 
         if persisted.should_reset_path_tracer(&orig_persisted_state)
             || ctx.world_renderer.render_overrides != orig_render_overrides
