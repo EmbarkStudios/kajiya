@@ -820,11 +820,48 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
             }
         }
 
-        let mut passes = std::mem::take(&mut self.passes);
+        let mut passes: Vec<_> = std::mem::take(&mut self.passes).into();
+
+        // At the start, transition all resources to the access type they're first used with
+        // While we don't have split barriers yet, this will remove some bubbles
+        // which would otherwise occur with temporal resources.
+        {
+            let mut resource_first_access_states: HashMap<u32, &mut PassResourceAccessType> =
+                HashMap::with_capacity(self.resources.len());
+
+            for pass in &mut passes[0..first_presentation_pass] {
+                for resource_ref in pass.read.iter_mut().chain(pass.write.iter_mut()) {
+                    resource_first_access_states
+                        .entry(resource_ref.handle.id)
+                        .or_insert(&mut resource_ref.access);
+                }
+            }
+
+            let params = &self.resource_registry.execution_params;
+            for (resource_idx, access) in resource_first_access_states {
+                let resource = &mut self.resource_registry.resources[resource_idx as usize];
+                Self::transition_resource(
+                    params.device,
+                    cb,
+                    resource,
+                    PassResourceAccessType {
+                        access_type: access.access_type,
+                        sync_type: PassResourceAccessSyncType::SkipSyncIfSameAccessType,
+                    },
+                    false,
+                    "",
+                );
+
+                // Skip the sync when this pass is encountered later.
+                access.sync_type = PassResourceAccessSyncType::SkipSyncIfSameAccessType;
+            }
+        }
+
         for pass in passes.drain(..first_presentation_pass) {
             Self::record_pass_cb(pass, &mut self.resource_registry, cb);
         }
-        self.passes = passes;
+
+        self.passes = passes.into();
     }
 
     #[must_use]
@@ -840,7 +877,17 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
             if access_type != vk_sync::AccessType::Nothing {
                 let resource =
                     &mut self.resource_registry.resources[resource_idx.raw().id as usize];
-                Self::transition_resource(params.device, cb, resource, access_type);
+                Self::transition_resource(
+                    params.device,
+                    cb,
+                    resource,
+                    PassResourceAccessType {
+                        access_type,
+                        sync_type: PassResourceAccessSyncType::AlwaysSync,
+                    },
+                    false,
+                    "",
+                );
             }
         }
 
@@ -911,15 +958,36 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
             let params = &resource_registry.execution_params;
 
             let mut transitions: Vec<(usize, PassResourceAccessType)> = Vec::new();
-            for resource_ref in pass.read.iter().chain(pass.write.iter()) {
-                transitions.push((resource_ref.handle.id as usize, resource_ref.access));
+            for resource_ref in pass.read.iter() {
+                transitions.push((
+                    resource_ref.handle.id as usize,
+                    resource_ref.access,
+                    //format!("read {i}"),
+                ));
+            }
+
+            for resource_ref in pass.write.iter() {
+                transitions.push((
+                    resource_ref.handle.id as usize,
+                    resource_ref.access,
+                    //format!("write {i}"),
+                ));
             }
 
             // TODO: optimize the barriers
 
             for (resource_idx, access) in transitions {
                 let resource = &mut resource_registry.resources[resource_idx];
-                Self::transition_resource(params.device, cb, resource, access.access_type);
+
+                Self::transition_resource(
+                    params.device,
+                    cb,
+                    resource,
+                    access,
+                    //pass.name == "raster simple",
+                    false,
+                    "",
+                );
             }
         }
 
@@ -959,35 +1027,84 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         device: &Device,
         cb: &CommandBuffer,
         resource: &mut RegistryResource,
-        access_type: vk_sync::AccessType,
+        access: PassResourceAccessType,
+        debug: bool,
+        dbg_str: &str,
     ) {
+        if unsafe { RG_ALLOW_PASS_OVERLAP }
+            && resource.access_type == access.access_type
+            && matches!(
+                access.sync_type,
+                PassResourceAccessSyncType::SkipSyncIfSameAccessType
+            )
+        {
+            return;
+        }
+
+        if debug {
+            log::info!(
+                "\t{dbg_str}: {:?} -> {:?}",
+                resource.access_type,
+                access.access_type
+            );
+        }
+
         match resource.resource.borrow() {
             AnyRenderResourceRef::Image(image) => {
+                if debug {
+                    log::info!("\t(image {:?})", image.desc);
+                }
+
                 record_image_barrier(
                     device,
                     cb.raw,
                     ImageBarrier::new(
                         image.raw,
                         resource.access_type,
-                        access_type,
+                        access.access_type,
                         image_aspect_mask_from_access_type_and_format(
-                            access_type,
+                            access.access_type,
                             image.desc.format,
                         )
                         .unwrap_or_else(|| {
-                            panic!("Invalid image access {:?} :: {:?}", access_type, image.desc)
+                            panic!(
+                                "Invalid image access {:?} :: {:?}",
+                                access.access_type, image.desc
+                            )
                         }),
                     ),
                 );
 
-                resource.access_type = access_type;
+                resource.access_type = access.access_type;
             }
-            AnyRenderResourceRef::Buffer(_buffer) => {
-                global_barrier(device, cb, &[resource.access_type], &[access_type]);
+            AnyRenderResourceRef::Buffer(buffer) => {
+                if debug {
+                    log::info!("\t(buffer {:?})", buffer.desc);
+                }
+                //global_barrier(device, cb, &[resource.access_type], &[access.access_type]);
 
-                resource.access_type = access_type;
+                vk_sync::cmd::pipeline_barrier(
+                    device.raw.fp_v1_0(),
+                    cb.raw,
+                    None,
+                    &[vk_sync::BufferBarrier {
+                        previous_accesses: &[resource.access_type],
+                        next_accesses: &[access.access_type],
+                        src_queue_family_index: device.universal_queue.family.index,
+                        dst_queue_family_index: device.universal_queue.family.index,
+                        buffer: buffer.raw,
+                        offset: 0,
+                        size: buffer.desc.size,
+                    }],
+                    &[],
+                );
+
+                resource.access_type = access.access_type;
             }
             AnyRenderResourceRef::RayTracingAcceleration(_) => {
+                if debug {
+                    log::info!("\t(bvh)");
+                }
                 /*global_barrier(
                     device,
                     cb,
@@ -996,12 +1113,13 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
                 );*/
                 // TODO
 
-                resource.access_type = access_type;
+                resource.access_type = access.access_type;
             }
         }
     }
 }
 
+#[allow(dead_code)]
 fn global_barrier(
     device: &Device,
     cb: &CommandBuffer,
@@ -1057,14 +1175,24 @@ impl RetiredRenderGraph {
 type DynRenderFn = dyn FnOnce(&mut RenderPassApi);
 
 #[derive(Copy, Clone)]
+pub enum PassResourceAccessSyncType {
+    AlwaysSync,
+    SkipSyncIfSameAccessType,
+}
+
+#[derive(Copy, Clone)]
 pub struct PassResourceAccessType {
     // TODO: multiple
     access_type: vk_sync::AccessType,
+    sync_type: PassResourceAccessSyncType,
 }
 
 impl PassResourceAccessType {
-    pub fn new(access_type: vk_sync::AccessType) -> Self {
-        Self { access_type }
+    pub fn new(access_type: vk_sync::AccessType, sync_type: PassResourceAccessSyncType) -> Self {
+        Self {
+            access_type,
+            sync_type,
+        }
     }
 }
 
@@ -1092,3 +1220,5 @@ impl RecordedPass {
         }
     }
 }
+
+pub static mut RG_ALLOW_PASS_OVERLAP: bool = true;

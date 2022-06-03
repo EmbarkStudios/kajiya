@@ -397,18 +397,21 @@ impl Renderer {
                 .build();
 
             let descriptor_set_writes = [
+                // `frame_constants`
                 vk::WriteDescriptorSet::builder()
                     .dst_binding(0)
                     .dst_set(set)
                     .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER_DYNAMIC)
                     .buffer_info(std::slice::from_ref(&uniform_buffer_info))
                     .build(),
+                // `instance_dynamic_parameters_dyn`
                 vk::WriteDescriptorSet::builder()
                     .dst_binding(1)
                     .dst_set(set)
                     .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
                     .buffer_info(std::slice::from_ref(&storage_buffer_info))
                     .build(),
+                // `triangle_lights_dyn`
                 vk::WriteDescriptorSet::builder()
                     .dst_binding(2)
                     .dst_set(set)

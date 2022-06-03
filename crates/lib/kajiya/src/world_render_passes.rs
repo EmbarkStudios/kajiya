@@ -1,7 +1,7 @@
 use crate::{
     frame_desc::WorldFrameDesc,
     renderers::{
-        deferred::light_gbuffer, motion_blur::motion_blur, post::post_process, raster_meshes::*,
+        deferred::light_gbuffer, motion_blur::motion_blur, raster_meshes::*,
         reference::reference_path_trace, shadows::trace_sun_shadow_mask, GbufferDepth,
     },
     world_renderer::{RenderDebugMode, WorldRenderer},
@@ -24,7 +24,7 @@ impl WorldRenderer {
         let mut accum_img = rg
             .get_or_create_temporal(
                 "root.accum",
-                ImageDesc::new_2d(vk::Format::R32G32B32A32_SFLOAT, frame_desc.render_extent).usage(
+                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, frame_desc.render_extent).usage(
                     vk::ImageUsageFlags::SAMPLED
                         | vk::ImageUsageFlags::STORAGE
                         | vk::ImageUsageFlags::TRANSFER_DST,
@@ -34,18 +34,6 @@ impl WorldRenderer {
 
         let sky_cube = crate::renderers::sky::render_sky_cube(rg);
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
-
-        let csgi_volume = if let Some(tlas) = tlas.as_ref() {
-            self.csgi.render(
-                frame_desc.camera_matrices.eye_position(),
-                rg,
-                &convolved_sky_cube,
-                self.bindless_descriptor_set,
-                tlas,
-            )
-        } else {
-            self.csgi.create_dummy_volume(rg)
-        };
 
         let (gbuffer_depth, velocity_img) = {
             let mut gbuffer_depth = {
@@ -73,30 +61,18 @@ impl WorldRenderer {
                 frame_desc.render_extent,
             ));
 
-            if !matches!(self.debug_mode, RenderDebugMode::CsgiVoxelGrid { .. }) {
-                raster_meshes(
-                    rg,
-                    self.raster_simple_render_pass.clone(),
-                    &mut gbuffer_depth,
-                    &mut velocity_img,
-                    RasterMeshesData {
-                        meshes: self.meshes.as_slice(),
-                        instances: self.instances.as_slice(),
-                        vertex_buffer: self.vertex_buffer.lock().clone(),
-                        bindless_descriptor_set: self.bindless_descriptor_set,
-                    },
-                );
-            }
-
-            if let RenderDebugMode::CsgiVoxelGrid { cascade_idx } = self.debug_mode {
-                csgi_volume.debug_raster_voxel_grid(
-                    rg,
-                    self.raster_simple_render_pass.clone(),
-                    &mut gbuffer_depth,
-                    &mut velocity_img,
-                    cascade_idx,
-                );
-            }
+            raster_meshes(
+                rg,
+                self.raster_simple_render_pass.clone(),
+                &mut gbuffer_depth,
+                &mut velocity_img,
+                RasterMeshesData {
+                    meshes: self.meshes.as_slice(),
+                    instances: self.instances.as_slice(),
+                    vertex_buffer: self.vertex_buffer.lock().clone(),
+                    bindless_descriptor_set: self.bindless_descriptor_set,
+                },
+            );
 
             (gbuffer_depth, velocity_img)
         };
@@ -107,16 +83,40 @@ impl WorldRenderer {
             &velocity_img,
         );
 
-        let ssgi_tex = self
-            .ssgi
-            .render(rg, &gbuffer_depth, &reprojection_map, &accum_img);
+        let ssgi_tex = self.ssgi.render(
+            rg,
+            &gbuffer_depth,
+            &reprojection_map,
+            &accum_img,
+            self.bindless_descriptor_set,
+        );
         //let ssgi_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
+
+        let mut ircache_state = self.ircache.prepare(rg);
+
+        let wrc = /*if let Some(tlas) = tlas.as_ref() {
+            crate::renderers::wrc::wrc_trace(
+                rg,
+                &mut ircache_state,
+                &sky_cube,
+                self.bindless_descriptor_set,
+                tlas,
+            )
+        } else */{
+            crate::renderers::wrc::allocate_dummy_output(rg)
+        };
+
+        let traced_ircache = tlas.as_ref().map(|tlas| {
+            ircache_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc)
+        });
 
         let sun_shadow_mask = if let Some(tlas) = tlas.as_ref() {
             trace_sun_shadow_mask(rg, &gbuffer_depth, tlas, self.bindless_descriptor_set)
         } else {
             rg.create(gbuffer_depth.depth.desc().format(vk::Format::R8_UNORM))
         };
+
+        let reprojected_rtdgi = self.rtdgi.reproject(rg, &reprojection_map);
 
         let denoised_shadow_mask = if self.sun_size_multiplier > 0.0f32 {
             self.shadow_denoise
@@ -125,15 +125,21 @@ impl WorldRenderer {
             sun_shadow_mask.into()
         };
 
+        if let Some(traced_ircache) = traced_ircache {
+            ircache_state.sum_up_irradiance_for_sampling(rg, traced_ircache);
+        }
+
         let rtdgi = if let Some(tlas) = tlas.as_ref() {
             self.rtdgi.render(
                 rg,
+                reprojected_rtdgi,
                 &gbuffer_depth,
                 &reprojection_map,
                 &sky_cube,
                 self.bindless_descriptor_set,
+                &mut ircache_state,
+                &wrc,
                 tlas,
-                &csgi_volume,
                 &ssgi_tex,
             )
         } else {
@@ -155,8 +161,9 @@ impl WorldRenderer {
                 &sky_cube,
                 self.bindless_descriptor_set,
                 tlas,
-                &csgi_volume,
                 &rtdgi,
+                &mut ircache_state,
+                &wrc,
             )
         } else {
             self.rtr.create_dummy_output(rg, &gbuffer_depth)
@@ -186,16 +193,17 @@ impl WorldRenderer {
             rg,
             &gbuffer_depth,
             &denoised_shadow_mask,
-            &ssgi_tex,
             &rtr,
             &rtdgi,
+            &mut ircache_state,
+            &wrc,
             &mut accum_img,
             &mut debug_out_tex,
-            &csgi_volume,
             &sky_cube,
             &convolved_sky_cube,
             self.bindless_descriptor_set,
             self.debug_shading_mode,
+            self.debug_show_wrc,
         );
 
         #[allow(unused_mut)]
@@ -212,10 +220,13 @@ impl WorldRenderer {
             ));
         }
 
+        //let dof = crate::renderers::dof::dof(rg, &debug_out_tex, &gbuffer_depth.depth);
+
         let anti_aliased = anti_aliased.unwrap_or_else(|| {
             self.taa
                 .render(
                     rg,
+                    //&dof,
                     &debug_out_tex,
                     &reprojection_map,
                     &gbuffer_depth.depth,
@@ -227,16 +238,26 @@ impl WorldRenderer {
         let mut final_post_input =
             motion_blur(rg, &anti_aliased, &gbuffer_depth.depth, &reprojection_map);
 
-        if self.debug_mode == RenderDebugMode::CsgiRadiance {
-            csgi_volume.fullscreen_debug_radiance(rg, &mut final_post_input);
+        if let Some(tlas) = tlas.as_ref() {
+            if matches!(self.debug_mode, RenderDebugMode::WorldRadianceCache) {
+                wrc.see_through(
+                    rg,
+                    &sky_cube,
+                    &mut ircache_state,
+                    self.bindless_descriptor_set,
+                    tlas,
+                    &mut final_post_input,
+                );
+            }
         }
 
-        let post_processed = post_process(
+        let post_processed = self.post.render(
             rg,
             &final_post_input,
             //&anti_aliased,
             self.bindless_descriptor_set,
-            self.ev_shift,
+            self.exposure_state().post_mult,
+            self.dynamic_exposure.histogram_clipping,
         );
 
         rg.debugged_resource.take().unwrap_or(post_processed)
@@ -269,12 +290,13 @@ impl WorldRenderer {
             reference_path_trace(rg, &mut accum_img, self.bindless_descriptor_set, &tlas);
         }
 
-        post_process(
+        self.post.render(
             rg,
             &accum_img,
             //&accum_img, // hack
             self.bindless_descriptor_set,
-            self.ev_shift,
+            self.exposure_state().post_mult,
+            self.dynamic_exposure.histogram_clipping,
         )
     }
 }

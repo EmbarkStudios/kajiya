@@ -154,4 +154,14 @@ impl Device {
 
         Ok(buffer)
     }
+
+    pub fn immediate_destroy_buffer(&self, buffer: Buffer) {
+        unsafe {
+            self.raw.destroy_buffer(buffer.raw, None);
+        }
+        self.global_allocator
+            .lock()
+            .free(buffer.allocation)
+            .expect("buffer memory deallocated");
+    }
 }

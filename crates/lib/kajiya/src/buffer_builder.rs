@@ -89,6 +89,14 @@ impl BufferBuilder {
         target: &mut Buffer,
         target_offset: u64,
     ) -> Result<(), BackendError> {
+        assert!(
+            self.pending_uploads
+                .iter()
+                .map(|chunk| chunk.source.as_bytes().len())
+                .sum::<usize>()
+                + target_offset as usize
+                <= target.desc.size
+        );
         let target = target.raw;
 
         // TODO: share a common staging buffer, don't leak

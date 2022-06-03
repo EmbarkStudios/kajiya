@@ -520,6 +520,13 @@ impl<'api, 'a, 'exec_params, 'constants>
     }
 
     pub fn trace_rays_indirect(&self, args_buffer: Ref<Buffer, GpuSrv>, args_buffer_offset: u64) {
+        let indirect_device_address = self
+            .api
+            .resources
+            .buffer(args_buffer)
+            .device_address(self.api.device())
+            + args_buffer_offset;
+
         unsafe {
             self.api
                 .device()
@@ -530,11 +537,7 @@ impl<'api, 'a, 'exec_params, 'constants>
                     std::slice::from_ref(&self.pipeline.sbt.miss_shader_binding_table),
                     std::slice::from_ref(&self.pipeline.sbt.hit_shader_binding_table),
                     std::slice::from_ref(&self.pipeline.sbt.callable_shader_binding_table),
-                    self.api
-                        .resources
-                        .buffer(args_buffer)
-                        .device_address(self.api.device())
-                        + args_buffer_offset,
+                    indirect_device_address,
                 );
         }
     }

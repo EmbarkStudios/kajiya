@@ -3,8 +3,9 @@
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float4> history_tex;
 [[vk::binding(2)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(3)]] RWTexture2D<float4> output_tex;
-[[vk::binding(4)]] cbuffer _ {
+[[vk::binding(3)]] RWTexture2D<float4> final_output_tex;
+[[vk::binding(4)]] RWTexture2D<float4> history_output_tex;
+[[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
 };
 SamplerState sampler_lnc;
@@ -41,18 +42,20 @@ void main(uint2 px: SV_DispatchThreadID) {
 	float4 ex2 = vsum2 / wsum;
 	float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
 
-    float box_size = lerp(0.05, 1.0, reproj.w);
+    float box_size = 0.5;
 
     const float n_deviations = 5.0;
 	float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
     
 	float4 clamped_history = clamp(history, nmin, nmax);
-    float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / 12.0, reproj.z));
+    //float4 res = lerp(clamped_history, center, lerp(1.0, 1.0 / 12.0, reproj.z));
+    float4 res = lerp(clamped_history, center, 1.0 / 8.0);
 
     #if USE_AO_ONLY
         res = res.r;
     #endif
     
-    output_tex[px] = LINEAR_TO_WORKING(res);
+    history_output_tex[px] = LINEAR_TO_WORKING(res);
+    final_output_tex[px] = res;
 }

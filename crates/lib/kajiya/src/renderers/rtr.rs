@@ -8,14 +8,21 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
-use super::{csgi, GbufferDepth, PingPongTemporalResource};
+use super::{
+    ircache::IrcacheRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
+};
 
 use blue_noise_sampler::spp64::*;
 
 pub struct RtrRenderer {
     temporal_tex: PingPongTemporalResource,
-    temporal2_tex: PingPongTemporalResource,
     ray_len_tex: PingPongTemporalResource,
+
+    temporal_irradiance_tex: PingPongTemporalResource,
+    temporal_ray_orig_tex: PingPongTemporalResource,
+    temporal_ray_tex: PingPongTemporalResource,
+    temporal_reservoir_tex: PingPongTemporalResource,
+    temporal_hit_normal_tex: PingPongTemporalResource,
 
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
@@ -43,8 +50,14 @@ impl RtrRenderer {
     pub fn new(device: &Device) -> Result<Self, BackendError> {
         Ok(Self {
             temporal_tex: PingPongTemporalResource::new("rtr.temporal"),
-            temporal2_tex: PingPongTemporalResource::new("rtr.temporal2"),
             ray_len_tex: PingPongTemporalResource::new("rtr.ray_len"),
+
+            temporal_irradiance_tex: PingPongTemporalResource::new("rtr.irradiance"),
+            temporal_ray_orig_tex: PingPongTemporalResource::new("rtr.ray_orig"),
+            temporal_ray_tex: PingPongTemporalResource::new("rtr.ray"),
+            temporal_reservoir_tex: PingPongTemporalResource::new("rtr.reservoir"),
+            temporal_hit_normal_tex: PingPongTemporalResource::new("rtr.hit_normal"),
+
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE)?,
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE)?,
             sobol_buf: make_lut_buffer(device, SOBOL)?,
@@ -52,12 +65,12 @@ impl RtrRenderer {
     }
 }
 
-pub struct TracedRtr<'a> {
+pub struct TracedRtr {
     pub resolved_tex: rg::Handle<Image>,
     temporal_output_tex: rg::Handle<Image>,
     history_tex: rg::Handle<Image>,
     ray_len_tex: rg::Handle<Image>,
-    temporal2_tex: &'a mut PingPongTemporalResource,
+    refl_restir_invalidity_tex: rg::Handle<Image>,
 }
 
 impl RtrRenderer {
@@ -75,8 +88,9 @@ impl RtrRenderer {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        csgi_volume: &csgi::CsgiVolume,
         rtdgi: &rg::Handle<Image>,
+        ircache: &mut IrcacheRenderState,
+        wrc: &WrcRenderState,
     ) -> TracedRtr {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
@@ -88,9 +102,8 @@ impl RtrRenderer {
         );
 
         // When using PDFs stored wrt to the surface area metric, their values can be tiny or giant,
-        // so fp32 is necessary. The projected solid angle metric is less sensitive, but that shader
-        // variant is heavier. Overall the surface area metric and fp32 combo is faster on my RTX 2080.
-        let mut refl1_tex = rg.create(refl0_tex.desc().format(vk::Format::R32G32B32A32_SFLOAT));
+        // so fp32 is necessary. The projected solid angle metric is less sensitive.
+        let mut refl1_tex = rg.create(refl0_tex.desc().format(vk::Format::R16G16B16A16_SFLOAT));
 
         let mut refl2_tex = rg.create(refl0_tex.desc().format(vk::Format::R8G8B8A8_SNORM));
 
@@ -123,7 +136,8 @@ impl RtrRenderer {
         .read(&sobol_buf)
         .read(rtdgi)
         .read(sky_cube)
-        .read_array(&csgi_volume.indirect)
+        .bind_mut(ircache)
+        .bind(wrc)
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)
         .write(&mut refl2_tex)
@@ -131,16 +145,122 @@ impl RtrRenderer {
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);
 
+        let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
+        let half_depth_tex = gbuffer_depth.half_depth(rg);
+
+        let (mut ray_orig_output_tex, ray_orig_history_tex) =
+            self.temporal_ray_orig_tex.get_output_and_history(
+                rg,
+                ImageDesc::new_2d(
+                    vk::Format::R32G32B32A32_SFLOAT,
+                    gbuffer_desc.half_res().extent_2d(),
+                )
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            );
+
+        let mut refl_restir_invalidity_tex =
+            rg.create(refl0_tex.desc().format(vk::Format::R8_UNORM));
+
+        let (irradiance_tex, ray_tex, temporal_reservoir_tex, restir_hit_normal_tex) = {
+            let (mut hit_normal_output_tex, hit_normal_history_tex) =
+                self.temporal_hit_normal_tex.get_output_and_history(
+                    rg,
+                    Self::temporal_tex_desc(
+                        gbuffer_desc
+                            .format(vk::Format::R8G8B8A8_UNORM)
+                            .half_res()
+                            .extent_2d(),
+                    ),
+                );
+
+            let (mut irradiance_output_tex, mut irradiance_history_tex) =
+                self.temporal_irradiance_tex.get_output_and_history(
+                    rg,
+                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
+                        .format(vk::Format::R16G16B16A16_SFLOAT),
+                );
+
+            let (mut reservoir_output_tex, mut reservoir_history_tex) =
+                self.temporal_reservoir_tex.get_output_and_history(
+                    rg,
+                    ImageDesc::new_2d(vk::Format::R32G32_UINT, gbuffer_desc.half_res().extent_2d())
+                        .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+                );
+
+            let (mut ray_output_tex, ray_history_tex) =
+                self.temporal_ray_tex.get_output_and_history(
+                    rg,
+                    Self::temporal_tex_desc(gbuffer_desc.half_res().extent_2d())
+                        .format(vk::Format::R16G16B16A16_SFLOAT),
+                );
+
+            SimpleRenderPass::new_rt(
+                rg.add_pass("reflection validate"),
+                ShaderSource::hlsl("/shaders/rtr/reflection_validate.rgen.hlsl"),
+                [
+                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+                ],
+                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+            )
+            .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(rtdgi)
+            .read(sky_cube)
+            .write(&mut refl_restir_invalidity_tex)
+            .bind_mut(ircache)
+            .bind(wrc)
+            .read(&ray_orig_history_tex)
+            .read(&ray_history_tex)
+            .write(&mut irradiance_history_tex)
+            .write(&mut reservoir_history_tex)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .trace_rays(tlas, refl0_tex.desc().half_res().extent);
+            //.trace_rays(tlas, refl0_tex.desc().extent);
+
+            SimpleRenderPass::new_compute(
+                rg.add_pass("rtr restir temporal"),
+                "/shaders/rtr/rtr_restir_temporal.hlsl",
+            )
+            .read(&gbuffer_depth.gbuffer)
+            .read(&*half_view_normal_tex)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&refl0_tex)
+            .read(&refl1_tex)
+            .read(&refl2_tex)
+            .read(&irradiance_history_tex)
+            .read(&ray_orig_history_tex)
+            .read(&ray_history_tex)
+            .read(&reservoir_history_tex)
+            .read(reprojection_map)
+            .read(&hit_normal_history_tex)
+            //.read(&candidate_history_tex)
+            .write(&mut irradiance_output_tex)
+            .write(&mut ray_orig_output_tex)
+            .write(&mut ray_output_tex)
+            .write(&mut hit_normal_output_tex)
+            .write(&mut reservoir_output_tex)
+            //.write(&mut candidate_output_tex)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .dispatch(irradiance_output_tex.desc().extent);
+
+            (
+                irradiance_output_tex,
+                ray_output_tex,
+                reservoir_output_tex,
+                hit_normal_output_tex,
+            )
+        };
+
         let mut resolved_tex = rg.create(
             gbuffer_depth
                 .gbuffer
                 .desc()
                 .usage(vk::ImageUsageFlags::empty())
-                .format(vk::Format::R16G16B16A16_SFLOAT),
+                .format(vk::Format::B10G11R11_UFLOAT_PACK32),
         );
-
-        let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
-        let half_depth_tex = gbuffer_depth.half_depth(rg);
 
         let (temporal_output_tex, history_tex) = self
             .temporal_tex
@@ -167,6 +287,11 @@ impl RtrRenderer {
         .read(&*half_view_normal_tex)
         .read(&*half_depth_tex)
         .read(&ray_len_history_tex)
+        .read(&irradiance_tex)
+        .read(&ray_tex)
+        .read(&temporal_reservoir_tex)
+        .read(&ray_orig_output_tex)
+        .read(&restir_hit_normal_tex)
         .write(&mut resolved_tex)
         .write(&mut ray_len_output_tex)
         .raw_descriptor_set(1, bindless_descriptor_set)
@@ -181,7 +306,7 @@ impl RtrRenderer {
             temporal_output_tex,
             history_tex,
             ray_len_tex: ray_len_output_tex,
-            temporal2_tex: &mut self.temporal2_tex,
+            refl_restir_invalidity_tex,
         }
     }
 
@@ -210,17 +335,19 @@ impl RtrRenderer {
                 .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
         );
 
+        let refl_restir_invalidity_tex = rg.create(ImageDesc::new_2d(vk::Format::R8_UNORM, [1, 1]));
+
         TracedRtr {
             resolved_tex,
             temporal_output_tex,
             history_tex,
             ray_len_tex: ray_len_output_tex,
-            temporal2_tex: &mut self.temporal2_tex,
+            refl_restir_invalidity_tex,
         }
     }
 }
 
-impl<'a> TracedRtr<'a> {
+impl TracedRtr {
     #[allow(clippy::too_many_arguments)]
     pub fn filter_temporal(
         mut self,
@@ -228,8 +355,6 @@ impl<'a> TracedRtr<'a> {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let gbuffer_desc = gbuffer_depth.gbuffer.desc();
-
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection temporal"),
             "/shaders/rtr/temporal_filter.hlsl",
@@ -239,32 +364,16 @@ impl<'a> TracedRtr<'a> {
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&self.ray_len_tex)
         .read(reprojection_map)
+        .read(&self.refl_restir_invalidity_tex)
         .write(&mut self.temporal_output_tex)
         .constants(self.temporal_output_tex.desc().extent_inv_extent_2d())
-        .dispatch(self.resolved_tex.desc().extent);
-
-        let (mut temporal2_output_tex, history2_tex) = self
-            .temporal2_tex
-            .get_output_and_history(rg, RtrRenderer::temporal_tex_desc(gbuffer_desc.extent_2d()));
-
-        SimpleRenderPass::new_compute(
-            rg.add_pass("reflection temporal2"),
-            "/shaders/rtr/temporal_filter2.hlsl",
-        )
-        .read(&self.temporal_output_tex)
-        .read(&history2_tex)
-        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .read(&self.ray_len_tex)
-        .read(reprojection_map)
-        .write(&mut temporal2_output_tex)
-        .constants(temporal2_output_tex.desc().extent_inv_extent_2d())
         .dispatch(self.resolved_tex.desc().extent);
 
         SimpleRenderPass::new_compute(
             rg.add_pass("reflection cleanup"),
             "/shaders/rtr/spatial_cleanup.hlsl",
         )
-        .read(&temporal2_output_tex)
+        .read(&self.temporal_output_tex)
         .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
         .read(&gbuffer_depth.geometric_normal)
         .write(&mut self.resolved_tex) // reuse

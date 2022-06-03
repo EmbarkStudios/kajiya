@@ -369,9 +369,9 @@ checksum = "b0a5e3906bcbf133e33c1d4d95afc664ad37fbdb9f6568d8043e7ea8c27d93d3"
 
 [[package]]
 name = "bytemuck"
-version = "1.7.2"
+version = "1.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72957246c41db82b8ef88a5486143830adeb8227ef9837740bdec67724cf2c5b"
+checksum = "cdead85bdec19c194affaeeb670c0e41fe23de31459efd1c174d049269cf02cc"
 
 [[package]]
 name = "byteorder"
@@ -445,7 +445,7 @@ checksum = "670ad68c9088c2a963aaa298cb369688cf3f9465ce5e2d4ca10e6e0098a1ce73"
 dependencies = [
  "libc",
  "num-integer",
- "num-traits",
+ "num-traits 0.2.14",
  "time",
  "winapi 0.3.9",
 ]
@@ -740,6 +740,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ddsfile"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34f357e96445b4238418b6f4f2b5a956ac1306f89f01d68b85a2d81de3a7cab9"
+dependencies = [
+ "bitflags",
+ "byteorder",
+ "enum_primitive",
+]
+
+[[package]]
 name = "deflate"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -747,6 +758,15 @@ checksum = "73770f8e1fe7d64df17ca66ad28994a0a623ea497fa69486e14984e715c5d174"
 dependencies = [
  "adler32",
  "byteorder",
+]
+
+[[package]]
+name = "deflate"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c86f7e25f518f4b81808a2cf1c50996a61f5c2eb394b2393bd87f2a4780a432f"
+dependencies = [
+ "adler32",
 ]
 
 [[package]]
@@ -844,9 +864,8 @@ dependencies = [
 
 [[package]]
 name = "dolly"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "926871c31d0c0249a297472122bf3a696a3de54b674f4381d943fdd8efba2cd8"
+version = "0.3.0"
+source = "git+https://github.com/h3r2tic/dolly.git?rev=0276fb4b5fe2e11c70919af7dbbcd645711c8f48#0276fb4b5fe2e11c70919af7dbbcd645711c8f48"
 dependencies = [
  "glam",
 ]
@@ -862,6 +881,15 @@ name = "easy-parallel"
 version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dd4afd79212583ff429b913ad6605242ed7eec277e950b1438f300748f948f4"
+
+[[package]]
+name = "enum_primitive"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be4551092f4d519593039259a9ed8daedf0da12e5109c5280338073eaeb81180"
+dependencies = [
+ "num-traits 0.1.43",
+]
 
 [[package]]
 name = "env_logger"
@@ -1126,7 +1154,7 @@ version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "525a3e490ba77b8e326fb67d4b44b4bd2f920f44d4cc73ccec50adc68e3bee34"
 dependencies = [
- "num-traits",
+ "num-traits 0.2.14",
  "serde",
 ]
 
@@ -1138,20 +1166,21 @@ checksum = "9b919933a397b79c37e33b77bb2aa3dc8eb6e165ad809e58ff75bc7db2e34574"
 
 [[package]]
 name = "gltf"
-version = "0.16.0"
-source = "git+https://github.com/h3r2tic/gltf.git?rev=83826e3#83826e367835a0f542a3ad5935cbecba92ddea78"
+version = "1.0.0"
+source = "git+https://github.com/gltf-rs/gltf.git?rev=b9c04be69363b8353d58f99aa1008ead93020851#b9c04be69363b8353d58f99aa1008ead93020851"
 dependencies = [
  "base64 0.12.3",
  "byteorder",
  "gltf-json",
- "image",
+ "image 0.24.1",
  "lazy_static",
+ "urlencoding",
 ]
 
 [[package]]
 name = "gltf-derive"
-version = "0.16.0"
-source = "git+https://github.com/h3r2tic/gltf.git?rev=83826e3#83826e367835a0f542a3ad5935cbecba92ddea78"
+version = "1.0.0"
+source = "git+https://github.com/gltf-rs/gltf.git?rev=b9c04be69363b8353d58f99aa1008ead93020851#b9c04be69363b8353d58f99aa1008ead93020851"
 dependencies = [
  "inflections",
  "proc-macro2",
@@ -1161,8 +1190,8 @@ dependencies = [
 
 [[package]]
 name = "gltf-json"
-version = "0.16.0"
-source = "git+https://github.com/h3r2tic/gltf.git?rev=83826e3#83826e367835a0f542a3ad5935cbecba92ddea78"
+version = "1.0.0"
+source = "git+https://github.com/gltf-rs/gltf.git?rev=b9c04be69363b8353d58f99aa1008ead93020851#b9c04be69363b8353d58f99aa1008ead93020851"
 dependencies = [
  "gltf-derive",
  "serde",
@@ -1255,13 +1284,29 @@ dependencies = [
  "byteorder",
  "color_quant",
  "gif",
- "jpeg-decoder",
+ "jpeg-decoder 0.1.22",
  "num-iter",
- "num-rational",
- "num-traits",
- "png",
+ "num-rational 0.3.2",
+ "num-traits 0.2.14",
+ "png 0.16.8",
  "scoped_threadpool",
  "tiff",
+]
+
+[[package]]
+name = "image"
+version = "0.24.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db207d030ae38f1eb6f240d5a1c1c88ff422aa005d10f8c6c6fc5e75286ab30e"
+dependencies = [
+ "bytemuck",
+ "byteorder",
+ "color_quant",
+ "jpeg-decoder 0.2.4",
+ "num-iter",
+ "num-rational 0.4.0",
+ "num-traits 0.2.14",
+ "png 0.17.5",
 ]
 
 [[package]]
@@ -1367,17 +1412,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "229d53d58899083193af11e15917b5640cd40b29ff475a1fe4ef725deb02d0f2"
 
 [[package]]
+name = "jpeg-decoder"
+version = "0.2.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "744c24117572563a98a7e9168a5ac1ee4a1ca7f702211258797bbe0ed0346c3c"
+
+[[package]]
 name = "kajiya"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "array-init",
  "blue-noise-sampler",
+ "bytemuck",
  "chrono",
  "easy-parallel",
  "fern",
  "glam",
- "image",
+ "image 0.23.14",
  "kajiya-asset",
  "kajiya-backend",
  "kajiya-rg",
@@ -1400,9 +1452,10 @@ dependencies = [
  "base64 0.12.3",
  "byteorder",
  "bytes",
+ "ddsfile",
  "glam",
  "gltf",
- "image",
+ "image 0.23.14",
  "kajiya-backend",
  "log",
  "mikktspace",
@@ -1575,7 +1628,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96ea524ece39c817dc5478897fceec1fb389eaaed9516813f1e51b21cb272239"
 dependencies = [
  "glam",
- "num-traits",
+ "num-traits 0.2.14",
 ]
 
 [[package]]
@@ -1651,6 +1704,15 @@ checksum = "a92518e98c078586bc6c934028adcca4c92a53d6a958196de835170a01d84e4b"
 dependencies = [
  "adler",
  "autocfg",
+]
+
+[[package]]
+name = "miniz_oxide"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2b29bd4bc3f33391105ebee3589c19197c4271e3e5a9ec9bfe8127eeff8f082"
+dependencies = [
+ "adler",
 ]
 
 [[package]]
@@ -1898,7 +1960,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
 dependencies = [
  "autocfg",
- "num-traits",
+ "num-traits 0.2.14",
 ]
 
 [[package]]
@@ -1909,7 +1971,7 @@ checksum = "b2021c8337a54d21aca0d59a92577a029af9431cb59b909b03252b9c164fad59"
 dependencies = [
  "autocfg",
  "num-integer",
- "num-traits",
+ "num-traits 0.2.14",
 ]
 
 [[package]]
@@ -1920,7 +1982,27 @@ checksum = "12ac428b1cb17fce6f731001d307d351ec70a6d202fc2e60f7d4c5e42d8f4f07"
 dependencies = [
  "autocfg",
  "num-integer",
- "num-traits",
+ "num-traits 0.2.14",
+]
+
+[[package]]
+name = "num-rational"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d41702bd167c2df5520b384281bc111a4b5efcf7fbc4c9c222c815b07e0a6a6a"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits 0.2.14",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92e5113e9fd4cc14ded8e499429f396a20f98c772a47cc8622a736e1ec843c31"
+dependencies = [
+ "num-traits 0.2.14",
 ]
 
 [[package]]
@@ -2076,8 +2158,20 @@ checksum = "3c3287920cb847dee3de33d301c463fba14dda99db24214ddf93f83d3021f4c6"
 dependencies = [
  "bitflags",
  "crc32fast",
- "deflate",
+ "deflate 0.8.6",
  "miniz_oxide 0.3.7",
+]
+
+[[package]]
+name = "png"
+version = "0.17.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc38c0ad57efb786dd57b9864e5b18bae478c00c824dc55a38bbc9da95dde3ba"
+dependencies = [
+ "bitflags",
+ "crc32fast",
+ "deflate 1.0.0",
+ "miniz_oxide 0.5.1",
 ]
 
 [[package]]
@@ -2286,7 +2380,7 @@ source = "git+https://github.com/gfx-rs/rspirv.git?rev=dae552c#dae552c484974ca28
 dependencies = [
  "derive_more",
  "fxhash",
- "num-traits",
+ "num-traits 0.2.14",
  "spirv_headers",
 ]
 
@@ -2313,7 +2407,7 @@ name = "rust-shaders-shared"
 version = "0.1.0"
 dependencies = [
  "macaw",
- "num-traits",
+ "num-traits 0.2.14",
  "spirv-std",
 ]
 
@@ -2530,7 +2624,7 @@ source = "git+https://github.com/EmbarkStudios/rust-gpu?rev=b692ab5afc7fbdb4599b
 dependencies = [
  "bitflags",
  "glam",
- "num-traits",
+ "num-traits 0.2.14",
  "spirv-std-macros",
  "spirv-types",
 ]
@@ -2558,7 +2652,15 @@ version = "1.5.0"
 source = "git+https://github.com/gfx-rs/rspirv.git?rev=dae552c#dae552c484974ca280a2f18a686b42b38b0dc2ad"
 dependencies = [
  "bitflags",
- "num-traits",
+ "num-traits 0.2.14",
+]
+
+[[package]]
+name = "splines"
+version = "4.1.0"
+source = "git+https://github.com/h3r2tic/splines.git?rev=aa0ea829b025d908c8621207764601cb6b059911#aa0ea829b025d908c8621207764601cb6b059911"
+dependencies = [
+ "glam",
 ]
 
 [[package]]
@@ -2664,7 +2766,7 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a53f4706d65497df0c4349241deddf35f84cee19c87ed86ea8ca590f4464437"
 dependencies = [
- "jpeg-decoder",
+ "jpeg-decoder 0.1.22",
  "miniz_oxide 0.4.4",
  "weezl",
 ]
@@ -2768,6 +2870,7 @@ dependencies = [
  "log",
  "ron",
  "serde",
+ "splines",
  "structopt",
 ]
 

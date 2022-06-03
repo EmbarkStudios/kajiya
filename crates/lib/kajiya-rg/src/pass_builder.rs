@@ -1,4 +1,4 @@
-use crate::RenderPassApi;
+use crate::{PassResourceAccessSyncType, RenderPassApi};
 
 use super::{
     graph::{
@@ -43,6 +43,7 @@ impl<'rg> PassBuilder<'rg> {
         &mut self,
         handle: &mut Handle<Res>,
         access_type: vk_sync::AccessType,
+        sync_type: PassResourceAccessSyncType,
     ) -> Ref<Res, ViewType> {
         let pass = self.pass.as_mut().unwrap();
 
@@ -60,7 +61,7 @@ impl<'rg> PassBuilder<'rg> {
 
         pass.write.push(PassResourceRef {
             handle: handle.raw,
-            access: PassResourceAccessType::new(access_type),
+            access: PassResourceAccessType::new(access_type, sync_type),
         });
 
         Ref {
@@ -93,7 +94,37 @@ impl<'rg> PassBuilder<'rg> {
             }
         }
 
-        self.write_impl(handle, access_type)
+        self.write_impl(handle, access_type, PassResourceAccessSyncType::AlwaysSync)
+    }
+
+    pub fn write_no_sync<Res: Resource>(
+        &mut self,
+        handle: &mut Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> Ref<Res, GpuUav> {
+        match access_type {
+            AccessType::CommandBufferWriteNVX
+            | AccessType::VertexShaderWrite
+            | AccessType::TessellationControlShaderWrite
+            | AccessType::TessellationEvaluationShaderWrite
+            | AccessType::GeometryShaderWrite
+            | AccessType::FragmentShaderWrite
+            | AccessType::ComputeShaderWrite
+            | AccessType::AnyShaderWrite
+            | AccessType::TransferWrite
+            | AccessType::HostWrite
+            | AccessType::ColorAttachmentReadWrite
+            | AccessType::General => {}
+            _ => {
+                panic!("Invalid access type: {:?}", access_type);
+            }
+        }
+
+        self.write_impl(
+            handle,
+            access_type,
+            PassResourceAccessSyncType::SkipSyncIfSameAccessType,
+        )
     }
 
     pub fn raster<Res: Resource>(
@@ -111,7 +142,7 @@ impl<'rg> PassBuilder<'rg> {
             }
         }
 
-        self.write_impl(handle, access_type)
+        self.write_impl(handle, access_type, PassResourceAccessSyncType::AlwaysSync)
     }
 
     pub fn read<Res: Resource>(
@@ -168,7 +199,39 @@ impl<'rg> PassBuilder<'rg> {
 
         pass.read.push(PassResourceRef {
             handle: handle.raw,
-            access: PassResourceAccessType::new(access_type),
+            access: PassResourceAccessType::new(
+                access_type,
+                PassResourceAccessSyncType::SkipSyncIfSameAccessType,
+            ),
+        });
+
+        Ref {
+            desc: handle.desc.clone(),
+            handle: handle.raw,
+            marker: PhantomData,
+        }
+    }
+
+    pub fn raster_read<Res: Resource>(
+        &mut self,
+        handle: &Handle<Res>,
+        access_type: vk_sync::AccessType,
+    ) -> Ref<Res, GpuRt> {
+        match access_type {
+            AccessType::ColorAttachmentRead | AccessType::DepthStencilAttachmentRead => {}
+            _ => {
+                panic!("Invalid access type: {:?}", access_type);
+            }
+        }
+
+        let pass = self.pass.as_mut().unwrap();
+
+        pass.read.push(PassResourceRef {
+            handle: handle.raw,
+            access: PassResourceAccessType::new(
+                access_type,
+                PassResourceAccessSyncType::SkipSyncIfSameAccessType,
+            ),
         });
 
         Ref {

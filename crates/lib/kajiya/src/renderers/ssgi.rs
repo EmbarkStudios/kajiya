@@ -18,6 +18,9 @@ impl Default for SsgiRenderer {
     }
 }
 
+const INTERNAL_TEX_FMT: vk::Format = vk::Format::R16_SFLOAT;
+const FINAL_TEX_FMT: vk::Format = vk::Format::R8_UNORM;
+
 impl SsgiRenderer {
     pub fn render(
         &mut self,
@@ -25,6 +28,7 @@ impl SsgiRenderer {
         gbuffer_depth: &GbufferDepth,
         reprojection_map: &rg::Handle<Image>,
         prev_radiance: &rg::Handle<Image>,
+        bindless_descriptor_set: vk::DescriptorSet,
     ) -> rg::ReadOnlyHandle<Image> {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
@@ -34,11 +38,11 @@ impl SsgiRenderer {
             gbuffer_desc
                 .usage(vk::ImageUsageFlags::empty())
                 .half_res()
-                .format(vk::Format::R16_SFLOAT),
+                .format(INTERNAL_TEX_FMT),
         );
 
         if USE_RUST_SHADERS {
-            SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi"), "ssgi::ssgi_cs")
+            SimpleRenderPass::new_compute_rust(rg.add_pass("ssao"), "ssgi::ssgi_cs")
                 .read(&gbuffer_depth.gbuffer)
                 .read(&*half_depth_tex)
                 .read(&*half_view_normal_tex)
@@ -49,9 +53,10 @@ impl SsgiRenderer {
                     gbuffer_desc.extent_inv_extent_2d().into(),
                     ssgi_tex.desc().extent_inv_extent_2d().into(),
                 ))
+                // .raw_descriptor_set(1, bindless_descriptor_set)
                 .dispatch(ssgi_tex.desc().extent);
         } else {
-            SimpleRenderPass::new_compute(rg.add_pass("ssgi"), "/shaders/ssgi/ssgi.hlsl")
+            SimpleRenderPass::new_compute(rg.add_pass("ssao"), "/shaders/ssgi/ssgi.hlsl")
                 .read(&gbuffer_depth.gbuffer)
                 .read(&*half_depth_tex)
                 .read(&*half_view_normal_tex)
@@ -62,6 +67,7 @@ impl SsgiRenderer {
                     gbuffer_desc.extent_inv_extent_2d(),
                     ssgi_tex.desc().extent_inv_extent_2d(),
                 ))
+                .raw_descriptor_set(1, bindless_descriptor_set)
                 .dispatch(ssgi_tex.desc().extent);
         }
 
@@ -90,17 +96,17 @@ impl SsgiRenderer {
                 gbuffer_desc
                     .usage(vk::ImageUsageFlags::empty())
                     .half_res()
-                    .format(vk::Format::R16_SFLOAT),
+                    .format(INTERNAL_TEX_FMT),
             );
 
             if USE_RUST_SHADERS {
                 SimpleRenderPass::new_compute_rust(
-                    rg.add_pass("ssgi spatial"),
+                    rg.add_pass("ssao spatial"),
                     "ssgi::spatial_filter_cs",
                 )
             } else {
                 SimpleRenderPass::new_compute(
-                    rg.add_pass("ssgi spatial"),
+                    rg.add_pass("ssao spatial"),
                     "/shaders/ssgi/spatial_filter.hlsl",
                 )
             }
@@ -118,17 +124,19 @@ impl SsgiRenderer {
             )
         };
 
-        let (mut filtered_output_tex, history_tex) = temporal_tex
+        let (mut history_output_tex, history_tex) = temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(gbuffer_desc.extent_2d()));
+
+        let mut filtered_output_tex = rg.create(gbuffer_desc.format(FINAL_TEX_FMT));
 
         if USE_RUST_SHADERS {
             SimpleRenderPass::new_compute_rust(
-                rg.add_pass("ssgi temporal"),
+                rg.add_pass("ssao temporal"),
                 "ssgi::temporal_filter_cs",
             )
         } else {
             SimpleRenderPass::new_compute(
-                rg.add_pass("ssgi temporal"),
+                rg.add_pass("ssao temporal"),
                 "/shaders/ssgi/temporal_filter.hlsl",
             )
         }
@@ -136,14 +144,15 @@ impl SsgiRenderer {
         .read(&history_tex)
         .read(reprojection_map)
         .write(&mut filtered_output_tex)
-        .constants(filtered_output_tex.desc().extent_inv_extent_2d())
-        .dispatch(filtered_output_tex.desc().extent);
+        .write(&mut history_output_tex)
+        .constants(history_output_tex.desc().extent_inv_extent_2d())
+        .dispatch(history_output_tex.desc().extent);
 
         filtered_output_tex.into()
     }
 
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
-        ImageDesc::new_2d(vk::Format::R16_SFLOAT, extent)
+        ImageDesc::new_2d(INTERNAL_TEX_FMT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
@@ -153,13 +162,13 @@ impl SsgiRenderer {
         depth: &rg::Handle<Image>,
         gbuffer: &rg::Handle<Image>,
     ) -> rg::Handle<Image> {
-        let mut output_tex = rg.create(gbuffer.desc().format(vk::Format::R16_SFLOAT));
+        let mut output_tex = rg.create(gbuffer.desc().format(INTERNAL_TEX_FMT));
 
         if USE_RUST_SHADERS {
-            SimpleRenderPass::new_compute_rust(rg.add_pass("ssgi upsample"), "ssgi::upsample_cs")
+            SimpleRenderPass::new_compute_rust(rg.add_pass("ssao upsample"), "ssgi::upsample_cs")
         } else {
             SimpleRenderPass::new_compute(
-                rg.add_pass("ssgi upsample"),
+                rg.add_pass("ssao upsample"),
                 "/shaders/ssgi/upsample.hlsl",
             )
         }

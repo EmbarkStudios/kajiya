@@ -28,9 +28,9 @@ pub fn calculate_reprojection_map(
         )
         .unwrap();
 
-    SimpleRenderPass::new_compute_rust(
+    SimpleRenderPass::new_compute(
         rg.add_pass("reprojection map"),
-        "calculate_reprojection_map::calculate_reprojection_map_cs",
+        "/shaders/calculate_reprojection_map.hlsl",
     )
     .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
     .read(&gbuffer_depth.geometric_normal)

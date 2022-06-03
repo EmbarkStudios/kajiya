@@ -12,9 +12,9 @@ pub fn extract_half_res_gbuffer_view_normal_rgba8(
             .usage(vk::ImageUsageFlags::empty())
             .format(vk::Format::R8G8B8A8_SNORM),
     );
-    SimpleRenderPass::new_compute_rust(
+    SimpleRenderPass::new_compute(
         rg.add_pass("extract view normal/2"),
-        "extract_half_res_gbuffer_view_normal_rgba8::extract_half_res_gbuffer_view_normal_rgba8",
+        "/shaders/extract_half_res_gbuffer_view_normal_rgba8.hlsl",
     )
     .read(gbuffer)
     .write(&mut output_tex)
@@ -33,9 +33,9 @@ pub fn extract_half_res_depth(
             .usage(vk::ImageUsageFlags::empty())
             .format(vk::Format::R32_SFLOAT),
     );
-    SimpleRenderPass::new_compute_rust(
+    SimpleRenderPass::new_compute(
         rg.add_pass("extract half depth"),
-        "extract_half_res_depth::extract_half_res_depth",
+        "/shaders/extract_half_res_depth.hlsl",
     )
     .read_aspect(depth, vk::ImageAspectFlags::DEPTH)
     .write(&mut output_tex)

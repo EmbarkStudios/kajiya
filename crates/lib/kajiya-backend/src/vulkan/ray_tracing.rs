@@ -73,15 +73,15 @@ pub struct RayTracingAccelerationScratchBuffer {
     buffer: Arc<Mutex<super::buffer::Buffer>>,
 }
 
+const RT_SCRATCH_BUFFER_SIZE: usize = 1024 * 1024 * 1024 * 2;
+
 impl Device {
     pub fn create_ray_tracing_acceleration_scratch_buffer(
         &self,
     ) -> Result<RayTracingAccelerationScratchBuffer, BackendError> {
-        const SCRATCH_BUFFER_SIZE: usize = 1024 * 1024 * 1440;
-
         let buffer = self.create_buffer(
             super::buffer::BufferDesc::new_gpu_only(
-                SCRATCH_BUFFER_SIZE,
+                RT_SCRATCH_BUFFER_SIZE,
                 vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
             ),
             "Acceleration structure scratch buffer",
@@ -328,7 +328,7 @@ impl Device {
             let scratch_buffer = scratch_buffer.buffer.lock();
             assert!(
                 memory_requirements.build_scratch_size as usize <= scratch_buffer.desc.size,
-                "TODO: resize scratch; see `SCRATCH_BUFFER_SIZE`"
+                "TODO: resize scratch; see `RT_SCRATCH_BUFFER_SIZE`"
             );
 
             /*let scratch_buffer = self
@@ -858,7 +858,7 @@ pub fn create_ray_tracing_pipeline(
                     .build()],
                 None,
             )
-            .unwrap()[0];
+            .expect("create_ray_tracing_pipelines")[0];
 
         let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
         for bindings in set_layout_info.iter() {

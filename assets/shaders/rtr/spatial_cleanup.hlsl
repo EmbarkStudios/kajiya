@@ -1,5 +1,10 @@
 #include "../inc/uv.hlsl"
 #include "../inc/frame_constants.hlsl"
+#include "../inc/working_color_space.hlsl"
+#define linear_to_working linear_rgb_to_crunched_rgb
+#define working_to_linear crunched_rgb_to_linear_rgb
+//#define linear_to_working linear_rgb_to_linear_rgb
+//#define working_to_linear linear_rgb_to_linear_rgb
 
 [[vk::binding(0)]] Texture2D<float4> input_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -17,7 +22,7 @@ void main(int2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
     const float center_sample_count = center.w;
 
-    if (center_sample_count >= 16 || center_depth == 0.0) {
+    if (!true || center_sample_count >= 16 || center_depth == 0.0) {
         output_tex[px] = center;
         return;
     }
@@ -40,7 +45,7 @@ void main(int2 px: SV_DispatchThreadID) {
         // TODO: precalculate temporal variants
         int2 sample_px = px + kernel_scale * spatial_resolve_offsets[(px_idx_in_quad * 16 + sample_i) + 64 * filter_idx].xy;
 
-        const float3 neigh = input_tex[sample_px].rgb;
+        const float3 neigh = linear_to_working(input_tex[sample_px]).rgb;
         const float sample_depth = depth_tex[sample_px];
         const float3 sample_normal_vs = geometric_normal_tex[sample_px] * 2 - 1;
 
@@ -54,5 +59,5 @@ void main(int2 px: SV_DispatchThreadID) {
 		wsum += w;
     }
 
-    output_tex[px] = float4(vsum / wsum, 1);
+    output_tex[px] = working_to_linear(float4(vsum / wsum, 1));
 }

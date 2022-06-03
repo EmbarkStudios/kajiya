@@ -3,6 +3,7 @@
 
 #include "math_const.hlsl"
 
+// Jenkins hash function. TODO: check if we need something better.
 uint hash1(uint x) {
 	x += (x << 10u);
 	x ^= (x >>  6u);
@@ -53,4 +54,9 @@ float uint_to_u01_float(uint h) {
 	return r2 - 1.0;
 }
 
-#endif 
+float interleaved_gradient_noise(uint2 px) {
+    return frac(52.9829189 * frac(0.06711056f * float(px.x) + 0.00583715f * float(px.y)));
+}
+
+
+#endif

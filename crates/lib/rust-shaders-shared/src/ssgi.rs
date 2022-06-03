@@ -24,7 +24,7 @@ impl SsgiConstants {
             max_kernel_radius_cs: 0.4,
             use_kernel_distance_scaling: false,
             use_random_jitter: false,
-            kernel_radius: 50.0,
+            kernel_radius: 60.0,
         }
     }
 

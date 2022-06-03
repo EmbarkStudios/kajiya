@@ -4,8 +4,11 @@ float3 soft_color_clamp(float3 center, float3 history, float3 ex, float3 dev) {
     //
     // Instead of a hard clamp, this will smoothly bring the value closer to the center,
     // thus over time reducing disocclusion artifacts.
-    float3 history_dist = abs(history - ex) / dev;
-    //float3 closest_pt = center;
+    //float3 history_dist = abs(history - ex) / max(0.1, dev);
+    //float3 history_dist = abs(history - ex) / max(0.002, dev);
+    //float3 history_dist = abs(history - ex) / dev;
+    float3 history_dist = abs(history - ex) / max(abs(history * 0.1), dev);
+
     float3 closest_pt = clamp(history, center - dev, center + dev);
     return lerp(history, closest_pt, smoothstep(1.0, 3.0, history_dist));
 }

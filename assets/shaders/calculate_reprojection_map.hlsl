@@ -51,6 +51,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     }
 
     float3 normal_vs = geometric_normal_tex[px] * 2.0 - 1.0;
+    float3 normal_pvs = mul(frame_constants.view_constants.prev_clip_to_prev_view,
+        mul(frame_constants.view_constants.clip_to_prev_clip,
+            mul(frame_constants.view_constants.view_to_clip, float4(normal_vs, 0)))).xyz;
 
     float4 pos_cs = float4(uv_to_cs(uv), depth, 1.0);
     float4 pos_vs = mul(frame_constants.view_constants.clip_to_view, pos_cs);
@@ -106,6 +109,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     // Reduce strictness at grazing angles, where distances grow due to perspective
     const float3 pos_vs_norm = normalize(pos_vs.xyz / pos_vs.w);
     const float ndotv = dot(normal_vs, pos_vs_norm);
+    const float prev_ndotv = dot(normal_pvs, normalize(prev_pvs.xyz));
 
     float4 quad_validity = step(quad_dists, acceptance_threshold * dist_to_point / -ndotv);
 
@@ -117,7 +121,18 @@ void main(uint2 px: SV_DispatchThreadID) {
     float validity = dot(quad_validity, float4(1, 2, 4, 8)) / 15.0;
 
     float2 texel_center_offset = abs(0.5 - frac(prev_uv * output_tex_size.xy));
-    float accuracy = 1.0 - texel_center_offset.x - texel_center_offset.y;
+
+    float accuracy = 1;
+    
+    // Reprojection of surfaces which were grazing to the camera
+    // causes any noise or features on those surfaces to become smeared,
+    // which subsequently is slow to converge.
+    accuracy *= smoothstep(0.8, 0.95, prev_ndotv / ndotv);
+
+    // Mark off-screen reprojections
+    if (any(saturate(prev_uv) != prev_uv)) {
+        accuracy = -1;
+    }
 
     output_tex[px] = float4(
         uv_diff,

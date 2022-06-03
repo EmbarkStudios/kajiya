@@ -14,22 +14,21 @@
 //static const float3 SUN_COLOR = 5 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
 
 #if 0
-    static const float3 SUN_COLOR = 1.0;
+    float3 sun_color_in_direction(float3 dir) {
+        return frame_constants.pre_exposure * 0.0;
+    }
 #else
-    #if USE_FELIX_ATMOSPHERE
-        float3 sun_color_in_direction(float3 dir) {
-            return
-                20.0 *
-                frame_constants.sun_color_multiplier.rgb *
-                Absorb(IntegrateOpticalDepth(0.0.xxx, dir));
-        }
+    float3 sun_color_in_direction(float3 dir) {
+        return
+            20.0 *
+            frame_constants.sun_color_multiplier.rgb *
+            frame_constants.pre_exposure *
+            Absorb(IntegrateOpticalDepth(0.0.xxx, dir));
+    }
 
-        #define SUN_COLOR (sun_color_in_direction(SUN_DIRECTION))
-        //#define SUN_COLOR 0.0
-    #else
-        static const float3 SUN_COLOR = float3(1.6, 1.2, 0.9) * 5.0 * atmosphere_default(SUN_DIRECTION, SUN_DIRECTION);
-    #endif
 #endif
+
+#define SUN_COLOR (sun_color_in_direction(SUN_DIRECTION))
 
 float3 sample_sun_direction(float2 urand, bool soft) {
     if (soft) {

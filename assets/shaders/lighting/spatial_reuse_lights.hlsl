@@ -30,10 +30,6 @@
 
 #define RENDER_INTO_RTR 1
 
-float inverse_lerp(float minv, float maxv, float v) {
-    return (v - minv) / (maxv - minv);
-}
-
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
     uint2 orig_px = px;
@@ -74,7 +70,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         LayeredBrdf layered_brdf = LayeredBrdf::from_gbuffer_ndotv(gbuffer, wo.z);
         specular_brdf = layered_brdf.specular_brdf;
 
-        // TODO: integrate into te specular BRDF so it doesn't need explicit handling everywhere
+        // TODO: integrate into the specular BRDF so it doesn't need explicit handling everywhere
         energy_preservation_mult = layered_brdf.energy_preservation.preintegrated_reflection_mult;
     }
 
@@ -98,15 +94,8 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float4 packed0 = hit0_tex[sample_px];
 
         if (packed0.w != 0 && sample_depth != 0) {
-            // Note: must match the raygen
-            uint2 hi_px_subpixels[4] = {
-                uint2(0, 0),
-                uint2(1, 1),
-                uint2(1, 0),
-                uint2(0, 1),
-            };
             const float2 sample_uv = get_uv(
-                sample_px * 2 + hi_px_subpixels[frame_constants.frame_index & 3],
+                sample_px * 2 + HALFRES_SUBSAMPLE_OFFSET,
                 output_tex_size);
 
             const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);

@@ -30,6 +30,11 @@ void apply_metalness_to_brdfs(inout SpecularBrdf specular_brdf, inout DiffuseBrd
     const float3 albedo_boost = metalness_albedo_boost(metalness, albedo);
     specular_brdf.albedo = min(1.0, specular_brdf.albedo * albedo_boost);
     diffuse_brdf.albedo = min(1.0, diffuse_brdf.albedo * albedo_boost);
+
+    #if LAYERED_BRDF_FORCE_DIFFUSE_ONLY
+        diffuse_brdf.albedo = albedo;
+        specular_brdf.albedo = 0.0.xxx;
+    #endif
 }
 
 struct LayeredBrdf {
@@ -99,7 +104,7 @@ struct LayeredBrdf {
             return spec.value;
         #endif
 
-        // TODO: multi-scattering on the interface can secondary lobes away from
+        // TODO: multi-scattering on the interface can bend secondary lobes away from
         // the evaluated direction, which is particularly apparent for directional lights.
         // In the latter case, the following term works better.
         // On the other hand, this will result in energy loss for non-directional lights
@@ -141,9 +146,11 @@ struct LayeredBrdf {
 
             const float lobe_pdf = transmission_p;
             brdf_sample.value_over_pdf /= lobe_pdf;
+            brdf_sample.pdf *= lobe_pdf;
 
             // Account for the masking that the top level exerts on the bottom.
             brdf_sample.value_over_pdf *= energy_preservation.preintegrated_transmission_fraction;
+            brdf_sample.value *= energy_preservation.preintegrated_transmission_fraction;
         } else {
             // Reflection wins!
 
@@ -151,9 +158,11 @@ struct LayeredBrdf {
 
             const float lobe_pdf = (1.0 - transmission_p);
             brdf_sample.value_over_pdf /= lobe_pdf;
+            brdf_sample.pdf *= lobe_pdf;
 
             // Apply approximate multi-scatter energy preservation
             brdf_sample.value_over_pdf *= energy_preservation.preintegrated_reflection_mult;
+            brdf_sample.value *= energy_preservation.preintegrated_reflection_mult;
         }
 
         return brdf_sample;

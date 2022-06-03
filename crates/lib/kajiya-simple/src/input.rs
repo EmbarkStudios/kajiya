@@ -3,7 +3,10 @@
 use glam::Vec2;
 use std::collections::HashMap;
 pub use winit::event::{ElementState, KeyboardInput, VirtualKeyCode};
-use winit::{dpi::PhysicalPosition, event::WindowEvent};
+use winit::{
+    dpi::PhysicalPosition,
+    event::{Event, WindowEvent},
+};
 
 #[derive(Clone)]
 pub struct KeyState {
@@ -28,9 +31,13 @@ impl KeyboardState {
         self.keys_down.get(&key)
     }
 
-    pub fn update(&mut self, events: &[WindowEvent]) {
+    pub fn update(&mut self, events: &[Event<'_, ()>]) {
         for event in events {
-            if let WindowEvent::KeyboardInput { input, .. } = event {
+            if let Event::WindowEvent {
+                event: WindowEvent::KeyboardInput { input, .. },
+                ..
+            } = event
+            {
                 if let Some(vk) = input.virtual_keycode {
                     if input.state == ElementState::Pressed {
                         self.keys_down.entry(vk).or_insert(KeyState { ticks: 0 });
@@ -69,40 +76,45 @@ impl Default for MouseState {
 }
 
 impl MouseState {
-    pub fn update(&mut self, events: &[WindowEvent]) {
-        let prev_physical_position = self.physical_position;
+    pub fn update(&mut self, events: &[Event<'_, ()>]) {
         self.buttons_pressed = 0;
         self.buttons_released = 0;
+        self.delta = Vec2::ZERO;
 
         for event in events {
             match event {
-                WindowEvent::CursorMoved { position, .. } => {
-                    self.physical_position = *position;
-                }
-                WindowEvent::MouseInput { state, button, .. } => {
-                    let button_id = match button {
-                        winit::event::MouseButton::Left => 0,
-                        winit::event::MouseButton::Middle => 1,
-                        winit::event::MouseButton::Right => 2,
-                        _ => 0,
-                    };
-
-                    if let ElementState::Pressed = state {
-                        self.buttons_held |= 1 << button_id;
-                        self.buttons_pressed |= 1 << button_id;
-                    } else {
-                        self.buttons_held &= !(1 << button_id);
-                        self.buttons_released |= 1 << button_id;
+                Event::WindowEvent { event, .. } => match event {
+                    WindowEvent::CursorMoved { position, .. } => {
+                        self.physical_position = *position;
                     }
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        let button_id = match button {
+                            winit::event::MouseButton::Left => 0,
+                            winit::event::MouseButton::Middle => 1,
+                            winit::event::MouseButton::Right => 2,
+                            _ => 0,
+                        };
+
+                        if let ElementState::Pressed = state {
+                            self.buttons_held |= 1 << button_id;
+                            self.buttons_pressed |= 1 << button_id;
+                        } else {
+                            self.buttons_held &= !(1 << button_id);
+                            self.buttons_released |= 1 << button_id;
+                        }
+                    }
+                    _ => (),
+                },
+                Event::DeviceEvent {
+                    device_id: _,
+                    event: winit::event::DeviceEvent::MouseMotion { delta },
+                } => {
+                    self.delta.x += delta.0 as f32;
+                    self.delta.y += delta.1 as f32;
                 }
                 _ => (),
             }
         }
-
-        self.delta = Vec2::new(
-            (self.physical_position.x - prev_physical_position.x) as f32,
-            (self.physical_position.y - prev_physical_position.y) as f32,
-        );
     }
 }
 
@@ -178,7 +190,7 @@ impl KeyboardMap {
                 }
             }
 
-            *result.entry(s.map.axis).or_default() += s.activation * s.map.multiplier;
+            *result.entry(s.map.axis).or_default() += s.activation.powi(2) * s.map.multiplier;
         }
 
         for value in result.values_mut() {

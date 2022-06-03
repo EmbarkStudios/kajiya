@@ -348,8 +348,8 @@ impl PipelineCache {
                                 .shaders
                                 .iter()
                                 .map(|shader| format!(
-                                    "{:?}:{:?}",
-                                    shader.desc.stage, shader.desc.entry
+                                    "{} {:?}:{:?}",
+                                    shader.code.name, shader.desc.stage, shader.desc.entry
                                 ))
                                 .collect::<Vec<_>>()
                                 .join(", ")

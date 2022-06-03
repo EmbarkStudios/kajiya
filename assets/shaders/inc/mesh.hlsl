@@ -1,6 +1,8 @@
 #ifndef MESH_HLSL
 #define MESH_HLSL
 
+#include "pack_unpack.hlsl"
+
 struct VertexPacked {
 	float4 data0;
 };
@@ -20,6 +22,7 @@ struct Vertex {
     float3 normal;
 };
 
+// TODO: nuke
 float3 unpack_unit_direction_11_10_11(uint pck) {
     return float3(
         float(pck & ((1u << 11u)-1u)) * (2.0f / float((1u << 11u)-1u)) - 1.0f,
@@ -33,6 +36,13 @@ Vertex unpack_vertex(VertexPacked p) {
     res.position = p.data0.xyz;
     res.normal = unpack_unit_direction_11_10_11(asuint(p.data0.w));
     return res;
+}
+
+VertexPacked pack_vertex(Vertex v) {
+    VertexPacked p;
+    p.data0.xyz = v.position;
+    p.data0.w = pack_normal_11_10_11(v.normal);
+    return p;
 }
 
 static const uint MESH_MATERIAL_FLAG_EMISSIVE_USED_AS_LIGHT = 1;

@@ -13,7 +13,7 @@ impl ComputeImageLut for BrdfFgLutComputer {
     fn create(&mut self, device: &kajiya_backend::Device) -> kajiya_backend::Image {
         device
             .create_image(
-                ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, [64, 64])
+                ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, [64, 64])
                     .usage(ImageUsageFlags::STORAGE | ImageUsageFlags::SAMPLED),
                 vec![],
             )

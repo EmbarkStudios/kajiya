@@ -19,3 +19,4 @@ mod buffer_builder;
 pub use kajiya_asset as asset;
 pub use kajiya_backend as backend;
 pub use kajiya_rg as rg;
+pub use rust_shaders_shared::render_overrides::*;

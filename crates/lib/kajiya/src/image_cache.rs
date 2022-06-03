@@ -1,13 +1,13 @@
 use std::{hash::Hash, sync::Arc};
 
 use image::{imageops::FilterType, DynamicImage, GenericImageView};
-use kajiya_asset::{image::RawRgba8Image, mesh::TexParams};
+use kajiya_asset::{image::RawImage, mesh::TexParams};
 use kajiya_backend::{ash::vk, Device, Image, ImageDesc, ImageSubResourceData};
 use turbosloth::*;
 
 #[derive(Clone)]
 pub struct UploadGpuImage {
-    pub image: Lazy<RawRgba8Image>,
+    pub image: Lazy<RawImage>,
     pub params: TexParams,
     pub device: Arc<Device>,
 }
@@ -25,6 +25,12 @@ impl LazyWorker for UploadGpuImage {
 
     async fn run(self, ctx: RunContext) -> Self::Output {
         let src = self.image.eval(&ctx).await?;
+        let src = match &*src {
+            RawImage::Rgba8(src) => src,
+            RawImage::Dds(_) => {
+                return Err(anyhow::anyhow!("UploadGpuImage does not support Dds yet"));
+            }
+        };
 
         let format = match self.params.gamma {
             kajiya_asset::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,

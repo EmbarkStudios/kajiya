@@ -79,6 +79,16 @@ struct DiffuseBrdf {
         res.transmission_fraction = 0.0;
 		return res;
 	}
+
+    float2 wi_to_primary_sample_space(float3 wi) {
+        const float cos_theta = wi.z;
+        // cos_theta = sqrt(max(0.0, 1.0 - urand.y));
+        // cos_theta * cos_theta = 1.0 - urand.y
+        // urand.y = 1.0 - cos_theta * cos_theta
+        const float y = saturate(1.0 - cos_theta * cos_theta);
+        const float x = frac(atan2(wi.y, wi.x) / M_TAU);
+        return float2(x, y);
+    }
 };
 
 float3 eval_fresnel_schlick(float3 f0, float3 f90, float cos_theta) {
@@ -137,6 +147,12 @@ struct SpecularBrdf {
 		return a2 / (M_PI * denom_sqrt * denom_sqrt);
 	}
 
+    // Like the GGX NDF, but scaled to peak at 1.0. Never _quite_ reaches zero.
+    static float ggx_ndf_0_1(float a2, float cos_theta) {
+    	float denom_sqrt = cos_theta * cos_theta * (a2 - 1.0) + 1.0;
+    	return a2 * a2 / (denom_sqrt * denom_sqrt);
+    }
+
     static float pdf_ggx(float a2, float cos_theta) {
 		return ggx_ndf(a2, cos_theta) * cos_theta;
 	}
@@ -164,6 +180,7 @@ struct SpecularBrdf {
     }
 
     // From https://github.com/NVIDIAGameWorks/Falcor/blob/c0729e806045731d71cfaae9d31a992ac62070e7/Source/Falcor/Experimental/Scene/Material/Microfacet.slang
+    // https://jcgt.org/published/0007/04/01/paper.pdf
     NdfSample sample_vndf(float alpha, float3 wo, float2 urand) {
         float alpha_x = alpha, alpha_y = alpha;
         float a2 = alpha_x * alpha_y;

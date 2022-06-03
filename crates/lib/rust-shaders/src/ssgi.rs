@@ -192,8 +192,9 @@ pub fn temporal_filter_cs(
     #[spirv(descriptor_set = 0, binding = 0)] input_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 1)] history_tex: &Image!(2D, type=f32, sampled=true),
     #[spirv(descriptor_set = 0, binding = 2)] reprojection_tex: &Image!(2D, type=f32, sampled=true),
-    #[spirv(descriptor_set = 0, binding = 3)] output_tex: &Image!(2D, type=f32, sampled=false),
-    #[spirv(uniform, descriptor_set = 0, binding = 4)] output_tex_size: &Vec4,
+    #[spirv(descriptor_set = 0, binding = 3)] final_output_tex: &Image!(2D, type=f32, sampled=false),
+    #[spirv(descriptor_set = 0, binding = 4)] history_output_tex: &Image!(2D, type=f32, sampled=false),
+    #[spirv(uniform, descriptor_set = 0, binding = 5)] output_tex_size: &Vec4,
     #[spirv(descriptor_set = 0, binding = 32)] sampler_lnc: &Sampler,
     #[spirv(global_invocation_id)] px: UVec3,
 ) {
@@ -222,17 +223,18 @@ pub fn temporal_filter_cs(
     let ex2 = vsum2 / wsum;
     let dev = (Vec4::ZERO.max(ex2 - ex * ex)).sqrt();
 
-    let box_size = FloatExt::lerp(0.05f32, 1.0, reproj.w);
+    let box_size = 0.5;
 
     let n_deviations = 5.0;
     let nmin = center.lerp(ex, box_size * box_size) - dev * box_size * n_deviations;
     let nmax = center.lerp(ex, box_size * box_size) + dev * box_size * n_deviations;
 
     let clamped_history = history.clamp(nmin, nmax);
-    let res = clamped_history.lerp(center, 1.0.lerp(1.0 / 12.0, reproj.z));
+    let res = clamped_history.lerp(center, 1.0.lerp(1.0 / 8.0, reproj.z));
 
     unsafe {
-        output_tex.write(px.truncate(), res);
+        history_output_tex.write(px.truncate(), res);
+        final_output_tex.write(px.truncate(), res);
     }
 }
 

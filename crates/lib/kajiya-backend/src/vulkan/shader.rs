@@ -135,10 +135,6 @@ pub fn create_descriptor_set_layouts(
             let mut set_layout_create_flags = vk::DescriptorSetLayoutCreateFlags::empty();
 
             for (binding_index, binding) in set.iter() {
-                /*if binding.name == "bindless_textures" {
-                    panic!("{:?}", binding);
-                }*/
-
                 match binding.ty {
                     rspirv_reflect::DescriptorType::UNIFORM_BUFFER
                     | rspirv_reflect::DescriptorType::UNIFORM_TEXEL_BUFFER
@@ -528,6 +524,8 @@ pub struct RasterPipelineDesc {
     pub render_pass: Arc<RenderPass>,
     #[builder(default)]
     pub face_cull: bool,
+    #[builder(default = "true")]
+    pub depth_write: bool,
     #[builder(default)]
     pub push_constants_bytes: usize,
 }
@@ -931,7 +929,7 @@ pub fn create_raster_pipeline(
         };
         let depth_state_info = vk::PipelineDepthStencilStateCreateInfo {
             depth_test_enable: 1,
-            depth_write_enable: 1,
+            depth_write_enable: if desc.depth_write { 1 } else { 0 },
             depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,
             front: noop_stencil_state,
             back: noop_stencil_state,

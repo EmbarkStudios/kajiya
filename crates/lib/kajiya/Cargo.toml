@@ -1,6 +1,6 @@
 [package]
 name = "kajiya"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -14,6 +14,7 @@ rust-shaders-shared = { path = "../rust-shaders-shared" }
 anyhow = "1.0"
 array-init = "2.0.0"
 blue-noise-sampler = "0.1"
+bytemuck = "1.9.1"
 chrono = "0.4"
 fern = { version = "0.6", features = ["colored"] }
 glam = { version = "0.18" }
