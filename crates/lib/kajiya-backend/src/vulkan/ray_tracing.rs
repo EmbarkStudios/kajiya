@@ -324,15 +324,19 @@ impl Device {
             scratch_buffer_lock = scratch_buffer.buffer.lock();
             &mut *scratch_buffer_lock
         } else {
-            tmp_scratch_buffer = Some(self.create_buffer(
-                super::buffer::BufferDesc::new_gpu_only(
-                    memory_requirements.build_scratch_size as usize,
-                    vk::BufferUsageFlags::STORAGE_BUFFER
-                        | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
-                ),
-                "Acceleration structure scratch buffer",
-                None,
-            )?);
+            tmp_scratch_buffer = Some(
+                self.create_buffer(
+                    super::buffer::BufferDesc::new_gpu_only(
+                        memory_requirements.build_scratch_size as usize,
+                        vk::BufferUsageFlags::STORAGE_BUFFER
+                            | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS,
+                    )
+                    // TODO: query minAccelerationStructureScratchOffsetAlignment
+                    .alignment(256),
+                    "Acceleration structure scratch buffer",
+                    None,
+                )?,
+            );
 
             tmp_scratch_buffer.as_mut().unwrap()
         };

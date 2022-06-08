@@ -25,6 +25,7 @@ pub struct BufferDesc {
     pub size: usize,
     pub usage: vk::BufferUsageFlags,
     pub memory_location: MemoryLocation,
+    pub alignment: Option<u64>,
 }
 
 impl BufferDesc {
@@ -33,6 +34,7 @@ impl BufferDesc {
             size,
             usage,
             memory_location: MemoryLocation::GpuOnly,
+            alignment: None,
         }
     }
 
@@ -41,6 +43,7 @@ impl BufferDesc {
             size,
             usage,
             memory_location: MemoryLocation::CpuToGpu,
+            alignment: None,
         }
     }
 
@@ -49,7 +52,13 @@ impl BufferDesc {
             size,
             usage,
             memory_location: MemoryLocation::GpuToCpu,
+            alignment: None,
         }
+    }
+
+    pub fn alignment(mut self, alignment: u64) -> Self {
+        self.alignment = Some(alignment);
+        self
     }
 }
 
@@ -72,6 +81,10 @@ impl Device {
                 .expect("create_buffer")
         };
         let mut requirements = unsafe { raw.get_buffer_memory_requirements(buffer) };
+
+        if let Some(alignment) = desc.alignment {
+            requirements.alignment = requirements.alignment.max(alignment);
+        }
 
         // TODO: why does `get_buffer_memory_requirements` fail to get the correct alignment on AMD?
         if desc
@@ -122,11 +135,8 @@ impl Device {
             Self::create_buffer_impl(&self.raw, &mut self.global_allocator.lock(), desc, &name)?;
 
         if let Some(initial_data) = initial_data {
-            let scratch_desc = BufferDesc {
-                size: desc.size,
-                usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                memory_location: MemoryLocation::CpuToGpu,
-            };
+            let scratch_desc =
+                BufferDesc::new_cpu_to_gpu(desc.size, vk::BufferUsageFlags::TRANSFER_SRC);
 
             let mut scratch_buffer = Self::create_buffer_impl(
                 &self.raw,

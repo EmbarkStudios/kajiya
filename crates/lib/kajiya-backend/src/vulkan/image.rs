@@ -305,11 +305,10 @@ impl Device {
             };
 
             let mut image_buffer = self.create_buffer(
-                super::buffer::BufferDesc {
-                    size: total_initial_data_bytes,
-                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
-                    memory_location: MemoryLocation::CpuToGpu,
-                },
+                super::buffer::BufferDesc::new_cpu_to_gpu(
+                    total_initial_data_bytes,
+                    vk::BufferUsageFlags::TRANSFER_SRC,
+                ),
                 "Image initial data buffer",
                 None,
             )?;
