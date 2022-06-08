@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::image::*};
+use kajiya_backend::{ash::vk, vk_sync::AccessType, vulkan::image::*, BackendError};
 use kajiya_rg::{self as rg};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -12,7 +12,8 @@ pub struct UiRenderer {
     pub ui_frame: Option<(UiRenderCallback, Arc<Image>)>,
 }
 
-pub type UiRenderCallback = Box<dyn FnOnce(vk::CommandBuffer) + 'static>;
+pub type UiRenderCallback =
+    Box<dyn (FnOnce(vk::CommandBuffer) -> Result<(), BackendError>) + 'static>;
 
 impl UiRenderer {
     pub fn prepare_render_graph(&mut self, rg: &mut rg::TemporalRenderGraph) -> rg::Handle<Image> {

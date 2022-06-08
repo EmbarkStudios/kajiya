@@ -35,6 +35,7 @@ use kajiya_backend::{
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
         shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, RasterPipelineDesc},
     },
+    BackendError,
 };
 use parking_lot::Mutex;
 use std::{
@@ -997,7 +998,9 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
         };
 
         if let Some(render_fn) = pass.render_fn {
-            render_fn(&mut api);
+            if let Err(err) = render_fn(&mut api) {
+                panic!("Pass {:?} failed to render: {:#}", pass.name, err);
+            }
         }
 
         let params = &resource_registry.execution_params;
@@ -1172,7 +1175,7 @@ impl RetiredRenderGraph {
     }
 }
 
-type DynRenderFn = dyn FnOnce(&mut RenderPassApi);
+type DynRenderFn = dyn FnOnce(&mut RenderPassApi) -> Result<(), BackendError>;
 
 #[derive(Copy, Clone)]
 pub enum PassResourceAccessSyncType {

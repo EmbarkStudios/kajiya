@@ -555,7 +555,8 @@ impl WorldRenderer {
                 .last()
                 .unwrap()
                 .backing_image()
-                .view(self.device.as_ref(), &ImageViewDesc::default()),
+                .view(self.device.as_ref(), &ImageViewDesc::default())
+                .unwrap(),
         );
 
         assert_eq!(handle.0 as usize, id);
@@ -564,8 +565,11 @@ impl WorldRenderer {
     pub fn add_image(&mut self, image: Arc<Image>) -> BindlessImageHandle {
         let image_size: [f32; 4] = image.desc.extent_inv_extent_2d();
 
-        let handle = self
-            .add_bindless_image_view(image.view(self.device.as_ref(), &ImageViewDesc::default()));
+        let handle = self.add_bindless_image_view(
+            image
+                .view(self.device.as_ref(), &ImageViewDesc::default())
+                .unwrap(),
+        );
 
         self.bindless_images.push(image);
 
@@ -881,6 +885,8 @@ impl WorldRenderer {
                 tlas,
                 &accel_scratch,
             );
+
+            Ok(())
         });
 
         tlas

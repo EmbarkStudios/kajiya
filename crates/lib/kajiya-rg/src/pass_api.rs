@@ -23,6 +23,7 @@ use kajiya_backend::{
             MAX_COLOR_ATTACHMENTS,
         },
     },
+    BackendError,
 };
 
 pub struct RenderPassApi<'a, 'exec_params, 'constants> {
@@ -110,46 +111,46 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
     pub fn bind_compute_pipeline<'s>(
         &'s mut self,
         binding: RenderPassPipelineBinding<'_, RgComputePipelineHandle>,
-    ) -> BoundComputePipeline<'s, 'a, 'exec_params, 'constants> {
+    ) -> Result<BoundComputePipeline<'s, 'a, 'exec_params, 'constants>, BackendError> {
         let device = self.resources.execution_params.device;
         let pipeline_arc = self.resources.compute_pipeline(binding.pipeline);
 
-        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding);
+        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding)?;
 
-        BoundComputePipeline {
+        Ok(BoundComputePipeline {
             api: self,
             pipeline: pipeline_arc,
-        }
+        })
     }
 
     pub fn bind_raster_pipeline<'s>(
         &'s self,
         binding: RenderPassPipelineBinding<'_, RgRasterPipelineHandle>,
-    ) -> BoundRasterPipeline<'s, 'a, 'exec_params, 'constants> {
+    ) -> Result<BoundRasterPipeline<'s, 'a, 'exec_params, 'constants>, BackendError> {
         let device = self.resources.execution_params.device;
         let pipeline_arc = self.resources.raster_pipeline(binding.pipeline);
 
-        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding);
+        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding)?;
 
-        BoundRasterPipeline {
+        Ok(BoundRasterPipeline {
             api: self,
             pipeline: pipeline_arc,
-        }
+        })
     }
 
     pub fn bind_ray_tracing_pipeline<'s>(
         &'s mut self,
         binding: RenderPassPipelineBinding<'_, RgRtPipelineHandle>,
-    ) -> BoundRayTracingPipeline<'s, 'a, 'exec_params, 'constants> {
+    ) -> Result<BoundRayTracingPipeline<'s, 'a, 'exec_params, 'constants>, BackendError> {
         let device = self.resources.execution_params.device;
         let pipeline_arc = self.resources.ray_tracing_pipeline(binding.pipeline);
 
-        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding);
+        self.bind_pipeline_common(device, pipeline_arc.as_ref(), &binding.binding)?;
 
-        BoundRayTracingPipeline {
+        Ok(BoundRayTracingPipeline {
             api: self,
             pipeline: pipeline_arc,
-        }
+        })
     }
 
     fn bind_pipeline_common(
@@ -157,7 +158,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
         device: &Device,
         pipeline: &ShaderPipelineCommon,
         binding: &RenderPassCommonShaderPipelineBinding,
-    ) {
+    ) -> Result<(), BackendError> {
         unsafe {
             device.raw.cmd_bind_pipeline(
                 self.cb.raw,
@@ -204,65 +205,71 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                 continue;
             }
 
-            let bindings = bindings
+            let bindings: Result<Vec<_>, BackendError> = bindings
                 .iter()
-                .map(|binding| match binding {
-                    RenderPassBinding::Image(image) => DescriptorSetBinding::Image(
-                        vk::DescriptorImageInfo::builder()
-                            .image_layout(image.image_layout)
-                            .image_view(self.resources.image_view(image.handle, &image.view_desc))
-                            .build(),
-                    ),
-                    RenderPassBinding::ImageArray(images) => DescriptorSetBinding::ImageArray(
-                        images
-                            .iter()
-                            .map(|image| {
-                                vk::DescriptorImageInfo::builder()
-                                    .image_layout(image.image_layout)
-                                    .image_view(
-                                        self.resources.image_view(image.handle, &image.view_desc),
-                                    )
-                                    .build()
-                            })
-                            .collect(),
-                    ),
-                    RenderPassBinding::Buffer(buffer) => DescriptorSetBinding::Buffer(
-                        vk::DescriptorBufferInfo::builder()
-                            .buffer(
+                .map(|binding| {
+                    Ok(match binding {
+                        RenderPassBinding::Image(image) => DescriptorSetBinding::Image(
+                            vk::DescriptorImageInfo::builder()
+                                .image_layout(image.image_layout)
+                                .image_view(
+                                    self.resources.image_view(image.handle, &image.view_desc)?,
+                                )
+                                .build(),
+                        ),
+                        RenderPassBinding::ImageArray(images) => DescriptorSetBinding::ImageArray(
+                            images
+                                .iter()
+                                .map(|image| {
+                                    Ok(vk::DescriptorImageInfo::builder()
+                                        .image_layout(image.image_layout)
+                                        .image_view(
+                                            self.resources
+                                                .image_view(image.handle, &image.view_desc)?,
+                                        )
+                                        .build())
+                                })
+                                .collect::<Result<Vec<_>, BackendError>>()?,
+                        ),
+                        RenderPassBinding::Buffer(buffer) => DescriptorSetBinding::Buffer(
+                            vk::DescriptorBufferInfo::builder()
+                                .buffer(
+                                    self.resources
+                                        .buffer_from_raw_handle::<GpuSrv>(buffer.handle)
+                                        .raw,
+                                )
+                                .range(vk::WHOLE_SIZE)
+                                .build(),
+                        ),
+                        RenderPassBinding::RayTracingAcceleration(acc) => {
+                            DescriptorSetBinding::RayTracingAcceleration(
                                 self.resources
-                                    .buffer_from_raw_handle::<GpuSrv>(buffer.handle)
+                                    .rt_acceleration_from_raw_handle::<GpuSrv>(acc.handle)
                                     .raw,
                             )
-                            .range(vk::WHOLE_SIZE)
-                            .build(),
-                    ),
-                    RenderPassBinding::RayTracingAcceleration(acc) => {
-                        DescriptorSetBinding::RayTracingAcceleration(
-                            self.resources
-                                .rt_acceleration_from_raw_handle::<GpuSrv>(acc.handle)
-                                .raw,
-                        )
-                    }
-                    RenderPassBinding::DynamicConstants(offset) => {
-                        DescriptorSetBinding::DynamicBuffer {
-                            buffer: vk::DescriptorBufferInfo::builder()
-                                .buffer(self.resources.dynamic_constants.buffer.raw)
-                                .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
-                                .build(),
-                            offset: *offset,
                         }
-                    }
-                    RenderPassBinding::DynamicConstantsStorageBuffer(offset) => {
-                        DescriptorSetBinding::DynamicStorageBuffer {
-                            buffer: vk::DescriptorBufferInfo::builder()
-                                .buffer(self.resources.dynamic_constants.buffer.raw)
-                                .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64)
-                                .build(),
-                            offset: *offset,
+                        RenderPassBinding::DynamicConstants(offset) => {
+                            DescriptorSetBinding::DynamicBuffer {
+                                buffer: vk::DescriptorBufferInfo::builder()
+                                    .buffer(self.resources.dynamic_constants.buffer.raw)
+                                    .range(MAX_DYNAMIC_CONSTANTS_BYTES_PER_DISPATCH as u64)
+                                    .build(),
+                                offset: *offset,
+                            }
                         }
-                    }
+                        RenderPassBinding::DynamicConstantsStorageBuffer(offset) => {
+                            DescriptorSetBinding::DynamicStorageBuffer {
+                                buffer: vk::DescriptorBufferInfo::builder()
+                                    .buffer(self.resources.dynamic_constants.buffer.raw)
+                                    .range(MAX_DYNAMIC_CONSTANTS_STORAGE_BUFFER_BYTES as u64)
+                                    .build(),
+                                offset: *offset,
+                            }
+                        }
+                    })
                 })
-                .collect::<Vec<_>>();
+                .collect();
+            let bindings = bindings?;
 
             bind_descriptor_set(
                 &*self.resources.execution_params.device,
@@ -294,6 +301,8 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                     );
             }
         }
+
+        Ok(())
     }
 
     pub fn begin_render_pass(
@@ -302,7 +311,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
         dims: [u32; 2],
         color_attachments: &[(Ref<Image, GpuRt>, &ImageViewDesc)],
         depth_attachment: Option<(Ref<Image, GpuRt>, &ImageViewDesc)>,
-    ) {
+    ) -> Result<(), BackendError> {
         let device = self.resources.execution_params.device;
 
         let framebuffer = render_pass
@@ -322,12 +331,15 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             .unwrap();
 
         // Bind images to the imageless framebuffer
-        let image_attachments: ArrayVec<[vk::ImageView; MAX_COLOR_ATTACHMENTS + 1]> =
-            color_attachments
-                .iter()
-                .chain(depth_attachment.as_ref().into_iter())
-                .map(|(img, view)| self.resources.image_view(img.handle, view))
-                .collect();
+        let image_attachments: Result<
+            ArrayVec<[vk::ImageView; MAX_COLOR_ATTACHMENTS + 1]>,
+            BackendError,
+        > = color_attachments
+            .iter()
+            .chain(depth_attachment.as_ref().into_iter())
+            .map(|(img, view)| self.resources.image_view(img.handle, view))
+            .collect();
+        let image_attachments = image_attachments?;
 
         let mut pass_attachment_desc =
             vk::RenderPassAttachmentBeginInfoKHR::builder().attachments(&image_attachments);
@@ -354,6 +366,8 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
                 vk::SubpassContents::INLINE,
             );
         }
+
+        Ok(())
     }
 
     pub fn end_render_pass(&mut self) {

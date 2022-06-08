@@ -12,6 +12,7 @@ use super::{
 use kajiya_backend::{
     vk_sync::{self, AccessType},
     vulkan::{ray_tracing::RayTracingPipelineDesc, shader::*},
+    BackendError,
 };
 use std::{marker::PhantomData, path::Path};
 
@@ -321,7 +322,10 @@ impl<'rg> PassBuilder<'rg> {
         RgRtPipelineHandle { id }
     }
 
-    pub fn render(mut self, render: impl FnOnce(&mut RenderPassApi) + 'static) {
+    pub fn render(
+        mut self,
+        render: impl (FnOnce(&mut RenderPassApi) -> Result<(), BackendError>) + 'static,
+    ) {
         let prev = self
             .pass
             .as_mut()

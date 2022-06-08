@@ -136,9 +136,11 @@ impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
         self.pass.render(move |api| {
             state.patch_const_blobs(api);
 
-            let pipeline = api.bind_compute_pipeline(state.create_pipeline_binding());
+            let pipeline = api.bind_compute_pipeline(state.create_pipeline_binding())?;
 
             pipeline.dispatch(extent);
+
+            Ok(())
         });
     }
 
@@ -149,9 +151,11 @@ impl<'rg> SimpleRenderPass<'rg, RgComputePipelineHandle> {
         self.pass.render(move |api| {
             state.patch_const_blobs(api);
 
-            let pipeline = api.bind_compute_pipeline(state.create_pipeline_binding());
+            let pipeline = api.bind_compute_pipeline(state.create_pipeline_binding())?;
 
             pipeline.dispatch_indirect(args_buffer_ref, args_buffer_offset);
+
+            Ok(())
         });
     }
 }
@@ -214,9 +218,11 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
                 state
                     .create_pipeline_binding()
                     .descriptor_set(3, &[tlas_ref.bind()]),
-            );
+            )?;
 
             pipeline.trace_rays(extent);
+
+            Ok(())
         });
     }
 
@@ -237,9 +243,11 @@ impl<'rg> SimpleRenderPass<'rg, RgRtPipelineHandle> {
                 state
                     .create_pipeline_binding()
                     .descriptor_set(3, &[tlas_ref.bind()]),
-            );
+            )?;
 
             pipeline.trace_rays_indirect(args_buffer_ref, args_buffer_offset);
+
+            Ok(())
         });
     }
 }

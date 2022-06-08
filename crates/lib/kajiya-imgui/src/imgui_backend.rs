@@ -159,6 +159,8 @@ impl ImGuiBackend {
                     .lock()
                     .render(gui_extent, ui_draw_data, device, cb)
                     .expect("ui.render");
+
+                Ok(())
             }),
             ui_target_image,
         ));
@@ -320,7 +322,7 @@ fn create_imgui_framebuffer(
         )
         .unwrap();
 
-    let framebuffer_attachments = [tex.view(device, &ImageViewDesc::default())];
+    let framebuffer_attachments = [tex.view(device, &ImageViewDesc::default()).unwrap()];
     let frame_buffer_create_info = vk::FramebufferCreateInfo::builder()
         .render_pass(render_pass)
         .attachments(&framebuffer_attachments)

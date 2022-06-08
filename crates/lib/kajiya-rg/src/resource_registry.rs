@@ -12,6 +12,7 @@ use kajiya_backend::{
         ray_tracing::{RayTracingAcceleration, RayTracingPipeline},
         shader::{ComputePipeline, RasterPipeline},
     },
+    BackendError,
 };
 use std::sync::Arc;
 
@@ -116,7 +117,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         &'s self,
         resource: GraphRawResourceHandle,
         view_desc: &ImageViewDesc,
-    ) -> vk::ImageView
+    ) -> Result<vk::ImageView, BackendError>
     where
         's: 'a,
     {

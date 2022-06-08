@@ -125,7 +125,7 @@ pub fn raster_meshes(
                     .build()
                     .unwrap(),
             )),
-        );
+        )?;
 
         api.set_default_view_and_scissor([width, height]);
 
@@ -139,7 +139,7 @@ pub fn raster_meshes(
                     )],
                 )
                 .raw_descriptor_set(1, bindless_descriptor_set),
-        );
+        )?;
 
         unsafe {
             let raw_device = &api.device().raw;
@@ -172,5 +172,7 @@ pub fn raster_meshes(
         }
 
         api.end_render_pass();
+
+        Ok(())
     });
 }

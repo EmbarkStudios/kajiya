@@ -10,6 +10,9 @@ pub enum BackendError {
 
     #[error("Vulkan error: {err:?}; {trace:?}")]
     Vulkan { err: ash::vk::Result, trace: Bt },
+
+    #[error("Invalid resource access: {info:?}")]
+    ResourceAccess { info: String },
 }
 
 impl From<ash::vk::Result> for BackendError {

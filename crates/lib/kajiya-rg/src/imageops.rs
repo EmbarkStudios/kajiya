@@ -28,6 +28,8 @@ pub fn clear_depth(rg: &mut RenderGraph, img: &mut rg::Handle<Image>) {
                 }),
             );
         }
+
+        Ok(())
     });
 }
 
@@ -57,5 +59,7 @@ pub fn clear_color(rg: &mut RenderGraph, img: &mut rg::Handle<Image>, clear_colo
                 }),
             );
         }
+
+        Ok(())
     });
 }

@@ -33,9 +33,11 @@ impl ComputeImageLut for BrdfFgLutComputer {
         pass.render(move |api| {
             let pipeline = api.bind_compute_pipeline(
                 pipeline.into_binding().descriptor_set(0, &[img_ref.bind()]),
-            );
+            )?;
 
             pipeline.dispatch(img_ref.desc().extent);
+
+            Ok(())
         });
     }
 }
@@ -64,9 +66,11 @@ impl ComputeImageLut for BezoldBruckeLutComputer {
         pass.render(move |api| {
             let pipeline = api.bind_compute_pipeline(
                 pipeline.into_binding().descriptor_set(0, &[img_ref.bind()]),
-            );
+            )?;
 
             pipeline.dispatch(img_ref.desc().extent);
+
+            Ok(())
         });
     }
 }

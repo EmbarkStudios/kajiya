@@ -169,17 +169,18 @@ unsafe impl Send for Image {}
 unsafe impl Sync for Image {}
 
 impl Image {
-    pub fn view(&self, device: &Device, desc: &ImageViewDesc) -> vk::ImageView {
+    pub fn view(
+        &self,
+        device: &Device,
+        desc: &ImageViewDesc,
+    ) -> Result<vk::ImageView, BackendError> {
         let mut views = self.views.lock();
 
         if let Some(entry) = views.get(desc) {
-            *entry
+            Ok(*entry)
         } else {
-            *views.entry(*desc).or_insert_with(|| {
-                device
-                    .create_image_view(*desc, &self.desc, self.raw)
-                    .unwrap()
-            })
+            let view = device.create_image_view(*desc, &self.desc, self.raw)?;
+            Ok(*views.entry(*desc).or_insert(view))
         }
     }
 
@@ -403,6 +404,15 @@ impl Device {
         image_desc: &ImageDesc,
         image_raw: vk::Image,
     ) -> Result<vk::ImageView, BackendError> {
+        if image_desc.format == vk::Format::D32_SFLOAT
+            && !desc.aspect_mask.contains(vk::ImageAspectFlags::DEPTH)
+        {
+            return Err(BackendError::ResourceAccess {
+                info: "Depth-only resource used without the vk::ImageAspectFlags::DEPTH flag"
+                    .to_owned(),
+            });
+        }
+
         let create_info = vk::ImageViewCreateInfo {
             image: image_raw,
             ..Image::view_desc_impl(desc, image_desc)
