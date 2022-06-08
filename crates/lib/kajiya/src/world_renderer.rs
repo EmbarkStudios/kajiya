@@ -676,29 +676,26 @@ impl WorldRenderer {
 
             let blas = self
                 .device
-                .create_ray_tracing_bottom_acceleration(
-                    &RayTracingBottomAccelerationDesc {
-                        geometries: vec![RayTracingGeometryDesc {
-                            geometry_type: RayTracingGeometryType::Triangle,
-                            vertex_buffer: vertex_buffer_da,
-                            index_buffer: index_buffer_da,
-                            vertex_format: vk::Format::R32G32B32_SFLOAT,
-                            vertex_stride: size_of::<PackedVertex>(),
-                            parts: vec![RayTracingGeometryPart {
-                                index_count: mesh.indices.len(),
-                                index_offset: 0,
-                                max_vertex: mesh
-                                    .indices
-                                    .as_slice()
-                                    .iter()
-                                    .copied()
-                                    .max()
-                                    .expect("mesh must not be empty"),
-                            }],
+                .create_ray_tracing_bottom_acceleration(&RayTracingBottomAccelerationDesc {
+                    geometries: vec![RayTracingGeometryDesc {
+                        geometry_type: RayTracingGeometryType::Triangle,
+                        vertex_buffer: vertex_buffer_da,
+                        index_buffer: index_buffer_da,
+                        vertex_format: vk::Format::R32G32B32_SFLOAT,
+                        vertex_stride: size_of::<PackedVertex>(),
+                        parts: vec![RayTracingGeometryPart {
+                            index_count: mesh.indices.len(),
+                            index_offset: 0,
+                            max_vertex: mesh
+                                .indices
+                                .as_slice()
+                                .iter()
+                                .copied()
+                                .max()
+                                .expect("mesh must not be empty"),
                         }],
-                    },
-                    &self.accel_scratch,
-                )
+                    }],
+                })
                 .expect("blas");
 
             self.mesh_blas.push(Arc::new(blas));
