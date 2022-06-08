@@ -201,6 +201,7 @@ impl GetOrCreateTemporal<ImageDesc> for TemporalRenderGraph {
             hash_map::Entry::Vacant(entry) => {
                 let resource = Arc::new(
                     self.device
+                        // TODO: Zero-init
                         .create_image(desc, vec![])
                         .with_context(|| format!("Creating image {:?}", desc))?,
                 );
@@ -266,7 +267,12 @@ impl GetOrCreateTemporal<BufferDesc> for TemporalRenderGraph {
                 }
             }
             hash_map::Entry::Vacant(entry) => {
-                let resource = Arc::new(self.device.create_buffer(desc, &key.0, None)?);
+                let resource = Arc::new(self.device.create_buffer(
+                    desc,
+                    &key.0,
+                    // Zero-init
+                    Some(vec![0; desc.size].as_slice()),
+                )?);
                 let handle = self.rg.import(resource.clone(), AccessType::Nothing);
                 entry.insert(TemporalResourceState::Imported {
                     resource: TemporalResource::Buffer(resource),
