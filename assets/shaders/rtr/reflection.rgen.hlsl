@@ -28,6 +28,7 @@ DEFINE_WRC_BINDINGS(16)
 [[vk::binding(19)]] RWTexture2D<float4> out2_tex;
 [[vk::binding(20)]] cbuffer _ {
     float4 gbuffer_tex_size;
+    uint reuse_rtdgi_rays;
 };
 
 //#define IRCACHE_LOOKUP_KEEP_ALIVE_PROB 0.125
@@ -52,6 +53,12 @@ void main() {
     float4 gbuffer_packed = gbuffer_tex[hi_px];
     GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
     gbuffer.roughness = max(gbuffer.roughness, RTR_ROUGHNESS_CLAMP);
+
+    // Initially, the candidate buffers contain candidates generated via diffuse tracing.
+    // For rough surfaces we can skip generating new candidates just for reflections.
+    if (reuse_rtdgi_rays && gbuffer.roughness > lerp(0.25, 0.6, gbuffer.metalness)) {
+        return;
+    }
 
     const float3x3 tangent_to_world = build_orthonormal_basis(gbuffer.normal);
 

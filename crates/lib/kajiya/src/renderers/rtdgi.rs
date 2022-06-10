@@ -48,11 +48,15 @@ pub struct ReprojectedRtdgi {
     temporal_output_tex: rg::Handle<Image>,
 }
 
-pub struct RtdgiOutput {
-    pub screen_irradiance_tex: rg::ReadOnlyHandle<Image>,
+pub struct RtdgiCandidates {
     pub candidate_radiance_tex: rg::Handle<Image>,
     pub candidate_normal_tex: rg::Handle<Image>,
     pub candidate_hit_tex: rg::Handle<Image>,
+}
+
+pub struct RtdgiOutput {
+    pub screen_irradiance_tex: rg::ReadOnlyHandle<Image>,
+    pub candidates: RtdgiCandidates,
 }
 
 impl RtdgiRenderer {
@@ -513,9 +517,11 @@ impl RtdgiRenderer {
 
         RtdgiOutput {
             screen_irradiance_tex: filtered_tex.into(),
-            candidate_radiance_tex,
-            candidate_normal_tex,
-            candidate_hit_tex,
+            candidates: RtdgiCandidates {
+                candidate_radiance_tex,
+                candidate_normal_tex,
+                candidate_hit_tex,
+            },
         }
     }
 }

@@ -129,8 +129,11 @@ impl WorldRenderer {
             ircache_state.sum_up_irradiance_for_sampling(rg, traced_ircache);
         }
 
-        let rtdgi = tlas.as_ref().map(|tlas| {
-            self.rtdgi.render(
+        let rtdgi_irradiance;
+        let rtdgi_candidates;
+
+        if let Some(tlas) = tlas.as_ref() {
+            let rtdgi = self.rtdgi.render(
                 rg,
                 reprojected_rtdgi,
                 &gbuffer_depth,
@@ -141,8 +144,13 @@ impl WorldRenderer {
                 &wrc,
                 tlas,
                 &ssgi_tex,
-            )
-        });
+            );
+            rtdgi_irradiance = Some(rtdgi.screen_irradiance_tex);
+            rtdgi_candidates = Some(rtdgi.candidates);
+        } else {
+            rtdgi_irradiance = None;
+            rtdgi_candidates = None;
+        }
 
         // TODO: don't iter over all the things
         let any_triangle_lights = self
@@ -150,7 +158,11 @@ impl WorldRenderer {
             .iter()
             .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
 
-        let mut rtr = if let Some((tlas, rtdgi)) = tlas.as_ref().zip(rtdgi.as_ref()) {
+        let mut rtr = if let Some(((tlas, rtdgi_irradiance), rtdgi_candidates)) = tlas
+            .as_ref()
+            .zip(rtdgi_irradiance.as_ref())
+            .zip(rtdgi_candidates)
+        {
             self.rtr.trace(
                 rg,
                 &gbuffer_depth,
@@ -158,7 +170,8 @@ impl WorldRenderer {
                 &sky_cube,
                 self.bindless_descriptor_set,
                 tlas,
-                rtdgi,
+                rtdgi_irradiance,
+                rtdgi_candidates,
                 &mut ircache_state,
                 &wrc,
             )
@@ -186,8 +199,8 @@ impl WorldRenderer {
             gbuffer_depth.gbuffer.desc().extent_2d(),
         ));
 
-        let rtdgi = match rtdgi {
-            Some(rtdgi) => rtdgi.screen_irradiance_tex,
+        let rtdgi = match rtdgi_irradiance {
+            Some(rtdgi) => rtdgi,
             None => rg
                 .create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]))
                 .into(),

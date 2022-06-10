@@ -9,7 +9,7 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{
-    ircache::IrcacheRenderState, rtdgi::RtdgiOutput, wrc::WrcRenderState, GbufferDepth,
+    ircache::IrcacheRenderState, rtdgi::RtdgiCandidates, wrc::WrcRenderState, GbufferDepth,
     PingPongTemporalResource,
 };
 
@@ -65,7 +65,7 @@ impl RtrRenderer {
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE)?,
             sobol_buf: make_lut_buffer(device, SOBOL)?,
 
-            reuse_rtdgi_rays: false,
+            reuse_rtdgi_rays: true,
         })
     }
 }
@@ -93,81 +93,58 @@ impl RtrRenderer {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        rtdgi: &RtdgiOutput,
+        rtdgi_irradiance: &rg::ReadOnlyHandle<Image>,
+        rtdgi_candidates: RtdgiCandidates,
         ircache: &mut IrcacheRenderState,
         wrc: &WrcRenderState,
     ) -> TracedRtr {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
-        let refl0_tex;
-        let refl1_tex;
-        let refl2_tex;
+        let RtdgiCandidates {
+            candidate_radiance_tex: mut refl0_tex,
+            candidate_hit_tex: mut refl1_tex,
+            candidate_normal_tex: mut refl2_tex,
+        } = rtdgi_candidates;
 
-        let mut proper_refl0_tex;
-        let mut proper_refl1_tex;
-        let mut proper_refl2_tex;
+        let ranking_tile_buf = rg.import(
+            self.ranking_tile_buf.clone(),
+            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let scambling_tile_buf = rg.import(
+            self.scambling_tile_buf.clone(),
+            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
+        let sobol_buf = rg.import(
+            self.sobol_buf.clone(),
+            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+        );
 
-        if self.reuse_rtdgi_rays {
-            refl0_tex = &rtdgi.candidate_radiance_tex;
-            refl1_tex = &rtdgi.candidate_hit_tex;
-            refl2_tex = &rtdgi.candidate_normal_tex;
-        } else {
-            proper_refl0_tex = rg.create(
-                gbuffer_desc
-                    .usage(vk::ImageUsageFlags::empty())
-                    .half_res()
-                    .format(vk::Format::R16G16B16A16_SFLOAT),
-            );
-            proper_refl1_tex = rg.create(
-                proper_refl0_tex
-                    .desc()
-                    .format(vk::Format::R16G16B16A16_SFLOAT),
-            );
-            proper_refl2_tex =
-                rg.create(proper_refl0_tex.desc().format(vk::Format::R8G8B8A8_SNORM));
+        let reuse_rtdgi_rays_u32 = if self.reuse_rtdgi_rays { 1u32 } else { 0u32 };
 
-            let ranking_tile_buf = rg.import(
-                self.ranking_tile_buf.clone(),
-                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-            );
-            let scambling_tile_buf = rg.import(
-                self.scambling_tile_buf.clone(),
-                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-            );
-            let sobol_buf = rg.import(
-                self.sobol_buf.clone(),
-                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-            );
-
-            SimpleRenderPass::new_rt(
-                rg.add_pass("reflection trace"),
-                ShaderSource::hlsl("/shaders/rtr/reflection.rgen.hlsl"),
-                [
-                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
-                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
-                ],
-                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
-            )
-            .read(&gbuffer_depth.gbuffer)
-            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(&ranking_tile_buf)
-            .read(&scambling_tile_buf)
-            .read(&sobol_buf)
-            .read(&rtdgi.screen_irradiance_tex)
-            .read(sky_cube)
-            .bind_mut(ircache)
-            .bind(wrc)
-            .write(&mut proper_refl0_tex)
-            .write(&mut proper_refl1_tex)
-            .write(&mut proper_refl2_tex)
-            .constants((gbuffer_desc.extent_inv_extent_2d(),))
-            .raw_descriptor_set(1, bindless_descriptor_set)
-            .trace_rays(tlas, proper_refl0_tex.desc().extent);
-
-            refl0_tex = &proper_refl0_tex;
-            refl1_tex = &proper_refl1_tex;
-            refl2_tex = &proper_refl2_tex;
-        }
+        SimpleRenderPass::new_rt(
+            rg.add_pass("reflection trace"),
+            ShaderSource::hlsl("/shaders/rtr/reflection.rgen.hlsl"),
+            [
+                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+            ],
+            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+        )
+        .read(&gbuffer_depth.gbuffer)
+        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+        .read(&ranking_tile_buf)
+        .read(&scambling_tile_buf)
+        .read(&sobol_buf)
+        .read(rtdgi_irradiance)
+        .read(sky_cube)
+        .bind_mut(ircache)
+        .bind(wrc)
+        .write(&mut refl0_tex)
+        .write(&mut refl1_tex)
+        .write(&mut refl2_tex)
+        .constants((gbuffer_desc.extent_inv_extent_2d(), reuse_rtdgi_rays_u32))
+        .raw_descriptor_set(1, bindless_descriptor_set)
+        .trace_rays(tlas, refl0_tex.desc().extent);
 
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
@@ -229,7 +206,7 @@ impl RtrRenderer {
             )
             .read(&gbuffer_depth.gbuffer)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(&rtdgi.screen_irradiance_tex)
+            .read(rtdgi_irradiance)
             .read(sky_cube)
             .write(&mut refl_restir_invalidity_tex)
             .bind_mut(ircache)
