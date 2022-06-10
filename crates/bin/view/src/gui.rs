@@ -119,7 +119,7 @@ impl RuntimeState {
                         .build(ui, &mut ctx.world_renderer.rtdgi.spatial_reuse_pass_count);
 
                     ui.checkbox(
-                        im_str!("Allow diffuse ray reuse for rtr"),
+                        im_str!("Allow diffuse ray reuse for reflections"),
                         &mut ctx.world_renderer.rtr.reuse_rtdgi_rays,
                     );
 
