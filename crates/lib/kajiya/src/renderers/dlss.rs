@@ -363,6 +363,8 @@ impl DlssRenderer {
                 ngx_params,
                 dlss_eval_params
             ));
+
+            Ok(())
         });
 
         self.frame_idx += 1;
@@ -697,7 +699,7 @@ fn image_to_ngx<ViewType: rg::GpuViewType>(
     let device = api.device();
     let image = api.resources.image(image_ref);
 
-    let view = image.view(device, &view_desc);
+    let view = image.view(device, &view_desc).unwrap();
     let view_desc = image.view_desc(&view_desc);
 
     unsafe {
