@@ -75,7 +75,6 @@ struct TraceResult {
     float hit_t;
     float pdf;
     float cos_theta;
-    bool prev_sample_valid;
 };
 
 TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
@@ -90,7 +89,6 @@ TraceResult do_the_thing(uint2 px, float3 primary_hit_normal) {
     result.hit_vs = hit1.xyz;
     result.hit_t = length(hit1.xyz);
     result.hit_normal_ws = direction_view_to_world(hit2.xyz);
-    result.prev_sample_valid = true;
     return result;
 }
 
@@ -164,8 +162,8 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 ray_orig_sel = 0;
     float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
-    bool prev_sample_valid = false;
 
+    Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
     Reservoir1spp reservoir = Reservoir1spp::create();
     const uint reservoir_payload = px.x | (px.y << 16);
 
@@ -174,67 +172,52 @@ void main(uint2 px : SV_DispatchThreadID) {
     {
         TraceResult result = do_the_thing(px, normal_ws);
 
-        #if RTR_RAY_HIT_STORED_AS_POSITION
-            outgoing_dir = normalize(position_view_to_world(result.hit_vs) - refl_ray_origin_ws);
-        #else
-            outgoing_dir = normalize(direction_view_to_world(result.hit_vs));
-        #endif
+        if (result.pdf > 0) {
+            outgoing_dir = normalize(result.hit_vs);
 
-        float3 wi = normalize(mul(outgoing_dir, tangent_to_world));
+            float3 wi = normalize(mul(outgoing_dir, tangent_to_world));
 
-        const float p_q = p_q_sel = 1
-            * max(1e-3, sRGB_to_luminance(result.out_value))
-            #if !RTR_RESTIR_BRDF_SAMPLING
-                * max(0, dot(outgoing_dir, normal_ws))
-            #endif
-            //* sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value)
-            * result.pdf
-            ;
+            const float p_q = p_q_sel = 1
+                * max(1e-3, sRGB_to_luminance(result.out_value))
+                #if !RTR_RESTIR_BRDF_SAMPLING
+                    * max(0, dot(outgoing_dir, normal_ws))
+                #endif
+                //* sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value)
+                * result.pdf
+                ;
 
-        const float inv_pdf_q = 1.0 / result.pdf;
+            const float inv_pdf_q = 1.0 / result.pdf;
 
-        pdf_sel = result.pdf;
-        cos_theta = result.cos_theta;
-        
-        irradiance_sel = result.out_value;
-        ray_orig_sel = refl_ray_origin_ws;
+            pdf_sel = result.pdf;
+            cos_theta = result.cos_theta;
+            
+            irradiance_sel = result.out_value;
+            ray_orig_sel = refl_ray_origin_ws;
 
-        #if RTR_RAY_HIT_STORED_AS_POSITION
-            ray_hit_sel_ws = position_view_to_world(result.hit_vs);
-        #else
-            ray_hit_sel_ws = direction_view_to_world(result.hit_vs) + refl_ray_origin_ws;
-        #endif
+            ray_hit_sel_ws = result.hit_vs + refl_ray_origin_ws;
 
-        hit_normal_sel = result.hit_normal_ws;
-        prev_sample_valid = result.prev_sample_valid;
+            hit_normal_sel = result.hit_normal_ws;
 
-        if (p_q * inv_pdf_q > 0) {
-            reservoir.payload = reservoir_payload;
-            reservoir.w_sum = p_q * inv_pdf_q;
-            reservoir.M = 1;
-            reservoir.W = inv_pdf_q;
+            if (p_q * inv_pdf_q > 0) {
+                reservoir.init_with_stream(p_q, inv_pdf_q, stream_state, reservoir_payload);
+            }
         }
-
-        //float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
-        //candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
     }
 
     //const bool use_resampling = false;
-    const bool use_resampling = prev_sample_valid && USE_RESAMPLING;
+    const bool use_resampling = USE_RESAMPLING;
     const float rt_invalidity = 0;//sqrt(rt_invalidity_tex[px]);
     const float4 center_reproj = reprojection_tex[hi_px];
 
     if (use_resampling) {
-        float M_sum = reservoir.M;
-
         const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        for (uint sample_i = 0; sample_i < ((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) ? 5 : 1) && M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+        for (uint sample_i = 0; sample_i < ((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) ? 5 : 1) && stream_state.M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
                 float(((sample_i - 1) + frame_constants.frame_index) & 3) + 1
-            ) * clamp(8 - M_sum, 1, 7); // TODO: keep high in noisy situations
+            ) * clamp(8 - stream_state.M_sum, 1, 7); // TODO: keep high in noisy situations
             //) * 7;
             const float2 reservoir_px_offset_base = float2(
                 cos(ang), sin(ang)
@@ -468,8 +451,10 @@ void main(uint2 px : SV_DispatchThreadID) {
                 }
     		}
 
-            M_sum += r.M;
-            if (reservoir.update(p_q * r.W * r.M * visibility, reservoir_payload, rng)) {
+            if (reservoir.update_with_stream(
+                r, p_q, visibility,
+                stream_state, reservoir_payload, rng
+            )) {
                 outgoing_dir = dir_to_sample_hit;
                 p_q_sel = p_q;
                 pdf_sel = prev_pdf;
@@ -485,120 +470,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
         }
 
-        if (USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) {
-            const float ang_offset = (0.2345 + ((frame_constants.frame_index + 7) * 11) % 32) * M_TAU;
-
-            for (uint sample_i = 1; sample_i <= 5 && M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
-            //for (uint sample_i = 1; sample_i <= 5; ++sample_i) {
-                const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
-                const float rpx_offset_radius = sqrt(
-                    float(((sample_i - 1) + frame_constants.frame_index + 1) & 3) + 1
-                ) * 7;
-
-                const float2 reservoir_px_offset_base = float2(
-                    cos(ang), sin(ang)
-                ) * rpx_offset_radius;
-
-                const int2 rpx_offset =
-                    sample_i == 0
-                    ? int2(0, 0)
-                    //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
-                    : int2(reservoir_px_offset_base)
-                    ;
-
-                int2 reproj_px = floor((
-                    sample_i == 0
-                    ? px
-                    // My poor approximation of permutation sampling.
-                    // https://twitter.com/more_fps/status/1457749362025459715
-                    //
-                    // When applied everywhere, it does nicely reduce noise, but also makes the GI less reactive
-                    // since we're effectively increasing the lifetime of the most attractive samples.
-                    // Where it does come in handy though is for boosting convergence rate for newly revealed
-                    // locations.
-                    : ((px + rpx_offset) ^ 3)) + 0.5);
-
-                const int2 rpx = reproj_px + rpx_offset;
-                const uint2 rpx_hi = rpx * 2 + hi_px_offset;
-
-                const float3 sample_normal_vs = half_view_normal_tex[rpx];
-
-// doesn't seem useful anymore
-#if 0
-                // Note: also doing this for sample 0, as under extreme aliasing,
-                // we can easily get bad samples in.
-                //if (dot(sample_normal_vs, normal_vs) < 0.9) {
-                if (SpecularBrdf::ggx_ndf_0_1(a2, dot(normal_vs, sample_normal_vs)) < 0.9) {
-                    continue;
-                }
-#endif
-
-                const float sample_depth = depth_tex[rpx_hi];
-                
-                if (0 == sample_depth) {
-                    continue;
-                }
-
-                if (inverse_depth_relative_diff(depth, sample_depth) > 0.2) {
-                    continue;
-                }
-
-                TraceResult result = do_the_thing(rpx, normal_ws);
-
-                #if RTR_RAY_HIT_STORED_AS_POSITION
-                    const float3 dir_to_sample_hit = normalize(position_view_to_world(result.hit_vs) - refl_ray_origin_ws);
-                #else
-                    const float3 dir_to_sample_hit = normalize(direction_view_to_world(result.hit_vs));
-                #endif
-
-                float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
-
-                const float p_q = 1
-                    * max(1e-3, sRGB_to_luminance(result.out_value))
-                    #if !RTR_RESTIR_BRDF_SAMPLING
-                        * max(0, dot(dir_to_sample_hit, normal_ws))
-                    #endif
-                    //* sRGB_to_luminance(specular_brdf.evaluate(wo, wi).value)
-                    * result.pdf
-                    ;
-
-                const float inv_pdf_q = 1.0 / result.pdf;
-
-                Reservoir1spp r = Reservoir1spp::create();
-                r.payload = reservoir_payload;
-
-                if (p_q * inv_pdf_q > 0) {
-                    r.payload = reservoir_payload;
-                    r.w_sum = p_q * inv_pdf_q;
-                    r.M = 1;
-                    r.W = inv_pdf_q;
-
-                    const float visibility = 1;
-
-                    M_sum += r.M;
-                    if (reservoir.update(p_q * r.W * r.M * visibility, reservoir_payload, rng)) {
-                        outgoing_dir = dir_to_sample_hit;
-                        p_q_sel = p_q;
-                        pdf_sel = result.pdf;
-                        cos_theta = result.cos_theta;
-                        irradiance_sel = result.out_value;
-                        ray_orig_sel = refl_ray_origin_ws;
-                        #if RTR_RAY_HIT_STORED_AS_POSITION
-                            ray_hit_sel_ws = position_view_to_world(result.hit_vs);
-                        #else
-                            ray_hit_sel_ws = direction_view_to_world(result.hit_vs) + refl_ray_origin_ws;
-                        #endif
-                        hit_normal_sel = result.hit_normal_ws;
-                        prev_sample_valid = result.prev_sample_valid;
-                    }
-                }
-            }
-        }
-
-        reservoir.M = M_sum;
-        reservoir.W = (1.0 / max(1e-5, p_q_sel)) * (reservoir.w_sum / max(1e-5, reservoir.M));
-
-        // TODO: find out if we can get away with this:
+        reservoir.finish_stream(stream_state);
         reservoir.W = min(reservoir.W, RESTIR_RESERVOIR_W_CLAMP);
     }
 

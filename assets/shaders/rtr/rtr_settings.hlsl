@@ -10,8 +10,6 @@
 #define RTR_RESTIR_TEMPORAL_M_CLAMP 8.0
 #define RTR_RESTIR_USE_PATH_VALIDATION true
 
-#define RTR_RAY_HIT_STORED_AS_POSITION 0
-
 // At 0.0 uses the center pixel's position when calculating the ray direction for a neighbor sample.
 // At 1.0 uses the neighbor position.
 // In theory, this should be 0.0, but in practice that causes many hits to be consistencly rejected in corners,

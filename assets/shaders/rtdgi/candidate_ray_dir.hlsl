@@ -12,6 +12,13 @@ float3 rtdgi_candidate_ray_dir(uint2 px, float3x3 tangent_to_world) {
         );
     #endif
 
+#if 1
     float3 wi = uniform_sample_hemisphere(urand);
+#else
+    DiffuseBrdf brdf;
+    brdf.albedo = 1;
+    float3 wi = brdf.sample(float3(0, 0, 1), urand).wi;
+#endif
+
     return mul(tangent_to_world, wi);
 }

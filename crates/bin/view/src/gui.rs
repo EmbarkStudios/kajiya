@@ -118,6 +118,11 @@ impl RuntimeState {
                         .range(1..=3)
                         .build(ui, &mut ctx.world_renderer.rtdgi.spatial_reuse_pass_count);
 
+                    ui.checkbox(
+                        im_str!("Allow diffuse ray reuse for rtr"),
+                        &mut ctx.world_renderer.rtr.reuse_rtdgi_rays,
+                    );
+
                     #[cfg(feature = "dlss")]
                     {
                         ui.checkbox(im_str!("Use DLSS"), &mut ctx.world_renderer.use_dlss);

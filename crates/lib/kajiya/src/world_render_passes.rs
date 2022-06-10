@@ -129,7 +129,7 @@ impl WorldRenderer {
             ircache_state.sum_up_irradiance_for_sampling(rg, traced_ircache);
         }
 
-        let rtdgi = if let Some(tlas) = tlas.as_ref() {
+        let rtdgi = tlas.as_ref().map(|tlas| {
             self.rtdgi.render(
                 rg,
                 reprojected_rtdgi,
@@ -142,10 +142,7 @@ impl WorldRenderer {
                 tlas,
                 &ssgi_tex,
             )
-        } else {
-            rg.create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]))
-                .into()
-        };
+        });
 
         // TODO: don't iter over all the things
         let any_triangle_lights = self
@@ -153,7 +150,7 @@ impl WorldRenderer {
             .iter()
             .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
 
-        let mut rtr = if let Some(tlas) = tlas.as_ref() {
+        let mut rtr = if let Some((tlas, rtdgi)) = tlas.as_ref().zip(rtdgi.as_ref()) {
             self.rtr.trace(
                 rg,
                 &gbuffer_depth,
@@ -161,7 +158,7 @@ impl WorldRenderer {
                 &sky_cube,
                 self.bindless_descriptor_set,
                 tlas,
-                &rtdgi,
+                rtdgi,
                 &mut ircache_state,
                 &wrc,
             )
@@ -188,6 +185,13 @@ impl WorldRenderer {
             vk::Format::R16G16B16A16_SFLOAT,
             gbuffer_depth.gbuffer.desc().extent_2d(),
         ));
+
+        let rtdgi = match rtdgi {
+            Some(rtdgi) => rtdgi.screen_irradiance_tex,
+            None => rg
+                .create(ImageDesc::new_2d(vk::Format::R8G8B8A8_UNORM, [1, 1]))
+                .into(),
+        };
 
         light_gbuffer(
             rg,

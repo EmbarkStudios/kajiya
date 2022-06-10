@@ -31,7 +31,7 @@ struct TraceResult {
     float3 out_value;
     float3 hit_normal_ws;
     float hit_t;
-    float inv_pdf;
+    float pdf;
     bool is_hit;
 };
 
@@ -58,7 +58,12 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     }
 
     float hit_t = outgoing_ray.TMax;
-    float inv_pdf = 1.0;
+
+    // cosine-weighted
+    //float pdf = 1.0 / M_PI;
+
+    // uniform
+    float pdf = max(0.0, 1.0 / (dot(normal_ws, outgoing_ray.Direction) * 2 * M_PI));
 
     const float reflected_cone_spread_angle = 0.03;
     const RayCone ray_cone =
@@ -197,7 +202,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
         if (far_field.is_hit()) {
             total_radiance += far_field.radiance;
             hit_t = far_field.approx_surface_t;
-            inv_pdf = far_field.inv_pdf;
+            pdf = 1.0 / far_field.inv_pdf;
         } else {
             total_radiance += sample_environment_light(outgoing_ray.Direction);
         }
@@ -211,7 +216,7 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
     result.out_value = out_value;
     result.hit_t = hit_t;
     result.hit_normal_ws = hit_normal_ws;
-    result.inv_pdf = inv_pdf;
+    result.pdf = pdf;
     result.is_hit = primary_hit.is_hit;
     return result;
 }

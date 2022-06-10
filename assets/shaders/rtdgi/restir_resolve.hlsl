@@ -21,12 +21,11 @@
 [[vk::binding(5)]] Texture2D<float> half_depth_tex;
 [[vk::binding(6)]] Texture2D<float4> ssao_tex;
 [[vk::binding(7)]] Texture2D<float4> candidate_radiance_tex;
-[[vk::binding(8)]] Texture2D<float4> candidate_normal_tex;
-[[vk::binding(9)]] Texture2D<float4> candidate_hit_tex;
-[[vk::binding(10)]] Texture2D<uint4> temporal_reservoir_packed_tex;
-[[vk::binding(11)]] Texture2D<float3> bounced_radiance_input_tex;
-[[vk::binding(12)]] RWTexture2D<float4> irradiance_output_tex;
-[[vk::binding(13)]] cbuffer _ {
+[[vk::binding(8)]] Texture2D<float4> candidate_hit_tex;
+[[vk::binding(9)]] Texture2D<uint4> temporal_reservoir_packed_tex;
+[[vk::binding(10)]] Texture2D<float3> bounced_radiance_input_tex;
+[[vk::binding(11)]] RWTexture2D<float4> irradiance_output_tex;
+[[vk::binding(12)]] cbuffer _ {
     float4 gbuffer_tex_size;
     float4 output_tex_size;
 };
@@ -109,6 +108,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 sample_dir = sample_offset / sample_dist;
 
             const float geometric_term =
+                // TODO: fold the 2 into the PDF
                 2 * max(0.0, dot(center_normal_ws, sample_dir));
 
             const float atten = smoothstep(NEAR_FIELD_FADE_OUT_END, NEAR_FIELD_FADE_OUT_START, sample_dist);
@@ -168,6 +168,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 sample_dir = sample_offset / sample_dist;
 
             const float geometric_term =
+                // TODO: fold the 2 into the PDF
                 2 * max(0.0, dot(center_normal_ws, sample_dir));
 
             float3 radiance;

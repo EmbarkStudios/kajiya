@@ -18,27 +18,26 @@
 [[vk::binding(0)]] Texture2D<float3> half_view_normal_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 [[vk::binding(2)]] Texture2D<float4> candidate_radiance_tex;
-[[vk::binding(3)]] Texture2D<float4> candidate_hit_tex;
-[[vk::binding(4)]] Texture2D<float4> radiance_history_tex;
-[[vk::binding(5)]] Texture2D<float3> ray_orig_history_tex;
-[[vk::binding(6)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(7)]] Texture2D<uint2> reservoir_history_tex;
-[[vk::binding(8)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(9)]] Texture2D<float4> hit_normal_history_tex;
-[[vk::binding(10)]] Texture2D<float4> candidate_history_tex;
-[[vk::binding(11)]] Texture2D<float2> rt_invalidity_tex;
-[[vk::binding(12)]] RWTexture2D<float4> radiance_out_tex;
-[[vk::binding(13)]] RWTexture2D<float3> ray_orig_output_tex;
-[[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
-[[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
-[[vk::binding(16)]] RWTexture2D<uint2> reservoir_out_tex;
-[[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(18)]] RWTexture2D<uint4> temporal_reservoir_packed_tex;
-[[vk::binding(19)]] cbuffer _ {
+[[vk::binding(3)]] Texture2D<float3> candidate_normal_tex;
+[[vk::binding(4)]] Texture2D<float4> candidate_hit_tex;
+[[vk::binding(5)]] Texture2D<float4> radiance_history_tex;
+[[vk::binding(6)]] Texture2D<float3> ray_orig_history_tex;
+[[vk::binding(7)]] Texture2D<float4> ray_history_tex;
+[[vk::binding(8)]] Texture2D<uint2> reservoir_history_tex;
+[[vk::binding(9)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(10)]] Texture2D<float4> hit_normal_history_tex;
+[[vk::binding(11)]] Texture2D<float4> candidate_history_tex;
+[[vk::binding(12)]] Texture2D<float2> rt_invalidity_tex;
+[[vk::binding(13)]] RWTexture2D<float4> radiance_out_tex;
+[[vk::binding(14)]] RWTexture2D<float3> ray_orig_output_tex;
+[[vk::binding(15)]] RWTexture2D<float4> ray_output_tex;
+[[vk::binding(16)]] RWTexture2D<float4> hit_normal_output_tex;
+[[vk::binding(17)]] RWTexture2D<uint2> reservoir_out_tex;
+[[vk::binding(18)]] RWTexture2D<float4> candidate_out_tex;
+[[vk::binding(19)]] RWTexture2D<uint4> temporal_reservoir_packed_tex;
+[[vk::binding(20)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
-
-#include "candidate_ray_dir.hlsl"
 
 static const float SKY_DIST = 1e4;
 
@@ -49,7 +48,6 @@ uint2 reservoir_payload_to_px(uint payload) {
 struct TraceResult {
     float3 out_value;
     float3 hit_normal_ws;
-    float hit_t;
     float inv_pdf;
     //bool prev_sample_valid;
 };
@@ -58,10 +56,8 @@ TraceResult do_the_thing(uint2 px, inout uint rng, RayDesc outgoing_ray, float3 
     const float4 candidate_radiance_inv_pdf = candidate_radiance_tex[px];
     TraceResult result;
     result.out_value = candidate_radiance_inv_pdf.rgb;
-    result.inv_pdf = candidate_radiance_inv_pdf.a;
-    float4 hit = candidate_hit_tex[px];
-    result.hit_t = hit.w;
-    result.hit_normal_ws = hit.xyz;
+    result.inv_pdf = 1;
+    result.hit_normal_ws = direction_view_to_world(candidate_normal_tex[px]);
     return result;
 }
 
@@ -104,7 +100,9 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float3 normal_ws = direction_view_to_world(normal_vs);
     const float3x3 tangent_to_world = build_orthonormal_basis(normal_ws);
     const float3 refl_ray_origin_ws = view_ray_context.biased_secondary_ray_origin_ws_with_normal(normal_ws);
-    float3 outgoing_dir = rtdgi_candidate_ray_dir(px, tangent_to_world);
+
+    const float3 hit_offset_ws = candidate_hit_tex[px].xyz;
+    float3 outgoing_dir = normalize(hit_offset_ws);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
 
@@ -126,12 +124,14 @@ void main(uint2 px : SV_DispatchThreadID) {
         outgoing_ray.TMin = 0;
         outgoing_ray.TMax = SKY_DIST;
 
+        const float hit_t = length(hit_offset_ws);
+
         TraceResult result = do_the_thing(px, rng, outgoing_ray, normal_ws);
 
         /*if (USE_SPLIT_RT_NEAR_FIELD) {
             const float NEAR_FIELD_FADE_OUT_END = -view_ray_context.ray_hit_vs().z * (SSGI_NEAR_FIELD_RADIUS * gbuffer_tex_size.w * 0.5);
             const float NEAR_FIELD_FADE_OUT_START = NEAR_FIELD_FADE_OUT_END * 0.5;
-            float infl = result.hit_t / (SSGI_NEAR_FIELD_RADIUS * gbuffer_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
+            float infl = hit_t / (SSGI_NEAR_FIELD_RADIUS * gbuffer_tex_size.w * 0.5) / -view_ray_context.ray_hit_vs().z;
             result.out_value *= smoothstep(0.0, 1.0, infl);
         }*/
 
@@ -148,14 +148,14 @@ void main(uint2 px : SV_DispatchThreadID) {
 
         radiance_sel = result.out_value;
         ray_orig_sel_ws = outgoing_ray.Origin;
-        ray_hit_sel_ws = outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t;
+        ray_hit_sel_ws = outgoing_ray.Origin + outgoing_ray.Direction * hit_t;
         hit_normal_sel = result.hit_normal_ws;
         //prev_sample_valid = result.prev_sample_valid;
 
         reservoir.init_with_stream(p_q, inv_pdf_q, stream_state, reservoir_payload);
 
-        float rl = lerp(candidate_history_tex[px].y, sqrt(result.hit_t), 0.05);
-        candidate_out_tex[px] = float4(sqrt(result.hit_t), rl, 0, 0);
+        float rl = lerp(candidate_history_tex[px].y, sqrt(hit_t), 0.05);
+        candidate_out_tex[px] = float4(sqrt(hit_t), rl, 0, 0);
     }
 
     const float rt_invalidity = sqrt(saturate(rt_invalidity_tex[px].y));

@@ -13,6 +13,7 @@
 #include "../inc/reservoir.hlsl"
 #include "../ircache/bindings.hlsl"
 #include "../wrc/bindings.hlsl"
+#include "../rtr/rtr_settings.hlsl" // for rtr_encode_cos_theta_for_fp16. consider moving out.
 #include "rtdgi_restir_settings.hlsl"
 #include "near_field_settings.hlsl"
 
@@ -55,7 +56,7 @@ void main() {
 
     if (0.0 == depth) {
         candidate_irradiance_out_tex[px] = 0;
-        candidate_normal_out_tex[px] = float4(float3(0, 0, 1), SKY_DIST);
+        candidate_normal_out_tex[px] = float4(0, 0, 1, 0);
         rt_history_invalidity_out_tex[px] = 0;
         return;
     }
@@ -98,16 +99,19 @@ void main() {
             }
         #endif
 
-        candidate_irradiance_out_tex[px] = float4(result.out_value, result.inv_pdf);    // TOD: inv_pdf is always 1
-        candidate_normal_out_tex[px] = float4(result.hit_normal_ws, result.hit_t);  // TODO: hit_t is redundant
-        candidate_hit_out_tex[px] = float4(outgoing_ray.Origin + outgoing_ray.Direction * result.hit_t - view_ray_context.ray_hit_ws(), 1);
+        const float3 hit_offset_ws = outgoing_ray.Direction * result.hit_t;
+
+        const float cos_theta = dot(normalize(outgoing_dir - view_ray_context.ray_dir_ws()), normal_ws);
+        candidate_irradiance_out_tex[px] = float4(result.out_value, rtr_encode_cos_theta_for_fp16(cos_theta));
+        candidate_hit_out_tex[px] = float4(hit_offset_ws, result.pdf * (is_rtdgi_tracing_frame() ? 1 : -1));
+        candidate_normal_out_tex[px] = float4(direction_world_to_view(result.hit_normal_ws), 0);
     } else {
         const float4 reproj = reprojection_tex[hi_px];
         const int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + 0.5);
 
         candidate_irradiance_out_tex[px] = 0.0;
-        candidate_normal_out_tex[px] = 0.0;
         candidate_hit_out_tex[px] = 0.0;
+        candidate_normal_out_tex[px] = 0.0;
     }
 
     const float4 reproj = reprojection_tex[hi_px];

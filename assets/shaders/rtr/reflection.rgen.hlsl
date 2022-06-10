@@ -132,20 +132,25 @@ void main() {
             #endif
             / max(1e-10, result.hit_t * result.hit_t);
 
-        const float3 hit_vs =
-            #if RTR_RAY_HIT_STORED_AS_POSITION
-                view_ray_context.ray_hit_vs() +
-            #endif
-            direction_vs * result.hit_t;
+        const float3 hit_offset_ws = outgoing_ray.Direction * result.hit_t;
+
+        SpecularBrdfEnergyPreservation brdf_lut = SpecularBrdfEnergyPreservation::from_brdf_ndotv(specular_brdf, wo.z);
 
         const float pdf =
             #if RTR_PDF_STORED_WITH_SURFACE_AREA_METRIC
                 to_surface_area_measure *
             #endif
-            brdf_sample.pdf;
+            brdf_sample.pdf /
+            // When sampling the BRDF in a path tracer, a certain fraction of samples
+            // taken will be invalid. In the specular filtering pipe we force them all to be valid
+            // in order to get the most out of our kernels. We also simply discard any rays
+            // going in the wrong direction when reusing neighborhood samples, and renormalize,
+            // whereas in a regular integration loop, we'd still count them.
+            // Here we adjust the value back to what it would be if a fraction was returned invalid.
+            brdf_lut.valid_sample_fraction;
 
         out0_tex[px] = float4(result.total_radiance, rtr_encode_cos_theta_for_fp16(cos_theta));
-        out1_tex[px] = float4(hit_vs, pdf);
+        out1_tex[px] = float4(hit_offset_ws, pdf);
         out2_tex[px] = float4(result.hit_normal_vs, 0);
     } else {
         out0_tex[px] = float4(float3(1, 0, 1), 0);

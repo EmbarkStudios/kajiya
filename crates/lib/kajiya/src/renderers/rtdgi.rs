@@ -48,6 +48,13 @@ pub struct ReprojectedRtdgi {
     temporal_output_tex: rg::Handle<Image>,
 }
 
+pub struct RtdgiOutput {
+    pub screen_irradiance_tex: rg::ReadOnlyHandle<Image>,
+    pub candidate_radiance_tex: rg::Handle<Image>,
+    pub candidate_normal_tex: rg::Handle<Image>,
+    pub candidate_hit_tex: rg::Handle<Image>,
+}
+
 impl RtdgiRenderer {
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
         ImageDesc::new_2d(COLOR_BUFFER_FORMAT, extent)
@@ -172,7 +179,7 @@ impl RtdgiRenderer {
         wrc: &WrcRenderState,
         tlas: &rg::Handle<RayTracingAcceleration>,
         ssao_tex: &rg::Handle<Image>,
-    ) -> rg::ReadOnlyHandle<Image> {
+    ) -> RtdgiOutput {
         let mut half_ssao_tex = rg.create(
             ssao_tex
                 .desc()
@@ -217,11 +224,8 @@ impl RtdgiRenderer {
                 .format(vk::Format::R16G16B16A16_SFLOAT),
         );
 
-        let mut candidate_normal_tex = rg.create(
-            gbuffer_desc
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        let mut candidate_normal_tex =
+            rg.create(gbuffer_desc.half_res().format(vk::Format::R8G8B8A8_SNORM));
 
         let mut candidate_hit_tex = rg.create(
             gbuffer_desc
@@ -358,6 +362,7 @@ impl RtdgiRenderer {
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(&candidate_radiance_tex)
             .read(&candidate_normal_tex)
+            .read(&candidate_hit_tex)
             .read(&radiance_history_tex)
             .read(&ray_orig_history_tex)
             .read(&ray_history_tex)
@@ -474,7 +479,6 @@ impl RtdgiRenderer {
             .read(&*half_depth_tex)
             .read(ssao_tex)
             .read(&candidate_radiance_tex)
-            .read(&candidate_normal_tex)
             .read(&candidate_hit_tex)
             .read(&temporal_reservoir_packed_tex)
             .read(bounced_radiance_input_tex)
@@ -507,6 +511,11 @@ impl RtdgiRenderer {
             bindless_descriptor_set,
         );
 
-        filtered_tex.into()
+        RtdgiOutput {
+            screen_irradiance_tex: filtered_tex.into(),
+            candidate_radiance_tex,
+            candidate_normal_tex,
+            candidate_hit_tex,
+        }
     }
 }

@@ -9,7 +9,8 @@ use kajiya_backend::{
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
 use super::{
-    ircache::IrcacheRenderState, wrc::WrcRenderState, GbufferDepth, PingPongTemporalResource,
+    ircache::IrcacheRenderState, rtdgi::RtdgiOutput, wrc::WrcRenderState, GbufferDepth,
+    PingPongTemporalResource,
 };
 
 use blue_noise_sampler::spp64::*;
@@ -27,6 +28,8 @@ pub struct RtrRenderer {
     ranking_tile_buf: Arc<Buffer>,
     scambling_tile_buf: Arc<Buffer>,
     sobol_buf: Arc<Buffer>,
+
+    pub reuse_rtdgi_rays: bool,
 }
 
 fn as_byte_slice_unchecked<T: Copy>(v: &[T]) -> &[u8] {
@@ -61,6 +64,8 @@ impl RtrRenderer {
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE)?,
             scambling_tile_buf: make_lut_buffer(device, SCRAMBLING_TILE)?,
             sobol_buf: make_lut_buffer(device, SOBOL)?,
+
+            reuse_rtdgi_rays: false,
         })
     }
 }
@@ -88,62 +93,81 @@ impl RtrRenderer {
         sky_cube: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         tlas: &rg::Handle<RayTracingAcceleration>,
-        rtdgi: &rg::Handle<Image>,
+        rtdgi: &RtdgiOutput,
         ircache: &mut IrcacheRenderState,
         wrc: &WrcRenderState,
     ) -> TracedRtr {
         let gbuffer_desc = gbuffer_depth.gbuffer.desc();
 
-        let mut refl0_tex = rg.create(
-            gbuffer_desc
-                .usage(vk::ImageUsageFlags::empty())
-                .half_res()
-                .format(vk::Format::R16G16B16A16_SFLOAT),
-        );
+        let refl0_tex;
+        let refl1_tex;
+        let refl2_tex;
 
-        // When using PDFs stored wrt to the surface area metric, their values can be tiny or giant,
-        // so fp32 is necessary. The projected solid angle metric is less sensitive.
-        let mut refl1_tex = rg.create(refl0_tex.desc().format(vk::Format::R16G16B16A16_SFLOAT));
+        let mut proper_refl0_tex;
+        let mut proper_refl1_tex;
+        let mut proper_refl2_tex;
 
-        let mut refl2_tex = rg.create(refl0_tex.desc().format(vk::Format::R8G8B8A8_SNORM));
+        if self.reuse_rtdgi_rays {
+            refl0_tex = &rtdgi.candidate_radiance_tex;
+            refl1_tex = &rtdgi.candidate_hit_tex;
+            refl2_tex = &rtdgi.candidate_normal_tex;
+        } else {
+            proper_refl0_tex = rg.create(
+                gbuffer_desc
+                    .usage(vk::ImageUsageFlags::empty())
+                    .half_res()
+                    .format(vk::Format::R16G16B16A16_SFLOAT),
+            );
+            proper_refl1_tex = rg.create(
+                proper_refl0_tex
+                    .desc()
+                    .format(vk::Format::R16G16B16A16_SFLOAT),
+            );
+            proper_refl2_tex =
+                rg.create(proper_refl0_tex.desc().format(vk::Format::R8G8B8A8_SNORM));
 
-        let ranking_tile_buf = rg.import(
-            self.ranking_tile_buf.clone(),
-            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let scambling_tile_buf = rg.import(
-            self.scambling_tile_buf.clone(),
-            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
-        let sobol_buf = rg.import(
-            self.sobol_buf.clone(),
-            vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
-        );
+            let ranking_tile_buf = rg.import(
+                self.ranking_tile_buf.clone(),
+                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+            );
+            let scambling_tile_buf = rg.import(
+                self.scambling_tile_buf.clone(),
+                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+            );
+            let sobol_buf = rg.import(
+                self.sobol_buf.clone(),
+                vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
+            );
 
-        SimpleRenderPass::new_rt(
-            rg.add_pass("reflection trace"),
-            ShaderSource::hlsl("/shaders/rtr/reflection.rgen.hlsl"),
-            [
-                ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
-                ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
-            ],
-            [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
-        )
-        .read(&gbuffer_depth.gbuffer)
-        .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-        .read(&ranking_tile_buf)
-        .read(&scambling_tile_buf)
-        .read(&sobol_buf)
-        .read(rtdgi)
-        .read(sky_cube)
-        .bind_mut(ircache)
-        .bind(wrc)
-        .write(&mut refl0_tex)
-        .write(&mut refl1_tex)
-        .write(&mut refl2_tex)
-        .constants((gbuffer_desc.extent_inv_extent_2d(),))
-        .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, refl0_tex.desc().extent);
+            SimpleRenderPass::new_rt(
+                rg.add_pass("reflection trace"),
+                ShaderSource::hlsl("/shaders/rtr/reflection.rgen.hlsl"),
+                [
+                    ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                    ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+                ],
+                [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+            )
+            .read(&gbuffer_depth.gbuffer)
+            .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
+            .read(&ranking_tile_buf)
+            .read(&scambling_tile_buf)
+            .read(&sobol_buf)
+            .read(&rtdgi.screen_irradiance_tex)
+            .read(sky_cube)
+            .bind_mut(ircache)
+            .bind(wrc)
+            .write(&mut proper_refl0_tex)
+            .write(&mut proper_refl1_tex)
+            .write(&mut proper_refl2_tex)
+            .constants((gbuffer_desc.extent_inv_extent_2d(),))
+            .raw_descriptor_set(1, bindless_descriptor_set)
+            .trace_rays(tlas, proper_refl0_tex.desc().extent);
+
+            refl0_tex = &proper_refl0_tex;
+            refl1_tex = &proper_refl1_tex;
+            refl2_tex = &proper_refl2_tex;
+        }
 
         let half_view_normal_tex = gbuffer_depth.half_view_normal(rg);
         let half_depth_tex = gbuffer_depth.half_depth(rg);
@@ -205,7 +229,7 @@ impl RtrRenderer {
             )
             .read(&gbuffer_depth.gbuffer)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
-            .read(rtdgi)
+            .read(&rtdgi.screen_irradiance_tex)
             .read(sky_cube)
             .write(&mut refl_restir_invalidity_tex)
             .bind_mut(ircache)

@@ -136,11 +136,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
     const float a2 = max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness) * max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness);
 
     // Project lobe footprint onto the reflector, and find the desired convolution size
-    #if RTR_RAY_HIT_STORED_AS_POSITION
-        const float surf_to_hit_dist = length(hit1_tex[half_px].xyz - refl_ray_origin_vs);
-    #else
-        const float surf_to_hit_dist = length(hit1_tex[half_px].xyz);
-    #endif
+    const float surf_to_hit_dist = length(hit1_tex[half_px].xyz);
     const float eye_to_surf_dist = length(refl_ray_origin_vs);
 
     // Needed to account for perspective distortion to keep the kernel constant
@@ -293,9 +289,9 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
         const float sample_depth = half_depth_tex[sample_px];
 
         // Only used in the non-ReSTIR path
-        const float4 packed0 = hit0_tex[sample_px];
+        const float4 packed1 = hit1_tex[sample_px];
 
-        const bool is_valid_sample = USE_RESTIR || (packed0.w > 0 && sample_depth != 0);
+        const bool is_valid_sample = USE_RESTIR || (packed1.w > 0 && sample_depth != 0);
 
         if (is_valid_sample) {
             float rejection_bias = 1;
@@ -446,20 +442,16 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
             } else {
                 // The pure ratio estimator (non-ReSTIR) path.
 
+                const float4 packed0 = hit0_tex[sample_px];
+
                 const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_biased_depth(sample_uv, sample_depth);
                 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
                 
-                const float4 packed1 = hit1_tex[sample_px];
                 neighbor_sampling_pdf = packed1.w;
                 sample_radiance = packed0.xyz;
                 sample_cos_theta = 1;
 
-                const float3 real_sample_hit_vs =
-                    #if RTR_RAY_HIT_STORED_AS_POSITION
-                        packed1.xyz;
-                    #else
-                        packed1.xyz + sample_origin_vs;
-                    #endif
+                const float3 real_sample_hit_vs = direction_world_to_view(packed1.xyz) + sample_origin_vs;
 
                 center_to_hit_vs = real_sample_hit_vs - lerp(refl_ray_origin_vs, sample_origin_vs, RTR_NEIGHBOR_RAY_ORIGIN_CENTER_BIAS);
                 sample_hit_vs = center_to_hit_vs + refl_ray_origin_vs;
@@ -644,14 +636,6 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
     #if !RTR_RENDER_SCALED_BY_FG
         contrib_accum.rgb /= brdf_lut.preintegrated_reflection;
     #endif
-
-    // When sampling the BRDF in a path tracer, a certain fraction of samples
-    // taken will be invalid. In the specular filtering pipe we force them all to be valid
-    // in order to get the most out of our kernels. We also simply discard any rays
-    // going in the wrong direction when reusing neighborhood samples, and renormalize,
-    // whereas in a regular integration loop, we'd still count them.
-    // Here we adjust the value back to what it would be if a fraction was returned invalid.
-    contrib_accum.rgb *= brdf_lut.valid_sample_fraction;
 
     // The invalid samples are in reality multi-scater events, and here we adjust for that.
     // Note that while the `valid_sample_fraction` is a grayscale multiplier,
