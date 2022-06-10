@@ -56,7 +56,8 @@ void main() {
 
     // Initially, the candidate buffers contain candidates generated via diffuse tracing.
     // For rough surfaces we can skip generating new candidates just for reflections.
-    if (reuse_rtdgi_rays && gbuffer.roughness > lerp(0.25, 0.6, gbuffer.metalness)) {
+    // TODO: make this metric depend on spec contrast
+    if (reuse_rtdgi_rays && gbuffer.roughness > 0.6) {
         return;
     }
 
