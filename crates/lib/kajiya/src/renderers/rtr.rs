@@ -97,7 +97,6 @@ impl RtrRenderer {
         tlas: &rg::Handle<RayTracingAcceleration>,
         rtdgi_irradiance: &rg::ReadOnlyHandle<Image>,
         rtdgi_candidates: RtdgiCandidates,
-        reprojected_taa: &rg::ReadOnlyHandle<Image>,
         ircache: &mut IrcacheRenderState,
         wrc: &WrcRenderState,
     ) -> TracedRtr {
@@ -145,7 +144,6 @@ impl RtrRenderer {
         .read(&scambling_tile_buf)
         .read(&sobol_buf)
         .read(rtdgi_irradiance)
-        .read(reprojected_taa)
         .read(sky_cube)
         .bind_mut(ircache)
         .bind(wrc)
@@ -218,7 +216,6 @@ impl RtrRenderer {
             .read(&gbuffer_depth.gbuffer)
             .read_aspect(&gbuffer_depth.depth, vk::ImageAspectFlags::DEPTH)
             .read(rtdgi_irradiance)
-            .read(reprojected_taa)
             .read(sky_cube)
             .write(&mut refl_restir_invalidity_tex)
             .bind_mut(ircache)

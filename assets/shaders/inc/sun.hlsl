@@ -15,7 +15,7 @@
 
 #if 0
     float3 sun_color_in_direction(float3 dir) {
-        return frame_constants.pre_exposure * 20.0;
+        return frame_constants.pre_exposure * 0.0;
     }
 #else
     float3 sun_color_in_direction(float3 dir) {
