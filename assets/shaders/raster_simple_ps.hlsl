@@ -54,9 +54,9 @@ PsOut main(PsIn ps) {
     float2 spec_uv = transform_material_uv(material, ps.uv, 2);
     Texture2D spec_tex = bindless_textures[NonUniformResourceIndex(material.spec_map)];
     const float4 metalness_roughness = spec_tex.SampleBias(sampler_llr, spec_uv, lod_bias);
-    float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
+    float perceptual_roughness = material.roughness_mult * metalness_roughness.x;
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
-    float metalness = metalness_roughness.z * material.metalness_factor;
+    float metalness = metalness_roughness.y * material.metalness_factor;
 
     if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_METAL)) {
         metalness = 0;
@@ -74,7 +74,14 @@ PsOut main(PsIn ps) {
         [branch]
         if (!frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_NORMAL_MAPS)) {
             Texture2D normal_tex = bindless_textures[NonUniformResourceIndex(material.normal_map)];
+
+#if 1
+            float3 ts_normal = float3(normal_tex.SampleBias(sampler_llr, ps.uv, lod_bias).xy * 2.0 - 1.0, 0);
+            ts_normal.z = sqrt(max(0.01, 1.0 - dot(ts_normal.xy, ts_normal.xy)));
+#else
             float3 ts_normal = normal_tex.SampleBias(sampler_llr, ps.uv, lod_bias).xyz * 2.0 - 1.0;
+#endif
+
             if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FLIP_NORMAL_MAP_YZ)) {
                 ts_normal.zy *= -1;
             }

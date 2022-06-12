@@ -297,11 +297,14 @@ impl Device {
             let block_bytes: usize = match desc.format {
                 vk::Format::R8G8B8A8_UNORM => 1,
                 vk::Format::R8G8B8A8_SRGB => 1,
+                vk::Format::BC1_RGB_UNORM_BLOCK => 8,
                 vk::Format::BC1_RGB_SRGB_BLOCK => 8,
                 vk::Format::BC3_UNORM_BLOCK => 16,
                 vk::Format::BC3_SRGB_BLOCK => 16,
                 vk::Format::BC5_UNORM_BLOCK => 16,
                 vk::Format::BC5_SNORM_BLOCK => 16,
+                vk::Format::BC7_UNORM_BLOCK => 16,
+                vk::Format::BC7_SRGB_BLOCK => 16,
                 _ => todo!("{:?}", desc.format),
             };
 

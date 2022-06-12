@@ -1,9 +1,12 @@
 use std::path::PathBuf;
 
 use bytes::Bytes;
-use image::{imageops::FilterType, DynamicImage, GenericImageView as _};
+use image::{imageops::FilterType, DynamicImage, GenericImageView as _, ImageBuffer, Rgba};
+use intel_tex_2::{bc5, bc7};
 use kajiya_backend::{ash::vk, file::LoadFile, ImageDesc};
 use turbosloth::*;
+
+use crate::mesh::TexCompressionMode;
 
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum ImageSource {
@@ -25,6 +28,21 @@ pub enum RawImage {
 pub enum LoadImage {
     Lazy(Lazy<Bytes>),
     Immediate(Bytes),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BcMode {
+    Bc5,
+    Bc7,
+}
+
+impl BcMode {
+    fn block_bytes(self) -> usize {
+        match self {
+            BcMode::Bc5 => 16,
+            BcMode::Bc7 => 16,
+        }
+    }
 }
 
 impl LoadImage {
@@ -110,7 +128,9 @@ pub struct CreateGpuImage {
 
 impl CreateGpuImage {
     fn process_rgba8(&self, src: &RawRgba8Image) -> anyhow::Result<super::mesh::GpuImage::Proto> {
-        let format = match self.params.gamma {
+        let should_compress = self.params.compression != TexCompressionMode::None;
+
+        let mut format = match self.params.gamma {
             crate::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
             crate::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
         };
@@ -137,6 +157,81 @@ impl CreateGpuImage {
         let mut desc = ImageDesc::new_2d(format, [image.dimensions().0, image.dimensions().1])
             .usage(vk::ImageUsageFlags::SAMPLED);
 
+        let mut compress = |mip: ImageBuffer<Rgba<u8>, Vec<u8>>| -> Vec<u8> {
+            let block_count = intel_tex_2::divide_up_by_multiple(mip.width() * mip.height(), 16);
+
+            let needs_alpha =
+                self.params.compression.supports_alpha() && mip.pixels().any(|px| px.0[3] != 255);
+
+            let bc_mode = match self.params.compression {
+                TexCompressionMode::None => unreachable!(),
+                TexCompressionMode::Rgba => BcMode::Bc7,
+                TexCompressionMode::Rg => BcMode::Bc5,
+            };
+
+            let block_bytes = bc_mode.block_bytes();
+
+            let surface = intel_tex_2::RgbaSurface {
+                width: mip.width(),
+                height: mip.height(),
+                stride: mip.width() * 4,
+                data: &mip,
+            };
+
+            let mut compressed_bytes = vec![0u8; block_count as usize * block_bytes];
+
+            log::info!("Compressing to {:?}...", bc_mode);
+            match bc_mode {
+                BcMode::Bc5 => {
+                    format = match self.params.gamma {
+                        crate::mesh::TexGamma::Linear => vk::Format::BC5_UNORM_BLOCK,
+                        crate::mesh::TexGamma::Srgb => unimplemented!(),
+                    };
+
+                    bc5::compress_blocks_into(&surface, &mut compressed_bytes)
+                }
+                BcMode::Bc7 => {
+                    format = match self.params.gamma {
+                        crate::mesh::TexGamma::Linear => vk::Format::BC7_UNORM_BLOCK,
+                        crate::mesh::TexGamma::Srgb => vk::Format::BC7_SRGB_BLOCK,
+                    };
+
+                    let settings = if needs_alpha {
+                        bc7::alpha_basic_settings()
+                    } else {
+                        bc7::opaque_basic_settings()
+                    };
+
+                    bc7::compress_blocks_into(&settings, &surface, &mut compressed_bytes);
+                }
+            }
+
+            compressed_bytes
+        };
+
+        let swizzle = |mip: &mut ImageBuffer<Rgba<u8>, Vec<u8>>| {
+            if let Some(swizzle) = self.params.channel_swizzle {
+                for px in mip.pixels_mut() {
+                    px.0[0] = px.0[swizzle[0]];
+                    px.0[1] = px.0[swizzle[1]];
+                    px.0[2] = px.0[swizzle[2]];
+                    px.0[3] = px.0[swizzle[3]];
+                }
+            }
+        };
+
+        let mut process_mip = |mip: DynamicImage| -> Vec<u8> {
+            let mut mip = mip.into_rgba8();
+
+            swizzle(&mut mip);
+
+            if should_compress {
+                compress(mip)
+            } else {
+                mip.into_raw()
+            }
+        };
+
         let mips: Vec<Vec<u8>> = if self.params.use_mips {
             desc = desc.all_mip_levels();
 
@@ -152,19 +247,19 @@ impl CreateGpuImage {
             let mut mips;
             image = {
                 let next = downsample(&image);
-                mips = vec![image.into_rgba8().into_raw()];
+                mips = vec![process_mip(image)];
                 next
             };
 
             for _ in 1..desc.mip_levels {
                 let next = downsample(&image);
                 let mip = std::mem::replace(&mut image, next);
-                mips.push(mip.into_rgba8().into_raw());
+                mips.push(process_mip(mip));
             }
 
             mips
         } else {
-            vec![image.into_rgba8().into_raw()]
+            vec![process_mip(image)]
         };
 
         Ok(super::mesh::GpuImage::Proto {

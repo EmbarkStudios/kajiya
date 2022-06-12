@@ -32,9 +32,28 @@ pub enum TexGamma {
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
+pub enum TexCompressionMode {
+    None,
+    Rgba,
+    Rg,
+}
+
+impl TexCompressionMode {
+    pub fn supports_alpha(&self) -> bool {
+        match self {
+            TexCompressionMode::None => true,
+            TexCompressionMode::Rgba => true,
+            TexCompressionMode::Rg => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 pub struct TexParams {
     pub gamma: TexGamma,
     pub use_mips: bool,
+    pub compression: TexCompressionMode,
+    pub channel_swizzle: Option<[usize; 4]>,
 }
 
 #[derive(Clone, Hash, PartialEq, Eq)]
@@ -139,6 +158,8 @@ fn load_gltf_material(
                         params: TexParams {
                             gamma: TexGamma::Srgb,
                             use_mips: true,
+                            compression: TexCompressionMode::Rgba,
+                            channel_swizzle: None,
                         },
                     },
                     transform,
@@ -157,6 +178,8 @@ fn load_gltf_material(
                     params: TexParams {
                         gamma: TexGamma::Linear,
                         use_mips: true,
+                        compression: TexCompressionMode::Rg,
+                        channel_swizzle: None,
                     },
                 }
             });
@@ -169,7 +192,7 @@ fn load_gltf_material(
                 let roughness = 255;
                 let metalness = 255;
                 (
-                    MeshMaterialMap::Placeholder([127, roughness, metalness, 255]),
+                    MeshMaterialMap::Placeholder([roughness, metalness, 127, 255]),
                     DEFAULT_MAP_TRANSFORM,
                 )
             },
@@ -180,6 +203,8 @@ fn load_gltf_material(
                         params: TexParams {
                             gamma: TexGamma::Linear,
                             use_mips: true,
+                            compression: TexCompressionMode::Rg,
+                            channel_swizzle: Some([1, 2, 0, 3]),
                         },
                     },
                     texture_transform_to_matrix(tex.texture_transform()),
@@ -195,8 +220,10 @@ fn load_gltf_material(
         emissive_map = MeshMaterialMap::Image {
             source: document_images[tex.texture().source().index()].clone(),
             params: TexParams {
-                gamma: TexGamma::Linear,
+                gamma: TexGamma::Srgb,
                 use_mips: true,
+                compression: TexCompressionMode::Rgba,
+                channel_swizzle: None,
             },
         }
     }
@@ -805,6 +832,8 @@ pub fn pack_triangle_mesh(mesh: &TriangleMesh) -> PackedTriangleMesh {
                     TexParams {
                         gamma: crate::mesh::TexGamma::Linear,
                         use_mips: false,
+                        compression: TexCompressionMode::None,
+                        channel_swizzle: None,
                     },
                 ),
             };

@@ -31,6 +31,8 @@ impl WorldRenderer {
                     params: TexParams {
                         gamma: TexGamma::Linear,
                         use_mips: false,
+                        compression: kajiya_asset::mesh::TexCompressionMode::None,
+                        channel_swizzle: None,
                     },
                     device: backend.device.clone(),
                 }

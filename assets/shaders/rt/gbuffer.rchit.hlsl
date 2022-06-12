@@ -106,9 +106,9 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     const BindlessTextureWithLod spec_tex =
         compute_texture_lod(material.spec_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
     float4 metalness_roughness = spec_tex.tex.SampleLevel(sampler_llr, spec_uv, spec_tex.lod);
-    float perceptual_roughness = material.roughness_mult * metalness_roughness.y;
+    float perceptual_roughness = material.roughness_mult * metalness_roughness.x;
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
-    float metalness = metalness_roughness.z * material.metalness_factor;
+    float metalness = metalness_roughness.y * material.metalness_factor;
 
     if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_METAL)) {
         metalness = 0;
@@ -150,7 +150,9 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
         float2 normal_uv = transform_material_uv(material, uv, 0);
         const BindlessTextureWithLod normal_tex =
             compute_texture_lod(material.normal_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
-        float3 ts_normal = normal_tex.tex.SampleLevel(sampler_llr, normal_uv, normal_tex.lod).xyz * 2.0 - 1.0;
+
+        float3 ts_normal = normal_tex.tex.SampleLevel(sampler_llr, normal_uv, normal_tex.lod).xyz * TODO;
+
         if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FLIP_NORMAL_MAP_YZ)) {
             ts_normal.zy *= -1;
         }

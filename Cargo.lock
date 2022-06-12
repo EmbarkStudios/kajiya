@@ -1376,12 +1376,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "intel_tex_2"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "746c8a6b69c1b625776ac9248e69fbb9563f4d759b1c2d82df7c5c493eb0dc61"
+dependencies = [
+ "ispc_rt",
+]
+
+[[package]]
 name = "iovec"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b2b3ea6ff95e175473f8ffe6a7eb7c00d054240321b84c57051175fe3c1e075e"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "ispc_rt"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b71a57f85a90a65ec7ef6bdb5fe694be8d760deabfe74518398152d279a9aaba"
+dependencies = [
+ "libc",
+ "num_cpus",
 ]
 
 [[package]]
@@ -1456,6 +1475,7 @@ dependencies = [
  "glam",
  "gltf",
  "image 0.23.14",
+ "intel_tex_2",
  "kajiya-backend",
  "log",
  "mikktspace",
@@ -1564,9 +1584,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.105"
+version = "0.2.126"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "869d572136620d55835903746bcb5cdc54cb2851fd0aeec53220b4bb65ef3013"
+checksum = "349d5a591cd28b49e1d1037471617a32ddcda5731b99419008085f72d5a53836"
 
 [[package]]
 name = "libloading"
@@ -2017,9 +2037,9 @@ dependencies = [
 
 [[package]]
 name = "num_cpus"
-version = "1.13.0"
+version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05499f3756671c15885fee9034446956fff3f243d6077b91e5767df161f766b3"
+checksum = "19e64526ebdee182341572e50e9ad03965aa510cd94427a4549448f285e957a1"
 dependencies = [
  "hermit-abi",
  "libc",
