@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 kajiya = { path = "../../lib/kajiya" }
 kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui"] }
+kajiya-asset-pipe = { path = "../../lib/kajiya-asset-pipe"}
 
 anyhow = "1.0"
 dolly = "0.3"

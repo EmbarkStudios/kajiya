@@ -22,7 +22,7 @@ lazy_static! {
                 PathBuf::from("assets/rust-shaders-compiled")
             ),
             ("/images".to_owned(), PathBuf::from("assets/images")),
-            ("/baked".to_owned(), PathBuf::from("baked"))
+            ("/cache".to_owned(), PathBuf::from("cache"))
         ]
         .into_iter()
         .collect()

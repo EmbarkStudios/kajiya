@@ -48,7 +48,7 @@ struct RtrTraceResult {
 
 RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout uint rng, RayDesc outgoing_ray) {
 #if USE_AGGRESSIVE_SECONDARY_ROUGHNESS_BIAS
-    const float roughness_bias = lerp(roughness, 1.0, 0.15);
+    const float roughness_bias = roughness;
 #else
     const float roughness_bias = 0.5 * roughness;
 #endif

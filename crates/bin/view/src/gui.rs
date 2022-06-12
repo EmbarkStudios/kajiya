@@ -129,6 +129,67 @@ impl RuntimeState {
                     }
                 }
 
+                if imgui::CollapsingHeader::new(im_str!("Scene"))
+                    .default_open(true)
+                    .build(ui)
+                {
+                    let mut element_to_remove = None;
+
+                    for (idx, elem) in self.scene_elements.iter_mut().enumerate() {
+                        if idx > 0 {
+                            ui.dummy([0.0, 10.0]);
+                        }
+
+                        let id_token = ui.push_id(idx as i32);
+                        ui.text(&elem.name);
+
+                        {
+                            ui.set_next_item_width(200.0);
+
+                            let mut scale = elem.transform.scale.x;
+                            imgui::Drag::<f32>::new(im_str!("scale"))
+                                .range(0.001..=1000.0)
+                                .speed(1.0)
+                                .flags(imgui::SliderFlags::LOGARITHMIC)
+                                .build(ui, &mut scale);
+                            if scale != elem.transform.scale.x {
+                                elem.transform.scale = Vec3::splat(scale);
+                            }
+                        }
+
+                        ui.same_line(0.0);
+                        if ui.button(im_str!("Delete"), [0.0, 0.0]) {
+                            element_to_remove = Some(idx);
+                        }
+
+                        ui.set_next_item_width(100.0);
+                        imgui::Drag::<f32>::new(im_str!("x"))
+                            .speed(0.01)
+                            .build(ui, &mut elem.transform.position.x);
+
+                        ui.same_line(0.0);
+
+                        ui.set_next_item_width(100.0);
+                        imgui::Drag::<f32>::new(im_str!("y"))
+                            .speed(0.01)
+                            .build(ui, &mut elem.transform.position.y);
+
+                        ui.same_line(0.0);
+
+                        ui.set_next_item_width(100.0);
+                        imgui::Drag::<f32>::new(im_str!("z"))
+                            .speed(0.01)
+                            .build(ui, &mut elem.transform.position.z);
+
+                        id_token.pop(ui);
+                    }
+
+                    if let Some(idx) = element_to_remove {
+                        let elem = self.scene_elements.remove(idx);
+                        ctx.world_renderer.remove_instance(elem.instance);
+                    }
+                }
+
                 if imgui::CollapsingHeader::new(im_str!("Overrides"))
                     .default_open(false)
                     .build(ui)

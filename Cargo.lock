@@ -260,17 +260,10 @@ name = "bake"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "async-channel",
- "async-executor",
- "easy-parallel",
  "env_logger",
- "futures",
- "glam",
  "kajiya-asset",
- "num_cpus",
- "smol",
+ "kajiya-asset-pipe",
  "structopt",
- "turbosloth",
 ]
 
 [[package]]
@@ -1481,6 +1474,24 @@ dependencies = [
  "mikktspace",
  "turbosloth",
  "urlencoding",
+]
+
+[[package]]
+name = "kajiya-asset-pipe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-channel",
+ "async-executor",
+ "easy-parallel",
+ "env_logger",
+ "futures",
+ "glam",
+ "kajiya-asset",
+ "log",
+ "num_cpus",
+ "smol",
+ "turbosloth",
 ]
 
 [[package]]
@@ -2886,6 +2897,7 @@ dependencies = [
  "dolly",
  "imgui",
  "kajiya",
+ "kajiya-asset-pipe",
  "kajiya-simple",
  "log",
  "ron",

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use structopt::StructOpt;
 
 #[derive(Debug, StructOpt)]
@@ -13,7 +15,13 @@ pub struct Opt {
     pub temporal_upsampling: f32,
 
     #[structopt(long)]
-    pub scene: String,
+    pub scene: Option<String>,
+
+    #[structopt(long)]
+    pub mesh: Option<PathBuf>,
+
+    #[structopt(long, default_value = "1.0")]
+    pub mesh_scale: f32,
 
     #[structopt(long)]
     pub no_vsync: bool,

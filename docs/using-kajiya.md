@@ -15,7 +15,7 @@ The renderer has a basic virtual file system used for loading assets (models, te
 set_standard_vfs_mount_points("../kajiya");
 
 // Game-specific assets in the current directory
-set_vfs_mount_point("/baked", "./baked");
+set_vfs_mount_point("/cache", "./cache");
 ```
 
 ## Cargo patches

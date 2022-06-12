@@ -78,8 +78,8 @@ impl Default for InstanceDynamicParameters {
 
 #[derive(Clone, Copy)]
 pub struct MeshInstance {
-    pub transformation: Affine3A,
-    pub prev_transformation: Affine3A,
+    pub transform: Affine3A,
+    pub prev_transform: Affine3A,
     pub mesh: MeshHandle,
     pub dynamic_parameters: InstanceDynamicParameters,
 }
@@ -283,7 +283,7 @@ fn load_gpu_image_asset(
     asset: AssetRef<GpuImage::Flat>,
 ) -> Arc<Image> {
     let asset = crate::mmap::mmapped_asset::<GpuImage::Flat, _>(&format!(
-        "/baked/{:8.8x}.image",
+        "/cache/{:8.8x}.image",
         asset.identity()
     ))
     .unwrap();
@@ -765,8 +765,8 @@ impl WorldRenderer {
         let index = self.instances.len();
 
         self.instances.push(MeshInstance {
-            transformation: transform,
-            prev_transformation: transform,
+            transform,
+            prev_transform: transform,
             mesh,
             dynamic_parameters: InstanceDynamicParameters::default(),
         });
@@ -796,7 +796,7 @@ impl WorldRenderer {
 
     pub fn set_instance_transform(&mut self, inst: InstanceHandle, transform: Affine3A) {
         let index = self.instance_handle_to_index[&inst];
-        self.instances[index].transformation = transform;
+        self.instances[index].transform = transform;
     }
 
     pub fn get_instance_dynamic_parameters(
@@ -826,7 +826,7 @@ impl WorldRenderer {
                         .iter()
                         .map(|inst| RayTracingInstanceDesc {
                             blas: self.mesh_blas[inst.mesh.0].clone(),
-                            transformation: inst.transformation,
+                            transformation: inst.transform,
                             mesh_index: inst.mesh.0 as u32,
                         })
                         .collect::<Vec<_>>(),
@@ -858,7 +858,7 @@ impl WorldRenderer {
             .iter()
             .map(|inst| RayTracingInstanceDesc {
                 blas: self.mesh_blas[inst.mesh.0].clone(),
-                transformation: inst.transformation,
+                transformation: inst.transform,
                 mesh_index: inst.mesh.0 as u32,
             })
             .collect::<Vec<_>>();
@@ -894,7 +894,7 @@ impl WorldRenderer {
 
     fn store_prev_mesh_transforms(&mut self) {
         for inst in &mut self.instances {
-            inst.prev_transformation = inst.transformation;
+            inst.prev_transform = inst.transform;
         }
     }
 
@@ -1020,7 +1020,7 @@ impl WorldRenderer {
             .iter()
             .flat_map(|inst| {
                 let (_scale, rotation, translation) =
-                    inst.transformation.to_scale_rotation_translation();
+                    inst.transform.to_scale_rotation_translation();
                 let inst_position = translation;
                 let inst_rotation = rotation;
 

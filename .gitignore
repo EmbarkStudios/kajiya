@@ -1,6 +1,6 @@
 /target
 /.vscode
-/baked
+/cache
 /assets/scenes/private-*
 *.blend1
 *.log

@@ -20,7 +20,7 @@ fn main() -> anyhow::Result<()> {
 
     let car_mesh = kajiya
         .world_renderer
-        .add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::new())?;
+        .add_baked_mesh("/cache/336_lrm.mesh", AddMeshOptions::new())?;
 
     let car_inst = kajiya.world_renderer.add_instance(
         car_mesh,

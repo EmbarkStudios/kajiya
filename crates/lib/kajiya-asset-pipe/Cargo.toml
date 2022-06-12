@@ -1,0 +1,21 @@
+[package]
+name = "kajiya-asset-pipe"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+kajiya-asset = { path = "../kajiya-asset" }
+
+anyhow = "1.0"
+async-channel = "1.6"
+async-executor = "1.4"
+easy-parallel = "3.1"
+env_logger = "0.8.4"
+futures = "0.3"
+glam = "0.18"
+log = "0.4"
+num_cpus = "1.13"
+smol = "1.2.5"
+turbosloth = { git = "https://github.com/h3r2tic/turbosloth.git", rev = "92030af" }

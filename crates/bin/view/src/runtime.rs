@@ -15,9 +15,41 @@ use crate::{
     PersistedState,
 };
 
-use std::{collections::HashMap, fs::File, path::PathBuf};
+use std::{
+    collections::{hash_map::DefaultHasher, HashMap},
+    fs::File,
+    hash::{Hash, Hasher},
+    path::PathBuf,
+};
 
 pub const MAX_FPS_LIMIT: u32 = 256;
+
+pub struct SceneElementTransform {
+    pub position: Vec3,
+    pub rotation_euler_degrees: Vec3,
+    pub scale: Vec3,
+}
+
+pub struct SceneElement {
+    pub name: String,
+    pub instance: InstanceHandle,
+    pub transform: SceneElementTransform,
+}
+
+impl SceneElementTransform {
+    pub fn affine_transform(&self) -> Affine3A {
+        Affine3A::from_scale_rotation_translation(
+            self.scale,
+            Quat::from_euler(
+                EulerRot::YXZ,
+                self.rotation_euler_degrees.y,
+                self.rotation_euler_degrees.x,
+                self.rotation_euler_degrees.z,
+            ),
+            self.position,
+        )
+    }
+}
 
 pub struct RuntimeState {
     pub camera: CameraRig,
@@ -25,7 +57,7 @@ pub struct RuntimeState {
     pub keyboard: KeyboardState,
     pub keymap: KeyboardMap,
 
-    pub render_instances: Vec<InstanceHandle>,
+    pub scene_elements: Vec<SceneElement>,
 
     pub show_gui: bool,
     pub sun_direction_interp: Vec3,
@@ -90,7 +122,7 @@ impl RuntimeState {
             keyboard,
             keymap,
 
-            render_instances: vec![],
+            scene_elements: vec![],
 
             show_gui: false,
             sun_direction_interp,
@@ -122,7 +154,7 @@ impl RuntimeState {
         let mut known_meshes: HashMap<PathBuf, MeshHandle> = HashMap::new();
 
         for instance in scene_desc.instances {
-            let path = PathBuf::from(format!("/baked/{}.mesh", instance.mesh));
+            let path = PathBuf::from(format!("/cache/{}.mesh", instance.mesh));
 
             let mesh = *known_meshes.entry(path.clone()).or_insert_with(|| {
                 world_renderer
@@ -130,33 +162,20 @@ impl RuntimeState {
                     .unwrap()
             });
 
-            self.render_instances.push(world_renderer.add_instance(
-                mesh,
-                Affine3A::from_scale_rotation_translation(
-                    instance.scale.into(),
-                    Quat::from_euler(
-                        EulerRot::YXZ,
-                        instance.rotation[1].to_radians(),
-                        instance.rotation[0].to_radians(),
-                        instance.rotation[2].to_radians(),
-                    ),
-                    instance.position.into(),
-                ),
-            ));
-        }
+            let transform = SceneElementTransform {
+                position: instance.position.into(),
+                rotation_euler_degrees: instance.rotation.into(),
+                scale: instance.scale.into(),
+            };
 
-        /*let mut test_obj_pos = Vec3::Y * -0.01;
-        let mut test_obj_rot = 0.0f32;
-        let test_obj_inst = if USE_TEST_DYNAMIC_OBJECT {
-            let test_obj_mesh =
-                world_renderer.add_baked_mesh("/baked/336_lrm.mesh", AddMeshOptions::default())?;
-            Some(world_renderer.add_instance(
-                test_obj_mesh,
-                Affine3A::from_rotation_translation(Quat::IDENTITY, test_obj_pos),
-            ))
-        } else {
-            None
-        };*/
+            let render_instance = world_renderer.add_instance(mesh, transform.affine_transform());
+
+            self.scene_elements.push(SceneElement {
+                name: instance.mesh.clone(),
+                instance: render_instance,
+                transform,
+            });
+        }
 
         Ok(())
     }
@@ -368,29 +387,13 @@ impl RuntimeState {
             0.0
         };
 
-        for inst in &self.render_instances {
+        for elem in self.scene_elements.iter() {
             ctx.world_renderer
-                .get_instance_dynamic_parameters_mut(*inst)
+                .get_instance_dynamic_parameters_mut(elem.instance)
                 .emissive_multiplier = persisted.light.emissive_multiplier * emissive_toggle_mult;
+            ctx.world_renderer
+                .set_instance_transform(elem.instance, elem.transform.affine_transform());
         }
-
-        /*if self.keyboard.is_down(VirtualKeyCode::Z) {
-            test_obj_pos.x += mouse.delta.x / 100.0;
-        }
-
-        if SPIN_TEST_DYNAMIC_OBJECT {
-            test_obj_rot += 0.5 * ctx.dt_filtered;
-        }
-
-        if let Some(test_obj_inst) = test_obj_inst {
-            ctx.world_renderer.set_instance_transform(
-                test_obj_inst,
-                Affine3A::from_rotation_translation(
-                    Quat::from_rotation_y(test_obj_rot),
-                    test_obj_pos,
-                ),
-            );
-        }*/
     }
 
     pub fn frame(
@@ -407,6 +410,7 @@ impl RuntimeState {
 
         self.keyboard.update(ctx.events);
         self.mouse.update(ctx.events);
+        self.handle_file_drop_events(&mut ctx.world_renderer, ctx.events);
 
         let orig_persisted_state = persisted.clone();
         let orig_render_overrides = ctx.world_renderer.render_overrides;
@@ -566,6 +570,72 @@ impl RuntimeState {
         persisted.sequence.delete_key(idx);
 
         self.active_camera_key = None;
+    }
+
+    pub(crate) fn load_standalone_mesh(
+        &mut self,
+        world_renderer: &mut WorldRenderer,
+        path: PathBuf,
+        mesh_scale: f32,
+    ) -> anyhow::Result<()> {
+        fn calculate_hash(t: &PathBuf) -> u64 {
+            let mut s = DefaultHasher::new();
+            t.hash(&mut s);
+            s.finish()
+        }
+
+        let path_hash = match path.canonicalize() {
+            Ok(canonical) => calculate_hash(&canonical),
+            Err(_) => calculate_hash(&path),
+        };
+
+        let cached_mesh_name = format!("{:8.8x}", path_hash);
+        let cached_mesh_path = PathBuf::from(format!("/cache/{}.mesh", cached_mesh_name));
+
+        if !canonical_path_from_vfs(&cached_mesh_path).map_or(false, |path| path.exists()) {
+            kajiya_asset_pipe::process_mesh_asset(kajiya_asset_pipe::MeshAssetProcessParams {
+                path: path.clone(),
+                output_name: cached_mesh_name.to_string(),
+                scale: 1.0,
+            })?;
+        }
+
+        let mesh = world_renderer
+            .add_baked_mesh(cached_mesh_path, AddMeshOptions::new())
+            .unwrap();
+
+        let transform = SceneElementTransform {
+            position: Vec3::ZERO,
+            rotation_euler_degrees: Vec3::ZERO,
+            scale: Vec3::splat(mesh_scale),
+        };
+        self.scene_elements.push(SceneElement {
+            name: path.to_string_lossy().into_owned(),
+            instance: world_renderer.add_instance(mesh, transform.affine_transform()),
+            transform,
+        });
+
+        Ok(())
+    }
+
+    fn handle_file_drop_events(
+        &mut self,
+        world_renderer: &mut WorldRenderer,
+        events: &[winit::event::Event<()>],
+    ) {
+        for event in events {
+            match event {
+                winit::event::Event::WindowEvent {
+                    window_id: _,
+                    event: WindowEvent::DroppedFile(path),
+                } => {
+                    if let Err(err) = self.load_standalone_mesh(world_renderer, path.clone(), 1.0) {
+                        log::error!("{:#}", err);
+                    }
+                }
+                _ => {}
+            }
+        }
     }
 }
 

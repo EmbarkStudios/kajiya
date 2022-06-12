@@ -6,7 +6,7 @@ mod runtime;
 mod scene;
 mod sequence;
 
-use std::fs::File;
+use std::{fs::File, path::PathBuf};
 
 use kajiya_simple::*;
 use opt::*;
@@ -52,6 +52,11 @@ impl AppState {
             .load_scene(&mut self.kajiya.world_renderer, scene_name)
     }
 
+    fn load_standalone_mesh(&mut self, path: PathBuf, mesh_scale: f32) -> anyhow::Result<()> {
+        self.runtime
+            .load_standalone_mesh(&mut self.kajiya.world_renderer, path, mesh_scale)
+    }
+
     fn run(self) -> anyhow::Result<PersistedState> {
         let Self {
             mut persisted,
@@ -77,7 +82,12 @@ fn main() -> anyhow::Result<()> {
 
     let mut state = AppState::new(persisted, &opt)?;
 
-    state.load_scene(&opt.scene)?;
+    if let Some(scene) = opt.scene.as_ref() {
+        state.load_scene(scene)?;
+    } else if let Some(mesh) = opt.mesh.as_ref() {
+        state.load_standalone_mesh(mesh.clone(), opt.mesh_scale)?;
+    }
+
     let state = state.run()?;
 
     ron::ser::to_writer_pretty(
