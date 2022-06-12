@@ -158,6 +158,13 @@ impl WorldRenderer {
             .iter()
             .any(|inst| !self.mesh_lights[inst.mesh.0].lights.is_empty());
 
+        let reprojected_taa = self.taa.reproject(
+            rg,
+            self.temporal_upscale_extent,
+            &reprojection_map,
+            &gbuffer_depth.depth,
+        );
+
         let mut rtr = if let Some(((tlas, rtdgi_irradiance), rtdgi_candidates)) = tlas
             .as_ref()
             .zip(rtdgi_irradiance.as_ref())
@@ -172,6 +179,7 @@ impl WorldRenderer {
                 tlas,
                 rtdgi_irradiance,
                 rtdgi_candidates,
+                &reprojected_taa.reprojected_history_img,
                 &mut ircache_state,
                 &wrc,
             )
@@ -244,6 +252,7 @@ impl WorldRenderer {
                 .render(
                     rg,
                     //&dof,
+                    reprojected_taa,
                     &debug_out_tex,
                     &reprojection_map,
                     &gbuffer_depth.depth,

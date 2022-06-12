@@ -5,9 +5,8 @@
 #include "frame_constants.hlsl"
 
 float3 atmosphere_default(float3 wi, float3 light_dir) {
-    //return max(0.0, normalize(wi) * 0.5 + 0.5);
-    //return 0.5 * frame_constants.pre_exposure;
-    //return 0;
+    //return max(0.0, normalize(wi) * 0.5 + 0.5) * frame_constants.pre_exposure;
+    //return 0.1 * frame_constants.pre_exposure;
 
     float3 _WorldSpaceCameraPos = float3(0, 0, 0);
     float3 rayStart  = _WorldSpaceCameraPos;

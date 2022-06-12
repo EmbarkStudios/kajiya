@@ -40,6 +40,12 @@ static const float SKY_DIST = 1e4;
     #define SAMPLING_BIAS 0.15
 #endif
 
+#define USE_TAA_REPROJECTION 0
+
+#if USE_TAA_REPROJECTION
+#include "../taa/taa_common.hlsl"
+#endif
+
 struct RtrTraceResult {
     float3 total_radiance;
     float hit_t;
@@ -72,10 +78,10 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
     }
 
     // See note in `assets/shaders/rtr/resolve.hlsl`
-    const float reflected_cone_spread_angle = sqrt(roughness) * 0.1;
+    const float reflected_cone_spread_angle = sqrt(roughness) * 0.05;
 
     const RayCone ray_cone =
-        pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
+        pixel_ray_cone_from_image_height(gbuffer_tex_size.y)
         .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
 
     if (!LAYERED_BRDF_FORCE_DIFFUSE_ONLY) {
@@ -106,6 +112,8 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
 
             float3 total_radiance = 0.0.xxx;
             float3 reflected_normal_vs;
+            RtrTraceResult result;
+
             {
                 // Sun
                 {
@@ -141,12 +149,27 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
                     total_radiance += gbuffer.emissive;
                 }
 
-                if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
-                    const float3 reprojected_radiance =
-                        rtdgi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0).rgb
-                        * frame_constants.pre_exposure_delta;
+                result.hit_t = primary_hit.ray_t;
+                result.hit_normal_vs = reflected_normal_vs;
 
-                    total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
+                if (USE_SCREEN_GI_REPROJECTION && is_on_screen) {
+                    #if USE_TAA_REPROJECTION
+                        const float4 reprojected_taa = reprojected_taa_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0);
+                        if (reprojected_taa.a > 0) {
+                            const float3 reprojected_radiance =
+                                encode_rgb(reprojected_taa.rgb)
+                                * frame_constants.pre_exposure_delta;
+
+                            result.total_radiance = reprojected_radiance.rgb;
+                            return result;
+                        }
+                    #else
+                        const float3 reprojected_radiance =
+                            rtdgi_tex.SampleLevel(sampler_nnc, primary_hit_uv, 0).rgb
+                            * frame_constants.pre_exposure_delta;
+
+                        total_radiance += reprojected_radiance.rgb * gbuffer.albedo;
+                    #endif
                 } else {
                     if (USE_LIGHTS) {
                         float2 urand = float2(
@@ -205,18 +228,13 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
                     }
                }
             }
-
-            RtrTraceResult result;
-
+            
             #if COLOR_CODE_GROUND_SKY_BLACK_WHITE
                 result.total_radiance = 0.0.xxx;
             #else
                 result.total_radiance = total_radiance;
             #endif
 
-            result.hit_t = primary_hit.ray_t;
-            result.hit_normal_vs = reflected_normal_vs;
-            
             return result;
         }
     }

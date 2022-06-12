@@ -32,32 +32,28 @@ pub struct TaaOutput {
     pub this_frame_out: rg::Handle<Image>,
 }
 
+pub struct ReprojectedTaa {
+    pub reprojected_history_img: rg::ReadOnlyHandle<Image>,
+    closest_velocity_img: rg::Handle<Image>,
+    temporal_output_tex: rg::Handle<Image>,
+}
+
 impl TaaRenderer {
     fn temporal_tex_desc(extent: [u32; 2]) -> ImageDesc {
         ImageDesc::new_2d(vk::Format::R16G16B16A16_SFLOAT, extent)
             .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE)
     }
 
-    pub fn render(
+    pub fn reproject(
         &mut self,
         rg: &mut rg::TemporalRenderGraph,
-        input_tex: &rg::Handle<Image>,
+        output_extent: [u32; 2],
         reprojection_map: &rg::Handle<Image>,
         depth_tex: &rg::Handle<Image>,
-        output_extent: [u32; 2],
-    ) -> TaaOutput {
-        //let input_extent = input_tex.desc().extent_2d();
-
+    ) -> ReprojectedTaa {
         let (mut temporal_output_tex, history_tex) = self
             .temporal_tex
             .get_output_and_history(rg, Self::temporal_tex_desc(output_extent));
-
-        let (mut temporal_velocity_output_tex, velocity_history_tex) =
-            self.temporal_velocity_tex.get_output_and_history(
-                rg,
-                ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, output_extent)
-                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
-            );
 
         let mut reprojected_history_img = rg.create(Self::temporal_tex_desc(output_extent));
         let mut closest_velocity_img =
@@ -73,10 +69,42 @@ impl TaaRenderer {
         .write(&mut reprojected_history_img)
         .write(&mut closest_velocity_img)
         .constants((
-            input_tex.desc().extent_inv_extent_2d(),
+            reprojection_map.desc().extent_inv_extent_2d(),
             reprojected_history_img.desc().extent_inv_extent_2d(),
         ))
         .dispatch(reprojected_history_img.desc().extent);
+
+        ReprojectedTaa {
+            reprojected_history_img: reprojected_history_img.into(),
+            closest_velocity_img,
+            temporal_output_tex,
+        }
+    }
+
+    pub fn render(
+        &mut self,
+        rg: &mut rg::TemporalRenderGraph,
+        reprojected_taa: ReprojectedTaa,
+        input_tex: &rg::Handle<Image>,
+        reprojection_map: &rg::Handle<Image>,
+        depth_tex: &rg::Handle<Image>,
+        output_extent: [u32; 2],
+    ) -> TaaOutput {
+        /*let reprojected_taa =
+        self.reproject(rg, output_extent, reprojection_map, depth_tex, input_tex);*/
+
+        let ReprojectedTaa {
+            reprojected_history_img,
+            closest_velocity_img,
+            mut temporal_output_tex,
+        } = reprojected_taa;
+
+        let (mut temporal_velocity_output_tex, velocity_history_tex) =
+            self.temporal_velocity_tex.get_output_and_history(
+                rg,
+                ImageDesc::new_2d(vk::Format::R16G16_SFLOAT, output_extent)
+                    .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+            );
 
         let (mut smooth_var_output_tex, smooth_var_history_tex) =
             self.temporal_smooth_var_tex.get_output_and_history(

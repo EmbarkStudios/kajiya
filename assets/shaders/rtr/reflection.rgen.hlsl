@@ -20,13 +20,15 @@
 [[vk::binding(1)]] Texture2D<float> depth_tex;
 DEFINE_BLUE_NOISE_SAMPLER_BINDINGS(2, 3, 4)
 [[vk::binding(5)]] Texture2D<float4> rtdgi_tex;
-[[vk::binding(6)]] TextureCube<float4> sky_cube_tex;
-DEFINE_IRCACHE_BINDINGS(7, 8, 9, 10, 11, 12, 13, 14, 15)
-DEFINE_WRC_BINDINGS(16)
-[[vk::binding(17)]] RWTexture2D<float4> out0_tex;
-[[vk::binding(18)]] RWTexture2D<float4> out1_tex;
-[[vk::binding(19)]] RWTexture2D<float4> out2_tex;
-[[vk::binding(20)]] cbuffer _ {
+[[vk::binding(6)]] Texture2D<float4> reprojected_taa_tex;
+[[vk::binding(7)]] TextureCube<float4> sky_cube_tex;
+DEFINE_IRCACHE_BINDINGS(8, 9, 10, 11, 12, 13, 14, 15, 16)
+DEFINE_WRC_BINDINGS(17)
+[[vk::binding(18)]] RWTexture2D<float4> out0_tex;
+[[vk::binding(19)]] RWTexture2D<float4> out1_tex;
+[[vk::binding(20)]] RWTexture2D<float4> out2_tex;
+[[vk::binding(21)]] RWTexture2D<uint> rng_out_tex;
+[[vk::binding(22)]] cbuffer _ {
     float4 gbuffer_tex_size;
     uint reuse_rtdgi_rays;
 };
