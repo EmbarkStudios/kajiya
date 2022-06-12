@@ -128,8 +128,6 @@ pub struct CreateGpuImage {
 
 impl CreateGpuImage {
     fn process_rgba8(&self, src: &RawRgba8Image) -> anyhow::Result<super::mesh::GpuImage::Proto> {
-        let should_compress = self.params.compression != TexCompressionMode::None;
-
         let mut format = match self.params.gamma {
             crate::mesh::TexGamma::Linear => vk::Format::R8G8B8A8_UNORM,
             crate::mesh::TexGamma::Srgb => vk::Format::R8G8B8A8_SRGB,
@@ -143,6 +141,10 @@ impl CreateGpuImage {
             )
             .unwrap(),
         );
+
+        let should_compress = self.params.compression != TexCompressionMode::None
+            && image.width() >= 4
+            && image.height() >= 4;
 
         const MAX_SIZE: u32 = 2048;
 
@@ -232,14 +234,16 @@ impl CreateGpuImage {
             }
         };
 
+        let min_img_dim = if should_compress { 4 } else { 1 };
+
         let mips: Vec<Vec<u8>> = if self.params.use_mips {
             desc = desc.all_mip_levels();
 
             let downsample = |image: &DynamicImage| {
                 // TODO: gamma-correct resize
                 image.resize_exact(
-                    (image.dimensions().0 / 2).max(1),
-                    (image.dimensions().1 / 2).max(1),
+                    (image.dimensions().0 / 2).max(min_img_dim),
+                    (image.dimensions().1 / 2).max(min_img_dim),
                     FilterType::Lanczos3,
                 )
             };
