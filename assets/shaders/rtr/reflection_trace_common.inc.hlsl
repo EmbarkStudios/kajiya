@@ -117,12 +117,21 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
             {
                 // Sun
                 {
-                    const float3 to_light_norm = sample_sun_direction(
-                        blue_noise_for_pixel(
+                    #if 1
+                        const float2 urand = float2(
+                            uint_to_u01_float(hash1_mut(rng)),
+                            uint_to_u01_float(hash1_mut(rng))
+                        );
+                    #else
+                        const float2 urand = blue_noise_for_pixel(
                             px,
                             USE_SOFT_SHADOWS_TEMPORAL_JITTER
                             ? frame_constants.frame_index
-                            : 0).xy,
+                            : 0).xy;
+                    #endif
+
+                    const float3 to_light_norm = sample_sun_direction(
+                        urand,
                         USE_SOFT_SHADOWS
                     );
 

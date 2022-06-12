@@ -23,6 +23,7 @@ pub struct RtrRenderer {
     temporal_ray_orig_tex: PingPongTemporalResource,
     temporal_ray_tex: PingPongTemporalResource,
     temporal_reservoir_tex: PingPongTemporalResource,
+    temporal_rng_tex: PingPongTemporalResource,
     temporal_hit_normal_tex: PingPongTemporalResource,
 
     ranking_tile_buf: Arc<Buffer>,
@@ -59,6 +60,7 @@ impl RtrRenderer {
             temporal_ray_orig_tex: PingPongTemporalResource::new("rtr.ray_orig"),
             temporal_ray_tex: PingPongTemporalResource::new("rtr.ray"),
             temporal_reservoir_tex: PingPongTemporalResource::new("rtr.reservoir"),
+            temporal_rng_tex: PingPongTemporalResource::new("rtr.rng"),
             temporal_hit_normal_tex: PingPongTemporalResource::new("rtr.hit_normal"),
 
             ranking_tile_buf: make_lut_buffer(device, RANKING_TILE)?,
@@ -120,6 +122,12 @@ impl RtrRenderer {
             vk_sync::AccessType::ComputeShaderReadSampledImageOrUniformTexelBuffer,
         );
 
+        let (mut rng_output_tex, rng_history_tex) = self.temporal_rng_tex.get_output_and_history(
+            rg,
+            ImageDesc::new_2d(vk::Format::R32_UINT, gbuffer_desc.half_res().extent_2d())
+                .usage(vk::ImageUsageFlags::SAMPLED | vk::ImageUsageFlags::STORAGE),
+        );
+
         let reuse_rtdgi_rays_u32 = if self.reuse_rtdgi_rays { 1u32 } else { 0u32 };
 
         SimpleRenderPass::new_rt(
@@ -144,6 +152,7 @@ impl RtrRenderer {
         .write(&mut refl0_tex)
         .write(&mut refl1_tex)
         .write(&mut refl2_tex)
+        .write(&mut rng_output_tex)
         .constants((gbuffer_desc.extent_inv_extent_2d(), reuse_rtdgi_rays_u32))
         .raw_descriptor_set(1, bindless_descriptor_set)
         .trace_rays(tlas, refl0_tex.desc().extent);
@@ -216,6 +225,7 @@ impl RtrRenderer {
             .bind(wrc)
             .read(&ray_orig_history_tex)
             .read(&ray_history_tex)
+            .read(&rng_history_tex)
             .write(&mut irradiance_history_tex)
             .write(&mut reservoir_history_tex)
             .constants((gbuffer_desc.extent_inv_extent_2d(),))
@@ -236,6 +246,7 @@ impl RtrRenderer {
             .read(&irradiance_history_tex)
             .read(&ray_orig_history_tex)
             .read(&ray_history_tex)
+            .read(&rng_history_tex)
             .read(&reservoir_history_tex)
             .read(reprojection_map)
             .read(&hit_normal_history_tex)
@@ -243,6 +254,7 @@ impl RtrRenderer {
             .write(&mut irradiance_output_tex)
             .write(&mut ray_orig_output_tex)
             .write(&mut ray_output_tex)
+            .write(&mut rng_output_tex)
             .write(&mut hit_normal_output_tex)
             .write(&mut reservoir_output_tex)
             //.write(&mut candidate_output_tex)

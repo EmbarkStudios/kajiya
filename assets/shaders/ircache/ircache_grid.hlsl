@@ -31,7 +31,14 @@ struct IrcacheCoord {
     }
 };
 
-IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal) {
+uint ws_local_pos_to_cascade_idx(float3 local_pos, uint reserved_cells) {
+    const float3 fcoord = local_pos / IRCACHE_GRID_CELL_DIAMETER;
+    const float max_coord = max(abs(fcoord.x), max(abs(fcoord.y), abs(fcoord.z)));
+    const float cascade_float = log2(max_coord / (IRCACHE_CASCADE_SIZE / 2 - reserved_cells));
+    return uint(clamp(ceil(max(0.0, cascade_float)), 0, IRCACHE_CASCADE_COUNT - 1));
+}
+
+IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal, float3 urand) {
     const float3 center = frame_constants.ircache_grid_center.xyz;
 
     const uint reserved_cells =
@@ -41,22 +48,28 @@ IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal) {
         // Business as usual
         : 0;
 
-    uint cascade; {
-        const float3 fcoord = (pos - center) / IRCACHE_GRID_CELL_DIAMETER;
-        const float max_coord = max(abs(fcoord.x), max(abs(fcoord.y), abs(fcoord.z)));
-        const float cascade_float = log2(max_coord / (IRCACHE_CASCADE_SIZE / 2 - reserved_cells));
-        cascade = uint(clamp(ceil(max(0.0, cascade_float)), 0, IRCACHE_CASCADE_COUNT - 1));
-    }
+    float3 cell_offset = 0;
 
+#ifdef IRCACHE_STOCHASTIC_INTERPOLATION
+    {
+        const uint cascade = ws_local_pos_to_cascade_idx(pos - center, reserved_cells);
+        const float cell_diameter = (IRCACHE_GRID_CELL_DIAMETER * (1u << cascade));
+
+        pos += cell_diameter * (urand - 0.5);
+    }
+#endif
+
+    const uint cascade = ws_local_pos_to_cascade_idx(pos - center, reserved_cells);
     const float cell_diameter = (IRCACHE_GRID_CELL_DIAMETER * (1u << cascade));
+    
     const int3 cascade_origin = frame_constants.ircache_cascades[cascade].origin.xyz;
 
-    const float3 normal_based_cell_offset =
+    cell_offset +=
         IRCACHE_USE_NORMAL_BASED_CELL_OFFSET
         ? normal * cell_diameter * 0.5
         : 0.0.xxx;
 
-    const int3 coord = floor((pos + normal_based_cell_offset) / cell_diameter) - cascade_origin;
+    const int3 coord = floor((pos + cell_offset) / cell_diameter) - cascade_origin;
 
     IrcacheCoord res;
     res.cascade = cascade;

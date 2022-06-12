@@ -15,11 +15,11 @@ struct IrcacheLookup {
     uint count;
 };
 
-IrcacheLookup ircache_lookup(float3 pt_ws, float3 normal_ws) {
+IrcacheLookup ircache_lookup(float3 pt_ws, float3 normal_ws, float3 urand) {
     IrcacheLookup result;
     result.count = 0;
 
-    const IrcacheCoord rcoord = ws_pos_to_ircache_coord(pt_ws, normal_ws);
+    const IrcacheCoord rcoord = ws_pos_to_ircache_coord(pt_ws, normal_ws, urand);
     const uint cell_idx = rcoord.cell_idx();
 
     const uint2 cell_meta = ircache_grid_meta_buf.Load2(sizeof(uint2) * cell_idx);
@@ -44,11 +44,17 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
     bool allocated_by_us = false;
     bool just_allocated = false;
 
+    const float3 urand = float3(
+        uint_to_u01_float(hash1_mut(rng)),
+        uint_to_u01_float(hash1_mut(rng)),
+        uint_to_u01_float(hash1_mut(rng))
+    );
+
 #ifndef IRCACHE_LOOKUP_DONT_KEEP_ALIVE
     if (!IRCACHE_FREEZE) {
         const float3 eye_pos = get_eye_position();
 
-        const IrcacheCoord rcoord = ws_pos_to_ircache_coord(pt_ws, normal_ws);
+        const IrcacheCoord rcoord = ws_pos_to_ircache_coord(pt_ws, normal_ws, urand);
 
         const int3 scroll_offset = frame_constants.ircache_cascades[rcoord.cascade].voxels_scrolled_this_frame.xyz;
         const int3 was_just_scrolled_in =
@@ -101,9 +107,9 @@ IrcacheLookupMaybeAllocate ircache_lookup_maybe_allocate(float3 query_from_ws, f
     }
 #endif
 
-    IrcacheLookup lookup = ircache_lookup(pt_ws, normal_ws);
+    IrcacheLookup lookup = ircache_lookup(pt_ws, normal_ws, urand);
 
-    const uint cascade = ws_pos_to_ircache_coord(pt_ws, normal_ws).cascade;
+    const uint cascade = ws_pos_to_ircache_coord(pt_ws, normal_ws, urand).cascade;
     const float cell_diameter = ircache_grid_cell_diameter_in_cascade(cascade);
 
     float3 to_eye = normalize(get_eye_position() - pt_ws.xyz);

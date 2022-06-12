@@ -48,17 +48,17 @@
 [[vk::binding(6)]] Texture2D<float4> irradiance_history_tex;
 [[vk::binding(7)]] Texture2D<float4> ray_orig_history_tex;
 [[vk::binding(8)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(9)]] Texture2D<uint2> reservoir_history_tex;
-[[vk::binding(10)]] Texture2D<float4> reprojection_tex;
-[[vk::binding(11)]] Texture2D<float4> hit_normal_history_tex;
-//[[vk::binding(11)]] Texture2D<float4> candidate_history_tex;
-[[vk::binding(12)]] RWTexture2D<float4> irradiance_out_tex;
-[[vk::binding(13)]] RWTexture2D<float4> ray_orig_output_tex;
-[[vk::binding(14)]] RWTexture2D<float4> ray_output_tex;
-[[vk::binding(15)]] RWTexture2D<float4> hit_normal_output_tex;
-[[vk::binding(16)]] RWTexture2D<uint2> reservoir_out_tex;
-//[[vk::binding(17)]] RWTexture2D<float4> candidate_out_tex;
-[[vk::binding(17)]] cbuffer _ {
+[[vk::binding(9)]] Texture2D<uint> rng_history_tex;
+[[vk::binding(10)]] Texture2D<uint2> reservoir_history_tex;
+[[vk::binding(11)]] Texture2D<float4> reprojection_tex;
+[[vk::binding(12)]] Texture2D<float4> hit_normal_history_tex;
+[[vk::binding(13)]] RWTexture2D<float4> irradiance_out_tex;
+[[vk::binding(14)]] RWTexture2D<float4> ray_orig_output_tex;
+[[vk::binding(15)]] RWTexture2D<float4> ray_output_tex;
+[[vk::binding(16)]] RWTexture2D<uint> rng_output_tex;
+[[vk::binding(17)]] RWTexture2D<float4> hit_normal_output_tex;
+[[vk::binding(18)]] RWTexture2D<uint2> reservoir_out_tex;
+[[vk::binding(19)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
@@ -132,7 +132,6 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 outgoing_dir = float3(0, 0, 1);
 
     uint rng = hash3(uint3(px, frame_constants.frame_index));
-
     float3 wo = mul(-normalize(view_ray_context.ray_dir_ws()), tangent_to_world);
 
     // Hack for shading normals facing away from the outgoing ray's direction:
@@ -162,6 +161,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     float3 ray_orig_sel = 0;
     float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
+    uint rng_sel = rng_output_tex[px];
 
     Reservoir1sppStreamState stream_state = Reservoir1sppStreamState::create();
     Reservoir1spp reservoir = Reservoir1spp::create();
@@ -467,6 +467,8 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
+
+                rng_sel = rng_history_tex[spx];
             }
         }
 
@@ -499,6 +501,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel, pdf_sel);
+    rng_output_tex[px] = rng_sel;
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif
 }

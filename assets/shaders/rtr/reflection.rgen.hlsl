@@ -1,3 +1,5 @@
+#define IRCACHE_STOCHASTIC_INTERPOLATION
+
 #include "../inc/uv.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"
@@ -130,7 +132,8 @@ void main() {
         outgoing_ray.TMin = 0;
         outgoing_ray.TMax = SKY_DIST;
 
-        uint rng = hash2(px);
+        //uint rng = hash2(px);
+        rng_out_tex[px] = rng;
         RtrTraceResult result = do_the_thing(px, gbuffer.normal, gbuffer.roughness, rng, outgoing_ray);
 
         const float3 direction_vs = direction_world_to_view(outgoing_ray.Direction);
