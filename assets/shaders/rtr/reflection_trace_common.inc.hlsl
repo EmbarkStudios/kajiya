@@ -72,10 +72,10 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
     }
 
     // See note in `assets/shaders/rtr/resolve.hlsl`
-    const float reflected_cone_spread_angle = sqrt(roughness) * 0.1;
+    const float reflected_cone_spread_angle = sqrt(roughness) * 0.05;
 
     const RayCone ray_cone =
-        pixel_ray_cone_from_image_height(gbuffer_tex_size.y * 0.5)
+        pixel_ray_cone_from_image_height(gbuffer_tex_size.y)
         .propagate(reflected_cone_spread_angle, length(outgoing_ray.Origin - get_eye_position()));
 
     if (!LAYERED_BRDF_FORCE_DIFFUSE_ONLY) {

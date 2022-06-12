@@ -26,7 +26,8 @@ DEFINE_WRC_BINDINGS(16)
 [[vk::binding(17)]] RWTexture2D<float4> out0_tex;
 [[vk::binding(18)]] RWTexture2D<float4> out1_tex;
 [[vk::binding(19)]] RWTexture2D<float4> out2_tex;
-[[vk::binding(20)]] cbuffer _ {
+[[vk::binding(20)]] RWTexture2D<uint> rng_out_tex;
+[[vk::binding(21)]] cbuffer _ {
     float4 gbuffer_tex_size;
     uint reuse_rtdgi_rays;
 };

@@ -26,9 +26,10 @@ DEFINE_IRCACHE_BINDINGS(5, 6, 7, 8, 9, 10, 11, 12, 13)
 DEFINE_WRC_BINDINGS(14)
 [[vk::binding(15)]] Texture2D<float4> ray_orig_history_tex;
 [[vk::binding(16)]] Texture2D<float4> ray_history_tex;
-[[vk::binding(17)]] RWTexture2D<float4> irradiance_history_tex;
-[[vk::binding(18)]] RWTexture2D<uint2> reservoir_history_tex;
-[[vk::binding(19)]] cbuffer _ {
+[[vk::binding(17)]] Texture2D<uint> rng_history_tex;
+[[vk::binding(18)]] RWTexture2D<float4> irradiance_history_tex;
+[[vk::binding(19)]] RWTexture2D<uint2> reservoir_history_tex;
+[[vk::binding(20)]] cbuffer _ {
     float4 gbuffer_tex_size;
 };
 
