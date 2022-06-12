@@ -177,15 +177,19 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, SampleParams sa
                 }
             }
             
+            if (SAMPLE_IRCACHE_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
+                irradiance_sum +=
+                    IrcacheLookupParams::create(entry.position, primary_hit.position, gbuffer.normal)
+                        .with_query_rank(1 + ircache_entry_life_to_rank(life))
+                        .lookup(rng)
+                        * throughput * gbuffer.albedo;
+            }
+
             const float3 urand = float3(
                 uint_to_u01_float(hash1_mut(rng)),
                 uint_to_u01_float(hash1_mut(rng)),
                 uint_to_u01_float(hash1_mut(rng))
             );
-
-            if (SAMPLE_IRCACHE_AT_LAST_VERTEX && path_length + 1 == MAX_PATH_LENGTH) {
-                irradiance_sum += lookup_irradiance_cache(entry.position, primary_hit.position, gbuffer.normal, 1 + ircache_entry_life_to_rank(life), rng) * throughput * gbuffer.albedo;
-            }
 
             BrdfSample brdf_sample = brdf.sample(wo, urand);
 

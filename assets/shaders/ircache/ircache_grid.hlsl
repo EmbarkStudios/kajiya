@@ -38,7 +38,7 @@ uint ws_local_pos_to_cascade_idx(float3 local_pos, uint reserved_cells) {
     return uint(clamp(ceil(max(0.0, cascade_float)), 0, IRCACHE_CASCADE_COUNT - 1));
 }
 
-IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal, float3 urand) {
+IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal, float3 jitter) {
     const float3 center = frame_constants.ircache_grid_center.xyz;
 
     const uint reserved_cells =
@@ -50,14 +50,12 @@ IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal, float3 urand) {
 
     float3 cell_offset = 0;
 
-#ifdef IRCACHE_STOCHASTIC_INTERPOLATION
+    // Stochastic interpolation (no-op if jitter is zero)
     {
         const uint cascade = ws_local_pos_to_cascade_idx(pos - center, reserved_cells);
         const float cell_diameter = (IRCACHE_GRID_CELL_DIAMETER * (1u << cascade));
-
-        pos += cell_diameter * (urand - 0.5);
+        pos += cell_diameter * jitter;
     }
-#endif
 
     const uint cascade = ws_local_pos_to_cascade_idx(pos - center, reserved_cells);
     const float cell_diameter = (IRCACHE_GRID_CELL_DIAMETER * (1u << cascade));

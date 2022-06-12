@@ -189,7 +189,11 @@ void main() {
 
                 if (USE_IRCACHE) {
                     const uint rank = 0;    // TODO: how the heck...
-                    irradiance_sum += lookup_irradiance_cache(outgoing_ray.Origin, primary_hit.position, gbuffer.normal, rank, rng) * gbuffer.albedo;
+                    irradiance_sum +=
+                        IrcacheLookupParams::create(outgoing_ray.Origin, primary_hit.position, gbuffer.normal)
+                            .with_query_rank(rank)
+                            .lookup(rng)
+                            * gbuffer.albedo;
                 }
                 
                 hit_count += 1.0;

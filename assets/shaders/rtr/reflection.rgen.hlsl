@@ -1,5 +1,3 @@
-#define IRCACHE_STOCHASTIC_INTERPOLATION
-
 #include "../inc/uv.hlsl"
 #include "../inc/pack_unpack.hlsl"
 #include "../inc/frame_constants.hlsl"

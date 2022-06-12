@@ -228,7 +228,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
     [branch]
     if (debug_shading_mode == SHADING_MODE_IRCACHE) {
         output = brdf_value * light_radiance * 0;
-        output += lookup_irradiance_cache(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
+        output += IrcacheLookupParams::create(get_eye_position(), pt_ws.xyz, gbuffer.normal).lookup(rng);
 
         if (px.y < 50) {
             const uint entry_count = ircache_meta_buf.Load(IRCACHE_META_ENTRY_COUNT);

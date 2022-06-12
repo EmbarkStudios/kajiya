@@ -187,13 +187,12 @@ TraceResult do_the_thing(uint2 px, float3 normal_ws, inout uint rng, RayDesc out
             }
 
             if (USE_IRCACHE) {
-                float3 gi = lookup_irradiance_cache(
+                const float3 gi = IrcacheLookupParams::create(
                     outgoing_ray.Origin,
                     primary_hit.position,
-                    gbuffer.normal,
-                    1,
-                    rng
-                );
+                    gbuffer.normal)
+                    .with_query_rank(1)
+                    .lookup(rng);
 
                 total_radiance += gi * gbuffer.albedo;
             }

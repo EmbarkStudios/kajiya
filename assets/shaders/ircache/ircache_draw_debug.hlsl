@@ -141,7 +141,7 @@ void main(
         const float3 shading_normal = gbuffer.normal;
     #endif
 
-    float3 debug_color = lookup_irradiance_cache(get_eye_position(), pt_ws.xyz, gbuffer.normal, 0, rng);
+    float3 debug_color = IrcacheLookupParams::create(get_eye_position(), pt_ws.xyz, gbuffer.normal).lookup(rng);
 
     #if USE_DEBUG_OUT
         debug_out_tex[px] = float4(debug_color, 1);

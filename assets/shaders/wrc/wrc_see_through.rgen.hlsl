@@ -168,13 +168,11 @@ void main() {
             }
 
             if (USE_IRCACHE) {
-                float3 gi = lookup_irradiance_cache(
+                const float3 gi = IrcacheLookupParams::create(
                     outgoing_ray.Origin,
                     primary_hit.position,
-                    gbuffer.normal,
-                    0,
-                    rng
-                );
+                    gbuffer.normal)
+                    .lookup(rng);
 
                 total_radiance += gi * gbuffer.albedo;
             }

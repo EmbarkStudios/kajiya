@@ -225,13 +225,15 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
                     }
 
                     if (USE_IRCACHE) {
-                        float3 gi = lookup_irradiance_cache(
+                        const float cone_width = ray_cone.propagate(0, primary_hit.ray_t).width;
+
+                        const float3 gi = IrcacheLookupParams::create(
                             outgoing_ray.Origin,
                             primary_hit.position,
-                            gbuffer.normal,
-                            1,
-                            rng
-                        );
+                            gbuffer.normal)
+                            .with_query_rank(1)
+                            .with_stochastic_interpolation(cone_width < 0.1)
+                            .lookup(rng);
 
                         total_radiance += gi * gbuffer.albedo;
                     }
