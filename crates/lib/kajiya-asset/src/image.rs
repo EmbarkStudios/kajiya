@@ -222,7 +222,21 @@ impl CreateGpuImage {
             }
         };
 
+        let min_img_dim = if should_compress { 4 } else { 1 };
+
+        let round_up_to_block = |x: u32| -> u32 {
+            (((x + min_img_dim - 1) / min_img_dim) * min_img_dim).max(min_img_dim)
+        };
+
         let mut process_mip = |mip: DynamicImage| -> Vec<u8> {
+            let mip = if mip.width() % min_img_dim != 0 || mip.height() % min_img_dim != 0 {
+                let width = round_up_to_block(mip.width());
+                let height = round_up_to_block(mip.height());
+                mip.resize_exact(width, height, FilterType::Lanczos3)
+            } else {
+                mip
+            };
+
             let mut mip = mip.into_rgba8();
 
             swizzle(&mut mip);
@@ -234,16 +248,14 @@ impl CreateGpuImage {
             }
         };
 
-        let min_img_dim = if should_compress { 4 } else { 1 };
-
         let mips: Vec<Vec<u8>> = if self.params.use_mips {
             desc = desc.all_mip_levels();
 
             let downsample = |image: &DynamicImage| {
                 // TODO: gamma-correct resize
                 image.resize_exact(
-                    (image.dimensions().0 / 2).max(min_img_dim),
-                    (image.dimensions().1 / 2).max(min_img_dim),
+                    round_up_to_block(image.dimensions().0 / 2),
+                    round_up_to_block(image.dimensions().1 / 2),
                     FilterType::Lanczos3,
                 )
             };
