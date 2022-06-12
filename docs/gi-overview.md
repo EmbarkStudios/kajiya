@@ -307,6 +307,8 @@ The quality of samples (ray directions) matters a lot here, with blue noise and 
 
 Note that even with VNDF, some of the generated rays can end up being "invalid" because they point towards the surface rather than away from it. This is where multiple scattering happens -- the ray bounces off a microfacet, and heads inwards towards another one. Following potentially more bounces, the light either gets absorbed, or emerges out. As suggested by the [simulations done by Eric Heitz et al.](https://eheitzresearch.wordpress.com/240-2/), the multiply-scattered ray distribution still resembles the original BRDF shape. For this reason, when VNDF "fails" to generate an outgoing ray direction, it's simply attempted again (up to a few times), until a valid outgoing direction is found. Conservation of energy is assured by using a preintegrated term at the end of the reflection process instead -- along with accounting for the increase in saturation that multiple scattering causes in metals.
 
+When roughness is above a threshold, reflection rays are not traced; instead, the previously-traced diffuse GI rays are used. Despite the different ray generation strategies, PDF-weighing ensures the correct output.
+
 By following this procedure, we make every ray matter. Even then, the image is not very useful at this stage:
 
 ![image](https://user-images.githubusercontent.com/16522064/170577440-72a7badf-eef5-478f-967b-fbed05aee335.png)
@@ -408,6 +410,8 @@ The irradiance cache is also not temporally stable, which once again becomes cle
 ![reflections-reveal-ircache-flicker](https://user-images.githubusercontent.com/16522064/170590304-c427f499-46ab-407a-91e2-1fb58de7e998.gif)
 
 It it will be possible to improve the stability of the irradiance cache, and hopefully recursive tracing and filtering of reflections will make those issues less severe.
+
+_In the latest version, stochastic interpolation of irradiance cache entries makes this problem less severe._
 
 ## Noise with small and bright emissive surfaces
 

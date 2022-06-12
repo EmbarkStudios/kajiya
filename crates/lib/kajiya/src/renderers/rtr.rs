@@ -162,6 +162,7 @@ impl RtrRenderer {
             self.temporal_ray_orig_tex.get_output_and_history(
                 rg,
                 ImageDesc::new_2d(
+                    // TODO: This can _almost_ fit in fp16, but some edge darkening ensues.
                     vk::Format::R32G32B32A32_SFLOAT,
                     gbuffer_desc.half_res().extent_2d(),
                 )
