@@ -5,10 +5,10 @@ use structopt::StructOpt;
 #[derive(Debug, StructOpt)]
 #[structopt(name = "view", about = "Kajiya scene viewer.")]
 pub struct Opt {
-    #[structopt(long, default_value = "1280")]
+    #[structopt(long, default_value = "1920")]
     pub width: u32,
 
-    #[structopt(long, default_value = "720")]
+    #[structopt(long, default_value = "1080")]
     pub height: u32,
 
     #[structopt(long, default_value = "1.0")]

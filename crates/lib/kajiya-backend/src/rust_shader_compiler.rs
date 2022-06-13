@@ -65,6 +65,21 @@ impl LazyWorker for CompileRustShaderCrate {
     type Output = Result<()>;
 
     async fn run(self, ctx: RunContext) -> Self::Output {
+        let src_dirs = || -> Result<_> {
+            Ok([
+                normalized_path_from_vfs("/kajiya/crates/lib/rust-shaders/src")?,
+                normalized_path_from_vfs("/kajiya/crates/lib/rust-shaders-shared/src")?,
+            ])
+        };
+
+        let src_dirs = match src_dirs() {
+            Ok(src_dirs) => src_dirs,
+            Err(_) => {
+                log::info!("Rust shader sources not found. Using the precompiled versions.");
+                return Ok(());
+            }
+        };
+
         // Unlike regular shader building, this one runs in a separate thread in the background.
         //
         // The built shaders are cached and checked-in, meaning that
@@ -101,11 +116,6 @@ impl LazyWorker for CompileRustShaderCrate {
         });
 
         // And finally register a watcher on the source directory for Rust shaders.
-        let src_dirs = [
-            normalized_path_from_vfs("/kajiya/crates/lib/rust-shaders/src")?,
-            normalized_path_from_vfs("/kajiya/crates/lib/rust-shaders-shared/src")?,
-        ];
-
         for src_dir in src_dirs {
             let invalidation_trigger = ctx.get_invalidation_trigger();
             crate::file::FILE_WATCHER
