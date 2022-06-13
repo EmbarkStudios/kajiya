@@ -43,7 +43,7 @@ _Ruins environment rendered in kajiya. [Scene](https://www.unrealengine.com/mark
 * Basic motion blur
 * Contrast-adaptive sharpening
 * Optional DLSS support
-* GLTF mesh loading (no animations yet)
+* glTF mesh loading (no animations yet)
 * A render graph running it all
 
 ## Technical details
@@ -95,31 +95,33 @@ Operating systems:
 
 ## Building and running
 
-To build `kajiya` and its tools, [you need Rust](https://www.rust-lang.org/tools/install).
+To build `kajiya` [you need Rust](https://www.rust-lang.org/tools/install).
 
-There's a very minimal asset pipeline in `bake.rs`, which converts meshes from GLTF to an internal flat format, and calculates texture mips. In order to bake all the provided meshes, run:
-
-* Windows: `bake.cmd`
-* Linux & macOS: `./bake.sh`
-
-When done, run the renderer demo (`view` app from `crates/bin/view`) via:
-
-* Windows: `build_and_run.cmd [scene_name]`
-* Linux & macOS: `./build_and_run.sh [scene_name]`
-
-Where `[scene_name]` is one of the file names in `assets/scenes`, without the `.ron` extension, e.g.:
+Once Rust is installed, build and run the viewer app via:
 
 ```
-build_and_run.cmd battle
+cargo run --bin view --release
 ```
 
-or
+This will compile a binary in the `target/release` folder, and then run it.
+
+For a list of supported command-line switches see `--help`. In order to pass it through `cargo` to the renderer, you need to separate the `cargo` arguments from `view` arguments using `--` e.g.:
 
 ```
-cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no-debug
+cargo run --bin view --release -- --help
 ```
 
-### Controls in the `view` app
+## Loading assets
+
+`kajiya` supports meshes in the [glTF 2.0](https://github.com/KhronosGroup/glTF) format, and also has its own tiny [RON](https://github.com/ron-rs/ron)-based scene format which can refer to multiple glTF 2.0 meshes.
+
+To load either, simply drag-n-drop the `.gltf`, `.glb`, or `.ron` file onto the window of the `view` app. See the `assets/` folder for a few bundled examples.
+
+Please note that only the roughness-metalness workflow in glTF is supported. In Blender that corresponds to _Principled BSDF_.
+
+`kajiya` can also load image-based lights ([examples](http://www.hdrlabs.com/sibl/archive.html)). To do so, drag-n-drop an `.exr` or `.hdr` file onto window of the `view` app.
+
+## Controls in the `view` app
 
 * WSAD, QE - movement
 * Mouse + RMB - rotate the camera
@@ -127,39 +129,19 @@ cargo run --bin view --release -- --scene battle --width 1920 --height 1080 --no
 * Shift - move faster
 * Ctrl - move slower
 * Space - switch to reference path tracing
-* Backspace - reset view to previous saved state
 * Tab - show/hide the UI
 
-### Resolution scaling
+## Resolution scaling
 
-#### DPI
+### DPI
 
 For the `view` app, DPI scaling in the operating system affects the physical number of pixels of the rendering output. The `--width` and `--height` parameters correspond to _logical_ window size **and** the internal rendering resolution. Suppose the OS uses DPI scaling of `1.5`, and the app is launched with `--width 1000`, the actual physical width of the window will be `1500` px. Rendering will still happen at `1000` px, with upscaling to `1500` px at the very end, via a Catmull-Rom kernel.
 
-#### Temporal upsampling
+### Temporal upsampling
 
 `kajiya` can also render at a reduced internal resolution, and reconstruct a larger image via temporal upsampling, trading quality for performance. A custom temporal super-resolution algorithm is used by default, and [DLSS is supported](docs/using-dlss.md) on some platforms. Both approaches result in better quality than what could be achieved by simply spatially scaling up the image at the end.
 
 For example, `--width 1920 --height 1080 --temporal-upsampling 1.5` will produce a `1920x1080` image by upsampling by a factor of `1.5` from `1280x720`. Most of the rendering will then happen with `1.5 * 1.5 = 2.25` times fewer pixels, resulting in an _almost_ 2x speedup.
-
-## Adding Meshes and Scenes
-
-To add new mesh(es), open `bake.cmd` (Win) / `bake.sh` (Linux), and add
-
-* cargo run --bin bake --release -- --scene "[path]" --scale 1.0 -o [mesh_name]
-
-To add new scenes, in `\assets\scenes`, create a `[scene_name].ron` with the following content:
-
-```
-(
-    instances: [
-        (
-            position: (0, 0, 0),
-            mesh: "[mesh_name]",
-        ),
-    ]
-)
-```
 
 ## Technical guides
 

@@ -33,7 +33,7 @@ pub struct Opt {
     pub fullscreen: bool,
 
     #[structopt(long)]
-    pub no_debug: bool,
+    pub graphics_debugging: bool,
 
     #[structopt(long)]
     pub physical_device_index: Option<usize>,

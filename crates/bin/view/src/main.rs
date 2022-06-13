@@ -29,7 +29,7 @@ impl AppState {
         let mut kajiya = SimpleMainLoop::builder()
             .resolution([opt.width, opt.height])
             .vsync(!opt.no_vsync)
-            .graphics_debugging(!opt.no_debug)
+            .graphics_debugging(opt.graphics_debugging)
             .physical_device_index(opt.physical_device_index)
             .temporal_upsampling(opt.temporal_upsampling)
             .default_log_level(log::LevelFilter::Info)
