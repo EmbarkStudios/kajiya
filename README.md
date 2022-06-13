@@ -117,9 +117,13 @@ cargo run --bin view --release -- --help
 
 To load either, simply drag-n-drop the `.gltf`, `.glb`, or `.ron` file onto the window of the `view` app. See the `assets/` folder for a few bundled examples.
 
+The first time a mesh is loaded, it is converted to a runtime format: the vertices are packed, and textures are compressed. The next time the same mesh is used, it's loaded from the `cache/` folder.
+
 Please note that only the roughness-metalness workflow in glTF is supported. In Blender that corresponds to _Principled BSDF_.
 
 `kajiya` can also load image-based lights ([examples](http://www.hdrlabs.com/sibl/archive.html)). To do so, drag-n-drop an `.exr` or `.hdr` file onto window of the `view` app.
+
+The loaded assets can be manipulated in the `Scene` section of the UI. The app state is persisted in `view_state.ron`.
 
 ## Controls in the `view` app
 
