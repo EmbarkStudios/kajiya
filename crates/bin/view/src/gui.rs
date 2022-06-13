@@ -135,13 +135,13 @@ impl RuntimeState {
                 {
                     let mut element_to_remove = None;
 
-                    for (idx, elem) in self.scene_elements.iter_mut().enumerate() {
+                    for (idx, elem) in persisted.scene.elements.iter_mut().enumerate() {
                         if idx > 0 {
                             ui.dummy([0.0, 10.0]);
                         }
 
                         let id_token = ui.push_id(idx as i32);
-                        ui.text(&elem.name);
+                        ui.text(im_str!("{:?}", elem.source));
 
                         {
                             ui.set_next_item_width(200.0);
@@ -162,30 +162,55 @@ impl RuntimeState {
                             element_to_remove = Some(idx);
                         }
 
-                        ui.set_next_item_width(100.0);
-                        imgui::Drag::<f32>::new(im_str!("x"))
-                            .speed(0.01)
-                            .build(ui, &mut elem.transform.position.x);
+                        // Position
+                        {
+                            ui.set_next_item_width(100.0);
+                            imgui::Drag::<f32>::new(im_str!("x"))
+                                .speed(0.01)
+                                .build(ui, &mut elem.transform.position.x);
 
-                        ui.same_line(0.0);
+                            ui.same_line(0.0);
 
-                        ui.set_next_item_width(100.0);
-                        imgui::Drag::<f32>::new(im_str!("y"))
-                            .speed(0.01)
-                            .build(ui, &mut elem.transform.position.y);
+                            ui.set_next_item_width(100.0);
+                            imgui::Drag::<f32>::new(im_str!("y"))
+                                .speed(0.01)
+                                .build(ui, &mut elem.transform.position.y);
 
-                        ui.same_line(0.0);
+                            ui.same_line(0.0);
 
-                        ui.set_next_item_width(100.0);
-                        imgui::Drag::<f32>::new(im_str!("z"))
-                            .speed(0.01)
-                            .build(ui, &mut elem.transform.position.z);
+                            ui.set_next_item_width(100.0);
+                            imgui::Drag::<f32>::new(im_str!("z"))
+                                .speed(0.01)
+                                .build(ui, &mut elem.transform.position.z);
+                        }
+
+                        // Rotation
+                        {
+                            ui.set_next_item_width(100.0);
+                            imgui::Drag::<f32>::new(im_str!("rx"))
+                                .speed(0.1)
+                                .build(ui, &mut elem.transform.rotation_euler_degrees.x);
+
+                            ui.same_line(0.0);
+
+                            ui.set_next_item_width(100.0);
+                            imgui::Drag::<f32>::new(im_str!("ry"))
+                                .speed(0.1)
+                                .build(ui, &mut elem.transform.rotation_euler_degrees.y);
+
+                            ui.same_line(0.0);
+
+                            ui.set_next_item_width(100.0);
+                            imgui::Drag::<f32>::new(im_str!("rz"))
+                                .speed(0.1)
+                                .build(ui, &mut elem.transform.rotation_euler_degrees.z);
+                        }
 
                         id_token.pop(ui);
                     }
 
                     if let Some(idx) = element_to_remove {
-                        let elem = self.scene_elements.remove(idx);
+                        let elem = persisted.scene.elements.remove(idx);
                         ctx.world_renderer.remove_instance(elem.instance);
                     }
                 }

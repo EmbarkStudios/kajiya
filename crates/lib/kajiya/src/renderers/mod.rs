@@ -6,6 +6,7 @@ use kajiya_rg::{self as rg, GetOrCreateTemporal};
 pub mod deferred;
 pub mod dof;
 pub mod half_res;
+pub mod ibl;
 pub mod ircache;
 pub mod lighting;
 pub mod motion_blur;

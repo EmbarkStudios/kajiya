@@ -1,4 +1,7 @@
-use kajiya_simple::{Mat2, Quat, Vec2, Vec3, Vec3Swizzles};
+use std::path::PathBuf;
+
+use kajiya::world_renderer::InstanceHandle;
+use kajiya_simple::{Affine3A, EulerRot, Mat2, Quat, Vec2, Vec3, Vec3Swizzles};
 
 use crate::{misc::smoothstep, sequence::Sequence};
 
@@ -244,6 +247,60 @@ impl Default for ExposureState {
 
 impl ShouldResetPathTracer for ExposureState {}
 
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SceneElementTransform {
+    pub position: Vec3,
+    pub rotation_euler_degrees: Vec3,
+    pub scale: Vec3,
+}
+
+impl SceneElementTransform {
+    pub const IDENTITY: SceneElementTransform = SceneElementTransform {
+        position: Vec3::ZERO,
+        rotation_euler_degrees: Vec3::ZERO,
+        scale: Vec3::ONE,
+    };
+
+    pub fn affine_transform(&self) -> Affine3A {
+        Affine3A::from_scale_rotation_translation(
+            self.scale,
+            Quat::from_euler(
+                EulerRot::YXZ,
+                self.rotation_euler_degrees.y.to_radians(),
+                self.rotation_euler_degrees.x.to_radians(),
+                self.rotation_euler_degrees.z.to_radians(),
+            ),
+            self.position,
+        )
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub enum SceneElementSource {
+    File(PathBuf),
+    NamedMesh(String),
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SceneElement {
+    #[serde(skip)]
+    pub instance: InstanceHandle,
+
+    pub source: SceneElementSource,
+    pub transform: SceneElementTransform,
+}
+
+#[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
+pub struct SceneState {
+    pub elements: Vec<SceneElement>,
+}
+
+impl ShouldResetPathTracer for SceneState {
+    fn should_reset_path_tracer(&self, other: &Self) -> bool {
+        self.elements != other.elements
+    }
+}
+
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct PersistedState {
     pub camera: CameraState,
@@ -251,6 +308,8 @@ pub struct PersistedState {
     pub exposure: ExposureState,
     pub movement: MovementState,
     pub sequence: Sequence,
+    #[serde(default)]
+    pub scene: SceneState,
 }
 
 impl ShouldResetPathTracer for PersistedState {
@@ -259,5 +318,6 @@ impl ShouldResetPathTracer for PersistedState {
             || self.exposure.should_reset_path_tracer(&other.exposure)
             || self.light.should_reset_path_tracer(&other.light)
             || self.movement.should_reset_path_tracer(&other.movement)
+            || self.scene.should_reset_path_tracer(&other.scene)
     }
 }

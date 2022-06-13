@@ -3,13 +3,15 @@ use anyhow::Context;
 use dolly::prelude::*;
 use kajiya::{
     rg::GraphDebugHook,
-    world_renderer::{AddMeshOptions, InstanceHandle, MeshHandle, WorldRenderer},
+    world_renderer::{AddMeshOptions, MeshHandle, WorldRenderer},
 };
 use kajiya_simple::*;
 
 use crate::{
     opt::Opt,
-    persisted::ShouldResetPathTracer as _,
+    persisted::{
+        SceneElement, SceneElementSource, SceneElementTransform, ShouldResetPathTracer as _,
+    },
     scene::SceneDesc,
     sequence::{CameraPlaybackSequence, MemOption, SequenceValue},
     PersistedState,
@@ -24,40 +26,11 @@ use std::{
 
 pub const MAX_FPS_LIMIT: u32 = 256;
 
-pub struct SceneElementTransform {
-    pub position: Vec3,
-    pub rotation_euler_degrees: Vec3,
-    pub scale: Vec3,
-}
-
-pub struct SceneElement {
-    pub name: String,
-    pub instance: InstanceHandle,
-    pub transform: SceneElementTransform,
-}
-
-impl SceneElementTransform {
-    pub fn affine_transform(&self) -> Affine3A {
-        Affine3A::from_scale_rotation_translation(
-            self.scale,
-            Quat::from_euler(
-                EulerRot::YXZ,
-                self.rotation_euler_degrees.y,
-                self.rotation_euler_degrees.x,
-                self.rotation_euler_degrees.z,
-            ),
-            self.position,
-        )
-    }
-}
-
 pub struct RuntimeState {
     pub camera: CameraRig,
     pub mouse: MouseState,
     pub keyboard: KeyboardState,
     pub keymap: KeyboardMap,
-
-    pub scene_elements: Vec<SceneElement>,
 
     pub show_gui: bool,
     pub sun_direction_interp: Vec3,
@@ -72,6 +45,8 @@ pub struct RuntimeState {
     pub active_camera_key: Option<usize>,
     sequence_playback_state: SequencePlaybackState,
     pub sequence_playback_speed: f32,
+
+    known_meshes: HashMap<PathBuf, MeshHandle>,
 }
 
 enum SequencePlaybackState {
@@ -83,7 +58,11 @@ enum SequencePlaybackState {
 }
 
 impl RuntimeState {
-    pub fn new(persisted: &PersistedState, _opt: &Opt) -> Self {
+    pub fn new(
+        persisted: &mut PersistedState,
+        world_renderer: &mut WorldRenderer,
+        _opt: &Opt,
+    ) -> Self {
         let camera: CameraRig = CameraRig::builder()
             .with(Position::new(persisted.camera.position))
             .with(YawPitch::new().rotation_quat(persisted.camera.rotation))
@@ -116,13 +95,11 @@ impl RuntimeState {
 
         let sun_direction_interp = persisted.light.sun.controller.towards_sun();
 
-        Self {
+        let mut res = Self {
             camera,
             mouse,
             keyboard,
             keymap,
-
-            scene_elements: vec![],
 
             show_gui: false,
             sun_direction_interp,
@@ -137,11 +114,31 @@ impl RuntimeState {
             active_camera_key: None,
             sequence_playback_state: SequencePlaybackState::NotPlaying,
             sequence_playback_speed: 1.0,
-        }
+
+            known_meshes: Default::default(),
+        };
+
+        // Load meshes that the persisted scene was referring to
+        persisted.scene.elements.retain_mut(|elem| {
+            match res.load_mesh(world_renderer, &elem.source) {
+                Ok(mesh) => {
+                    elem.instance =
+                        world_renderer.add_instance(mesh, elem.transform.affine_transform());
+                    true
+                }
+                Err(err) => {
+                    log::error!("Failed to load mesh {:?}: {:#}", elem.source, err);
+                    false
+                }
+            }
+        });
+
+        res
     }
 
     pub fn load_scene(
         &mut self,
+        persisted: &mut PersistedState,
         world_renderer: &mut WorldRenderer,
         scene_name: &str,
     ) -> anyhow::Result<()> {
@@ -151,12 +148,10 @@ impl RuntimeState {
                 .with_context(|| format!("Opening scene file {}", scene_file))?,
         )?;
 
-        let mut known_meshes: HashMap<PathBuf, MeshHandle> = HashMap::new();
-
         for instance in scene_desc.instances {
             let path = PathBuf::from(format!("/cache/{}.mesh", instance.mesh));
 
-            let mesh = *known_meshes.entry(path.clone()).or_insert_with(|| {
+            let mesh = self.known_meshes.entry(path.clone()).or_insert_with(|| {
                 world_renderer
                     .add_baked_mesh(path, AddMeshOptions::new())
                     .unwrap()
@@ -168,10 +163,10 @@ impl RuntimeState {
                 scale: instance.scale.into(),
             };
 
-            let render_instance = world_renderer.add_instance(mesh, transform.affine_transform());
+            let render_instance = world_renderer.add_instance(*mesh, transform.affine_transform());
 
-            self.scene_elements.push(SceneElement {
-                name: instance.mesh.clone(),
+            persisted.scene.elements.push(SceneElement {
+                source: SceneElementSource::NamedMesh(instance.mesh.clone()),
                 instance: render_instance,
                 transform,
             });
@@ -387,7 +382,7 @@ impl RuntimeState {
             0.0
         };
 
-        for elem in self.scene_elements.iter() {
+        for elem in persisted.scene.elements.iter() {
             ctx.world_renderer
                 .get_instance_dynamic_parameters_mut(elem.instance)
                 .emissive_multiplier = persisted.light.emissive_multiplier * emissive_toggle_mult;
@@ -410,7 +405,7 @@ impl RuntimeState {
 
         self.keyboard.update(ctx.events);
         self.mouse.update(ctx.events);
-        self.handle_file_drop_events(&mut ctx.world_renderer, ctx.events);
+        self.handle_file_drop_events(persisted, &mut ctx.world_renderer, ctx.events);
 
         let orig_persisted_state = persisted.clone();
         let orig_render_overrides = ctx.world_renderer.render_overrides;
@@ -572,46 +567,64 @@ impl RuntimeState {
         self.active_camera_key = None;
     }
 
-    pub(crate) fn load_standalone_mesh(
+    pub(crate) fn load_mesh(
         &mut self,
         world_renderer: &mut WorldRenderer,
-        path: PathBuf,
-        mesh_scale: f32,
+        source: &SceneElementSource,
+    ) -> anyhow::Result<MeshHandle> {
+        log::info!("Loading a mesh from {:?}", source);
+
+        let path = match source {
+            SceneElementSource::File(path) => {
+                fn calculate_hash(t: &PathBuf) -> u64 {
+                    let mut s = DefaultHasher::new();
+                    t.hash(&mut s);
+                    s.finish()
+                }
+
+                let path_hash = match path.canonicalize() {
+                    Ok(canonical) => calculate_hash(&canonical),
+                    Err(_) => calculate_hash(&path),
+                };
+
+                let cached_mesh_name = format!("{:8.8x}", path_hash);
+                let cached_mesh_path = PathBuf::from(format!("/cache/{}.mesh", cached_mesh_name));
+
+                if !canonical_path_from_vfs(&cached_mesh_path).map_or(false, |path| path.exists()) {
+                    kajiya_asset_pipe::process_mesh_asset(
+                        kajiya_asset_pipe::MeshAssetProcessParams {
+                            path: path.clone(),
+                            output_name: cached_mesh_name.to_string(),
+                            scale: 1.0,
+                        },
+                    )?;
+                }
+
+                cached_mesh_path
+            }
+            SceneElementSource::NamedMesh(name) => PathBuf::from(format!("/cache/{}.mesh", name)),
+        };
+
+        Ok(*self.known_meshes.entry(path.clone()).or_insert_with(|| {
+            world_renderer
+                .add_baked_mesh(path, AddMeshOptions::new())
+                .unwrap()
+        }))
+    }
+
+    pub(crate) fn add_mesh_instance(
+        &mut self,
+        persisted: &mut PersistedState,
+        world_renderer: &mut WorldRenderer,
+        source: SceneElementSource,
+        transform: SceneElementTransform,
     ) -> anyhow::Result<()> {
-        fn calculate_hash(t: &PathBuf) -> u64 {
-            let mut s = DefaultHasher::new();
-            t.hash(&mut s);
-            s.finish()
-        }
+        let mesh = self.load_mesh(world_renderer, &source)?;
+        let inst = world_renderer.add_instance(mesh, transform.affine_transform());
 
-        let path_hash = match path.canonicalize() {
-            Ok(canonical) => calculate_hash(&canonical),
-            Err(_) => calculate_hash(&path),
-        };
-
-        let cached_mesh_name = format!("{:8.8x}", path_hash);
-        let cached_mesh_path = PathBuf::from(format!("/cache/{}.mesh", cached_mesh_name));
-
-        if !canonical_path_from_vfs(&cached_mesh_path).map_or(false, |path| path.exists()) {
-            kajiya_asset_pipe::process_mesh_asset(kajiya_asset_pipe::MeshAssetProcessParams {
-                path: path.clone(),
-                output_name: cached_mesh_name.to_string(),
-                scale: 1.0,
-            })?;
-        }
-
-        let mesh = world_renderer
-            .add_baked_mesh(cached_mesh_path, AddMeshOptions::new())
-            .unwrap();
-
-        let transform = SceneElementTransform {
-            position: Vec3::ZERO,
-            rotation_euler_degrees: Vec3::ZERO,
-            scale: Vec3::splat(mesh_scale),
-        };
-        self.scene_elements.push(SceneElement {
-            name: path.to_string_lossy().into_owned(),
-            instance: world_renderer.add_instance(mesh, transform.affine_transform()),
+        persisted.scene.elements.push(SceneElement {
+            source,
+            instance: inst,
             transform,
         });
 
@@ -620,6 +633,7 @@ impl RuntimeState {
 
     fn handle_file_drop_events(
         &mut self,
+        persisted: &mut PersistedState,
         world_renderer: &mut WorldRenderer,
         events: &[winit::event::Event<()>],
     ) {
@@ -629,8 +643,25 @@ impl RuntimeState {
                     window_id: _,
                     event: WindowEvent::DroppedFile(path),
                 } => {
-                    if let Err(err) = self.load_standalone_mesh(world_renderer, path.clone(), 1.0) {
-                        log::error!("{:#}", err);
+                    let extension = path
+                        .extension()
+                        .map_or("".to_string(), |ext| ext.to_string_lossy().into_owned());
+
+                    if extension == "hdr" || extension == "exr" {
+                        // IBL
+                        if let Err(err) = world_renderer.ibl.load_image(path) {
+                            log::error!("{:#}", err);
+                        }
+                    } else {
+                        // mesh
+                        if let Err(err) = self.add_mesh_instance(
+                            persisted,
+                            world_renderer,
+                            SceneElementSource::File(path.clone()),
+                            SceneElementTransform::IDENTITY,
+                        ) {
+                            log::error!("{:#}", err);
+                        }
                     }
                 }
                 _ => {}

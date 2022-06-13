@@ -7,9 +7,9 @@ use crate::{
     frame_desc::WorldFrameDesc,
     image_lut::{ComputeImageLut, ImageLut},
     renderers::{
-        ircache::IrcacheRenderer, lighting::LightingRenderer, post::PostProcessRenderer,
-        raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*, shadow_denoise::ShadowDenoiseRenderer,
-        ssgi::*, taa::TaaRenderer,
+        ibl::IblRenderer, ircache::IrcacheRenderer, lighting::LightingRenderer,
+        post::PostProcessRenderer, raster_meshes::*, rtdgi::RtdgiRenderer, rtr::*,
+        shadow_denoise::ShadowDenoiseRenderer, ssgi::*, taa::TaaRenderer,
     },
 };
 use glam::{Affine3A, Vec2, Vec3};
@@ -58,6 +58,20 @@ pub struct MeshHandle(pub usize);
 
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub struct InstanceHandle(pub usize);
+
+impl InstanceHandle {
+    pub const INVALID: InstanceHandle = InstanceHandle(!0);
+
+    pub fn is_valid(&self) -> bool {
+        *self != Self::INVALID
+    }
+}
+
+impl Default for InstanceHandle {
+    fn default() -> Self {
+        Self::INVALID
+    }
+}
 
 const MAX_GPU_MESHES: usize = 1024;
 const VERTEX_BUFFER_CAPACITY: usize = 1024 * 1024 * 1024;
@@ -176,6 +190,7 @@ pub struct WorldRenderer {
     pub rtdgi: RtdgiRenderer,
     pub taa: TaaRenderer,
     pub shadow_denoise: ShadowDenoiseRenderer,
+    pub ibl: IblRenderer,
 
     #[cfg(feature = "dlss")]
     pub dlss: DlssRenderer,
@@ -468,6 +483,7 @@ impl WorldRenderer {
             rtdgi: RtdgiRenderer::default(),
             taa: TaaRenderer::new(),
             shadow_denoise: ShadowDenoiseRenderer::default(),
+            ibl: IblRenderer::default(),
 
             #[cfg(feature = "dlss")]
             dlss,

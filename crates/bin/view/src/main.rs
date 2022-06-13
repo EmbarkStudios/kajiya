@@ -22,8 +22,8 @@ struct AppState {
 }
 
 impl AppState {
-    fn new(persisted: PersistedState, opt: &Opt) -> anyhow::Result<Self> {
-        let kajiya = SimpleMainLoop::builder()
+    fn new(mut persisted: PersistedState, opt: &Opt) -> anyhow::Result<Self> {
+        let mut kajiya = SimpleMainLoop::builder()
             .resolution([opt.width, opt.height])
             .vsync(!opt.no_vsync)
             .graphics_debugging(!opt.no_debug)
@@ -38,7 +38,7 @@ impl AppState {
                     .with_decorations(!opt.no_window_decorations),
             )?;
 
-        let runtime = RuntimeState::new(&persisted, opt);
+        let runtime = RuntimeState::new(&mut persisted, &mut kajiya.world_renderer, opt);
 
         Ok(Self {
             persisted,
@@ -48,13 +48,24 @@ impl AppState {
     }
 
     fn load_scene(&mut self, scene_name: &str) -> anyhow::Result<()> {
-        self.runtime
-            .load_scene(&mut self.kajiya.world_renderer, scene_name)
+        self.runtime.load_scene(
+            &mut self.persisted,
+            &mut self.kajiya.world_renderer,
+            scene_name,
+        )
     }
 
-    fn load_standalone_mesh(&mut self, path: PathBuf, mesh_scale: f32) -> anyhow::Result<()> {
-        self.runtime
-            .load_standalone_mesh(&mut self.kajiya.world_renderer, path, mesh_scale)
+    fn add_standalone_mesh(&mut self, path: PathBuf, mesh_scale: f32) -> anyhow::Result<()> {
+        self.runtime.add_mesh_instance(
+            &mut self.persisted,
+            &mut self.kajiya.world_renderer,
+            SceneElementSource::File(path),
+            SceneElementTransform {
+                position: Vec3::ZERO,
+                rotation_euler_degrees: Vec3::ZERO,
+                scale: Vec3::splat(mesh_scale),
+            },
+        )
     }
 
     fn run(self) -> anyhow::Result<PersistedState> {
@@ -85,7 +96,7 @@ fn main() -> anyhow::Result<()> {
     if let Some(scene) = opt.scene.as_ref() {
         state.load_scene(scene)?;
     } else if let Some(mesh) = opt.mesh.as_ref() {
-        state.load_standalone_mesh(mesh.clone(), opt.mesh_scale)?;
+        state.add_standalone_mesh(mesh.clone(), opt.mesh_scale)?;
     }
 
     let state = state.run()?;

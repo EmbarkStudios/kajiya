@@ -32,7 +32,11 @@ impl WorldRenderer {
             )
             .unwrap();
 
-        let sky_cube = crate::renderers::sky::render_sky_cube(rg);
+        let sky_cube = self
+            .ibl
+            .render(rg)
+            .unwrap_or_else(|| crate::renderers::sky::render_sky_cube(rg).into());
+
         let convolved_sky_cube = crate::renderers::sky::convolve_cube(rg, &sky_cube);
 
         let (gbuffer_depth, velocity_img) = {
@@ -107,7 +111,13 @@ impl WorldRenderer {
         };
 
         let traced_ircache = tlas.as_ref().map(|tlas| {
-            ircache_state.trace_irradiance(rg, &sky_cube, self.bindless_descriptor_set, tlas, &wrc)
+            ircache_state.trace_irradiance(
+                rg,
+                &convolved_sky_cube,
+                self.bindless_descriptor_set,
+                tlas,
+                &wrc,
+            )
         });
 
         let sun_shadow_mask = if let Some(tlas) = tlas.as_ref() {
@@ -138,7 +148,7 @@ impl WorldRenderer {
                 reprojected_rtdgi,
                 &gbuffer_depth,
                 &reprojection_map,
-                &sky_cube,
+                &convolved_sky_cube,
                 self.bindless_descriptor_set,
                 &mut ircache_state,
                 &wrc,
@@ -259,7 +269,7 @@ impl WorldRenderer {
             if matches!(self.debug_mode, RenderDebugMode::WorldRadianceCache) {
                 wrc.see_through(
                     rg,
-                    &sky_cube,
+                    &convolved_sky_cube,
                     &mut ircache_state,
                     self.bindless_descriptor_set,
                     tlas,

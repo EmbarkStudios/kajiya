@@ -297,6 +297,7 @@ impl Device {
             let block_bytes: usize = match desc.format {
                 vk::Format::R8G8B8A8_UNORM => 1,
                 vk::Format::R8G8B8A8_SRGB => 1,
+                vk::Format::R32G32B32A32_SFLOAT => 1,
                 vk::Format::BC1_RGB_UNORM_BLOCK => 8,
                 vk::Format::BC1_RGB_SRGB_BLOCK => 8,
                 vk::Format::BC3_UNORM_BLOCK => 16,
@@ -343,7 +344,12 @@ impl Device {
                         });
 
                     offset += sub.data.len();
-                    region.build()
+                    let region = region.build();
+
+                    //dbg!(region);
+                    //dbg!(total_initial_data_bytes);
+
+                    region
                 })
                 .collect::<Vec<_>>();
 

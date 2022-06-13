@@ -24,7 +24,7 @@ void main(in uint3 px : SV_DispatchThreadID) {
     float4 result = 0;
     for (uint i = 0; i < sample_count; ++i) {
         float2 urand = hammersley(i, sample_count);
-        float3 input_dir = mul(basis, uniform_sample_cone(urand, 0.85));
+        float3 input_dir = mul(basis, uniform_sample_cone(urand, 0.99));
         result += input_tex.SampleLevel(sampler_llr, input_dir, 0);
     }
 
