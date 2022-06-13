@@ -1,3 +1,5 @@
+#![allow(clippy::let_and_return)]
+
 use crate::BackendError;
 
 use super::device::Device;

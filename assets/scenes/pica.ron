@@ -2,7 +2,8 @@
     instances: [
         (
             position: (0, 0, 0),
-            mesh: "pica",
+            mesh: "/meshes/pica_pica_-_mini_diorama_01/scene.gltf",
+            scale: (0.1, 0.1, 0.1),
         ),
     ]
 )

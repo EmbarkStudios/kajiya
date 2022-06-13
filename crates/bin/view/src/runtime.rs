@@ -1,3 +1,5 @@
+#![allow(clippy::single_match)]
+
 use anyhow::Context;
 
 use dolly::prelude::*;
@@ -9,9 +11,7 @@ use kajiya_simple::*;
 
 use crate::{
     opt::Opt,
-    persisted::{
-        SceneElement, SceneElementSource, SceneElementTransform, ShouldResetPathTracer as _,
-    },
+    persisted::{MeshSource, SceneElement, SceneElementTransform, ShouldResetPathTracer as _},
     scene::SceneDesc,
     sequence::{CameraPlaybackSequence, MemOption, SequenceValue},
     PersistedState,
@@ -143,26 +143,39 @@ impl RuntimeState {
         res
     }
 
+    pub fn clear_scene(
+        &mut self,
+        persisted: &mut PersistedState,
+        world_renderer: &mut WorldRenderer,
+    ) {
+        for elem in persisted.scene.elements.drain(..) {
+            world_renderer.remove_instance(elem.instance);
+        }
+    }
+
     pub fn load_scene(
         &mut self,
         persisted: &mut PersistedState,
         world_renderer: &mut WorldRenderer,
-        scene_name: &str,
+        scene_path: impl Into<PathBuf>,
     ) -> anyhow::Result<()> {
-        let scene_file = format!("assets/scenes/{}.ron", scene_name);
+        let scene_path = scene_path.into();
         let scene_desc: SceneDesc = ron::de::from_reader(
-            File::open(&scene_file)
-                .with_context(|| format!("Opening scene file {}", scene_file))?,
+            File::open(&scene_path)
+                .with_context(|| format!("Opening scene file {:?}", scene_path))?,
         )?;
 
-        for instance in scene_desc.instances {
-            let path = PathBuf::from(format!("/cache/{}.mesh", instance.mesh));
+        self.clear_scene(persisted, world_renderer);
 
-            let mesh = self.known_meshes.entry(path.clone()).or_insert_with(|| {
-                world_renderer
-                    .add_baked_mesh(path, AddMeshOptions::new())
-                    .unwrap()
-            });
+        for instance in scene_desc.instances {
+            let mesh_path = canonical_path_from_vfs(&instance.mesh)
+                .with_context(|| format!("Mesh path: {:?}", instance.mesh))
+                .expect("valid mesh path");
+
+            let mesh = self
+                .load_mesh(world_renderer, &MeshSource::File(mesh_path.clone()))
+                .with_context(|| format!("Mesh path: {:?}", instance.mesh))
+                .expect("valid mesh");
 
             let transform = SceneElementTransform {
                 position: instance.position.into(),
@@ -170,10 +183,10 @@ impl RuntimeState {
                 scale: instance.scale.into(),
             };
 
-            let render_instance = world_renderer.add_instance(*mesh, transform.affine_transform());
+            let render_instance = world_renderer.add_instance(mesh, transform.affine_transform());
 
             persisted.scene.elements.push(SceneElement {
-                source: SceneElementSource::NamedMesh(instance.mesh.clone()),
+                source: MeshSource::File(mesh_path),
                 instance: render_instance,
                 transform,
             });
@@ -412,7 +425,7 @@ impl RuntimeState {
 
         self.keyboard.update(ctx.events);
         self.mouse.update(ctx.events);
-        self.handle_file_drop_events(persisted, &mut ctx.world_renderer, ctx.events);
+        self.handle_file_drop_events(persisted, ctx.world_renderer, ctx.events);
 
         let orig_persisted_state = persisted.clone();
         let orig_render_overrides = ctx.world_renderer.render_overrides;
@@ -577,12 +590,12 @@ impl RuntimeState {
     pub(crate) fn load_mesh(
         &mut self,
         world_renderer: &mut WorldRenderer,
-        source: &SceneElementSource,
+        source: &MeshSource,
     ) -> anyhow::Result<MeshHandle> {
         log::info!("Loading a mesh from {:?}", source);
 
         let path = match source {
-            SceneElementSource::File(path) => {
+            MeshSource::File(path) => {
                 fn calculate_hash(t: &PathBuf) -> u64 {
                     let mut s = DefaultHasher::new();
                     t.hash(&mut s);
@@ -591,7 +604,7 @@ impl RuntimeState {
 
                 let path_hash = match path.canonicalize() {
                     Ok(canonical) => calculate_hash(&canonical),
-                    Err(_) => calculate_hash(&path),
+                    Err(_) => calculate_hash(path),
                 };
 
                 let cached_mesh_name = format!("{:8.8x}", path_hash);
@@ -601,7 +614,7 @@ impl RuntimeState {
                     kajiya_asset_pipe::process_mesh_asset(
                         kajiya_asset_pipe::MeshAssetProcessParams {
                             path: path.clone(),
-                            output_name: cached_mesh_name.to_string(),
+                            output_name: cached_mesh_name,
                             scale: 1.0,
                         },
                     )?;
@@ -609,7 +622,6 @@ impl RuntimeState {
 
                 cached_mesh_path
             }
-            SceneElementSource::NamedMesh(name) => PathBuf::from(format!("/cache/{}.mesh", name)),
         };
 
         Ok(*self.known_meshes.entry(path.clone()).or_insert_with(|| {
@@ -623,7 +635,7 @@ impl RuntimeState {
         &mut self,
         persisted: &mut PersistedState,
         world_renderer: &mut WorldRenderer,
-        source: SceneElementSource,
+        source: MeshSource,
         transform: SceneElementTransform,
     ) -> anyhow::Result<()> {
         let mesh = self.load_mesh(world_renderer, &source)?;
@@ -654,26 +666,36 @@ impl RuntimeState {
                         .extension()
                         .map_or("".to_string(), |ext| ext.to_string_lossy().into_owned());
 
-                    if extension == "hdr" || extension == "exr" {
-                        // IBL
-                        match world_renderer.ibl.load_image(path) {
-                            Ok(_) => {
-                                persisted.scene.ibl = Some(path.clone());
+                    match extension.as_str() {
+                        "hdr" | "exr" => {
+                            // IBL
+                            match world_renderer.ibl.load_image(path) {
+                                Ok(_) => {
+                                    persisted.scene.ibl = Some(path.clone());
+                                }
+                                Err(err) => {
+                                    log::error!("{:#}", err);
+                                }
                             }
-                            Err(err) => {
+                        }
+                        "ron" => {
+                            // Scene
+                            if let Err(err) = self.load_scene(persisted, world_renderer, path) {
+                                log::error!("Failed to load scene: {:#}", err);
+                            }
+                        }
+                        "gltf" | "glb" => {
+                            // Mesh
+                            if let Err(err) = self.add_mesh_instance(
+                                persisted,
+                                world_renderer,
+                                MeshSource::File(path.clone()),
+                                SceneElementTransform::IDENTITY,
+                            ) {
                                 log::error!("{:#}", err);
                             }
                         }
-                    } else {
-                        // mesh
-                        if let Err(err) = self.add_mesh_instance(
-                            persisted,
-                            world_renderer,
-                            SceneElementSource::File(path.clone()),
-                            SceneElementTransform::IDENTITY,
-                        ) {
-                            log::error!("{:#}", err);
-                        }
+                        _ => {}
                     }
                 }
                 _ => {}

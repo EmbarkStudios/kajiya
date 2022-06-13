@@ -2,7 +2,8 @@
     instances: [
         (
             position: (11, -3, -0.75),
-            mesh: "battle",
+            mesh: "/meshes/flying_world_-_battle_of_the_trash_god/scene.gltf",
+            scale: (0.001875, 0.001875, 0.001875)
         ),
     ]
 )

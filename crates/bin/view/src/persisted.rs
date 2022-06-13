@@ -276,9 +276,8 @@ impl SceneElementTransform {
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
-pub enum SceneElementSource {
+pub enum MeshSource {
     File(PathBuf),
-    NamedMesh(String),
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -286,7 +285,7 @@ pub struct SceneElement {
     #[serde(skip)]
     pub instance: InstanceHandle,
 
-    pub source: SceneElementSource,
+    pub source: MeshSource,
     pub transform: SceneElementTransform,
 }
 

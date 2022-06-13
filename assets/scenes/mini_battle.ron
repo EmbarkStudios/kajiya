@@ -2,7 +2,8 @@
     instances: [
         (
             position: (0, 0, 0),
-            mesh: "mini_battle",
+            mesh: "/meshes/dp3_homework_4/scene.gltf",
+            scale: (0.05, 0.05, 0.05),
         ),
     ]
 )

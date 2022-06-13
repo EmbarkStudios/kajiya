@@ -2,7 +2,8 @@
     instances: [
         (
             position: (0, 0, 0),
-            mesh: "roughness-scale",
+            mesh: "/meshes/roughness-scale/scene.gltf",
+            scale: (0.5, 0.5, 0.5),
         ),
     ]
 )

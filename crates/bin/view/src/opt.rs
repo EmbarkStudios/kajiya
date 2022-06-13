@@ -15,7 +15,7 @@ pub struct Opt {
     pub temporal_upsampling: f32,
 
     #[structopt(long)]
-    pub scene: Option<String>,
+    pub scene: Option<PathBuf>,
 
     #[structopt(long)]
     pub mesh: Option<PathBuf>,

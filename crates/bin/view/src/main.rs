@@ -6,7 +6,10 @@ mod runtime;
 mod scene;
 mod sequence;
 
-use std::{fs::File, path::PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+};
 
 use kajiya_simple::*;
 use opt::*;
@@ -47,11 +50,11 @@ impl AppState {
         })
     }
 
-    fn load_scene(&mut self, scene_name: &str) -> anyhow::Result<()> {
+    fn load_scene(&mut self, scene_path: &Path) -> anyhow::Result<()> {
         self.runtime.load_scene(
             &mut self.persisted,
             &mut self.kajiya.world_renderer,
-            scene_name,
+            scene_path,
         )
     }
 
@@ -59,7 +62,7 @@ impl AppState {
         self.runtime.add_mesh_instance(
             &mut self.persisted,
             &mut self.kajiya.world_renderer,
-            SceneElementSource::File(path),
+            MeshSource::File(path),
             SceneElementTransform {
                 position: Vec3::ZERO,
                 rotation_euler_degrees: Vec3::ZERO,
@@ -84,6 +87,8 @@ impl AppState {
 const APP_STATE_CONFIG_FILE_PATH: &str = "view_state.ron";
 
 fn main() -> anyhow::Result<()> {
+    set_vfs_mount_point("/meshes", "assets/meshes");
+
     let opt = Opt::from_args();
 
     let mut persisted: PersistedState = File::open(APP_STATE_CONFIG_FILE_PATH)

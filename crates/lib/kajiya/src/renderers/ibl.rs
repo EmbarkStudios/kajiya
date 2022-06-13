@@ -9,18 +9,10 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
+#[derive(Default)]
 pub struct IblRenderer {
     image: Option<ImageRgba16f>,
     texture: Option<Arc<Image>>,
-}
-
-impl Default for IblRenderer {
-    fn default() -> Self {
-        Self {
-            image: None,
-            texture: None,
-        }
-    }
 }
 
 impl IblRenderer {

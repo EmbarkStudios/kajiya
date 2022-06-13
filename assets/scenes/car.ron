@@ -2,11 +2,12 @@
     instances: [
         (
             position: (0, -0.001, 0),
-            mesh: "336_lrm",
+            mesh: "/meshes/336_lrm/scene.gltf",
+            scale: (0.01, 0.01, 0.01),
         ),
         (
             position: (0, 0, 0),
-            mesh: "floor",
+            mesh: "/meshes/floor/scene.gltf",
         ),
     ]
 )
