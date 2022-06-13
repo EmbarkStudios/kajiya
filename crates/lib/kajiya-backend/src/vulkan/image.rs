@@ -298,6 +298,7 @@ impl Device {
                 vk::Format::R8G8B8A8_UNORM => 1,
                 vk::Format::R8G8B8A8_SRGB => 1,
                 vk::Format::R32G32B32A32_SFLOAT => 1,
+                vk::Format::R16G16B16A16_SFLOAT => 1,
                 vk::Format::BC1_RGB_UNORM_BLOCK => 8,
                 vk::Format::BC1_RGB_SRGB_BLOCK => 8,
                 vk::Format::BC3_UNORM_BLOCK => 16,
