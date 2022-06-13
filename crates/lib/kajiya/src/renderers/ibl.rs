@@ -23,6 +23,12 @@ impl Default for IblRenderer {
 }
 
 impl IblRenderer {
+    pub fn unload_image(&mut self) {
+        self.image = None;
+        // TODO: deallocate
+        self.texture = None;
+    }
+
     pub fn load_image(&mut self, path: impl AsRef<Path>) -> anyhow::Result<()> {
         let img = load_image(path.as_ref())?;
 

@@ -133,6 +133,13 @@ impl RuntimeState {
             }
         });
 
+        // Load the IBL too
+        if let Some(ibl) = persisted.scene.ibl.as_ref() {
+            if world_renderer.ibl.load_image(ibl).is_err() {
+                persisted.scene.ibl = None;
+            }
+        }
+
         res
     }
 
@@ -649,8 +656,13 @@ impl RuntimeState {
 
                     if extension == "hdr" || extension == "exr" {
                         // IBL
-                        if let Err(err) = world_renderer.ibl.load_image(path) {
-                            log::error!("{:#}", err);
+                        match world_renderer.ibl.load_image(path) {
+                            Ok(_) => {
+                                persisted.scene.ibl = Some(path.clone());
+                            }
+                            Err(err) => {
+                                log::error!("{:#}", err);
+                            }
                         }
                     } else {
                         // mesh

@@ -133,12 +133,19 @@ impl RuntimeState {
                     .default_open(true)
                     .build(ui)
                 {
-                    let mut element_to_remove = None;
-
-                    for (idx, elem) in persisted.scene.elements.iter_mut().enumerate() {
-                        if idx > 0 {
-                            ui.dummy([0.0, 10.0]);
+                    if let Some(ibl) = persisted.scene.ibl.as_ref() {
+                        ui.text(im_str!("IBL: {:?}", ibl));
+                        if ui.button(im_str!("Unload"), [0.0, 0.0]) {
+                            ctx.world_renderer.ibl.unload_image();
+                            persisted.scene.ibl = None;
                         }
+                    } else {
+                        ui.text(im_str!("Drag a sphere-mapped .hdr/.exr to load as IBL"));
+                    }
+
+                    let mut element_to_remove = None;
+                    for (idx, elem) in persisted.scene.elements.iter_mut().enumerate() {
+                        ui.dummy([0.0, 10.0]);
 
                         let id_token = ui.push_id(idx as i32);
                         ui.text(im_str!("{:?}", elem.source));

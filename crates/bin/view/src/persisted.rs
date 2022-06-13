@@ -293,6 +293,9 @@ pub struct SceneElement {
 #[derive(Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct SceneState {
     pub elements: Vec<SceneElement>,
+
+    #[serde(default)]
+    pub ibl: Option<PathBuf>,
 }
 
 impl ShouldResetPathTracer for SceneState {
