@@ -346,6 +346,10 @@ impl LazyWorker for LoadGltfScene {
                             if let Some(indices_reader) = reader.read_indices() {
                                 indices = indices_reader.into_u32().collect();
                             } else {
+                                if positions.is_empty() {
+                                    return;
+                                }
+
                                 match prim.mode() {
                                     gltf::mesh::Mode::Triangles => {
                                         indices = (0..positions.len() as u32).collect();
