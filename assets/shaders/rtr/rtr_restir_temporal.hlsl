@@ -105,11 +105,6 @@ float4 encode_hit_normal_and_dot(float4 val) {
 void find_best_reprojection_in_neighborhood(float2 base_px, inout int2 best_px, float3 refl_ray_origin_ws, bool wide) {
     float best_dist = 1e10;
 
-    // When no motion is involved, this (as opposed to 1.0) will prevent
-    // the search from mixing up the reservoirs if very little (or no)
-    // motion is happening.
-    const float scale = wide ? 1.0 : 0.9;
-
     const float2 clip_scale = frame_constants.view_constants.clip_to_view._m00_m11;
     const float2 offset_scale = float2(1, -1) * -2 * clip_scale * gbuffer_tex_size.zw;
 
@@ -127,7 +122,7 @@ void find_best_reprojection_in_neighborhood(float2 base_px, inout int2 best_px, 
     const int start_coord = wide ? -1 : 0;
     for (int y = start_coord; y <= 1; ++y) {
         for (int x = start_coord; x <= 1; ++x) {
-            int2 spx = floor(base_px + scale * float2(x, y));
+            int2 spx = floor(base_px + float2(x, y));
 
             RtrRestirRayOrigin ray_orig = RtrRestirRayOrigin::from_raw(ray_orig_history_tex[spx]);
             float3 orig = ray_orig.ray_origin_eye_offset_ws + get_prev_eye_position();
@@ -322,12 +317,26 @@ void main(uint2 px : SV_DispatchThreadID) {
                 if (USE_REPROJECTION_SEARCH) {
                     #if USE_HALFRES_SUBSAMPLE_JITTERING
                         if (reprojection_neighborhood_stability >= 1) {
-                            find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, false);
+                            // If the neighborhood is stable, we can do a tiny search to find a reprojection
+                            // that has the best chance of keeping reservoirs alive.
+                            // Only bother if there's any motion. If we do this when there's no motion,
+                            // we may end up creating too much correlation between pixels by shuffling them around.
+
+                            if (any(abs(gbuffer_tex_size.xy * reproj.xy) > 0.1)) {
+                                find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, false);
+                            }
                         } else {
+                            // The neighborhood is not stable. Shimmering or moving edges.
+                            // Do a more aggressive search.
+
                             find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, true);
                         }
                     #else
-                        find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, false);
+                        // If subsample jittering is disabled, we only ever need the tiny search
+
+                        if (any(abs(gbuffer_tex_size.xy * reproj.xy) > 0.1)) {
+                            find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, false);
+                        }
                     #endif
                 }
 
