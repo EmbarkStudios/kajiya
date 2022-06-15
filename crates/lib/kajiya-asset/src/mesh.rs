@@ -346,9 +346,21 @@ impl LazyWorker for LoadGltfScene {
                             if let Some(indices_reader) = reader.read_indices() {
                                 indices = indices_reader.into_u32().collect();
                             } else {
-                                // TODO; this seemingly creates broken geometry; probably need to check out `mode` on the reader.
-                                /*indices = (0..positions.len() as u32).collect();*/
-                                return;
+                                if positions.is_empty() {
+                                    return;
+                                }
+
+                                match prim.mode() {
+                                    gltf::mesh::Mode::Triangles => {
+                                        indices = (0..positions.len() as u32).collect();
+                                    }
+                                    _ => {
+                                        panic!(
+                                            "Primitive mode {:?} not supported yet",
+                                            prim.mode()
+                                        );
+                                    }
+                                }
                             }
 
                             if flip_winding_order {
