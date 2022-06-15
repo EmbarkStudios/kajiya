@@ -169,7 +169,7 @@ void main(uint2 px: SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
 #endif
 
     // Crank up the contrast
-    //col = pow(col, 1.1);
+    // col = pow(col, 1.15);
 
     // Dither
 #if USE_DITHER

@@ -11,6 +11,7 @@
 #include "../inc/reservoir.hlsl"
 #include "../inc/morton.hlsl"
 #include "rtr_settings.hlsl"
+#include "rtr_restir_pack_unpack.inc.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -346,8 +347,11 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 const uint2 reservoir_raw = restir_reservoir_tex[rpx];
                 Reservoir1spp r = Reservoir1spp::from_raw(reservoir_raw);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
-                sample_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
-                const float sample_roughness = restir_ray_orig_tex[spx].w;
+
+                RtrRestirRayOrigin sample_origin = RtrRestirRayOrigin::from_raw(restir_ray_orig_tex[spx]);
+
+                sample_origin_ws = sample_origin.ray_origin_eye_offset_ws + get_eye_position();
+                const float sample_roughness = sample_origin.roughness;
 
                 if (
                     // Reject invalid, e.g. on sky.
@@ -561,8 +565,15 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
                 contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
             } else {
-                const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
-                const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
+                const float cos_theta = normalize(wo + wi).z;
+
+                // Only allow the theta to be increased by a certain amont from what it should be.
+                // This prevents the specular highlight from growing too much in size,
+                // especially on tiny geometric features that barely catch the light.
+                const float bent_cos_theta = min(sample_cos_theta, cos_theta * 1.25);
+
+                const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, bent_cos_theta);
+                const float center_ndf = SpecularBrdf::ggx_ndf(a2, cos_theta);
 
                 float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
 

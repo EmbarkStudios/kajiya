@@ -12,6 +12,10 @@ float2 square(float2 x) { return x * x; }
 float3 square(float3 x) { return x * x; }
 float4 square(float4 x) { return x * x; }
 
+float length_squared(float2 v) { return dot(v, v); }
+float length_squared(float3 v) { return dot(v, v); }
+float length_squared(float4 v) { return dot(v, v); }
+
 // Building an Orthonormal Basis, Revisited
 // http://jcgt.org/published/0006/01/01/
 float3x3 build_orthonormal_basis(float3 n) {

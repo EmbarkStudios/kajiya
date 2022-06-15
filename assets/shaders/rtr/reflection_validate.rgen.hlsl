@@ -117,7 +117,7 @@ void main() {
         for (uint i = 1; i <= 3; ++i) {
             //const uint2 main_px = px;
             //const uint2 px = (main_px & ~1u) + HALFRES_SUBSAMPLE_OFFSET;
-            const uint2 px = DispatchRaysIndex().xy * 2 + HALFRES_SUBSAMPLE_OFFSET;
+            const uint2 px = DispatchRaysIndex().xy * 2 + hi_px_subpixels[(frame_constants.frame_index + i) & 3];
 
             const float4 neighbor_prev_irradiance_packed = irradiance_history_tex[px];
             {
