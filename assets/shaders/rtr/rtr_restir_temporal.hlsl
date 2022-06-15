@@ -12,6 +12,7 @@
 #include "../inc/reservoir.hlsl"
 #include "../ircache/bindings.hlsl"
 #include "rtr_settings.hlsl"
+#include "rtr_restir_pack_unpack.inc.hlsl"
 
 #define RESTIR_RESERVOIR_W_CLAMP 1e20
 #define RTR_RESTIR_BRDF_SAMPLING 1
@@ -98,10 +99,11 @@ float4 encode_hit_normal_and_dot(float4 val) {
     return float4(val.xyz * 0.5 + 0.5, val.w);
 }
 
+// Sometimes the best reprojection of the point-sampled reservoir data is not exactly at the pixel we're looking at.
+// We need to inspect a tiny neighborhood around the point. This helps with shimmering edges, but also upon
+// movement, since we can't linearly sample the reservoir data.
 void find_best_reprojection_in_neighborhood(float2 base_px, inout int2 best_px, float3 refl_ray_origin_ws, bool wide) {
     float best_dist = 1e10;
-
-    const int start_coord = wide ? -1 : 0;
 
     // When no motion is involved, this (as opposed to 1.0) will prevent
     // the search from mixing up the reservoirs if very little (or no)
@@ -109,21 +111,34 @@ void find_best_reprojection_in_neighborhood(float2 base_px, inout int2 best_px, 
     const float scale = wide ? 1.0 : 0.9;
 
     const float2 clip_scale = frame_constants.view_constants.clip_to_view._m00_m11;
-    const float2 derp_scale = float2(1, -1) * -2 * clip_scale;
+    const float2 offset_scale = float2(1, -1) * -2 * clip_scale * gbuffer_tex_size.zw;
 
-    refl_ray_origin_ws
-        += direction_view_to_world(float3(float2(HALFRES_SUBSAMPLE_OFFSET) * derp_scale * gbuffer_tex_size.zw, 0) * length(refl_ray_origin_ws - get_eye_position()));
+    const float3 look_direction = direction_view_to_world(float3(0, 0, -1));
 
+    {
+        const float z_offset = dot(look_direction, refl_ray_origin_ws - get_eye_position());
+
+        // Subtract the subsample XY offset from the comparison position.
+        // This will prevent the search from constantly re-shuffling pixels due to the sub-sample jitters.
+        refl_ray_origin_ws
+            += direction_view_to_world(float3(float2(HALFRES_SUBSAMPLE_OFFSET) * offset_scale * z_offset, 0));
+    }
+
+    const int start_coord = wide ? -1 : 0;
     for (int y = start_coord; y <= 1; ++y) {
         for (int x = start_coord; x <= 1; ++x) {
             int2 spx = floor(base_px + scale * float2(x, y));
-            float4 orig_packed = ray_orig_history_tex[spx];
 
-            float3 orig = orig_packed.xyz + get_prev_eye_position();
-            uint orig_frame_idx = unpack_2x16f_uint(asuint(orig_packed.w)).y;
-            uint2 orig_jitter = hi_px_subpixels[orig_frame_idx & 3];
+            RtrRestirRayOrigin ray_orig = RtrRestirRayOrigin::from_raw(ray_orig_history_tex[spx]);
+            float3 orig = ray_orig.ray_origin_eye_offset_ws + get_prev_eye_position();
+            uint2 orig_jitter = hi_px_subpixels[ray_orig.frame_index_mod4];
 
-            orig += direction_view_to_world(float3(float2(orig_jitter) * derp_scale * gbuffer_tex_size.zw, 0) * length(orig_packed.xyz));
+            {
+                const float z_offset = dot(look_direction, orig);
+
+                // Similarly subtract the subsample XY offset that the ray was traced with.
+                orig += direction_view_to_world(float3(float2(orig_jitter) * offset_scale * z_offset, 0));
+            }
 
             float d = length(orig - refl_ray_origin_ws);
 
@@ -247,7 +262,14 @@ void main(uint2 px : SV_DispatchThreadID) {
             cos_theta = result.cos_theta;
             
             irradiance_sel = result.out_value;
-            ray_orig_sel = float4(refl_ray_origin_ws, asfloat(pack_2x16f_uint(float2(gbuffer.roughness, frame_constants.frame_index & 3))));
+
+            RtrRestirRayOrigin ray_orig;
+            // Note: needs patching up by the eye pos later.
+            ray_orig.ray_origin_eye_offset_ws = refl_ray_origin_ws;
+            ray_orig.roughness = gbuffer.roughness;
+            ray_orig.frame_index_mod4 = frame_constants.frame_index & 3;
+
+            ray_orig_sel = ray_orig.to_raw();
 
             ray_hit_sel_ws = result.hit_vs + refl_ray_origin_ws;
 

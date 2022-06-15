@@ -11,6 +11,7 @@
 #include "../inc/reservoir.hlsl"
 #include "../inc/morton.hlsl"
 #include "rtr_settings.hlsl"
+#include "rtr_restir_pack_unpack.inc.hlsl"
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float> depth_tex;
@@ -346,8 +347,11 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 const uint2 reservoir_raw = restir_reservoir_tex[rpx];
                 Reservoir1spp r = Reservoir1spp::from_raw(reservoir_raw);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
-                sample_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
-                const float sample_roughness = unpack_2x16f_uint(asuint(restir_ray_orig_tex[spx].w)).x;
+
+                RtrRestirRayOrigin sample_origin = RtrRestirRayOrigin::from_raw(restir_ray_orig_tex[spx]);
+
+                sample_origin_ws = sample_origin.ray_origin_eye_offset_ws + get_eye_position();
+                const float sample_roughness = sample_origin.roughness;
 
                 if (
                     // Reject invalid, e.g. on sky.
