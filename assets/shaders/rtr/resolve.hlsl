@@ -566,8 +566,11 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
             } else {
                 const float cos_theta = normalize(wo + wi).z;
+
+                // Only allow the theta to be increased by a certain amont from what it should be.
+                // This prevents the specular highlight from growing too much in size,
+                // especially on tiny geometric features that barely catch the light.
                 const float bent_cos_theta = min(sample_cos_theta, cos_theta * 1.25);
-                //const float bent_cos_theta = sample_cos_theta;
 
                 const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, bent_cos_theta);
                 const float center_ndf = SpecularBrdf::ggx_ndf(a2, cos_theta);
