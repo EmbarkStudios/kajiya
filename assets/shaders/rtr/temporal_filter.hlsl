@@ -4,6 +4,7 @@
 #include "../inc/color.hlsl"
 #include "../inc/bilinear.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
+#include "../inc/image.hlsl"
 #include "rtr_settings.hlsl"
 
 #include "../inc/working_color_space.hlsl"
@@ -28,7 +29,6 @@
 [[vk::binding(7)]] cbuffer _ {
     float4 output_tex_size;
 };
-
 
 [numthreads(8, 8, 1)]
 void main(uint2 px: SV_DispatchThreadID) {
@@ -81,7 +81,14 @@ void main(uint2 px: SV_DispatchThreadID) {
             // Everything invalid
             history0_valid = 0;
         } else if (15 == quad_reproj_valid_packed) {
-            history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0) * history_mult;
+            //history0 = history_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0) * history_mult;
+            history0 = max(0.0, image_sample_catmull_rom_5tap(
+                history_tex,
+                sampler_lnc,
+                uv + reproj.xy,
+                output_tex_size.xy,
+                IdentityImageRemap::create()
+            )) * history_mult;
         } else {
             float4 quad_reproj_valid = (quad_reproj_valid_packed & uint4(1, 2, 4, 8)) != 0;
 
@@ -103,6 +110,14 @@ void main(uint2 px: SV_DispatchThreadID) {
     #endif
 
     float4 history1 = linear_to_working(history_tex.SampleLevel(sampler_lnc, hit_prev_uv, 0) * history_mult);
+    /*float4 history1 = linear_to_working(max(0.0, image_sample_catmull_rom_5tap(
+        history_tex,
+        sampler_lnc,
+        hit_prev_uv,
+        output_tex_size.xy,
+        IdentityImageRemap::create()
+    )) * history_mult);*/
+
     float history1_valid = quad_reproj_valid_packed == 15;
 
     float4 history0_reproj = reprojection_tex.SampleLevel(sampler_lnc, uv + reproj.xy, 0);
@@ -157,16 +172,13 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float box_size = 1;
     //const float n_deviations = 1;
-    const float n_deviations = 1.25 * (1.0 - 0.5 * restir_invalidity);
+    const float n_deviations = lerp(reproj.z > 0 ? 3 : 1.25, 0.625, restir_invalidity);
     //const float n_deviations = reproj_validity_dilated;
     //const float n_deviations = 1 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity_dilated;
     //const float n_deviations = 5 * reproj_validity_dilated;
 
 	//float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
 	//float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
-	float4 nmin = center - dev * box_size * n_deviations;
-	float4 nmax = center + dev * box_size * n_deviations;
-
     
     float h0diff = length(history0.xyz - ex.xyz);
     float h1diff = length(history1.xyz - ex.xyz);
@@ -181,10 +193,10 @@ void main(uint2 px: SV_DispatchThreadID) {
 #endif
 
     const float score_sum = h0_score + h1_score;
-    if (score_sum > 1e-50) {
-        h0_score /= score_sum;
-        h1_score /= score_sum;
-    } else {
+    h0_score /= score_sum;
+    h1_score = 1 - h0_score;
+
+    if (!(h0_score < 1.001)) {
         h0_score = 1;
         h1_score = 0;
     }
@@ -193,6 +205,9 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 clamped_history1 = history1;
 
 #if 0
+	float4 nmin = center - dev * box_size * n_deviations * 2;
+	float4 nmax = center + dev * box_size * n_deviations * 2;
+
     clamped_history0.rgb = clamp(history0.rgb, nmin.rgb, nmax.rgb);
     clamped_history1.rgb = clamp(history1.rgb, nmin.rgb, nmax.rgb);
 #else
@@ -217,7 +232,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     //clamped_history.w = history0.w;
 
     float max_sample_count = 16;
-    float current_sample_count = clamped_history.a;
+    float current_sample_count = clamped_history.a * saturate(h0_score * history0_valid + h1_score * history1_valid);
 
     float4 filtered_center = center;
     float4 res = lerp(clamped_history, filtered_center, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));

@@ -14,14 +14,9 @@
 #include "rtr_settings.hlsl"
 
 #define RESTIR_RESERVOIR_W_CLAMP 1e20
-#define RESTIR_USE_PATH_VALIDATION !true
 #define RTR_RESTIR_BRDF_SAMPLING 1
 #define USE_SPATIAL_TAPS_AT_LOW_M true
 #define USE_RESAMPLING true
-
-// TODO: is it useful anymore? maybe at < 0 stregth, like 0.5?
-// at 1.0, causes too much bias (rejects valid highlights)
-#define USE_NDF_BASED_M_CLAMP_STRENGTH 0.0
 
 // Reject where the ray origin moves a lot
 #define USE_TRANSLATIONAL_CLAMP true
@@ -37,7 +32,10 @@
 // for light sampling; ReSTIR here is similar in behavior to a light sampling technique,
 // and it similarly becomes bad close to the source, where BRDF sampling
 // works perfectly fine. Maybe we can tackle it in a similar way.
-#define USE_DISTANCE_BASED_M_CLAMP true
+#define USE_DISTANCE_BASED_M_CLAMP !true
+
+#define USE_REPROJECTION_SEARCH true
+
 
 [[vk::binding(0)]] Texture2D<float4> gbuffer_tex;
 [[vk::binding(1)]] Texture2D<float3> half_view_normal_tex;
@@ -100,6 +98,43 @@ float4 encode_hit_normal_and_dot(float4 val) {
     return float4(val.xyz * 0.5 + 0.5, val.w);
 }
 
+void find_best_reprojection_in_neighborhood(float2 base_px, inout int2 best_px, float3 refl_ray_origin_ws, bool wide) {
+    float best_dist = 1e10;
+
+    const int start_coord = wide ? -1 : 0;
+
+    // When no motion is involved, this (as opposed to 1.0) will prevent
+    // the search from mixing up the reservoirs if very little (or no)
+    // motion is happening.
+    const float scale = wide ? 1.0 : 0.9;
+
+    const float2 clip_scale = frame_constants.view_constants.clip_to_view._m00_m11;
+    const float2 derp_scale = float2(1, -1) * -2 * clip_scale;
+
+    refl_ray_origin_ws
+        += direction_view_to_world(float3(float2(HALFRES_SUBSAMPLE_OFFSET) * derp_scale * gbuffer_tex_size.zw, 0) * length(refl_ray_origin_ws - get_eye_position()));
+
+    for (int y = start_coord; y <= 1; ++y) {
+        for (int x = start_coord; x <= 1; ++x) {
+            int2 spx = floor(base_px + scale * float2(x, y));
+            float4 orig_packed = ray_orig_history_tex[spx];
+
+            float3 orig = orig_packed.xyz + get_prev_eye_position();
+            uint orig_frame_idx = unpack_2x16f_uint(asuint(orig_packed.w)).y;
+            uint2 orig_jitter = hi_px_subpixels[orig_frame_idx & 3];
+
+            orig += direction_view_to_world(float3(float2(orig_jitter) * derp_scale * gbuffer_tex_size.zw, 0) * length(orig_packed.xyz));
+
+            float d = length(orig - refl_ray_origin_ws);
+
+            if (d < best_dist) {
+                best_dist = d;
+                best_px = spx;
+            }
+        }
+    }
+}
+
 [numthreads(8, 8, 1)]
 void main(uint2 px : SV_DispatchThreadID) {
     const int2 hi_px_offset = HALFRES_SUBSAMPLE_OFFSET;
@@ -117,6 +152,26 @@ void main(uint2 px : SV_DispatchThreadID) {
     const float2 uv = get_uv(hi_px, gbuffer_tex_size);
     const float3 normal_vs = half_view_normal_tex[px];
     const float3 normal_ws = direction_view_to_world(normal_vs);
+
+    float local_normal_flatness = 1; {
+        const int k = 1;
+        for (int y = -k; y <= k; ++y) {
+            for (int x = -k; x <= k; ++x) {
+                float3 sn_vs = half_view_normal_tex[px + int2(x, y)];
+                local_normal_flatness *= saturate(dot(normal_vs, sn_vs));
+            }
+        }
+    }
+
+    float reprojection_neighborhood_stability = 1;
+    {
+        for (int y = 0; y <= 1; ++y) {
+            for (int x = 0; x <= 1; ++x) {
+                float r = reprojection_tex[px * 2 + int2(x, y)].z;
+                reprojection_neighborhood_stability *= r;
+            }
+        }
+    }
 
 #if RTR_USE_TIGHTER_RAY_BIAS
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_biased_depth(uv, depth);
@@ -158,7 +213,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     float pdf_sel = 0;
     float cos_theta = 0;
     float3 irradiance_sel = 0;
-    float3 ray_orig_sel = 0;
+    float4 ray_orig_sel = 0;
     float3 ray_hit_sel_ws = 1;
     float3 hit_normal_sel = 1;
     uint rng_sel = rng_output_tex[px];
@@ -192,7 +247,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             cos_theta = result.cos_theta;
             
             irradiance_sel = result.out_value;
-            ray_orig_sel = refl_ray_origin_ws;
+            ray_orig_sel = float4(refl_ray_origin_ws, asfloat(pack_2x16f_uint(float2(gbuffer.roughness, frame_constants.frame_index & 3))));
 
             ray_hit_sel_ws = result.hit_vs + refl_ray_origin_ws;
 
@@ -226,31 +281,36 @@ void main(uint2 px : SV_DispatchThreadID) {
             const int2 rpx_offset =
                 sample_i == 0
                 ? int2(0, 0)
-                //: sample_offsets[((sample_i - 1) + frame_constants.frame_index) & 3];
                 : int2(reservoir_px_offset_base)
                 ;
 
-            const float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
+            float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];
 
-            // Can't use linear interpolation, but we can interpolate stochastically instead
-            // Note: causes somewhat better reprojection, but also mixes reservoirs
-            // in an ugly way, resulting in noise qualty degradation.
-            //const float2 reproj_rand_offset = float2(uint_to_u01_float(hash1_mut(rng)), uint_to_u01_float(hash1_mut(rng))) - 0.5;
-            // Or not at all.
-            const float2 reproj_rand_offset = 0.0;
+            // Can't use linear interpolation.
 
-            int2 reproj_px = floor((
-                sample_i == 0
-                ? px
-                // My poor approximation of permutation sampling.
-                // https://twitter.com/more_fps/status/1457749362025459715
-                //
-                // When applied everywhere, it does nicely reduce noise, but also makes the GI less reactive
-                // since we're effectively increasing the lifetime of the most attractive samples.
-                // Where it does come in handy though is for boosting convergence rate for newly revealed
-                // locations.
-                : ((px + /*prev_*/rpx_offset) ^ 3)) + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
-            //int2 reproj_px = floor(px + gbuffer_tex_size.xy * reproj.xy / 2 + reproj_rand_offset + 0.5);
+            const float2 reproj_px_flt = px + gbuffer_tex_size.xy * reproj.xy / 2;
+
+            int2 reproj_px;
+            
+
+            {
+                const float2 base_px = px + gbuffer_tex_size.xy * reproj.xy / 2;
+                int2 best_px = floor(base_px + 0.5);
+
+                if (USE_REPROJECTION_SEARCH) {
+                    #if USE_HALFRES_SUBSAMPLE_JITTERING
+                        if (reprojection_neighborhood_stability >= 1) {
+                            find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, false);
+                        } else {
+                            find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, true);
+                        }
+                    #else
+                        find_best_reprojection_in_neighborhood(base_px, best_px, refl_ray_origin_ws.xyz, false);
+                    #endif
+                }
+
+                reproj_px = best_px;
+            }
 
             const int2 rpx = reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
@@ -266,29 +326,12 @@ void main(uint2 px : SV_DispatchThreadID) {
             const uint2 spx = reservoir_payload_to_px(r.payload);
 
             const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);
-            const float sample_depth = depth_tex[rpx_hi];
-            
-            // Note: also doing this for sample 0, as under extreme aliasing,
-            // we can easily get bad samples in.
-            if (0 == sample_depth) {
-                continue;
-            }
-
-            // Reject if depth difference is high
-            if (inverse_depth_relative_diff(depth, sample_depth) > 0.2 || reproj.z == 0) {
-                continue;
-            }
-
             const float4 prev_ray_orig_and_roughness = ray_orig_history_tex[spx] + float4(get_prev_eye_position(), 0);
 
-#if 0
-            // TODO: nuke?. the ndf and jacobian-based rejection seem enough
-            // except when also using spatial reservoir samples
-            if (length(prev_ray_orig_and_roughness.xyz - refl_ray_origin_ws) > 0.1 * -refl_ray_origin_vs.z) {
-                // Reject disocclusions
+            // Reject disocclusions
+            if (length_squared(refl_ray_origin_ws - prev_ray_orig_and_roughness.xyz) > 0.05 * refl_ray_origin_vs.z * refl_ray_origin_vs.z) {
                 continue;
             }
-#endif
 
             const float4 prev_irrad_and_cos_theta =
                 irradiance_history_tex[spx]
@@ -297,7 +340,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 prev_irrad = prev_irrad_and_cos_theta.rgb;
             const float prev_cos_theta = rtr_decode_cos_theta_from_fp16(prev_irrad_and_cos_theta.a);
 
-            //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
             const float4 sample_hit_ws_and_pdf_packed = ray_history_tex[spx];
             const float prev_pdf = sample_hit_ws_and_pdf_packed.a;
 
@@ -326,15 +368,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
-            if (USE_NDF_BASED_M_CLAMP_STRENGTH > 0) {
-                const float current_pdf = specular_brdf.evaluate(wo, wi).pdf;
-
-                const float rel_diff = abs(current_pdf - prev_pdf) / (current_pdf + prev_pdf);
-                //r.M *= saturate(1.0 - rel_diff);
-                r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP
-                    * saturate(1.0 - USE_NDF_BASED_M_CLAMP_STRENGTH * rel_diff));
-            }
-
             if (USE_TRANSLATIONAL_CLAMP) {
                 const float3 current_wo = normalize(ViewRayContext::from_uv(uv).ray_dir_vs());
                 const float3 prev_wo = normalize(ViewRayContext::from_uv(uv + center_reproj.xy).ray_dir_vs());
@@ -342,8 +375,13 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float wo_similarity =
                     pow(SpecularBrdf::ggx_ndf_0_1(a2, dot(current_wo, prev_wo)), 4);
 
-                r.M *= lerp(wo_similarity, 1.0, sqrt(gbuffer.roughness));
-                //r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP * wo_similarity);
+                float mult = lerp(wo_similarity, 1.0, sqrt(gbuffer.roughness));
+                
+                // Don't bother if the surface is bumpy. The lag is hard to see then,
+                // and we'd just end up introducing aliasing on small features.
+                mult = lerp(1.0, mult, local_normal_flatness);
+
+                r.M *= mult;
             }
 
             float p_q = 1;
@@ -415,41 +453,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             // so it needs measure adjustment.
             p_q *= jacobian;
 
-            // Raymarch to check occlusion
-            if (sample_i > 0) {
-                const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
-                const float3 sample_origin_vs = sample_ray_ctx.ray_hit_vs();
-        		const float3 surface_offset_vs = sample_origin_vs - refl_ray_origin_vs;
-
-                // TODO: finish the derivations, don't perspective-project for every sample.
-
-                const float3 raymarch_dir_unnorm_ws = sample_hit_ws - view_ray_context.ray_hit_ws();
-                const float3 raymarch_end_ws =
-                    view_ray_context.ray_hit_ws()
-                    // TODO: what's a good max distance to raymarch? Probably need to project some stuff
-                    + raymarch_dir_unnorm_ws * min(1.0, length(surface_offset_vs) / length(raymarch_dir_unnorm_ws));
-
-                const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
-                const float2 raymarch_len_px = (raymarch_end_uv - uv) * gbuffer_tex_size.xy;
-
-                const uint MIN_PX_PER_STEP = 2;
-                const uint MAX_TAPS = 2;
-
-                const int k_count = min(MAX_TAPS, int(floor(length(raymarch_len_px) / MIN_PX_PER_STEP)));
-
-                // Depth values only have the front; assume a certain thickness.
-                const float Z_LAYER_THICKNESS = 0.05;
-
-                for (int k = 0; k < k_count; ++k) {
-                    const float t = (k + 0.5) / k_count;
-                    const float3 interp_pos_ws = lerp(view_ray_context.ray_hit_ws(), raymarch_end_ws, t);
-                    const float3 interp_pos_cs = position_world_to_clip(interp_pos_ws);
-                    const float depth_at_interp = depth_tex.SampleLevel(sampler_nnc, cs_to_uv(interp_pos_cs.xy), 0);
-                    if (depth_at_interp > interp_pos_cs.z * 1.003) {
-                        visibility *= smoothstep(0, Z_LAYER_THICKNESS, inverse_depth_relative_diff(interp_pos_cs.z, depth_at_interp));
-                    }
-                }
-    		}
+            // TODO: consider ray-marching for occlusion
 
             if (reservoir.update_with_stream(
                 r, p_q, visibility,
@@ -463,7 +467,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
 // TODO: was `refl_ray_origin_ws`; what should it be?
                 //ray_orig_sel = refl_ray_origin_ws;
-                ray_orig_sel = prev_ray_orig_and_roughness.xyz;
+                ray_orig_sel = prev_ray_orig_and_roughness;
 
                 ray_hit_sel_ws = sample_hit_ws;
                 hit_normal_sel = sample_hit_normal_ws_dot.xyz;
@@ -497,10 +501,10 @@ void main(uint2 px : SV_DispatchThreadID) {
     //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
 
     irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_cos_theta_for_fp16(cos_theta));
-    ray_orig_output_tex[px] = float4(ray_orig_sel - get_eye_position(), gbuffer.roughness);
+    ray_orig_output_tex[px] = float4(ray_orig_sel.xyz - get_eye_position(), ray_orig_sel.w);
     //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
-    ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel, pdf_sel);
+    ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel.xyz, pdf_sel);
     rng_output_tex[px] = rng_sel;
     reservoir_out_tex[px] = reservoir.as_raw();
 #endif

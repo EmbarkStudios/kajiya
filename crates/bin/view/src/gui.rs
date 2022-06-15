@@ -40,11 +40,19 @@ impl RuntimeState {
                         .range(0.0..=1.0)
                         .speed(0.001)
                         .build(ui, &mut persisted.exposure.dynamic_adaptation_low_clip);
+                    persisted.exposure.dynamic_adaptation_low_clip = persisted
+                        .exposure
+                        .dynamic_adaptation_low_clip
+                        .clamp(0.0, 1.0);
 
                     imgui::Drag::<f32>::new(im_str!("Luminance histogram high clip"))
                         .range(0.0..=1.0)
                         .speed(0.001)
                         .build(ui, &mut persisted.exposure.dynamic_adaptation_high_clip);
+                    persisted.exposure.dynamic_adaptation_high_clip = persisted
+                        .exposure
+                        .dynamic_adaptation_high_clip
+                        .clamp(0.0, 1.0);
 
                     imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                         .range(0.0..=10.0)
@@ -117,6 +125,12 @@ impl RuntimeState {
                     imgui::Drag::<u32>::new(im_str!("GI spatial reuse passes"))
                         .range(1..=3)
                         .build(ui, &mut ctx.world_renderer.rtdgi.spatial_reuse_pass_count);
+
+                    ctx.world_renderer.rtdgi.spatial_reuse_pass_count = ctx
+                        .world_renderer
+                        .rtdgi
+                        .spatial_reuse_pass_count
+                        .clamp(1, 3);
 
                     ui.checkbox(
                         im_str!("Allow diffuse ray reuse for reflections"),

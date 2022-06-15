@@ -347,7 +347,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 Reservoir1spp r = Reservoir1spp::from_raw(reservoir_raw);
                 const uint2 spx = reservoir_payload_to_px(r.payload);
                 sample_origin_ws = restir_ray_orig_tex[spx].xyz + get_eye_position();
-                const float sample_roughness = restir_ray_orig_tex[spx].w;
+                const float sample_roughness = unpack_2x16f_uint(asuint(restir_ray_orig_tex[spx].w)).x;
 
                 if (
                     // Reject invalid, e.g. on sky.
@@ -561,8 +561,12 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 contrib_wt = rejection_bias * spec_weight / neighbor_sampling_pdf;
                 contrib_accum += float4(sample_radiance * spec.value_over_pdf, 1) * contrib_wt;
             } else {
-                const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, sample_cos_theta);
-                const float center_ndf = SpecularBrdf::ggx_ndf(a2, normalize(wo + wi).z);
+                const float cos_theta = normalize(wo + wi).z;
+                const float bent_cos_theta = min(sample_cos_theta, cos_theta * 1.25);
+                //const float bent_cos_theta = sample_cos_theta;
+
+                const float sample_ray_ndf = SpecularBrdf::ggx_ndf(a2, bent_cos_theta);
+                const float center_ndf = SpecularBrdf::ggx_ndf(a2, cos_theta);
 
                 float bent_sample_pdf = spec.pdf * sample_ray_ndf / center_ndf;
 

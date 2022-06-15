@@ -233,13 +233,15 @@ RayCone pixel_ray_cone_from_image_height(float image_height) {
 }
 
 static const uint2 hi_px_subpixels[4] = {
-    uint2(0, 0),
     uint2(1, 1),
     uint2(1, 0),
+    uint2(0, 0),
     uint2(0, 1),
 };
 
-#if 1
+#define USE_HALFRES_SUBSAMPLE_JITTERING 1
+
+#if USE_HALFRES_SUBSAMPLE_JITTERING
     #define HALFRES_SUBSAMPLE_INDEX (frame_constants.frame_index & 3)
 #else
     #define HALFRES_SUBSAMPLE_INDEX 0
