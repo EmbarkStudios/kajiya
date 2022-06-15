@@ -518,25 +518,11 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float4 hit_normal_ws_dot = float4(hit_normal_sel, -dot(hit_normal_sel, outgoing_ray.Direction));
 
-#if 1
-    /*if (!use_resampling) {
-        reservoir.w_sum = (sRGB_to_luminance(result.out_value));
-        reservoir.w_sel = reservoir.w_sum;
-        reservoir.W = 1;
-        reservoir.M = 1;
-    }*/
-
-    /*if (result.out_value.r > prev_irrad.r * 1.5 + 0.1) {
-        result.out_value.b = 1000;
-    }*/
-    //result.out_value = min(result.out_value, prev_irrad * 1.5 + 0.1);
-
     irradiance_out_tex[px] = float4(irradiance_sel, rtr_encode_cos_theta_for_fp16(cos_theta));
+    // Note: relies on the `xyz` being directly encoded by `RtrRestirRayOrigin`
     ray_orig_output_tex[px] = float4(ray_orig_sel.xyz - get_eye_position(), ray_orig_sel.w);
-    //irradiance_out_tex[px] = float4(result.out_value, dot(gbuffer.normal, outgoing_ray.Direction));
     hit_normal_output_tex[px] = encode_hit_normal_and_dot(hit_normal_ws_dot);
     ray_output_tex[px] = float4(ray_hit_sel_ws - ray_orig_sel.xyz, pdf_sel);
     rng_output_tex[px] = rng_sel;
     reservoir_out_tex[px] = reservoir.as_raw();
-#endif
 }
