@@ -221,7 +221,7 @@ impl Default for MovementState {
 impl ShouldResetPathTracer for MovementState {}
 
 fn default_contrast() -> f32 {
-    return 1.0;
+    1.0
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
