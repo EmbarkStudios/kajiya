@@ -19,6 +19,7 @@ static float2 SAMPLE_BEZOLD_BRUCKE_LUT(float coord) {
 [[vk::binding(5)]] cbuffer _ {
     float4 output_tex_size;
     float input_multiplier;
+    float contrast;
 };
 
 #define USE_GRADE 0
@@ -169,7 +170,7 @@ void main(uint2 px: SV_DispatchThreadID, uint idx_within_group: SV_GroupIndex) {
 #endif
 
     // Crank up the contrast
-    // col = pow(col, 1.15);
+    col = pow(col, contrast);
 
     // Dither
 #if USE_DITHER

@@ -220,6 +220,10 @@ impl Default for MovementState {
 
 impl ShouldResetPathTracer for MovementState {}
 
+fn default_contrast() -> f32 {
+    return 1.0;
+}
+
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ExposureState {
     pub ev_shift: f32,
@@ -231,6 +235,8 @@ pub struct ExposureState {
     pub dynamic_adaptation_low_clip: f32,
     #[serde(default)]
     pub dynamic_adaptation_high_clip: f32,
+    #[serde(default = "default_contrast")]
+    pub contrast: f32,
 }
 
 impl Default for ExposureState {
@@ -241,6 +247,7 @@ impl Default for ExposureState {
             dynamic_adaptation_speed: 0.0,
             dynamic_adaptation_low_clip: 0.0,
             dynamic_adaptation_high_clip: 0.0,
+            contrast: default_contrast(),
         }
     }
 }
@@ -278,6 +285,7 @@ impl SceneElementTransform {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub enum MeshSource {
     File(PathBuf),
+    Cache(PathBuf),
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, PartialEq)]

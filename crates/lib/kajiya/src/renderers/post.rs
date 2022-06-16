@@ -237,6 +237,7 @@ impl PostProcessRenderer {
         //debug_input: &rg::Handle<Image>,
         bindless_descriptor_set: vk::DescriptorSet,
         post_exposure_mult: f32,
+        contrast: f32,
         exposure_histogram_clipping: HistogramClipping,
     ) -> rg::Handle<Image> {
         self.read_back_histogram(exposure_histogram_clipping);
@@ -259,7 +260,11 @@ impl PostProcessRenderer {
             //.read(&blurred_luminance)
             .write(&mut output)
             .raw_descriptor_set(1, bindless_descriptor_set)
-            .constants((output.desc().extent_inv_extent_2d(), post_exposure_mult))
+            .constants((
+                output.desc().extent_inv_extent_2d(),
+                post_exposure_mult,
+                contrast,
+            ))
             .dispatch(output.desc().extent);
 
         output

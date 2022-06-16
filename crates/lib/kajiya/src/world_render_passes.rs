@@ -284,6 +284,7 @@ impl WorldRenderer {
             //&anti_aliased,
             self.bindless_descriptor_set,
             self.exposure_state().post_mult,
+            self.contrast,
             self.dynamic_exposure.histogram_clipping,
         );
 
@@ -323,6 +324,7 @@ impl WorldRenderer {
             //&accum_img, // hack
             self.bindless_descriptor_set,
             self.exposure_state().post_mult,
+            self.contrast,
             self.dynamic_exposure.histogram_clipping,
         )
     }

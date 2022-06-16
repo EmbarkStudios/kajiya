@@ -455,6 +455,7 @@ impl RuntimeState {
         }
 
         ctx.world_renderer.ev_shift = persisted.exposure.ev_shift;
+        ctx.world_renderer.contrast = persisted.exposure.contrast;
         ctx.world_renderer.dynamic_exposure.enabled = persisted.exposure.use_dynamic_adaptation;
         ctx.world_renderer.dynamic_exposure.speed_log2 =
             persisted.exposure.dynamic_adaptation_speed;
@@ -622,6 +623,7 @@ impl RuntimeState {
 
                 cached_mesh_path
             }
+            MeshSource::Cache(path) => path.clone(),
         };
 
         Ok(*self.known_meshes.entry(path.clone()).or_insert_with(|| {

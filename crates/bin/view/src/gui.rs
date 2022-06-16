@@ -54,6 +54,11 @@ impl RuntimeState {
                         .dynamic_adaptation_high_clip
                         .clamp(0.0, 1.0);
 
+                    imgui::Drag::<f32>::new(im_str!("Contrast"))
+                        .range(1.0..=1.5)
+                        .speed(0.001)
+                        .build(ui, &mut persisted.exposure.contrast);
+
                     imgui::Drag::<f32>::new(im_str!("Emissive multiplier"))
                         .range(0.0..=10.0)
                         .speed(0.1)

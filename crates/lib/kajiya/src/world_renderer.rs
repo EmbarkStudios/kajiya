@@ -202,6 +202,7 @@ pub struct WorldRenderer {
     pub debug_show_wrc: bool,
     pub ev_shift: f32,
     pub dynamic_exposure: DynamicExposureState,
+    pub contrast: f32,
 
     pub sun_size_multiplier: f32,
     pub sun_color_multiplier: Vec3,
@@ -502,6 +503,7 @@ impl WorldRenderer {
             debug_show_wrc: false,
             ev_shift: 0.0,
             dynamic_exposure: Default::default(),
+            contrast: 1.0,
 
             sun_size_multiplier: 1.0, // Sun as seen from Earth
             sun_color_multiplier: Vec3::ONE,
