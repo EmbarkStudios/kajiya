@@ -159,7 +159,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float box_size = 1;
     //float n_deviations = 1;
-    float n_deviations = lerp(reproj.z > 0 ? 1 : 1.25, 0.625, restir_invalidity);
+    float n_deviations = lerp(reproj.z > 0 ? 2 : 1.25, 0.625, restir_invalidity);
 
     float wo_similarity;
     {
@@ -173,13 +173,22 @@ void main(uint2 px: SV_DispatchThreadID) {
             pow(SpecularBrdf::ggx_ndf_0_1(clamped_roughness * clamped_roughness, dot(current_wo, prev_wo)), 32);
     }
 
-#if USE_DUAL_REPROJECTION
-    float h0_score = 1.0 * smoothstep(0, 0.2, sqrt(gbuffer.roughness));
-    float h1_score = (1 - h0_score);
-#else
-    float h0_score = 1;
-    float h1_score = 0;
-#endif
+    float h0diff = length((history0.xyz - ex.xyz) / dev.xyz);
+    float h1diff = length((history1.xyz - ex.xyz) / dev.xyz);
+
+    #if USE_DUAL_REPROJECTION
+        float h0_score =
+            1.0
+            * smoothstep(0, 0.3, sqrt(gbuffer.roughness))
+            * smoothstep(0.0, 1, h1diff)
+            ;
+        float h1_score =
+            (1 - h0_score)
+            ;
+    #else
+        float h0_score = 1;
+        float h1_score = 0;
+    #endif
 
     h0_score *= history0_valid;
     h1_score *= history1_valid;
@@ -224,7 +233,7 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 res = lerp(
         clamped_history,
         filtered_center,
-        1.0 / (1.0 + min(max_sample_count, current_sample_count * wo_similarity)));
+        1.0 / (1.0 + min(max_sample_count, current_sample_count * lerp(wo_similarity, 1, 0.5))));
     res.w = min(current_sample_count, max_sample_count) + 1;
     //res.w = sample_count + 1;
     //res.w = refl_ray_length * 20;

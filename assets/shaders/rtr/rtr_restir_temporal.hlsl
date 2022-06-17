@@ -411,7 +411,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                 const float wo_similarity =
                     pow(saturate(SpecularBrdf::ggx_ndf_0_1(max(3e-5, a2), wo_dot)), 64);
 
-                float mult = lerp(wo_similarity, 1, smoothstep(0.05, 0.2, sqrt(gbuffer.roughness)));
+                float mult = lerp(wo_similarity, 1, smoothstep(0.05, 0.3, sqrt(gbuffer.roughness)));
                 
                 // Don't bother if the surface is bumpy. The lag is hard to see then,
                 // and we'd just end up introducing aliasing on small features.
