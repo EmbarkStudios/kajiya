@@ -278,7 +278,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     //const bool use_resampling = false;
     const bool use_resampling = USE_RESAMPLING;
-    const float rt_invalidity = 0;//sqrt(rt_invalidity_tex[px]);
     const float4 center_reproj = reprojection_tex[hi_px];
 
     if (use_resampling) {
@@ -395,18 +394,24 @@ void main(uint2 px : SV_DispatchThreadID) {
             // resampling. To fix this, we simply clamp the previous frame’s M
             // to at most 20× of the current frame’s reservoir’s M
 
-            r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP * lerp(1.0, 0.25, rt_invalidity));
+            r.M = min(r.M, RTR_RESTIR_TEMPORAL_M_CLAMP);
 
             const float3 wi = normalize(mul(dir_to_sample_hit, tangent_to_world));
 
             if (USE_TRANSLATIONAL_CLAMP) {
-                const float3 current_wo = normalize(ViewRayContext::from_uv(uv).ray_dir_vs());
-                const float3 prev_wo = normalize(ViewRayContext::from_uv(uv + center_reproj.xy).ray_dir_vs());
+                //const float3 current_wo = normalize(ViewRayContext::from_uv(uv).ray_dir_vs());
+                //const float3 prev_wo = normalize(ViewRayContext::from_uv(uv + center_reproj.xy).ray_dir_vs());
+
+                // TODO: take object motion into account too
+                const float3 current_wo = normalize(view_ray_context.ray_hit_ws() - get_eye_position());
+                const float3 prev_wo = normalize(view_ray_context.ray_hit_ws() - get_prev_eye_position());
+
+                const float wo_dot = saturate(dot(current_wo, prev_wo));
 
                 const float wo_similarity =
-                    pow(SpecularBrdf::ggx_ndf_0_1(a2, dot(current_wo, prev_wo)), 4);
+                    pow(saturate(SpecularBrdf::ggx_ndf_0_1(max(3e-5, a2), wo_dot)), 64);
 
-                float mult = lerp(wo_similarity, 1.0, sqrt(gbuffer.roughness));
+                float mult = lerp(wo_similarity, 1, smoothstep(0.05, 0.2, sqrt(gbuffer.roughness)));
                 
                 // Don't bother if the surface is bumpy. The lag is hard to see then,
                 // and we'd just end up introducing aliasing on small features.

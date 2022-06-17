@@ -5,6 +5,8 @@
 #include "../inc/bilinear.hlsl"
 #include "../inc/soft_color_clamp.hlsl"
 #include "../inc/image.hlsl"
+#include "../inc/brdf.hlsl"
+#include "../inc/gbuffer.hlsl"
 #include "rtr_settings.hlsl"
 
 #include "../inc/working_color_space.hlsl"
@@ -25,8 +27,9 @@
 [[vk::binding(3)]] Texture2D<float> ray_len_tex;
 [[vk::binding(4)]] Texture2D<float4> reprojection_tex;
 [[vk::binding(5)]] Texture2D<float> refl_restir_invalidity_tex;
-[[vk::binding(6)]] RWTexture2D<float4> output_tex;
-[[vk::binding(7)]] cbuffer _ {
+[[vk::binding(6)]] Texture2D<float4> gbuffer_tex;
+[[vk::binding(7)]] RWTexture2D<float4> output_tex;
+[[vk::binding(8)]] cbuffer _ {
     float4 output_tex_size;
 };
 
@@ -147,50 +150,39 @@ void main(uint2 px: SV_DispatchThreadID) {
 
 	float4 ex = vsum / wsum;
 	float4 ex2 = vsum2 / wsum;
-	//float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
-    //float4 dev = sqrt(max(0.1 * ex, ex2 - ex * ex));
     float4 dev = sqrt(max(0.0.xxxx, ex2 - ex * ex));
-    //dev = max(dev, 0.1);
 
-    float reproj_validity_dilated = reproj.z;
-    /*#if 1
-        {
-         	const int k = 2;
-            for (int y = -k; y <= k; ++y) {
-                for (int x = -k; x <= k; ++x) {
-                    reproj_validity_dilated = min(reproj_validity_dilated, reprojection_tex[px + 2 * int2(x, y)].z);
-                }
-            }
-        }
-    #else
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 1));
-        reproj_validity_dilated = min(reproj_validity_dilated, WaveReadLaneAt(reproj_validity_dilated, WaveGetLaneIndex() ^ 8));
-    #endif*/
+    const float4 gbuffer_packed = gbuffer_tex[px];
+    GbufferData gbuffer = GbufferDataPacked::from_uint4(asuint(gbuffer_packed)).unpack();
 
     const float restir_invalidity = refl_restir_invalidity_tex[px / 2];
-    //reproj_validity_dilated *= 1.0 - 0.5 * restir_invalidity;
 
     float box_size = 1;
-    //const float n_deviations = 1;
-    const float n_deviations = lerp(reproj.z > 0 ? 3 : 1.25, 0.625, restir_invalidity);
-    //const float n_deviations = reproj_validity_dilated;
-    //const float n_deviations = 1 * lerp(2.0, 0.5, saturate(20.0 * length(reproj.xy))) * reproj_validity_dilated;
-    //const float n_deviations = 5 * reproj_validity_dilated;
+    //float n_deviations = 1;
+    float n_deviations = lerp(reproj.z > 0 ? 1 : 1.25, 0.625, restir_invalidity);
 
-	//float4 nmin = lerp(center, ex, box_size * box_size) - dev * box_size * n_deviations;
-	//float4 nmax = lerp(center, ex, box_size * box_size) + dev * box_size * n_deviations;
-    
-    float h0diff = length(history0.xyz - ex.xyz);
-    float h1diff = length(history1.xyz - ex.xyz);
-    float hdiff_scl = max(1e-10, max(h0diff, h1diff));
+    float wo_similarity;
+    {
+        // TODO: take object motion into account too
+        const float3 current_wo = normalize(view_ray_context.ray_hit_ws() - get_eye_position());
+        const float3 prev_wo = normalize(view_ray_context.ray_hit_ws() - get_prev_eye_position());
+
+        const float clamped_roughness = max(0.1, gbuffer.roughness);
+
+        wo_similarity =
+            pow(SpecularBrdf::ggx_ndf_0_1(clamped_roughness * clamped_roughness, dot(current_wo, prev_wo)), 32);
+    }
 
 #if USE_DUAL_REPROJECTION
-    float h0_score = exp2(-100 * min(1, h0diff / hdiff_scl)) * history0_valid;
-    float h1_score = exp2(-100 * min(1, h1diff / hdiff_scl)) * history1_valid;
+    float h0_score = 1.0 * smoothstep(0, 0.2, sqrt(gbuffer.roughness));
+    float h1_score = (1 - h0_score);
 #else
-    float h0_score = 0;
-    float h1_score = 1;
+    float h0_score = 1;
+    float h1_score = 0;
 #endif
+
+    h0_score *= history0_valid;
+    h1_score *= history1_valid;
 
     const float score_sum = h0_score + h1_score;
     h0_score /= score_sum;
@@ -205,8 +197,8 @@ void main(uint2 px: SV_DispatchThreadID) {
     float4 clamped_history1 = history1;
 
 #if 0
-	float4 nmin = center - dev * box_size * n_deviations * 2;
-	float4 nmax = center + dev * box_size * n_deviations * 2;
+	float4 nmin = center - dev * box_size * n_deviations;
+	float4 nmax = center + dev * box_size * n_deviations;
 
     clamped_history0.rgb = clamp(history0.rgb, nmin.rgb, nmax.rgb);
     clamped_history1.rgb = clamp(history1.rgb, nmin.rgb, nmax.rgb);
@@ -215,27 +207,24 @@ void main(uint2 px: SV_DispatchThreadID) {
     clamped_history1.rgb = soft_color_clamp(center.rgb, history1.rgb, ex.rgb, dev.rgb * n_deviations);
 #endif
 
-    //float4 clamped_history = clamp(history0 * h0_score + history1 * h1_score, nmin, nmax);
+    float4 unclamped_history = history0 * h0_score + history1 * h1_score;
     float4 clamped_history = clamped_history0 * h0_score + clamped_history1 * h1_score;
 
     #if !USE_NEIGHBORHOOD_CLAMP
         clamped_history = history0 * h0_score + history1 * h1_score;
     #endif
 
-    //float sample_count = history0.w * h0_score + history1.w * h1_score;
-    //sample_count *= reproj.z;
-
-    //clamped_history = lerp(center, clamped_history, reproj.z);
-    //clamped_history = center;
-
-    //clamped_history = history0;
-    //clamped_history.w = history0.w;
-
     float max_sample_count = 16;
-    float current_sample_count = clamped_history.a * saturate(h0_score * history0_valid + h1_score * history1_valid);
+    const float current_sample_count =
+        clamped_history.a
+        * saturate(h0_score * history0_valid + h1_score * history1_valid)
+        ;
 
     float4 filtered_center = center;
-    float4 res = lerp(clamped_history, filtered_center, 1.0 / (1.0 + min(max_sample_count, current_sample_count)));
+    float4 res = lerp(
+        clamped_history,
+        filtered_center,
+        1.0 / (1.0 + min(max_sample_count, current_sample_count * wo_similarity)));
     res.w = min(current_sample_count, max_sample_count) + 1;
     //res.w = sample_count + 1;
     //res.w = refl_ray_length * 20;

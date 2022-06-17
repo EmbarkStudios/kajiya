@@ -379,6 +379,7 @@ impl TracedRtr {
         .read(&self.ray_len_tex)
         .read(reprojection_map)
         .read(&self.refl_restir_invalidity_tex)
+        .read(&gbuffer_depth.gbuffer)
         .write(&mut self.temporal_output_tex)
         .constants(self.temporal_output_tex.desc().extent_inv_extent_2d())
         .dispatch(self.resolved_tex.desc().extent);

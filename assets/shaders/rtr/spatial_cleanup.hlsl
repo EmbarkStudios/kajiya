@@ -22,7 +22,9 @@ void main(int2 px: SV_DispatchThreadID) {
     const float center_depth = depth_tex[px];
     const float center_sample_count = center.w;
 
-    if (!true || center_sample_count >= 16 || center_depth == 0.0) {
+    const float min_sample_count = 8;
+
+    if (center_sample_count >= min_sample_count || center_depth == 0.0) {
         output_tex[px] = center;
         return;
     }
@@ -36,7 +38,7 @@ void main(int2 px: SV_DispatchThreadID) {
     float3 vsum = 0.0.xxx;
     float wsum = 0.0;
 
-    const uint sample_count = clamp(int(8 - center_sample_count / 2), 4, 16);
+    const uint sample_count = clamp(int(8 - center_sample_count / 2), min_sample_count / 4, min_sample_count);
     //const uint sample_count = 8;
     const uint kernel_scale = center_sample_count < 4 ? 2 : 1;
     const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
