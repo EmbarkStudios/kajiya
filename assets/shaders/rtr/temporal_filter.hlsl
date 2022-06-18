@@ -170,7 +170,7 @@ void main(uint2 px: SV_DispatchThreadID) {
         const float clamped_roughness = max(0.1, gbuffer.roughness);
 
         wo_similarity =
-            pow(SpecularBrdf::ggx_ndf_0_1(clamped_roughness * clamped_roughness, dot(current_wo, prev_wo)), 32);
+            pow(saturate(SpecularBrdf::ggx_ndf_0_1(clamped_roughness * clamped_roughness, dot(current_wo, prev_wo))), 32);
     }
 
     float h0diff = length((history0.xyz - ex.xyz) / dev.xyz);
@@ -179,11 +179,22 @@ void main(uint2 px: SV_DispatchThreadID) {
     #if USE_DUAL_REPROJECTION
         float h0_score =
             1.0
-            * smoothstep(0, 0.3, sqrt(gbuffer.roughness))
-            * smoothstep(0.0, 1, h1diff)
+            // Favor direct reprojection at high roughness.
+            * smoothstep(0, 0.5, sqrt(gbuffer.roughness))
+            //* sqrt(gbuffer.roughness)
+            // Except when under a lot of parallax motion.
+            * lerp(wo_similarity, 1, sqrt(gbuffer.roughness))
             ;
         float h1_score =
             (1 - h0_score)
+            * lerp(
+                1,
+                // Don't use the parallax-based reprojection when direct reprojection has
+                // much lower difference to the new frame's mean.
+                smoothstep(0, 1, h0diff - h1diff),
+                // ... except at low roughness values, where we really want to use
+                // the parallax-based reprojection.
+                smoothstep(0.0, 0.15, sqrt(gbuffer.roughness)))
             ;
     #else
         float h0_score = 1;
