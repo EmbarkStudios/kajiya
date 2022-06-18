@@ -7,7 +7,7 @@ float3 rtdgi_candidate_ray_dir(uint2 px, float3x3 tangent_to_world) {
         urand += float2(
             uint_to_u01_float(hash1_mut(rng)),
             uint_to_u01_float(hash1_mut(rng))
-        );
+        ) / 256.0;
 
         urand = frac(urand);
     #endif
