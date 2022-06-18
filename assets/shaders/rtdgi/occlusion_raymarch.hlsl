@@ -98,17 +98,16 @@ struct OcclusionScreenRayMarch {
 
             uint2 px_at_interp;
             float depth_at_interp;
-            float2 quantized_cs_at_interp;
 
             if (use_halfres_depth) {
-                px_at_interp = (uint2(floor(uv_at_interp * fullres_depth_tex_size)) & ~1u) + HALFRES_SUBSAMPLE_OFFSET;
+                px_at_interp = (uint2(floor(uv_at_interp * fullres_depth_tex_size - HALFRES_SUBSAMPLE_OFFSET)) & ~1u) + HALFRES_SUBSAMPLE_OFFSET;
                 depth_at_interp = halfres_depth_tex[px_at_interp >> 1u];
-                quantized_cs_at_interp = uv_to_cs((px_at_interp + 0.25 + HALFRES_SUBSAMPLE_OFFSET * 0.5) / fullres_depth_tex_size);
             } else {
                 px_at_interp = floor(uv_at_interp * fullres_depth_tex_size);
                 depth_at_interp = fullres_depth_tex[px_at_interp];
-                quantized_cs_at_interp = uv_to_cs((px_at_interp + 0.5) / fullres_depth_tex_size);
             }
+
+            const float2 quantized_cs_at_interp = uv_to_cs((px_at_interp + 0.5) / fullres_depth_tex_size);
 
             const float biased_interp_z = raymarch_start_cs.z + depth_step_per_z * length(quantized_cs_at_interp - raymarch_start_cs.xy);
 

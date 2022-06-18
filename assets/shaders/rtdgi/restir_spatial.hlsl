@@ -274,6 +274,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             )
             .with_max_sample_count(6)
             .with_halfres_depth(output_tex_size.xy, half_depth_tex);
+            //.with_fullres_depth(depth_tex);
 
             if (RTDGI_RESTIR_SPATIAL_USE_RAYMARCH_COLOR_BOUNCE) {
                 raymarch = raymarch.with_color_bounce(reprojected_gi_tex);
