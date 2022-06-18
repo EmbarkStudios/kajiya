@@ -28,6 +28,7 @@
     uint spatial_reuse_pass_idx;
     // Only done in the last spatial resampling pass
     uint perform_occlusion_raymarch;
+    uint occlusion_raymarch_importance_only;
 };
 
 #define USE_SSAO_WEIGHING 1
@@ -344,6 +345,20 @@ void main(uint2 px : SV_DispatchThreadID) {
         }
 
         r.M *= relevance;
+
+        if (occlusion_raymarch_importance_only) {
+            // This is used with ray-traced reservoir visibility which happens after
+            // the last spatial resampling. We don't _need_ to perform the raymarch
+            // for it, but importance sampling based on unshadowed contribution
+            // could end up choosing occluded areas, which then get turned black
+            // by the ray-traced check. This then creates extra variance.
+            //
+            // We can instead try to use the ray-marched visibility as an estimator
+            // of real visibility.
+
+            p_q *= lerp(0.25, 1.0, visibility);
+            visibility = 1;
+        }
 
         if (reservoir.update_with_stream(
             r, p_q, visibility * jacobian,

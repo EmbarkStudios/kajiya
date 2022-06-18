@@ -138,6 +138,11 @@ impl RuntimeState {
                         .clamp(1, 3);
 
                     ui.checkbox(
+                        im_str!("Ray-traced reservoir visibility"),
+                        &mut ctx.world_renderer.rtdgi.use_raytraced_reservoir_visibility,
+                    );
+
+                    ui.checkbox(
                         im_str!("Allow diffuse ray reuse for reflections"),
                         &mut ctx.world_renderer.rtr.reuse_rtdgi_rays,
                     );

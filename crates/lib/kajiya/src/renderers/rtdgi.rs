@@ -22,6 +22,7 @@ pub struct RtdgiRenderer {
     temporal_hit_normal_tex: PingPongTemporalResource,
 
     pub spatial_reuse_pass_count: u32,
+    pub use_raytraced_reservoir_visibility: bool,
 }
 
 const COLOR_BUFFER_FORMAT: vk::Format = vk::Format::R16G16B16A16_SFLOAT;
@@ -39,6 +40,7 @@ impl Default for RtdgiRenderer {
             temporal2_variance_tex: PingPongTemporalResource::new("rtdgi.temporal2_var"),
             temporal_hit_normal_tex: PingPongTemporalResource::new("rtdgi.hit_normal"),
             spatial_reuse_pass_count: 2,
+            use_raytraced_reservoir_visibility: false,
         }
     }
 }
@@ -433,6 +435,13 @@ impl RtdgiRenderer {
                         0
                     };
 
+                let occlusion_raymarch_importance_only: u32 =
+                    if self.use_raytraced_reservoir_visibility {
+                        1
+                    } else {
+                        0
+                    };
+
                 SimpleRenderPass::new_compute(
                     rg.add_pass("restir spatial"),
                     "/shaders/rtdgi/restir_spatial.hlsl",
@@ -452,6 +461,7 @@ impl RtdgiRenderer {
                     reservoir_output_tex0.desc().extent_inv_extent_2d(),
                     spatial_reuse_pass_idx as u32,
                     perform_occulsion_raymarch,
+                    occlusion_raymarch_importance_only,
                 ))
                 .dispatch(reservoir_output_tex0.desc().extent);
 
@@ -463,6 +473,24 @@ impl RtdgiRenderer {
 
                 reservoir_input_tex = &mut reservoir_output_tex1;
                 bounced_radiance_input_tex = &mut bounced_radiance_output_tex1;
+            }
+
+            if self.use_raytraced_reservoir_visibility {
+                SimpleRenderPass::new_rt(
+                    rg.add_pass("restir check"),
+                    ShaderSource::hlsl("/shaders/rtdgi/restir_check.rgen.hlsl"),
+                    [
+                        ShaderSource::hlsl("/shaders/rt/gbuffer.rmiss.hlsl"),
+                        ShaderSource::hlsl("/shaders/rt/shadow.rmiss.hlsl"),
+                    ],
+                    [ShaderSource::hlsl("/shaders/rt/gbuffer.rchit.hlsl")],
+                )
+                .read(&*half_depth_tex)
+                .read(&temporal_reservoir_packed_tex)
+                .write(reservoir_input_tex)
+                .constants((gbuffer_desc.extent_inv_extent_2d(),))
+                .raw_descriptor_set(1, bindless_descriptor_set)
+                .trace_rays(tlas, candidate_radiance_tex.desc().extent);
             }
 
             let mut irradiance_output_tex = rg.create(
