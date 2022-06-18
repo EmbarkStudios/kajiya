@@ -1,5 +1,5 @@
 #define DIFFUSE_GI_USE_RESTIR 1
-#define RESTIR_TEMPORAL_M_CLAMP 10.0
+#define RESTIR_TEMPORAL_M_CLAMP 20.0
 
 // Reduces fireflies, but causes darkening in corners
 #define RESTIR_RESERVOIR_W_CLAMP 10.0
