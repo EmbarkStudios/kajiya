@@ -14,7 +14,7 @@ byteorder = "1.4"
 bytes = "1.0"
 ddsfile = "0.4"
 glam = "0.18"
-gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "b9c04be69363b8353d58f99aa1008ead93020851", features = ["KHR_texture_transform"] } # no submodules
+gltf = { git = "https://github.com/gltf-rs/gltf.git", rev = "b9c04be69363b8353d58f99aa1008ead93020851", features = ["KHR_texture_transform", "KHR_materials_pbrSpecularGlossiness"] } # no submodules
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
 intel_tex_2 = "0.2.0"
 log = "0.4"

@@ -143,8 +143,11 @@ fn load_gltf_material(
         }
     }
 
-    let (albedo_map, albedo_map_transform) =
-        mat.pbr_metallic_roughness().base_color_texture().map_or(
+    let (albedo_map, albedo_map_transform) = mat
+        .pbr_metallic_roughness()
+        .base_color_texture()
+        .or_else(|| mat.pbr_specular_glossiness()?.diffuse_texture())
+        .map_or(
             (
                 MeshMaterialMap::Placeholder([255, 255, 255, 255]),
                 DEFAULT_MAP_TRANSFORM,
