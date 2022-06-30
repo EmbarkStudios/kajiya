@@ -345,7 +345,7 @@ To illustrate the win from temporal reservoir resampling, here's how the image l
 
 ## Sample validation
 
-Since reflections only use spatial reservoir resampling, they are less sensitive to reusing invalidated reservoirs; we don't need to check them all in the same frame. As such, a simpler scheme is applied here. Instead of temporally staggering the validation traces, they are simply done every frame, but at quarter-resolution (half of the trace resolution).
+Since reflections only use temporal reservoir resampling, they are less sensitive to reusing invalidated reservoirs; we don't need to check them all in the same frame. As such, a simpler scheme is applied here. Instead of temporally staggering the validation traces, they are simply done every frame, but at quarter-resolution (half of the trace resolution).
 
 When a previous ReSTIR sample is detected to have changed sufficiently, its 2x2 quad neighbors are inspected. If a neighbor tracks a point of similar radiance, it is invalidated as well. This get part way there to running the validation at the full trace resolution, at a tiny fraction of the cost.
 
