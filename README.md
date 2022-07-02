@@ -97,7 +97,7 @@ Operating systems:
 
 To build `kajiya` [you need Rust](https://www.rust-lang.org/tools/install).
 
-Once Rust is installed, build and run the viewer app via:
+Once Rust is installed, open a command prompt in the project folder, then build and run the viewer app via:
 
 ```
 cargo run --bin view --release
