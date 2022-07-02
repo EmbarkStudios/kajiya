@@ -111,7 +111,7 @@ struct ShaderIncludeProvider {
     ctx: RunContext,
 }
 
-impl<'a> shader_prepper::IncludeProvider for ShaderIncludeProvider {
+impl shader_prepper::IncludeProvider for ShaderIncludeProvider {
     type IncludeContext = String;
 
     fn get_include(

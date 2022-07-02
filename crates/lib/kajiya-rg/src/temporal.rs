@@ -37,7 +37,7 @@ impl<'a> From<&'a str> for TemporalResourceKey {
     }
 }
 
-impl<'a> From<String> for TemporalResourceKey {
+impl From<String> for TemporalResourceKey {
     fn from(s: String) -> Self {
         TemporalResourceKey(s)
     }
