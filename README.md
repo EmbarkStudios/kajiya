@@ -166,7 +166,7 @@ This project is made possible by the awesome open source Rust community, and ben
 
 Special shout-outs go to:
 
-* Felix Westin for his [MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere), which this project uses for sky rendering
+* Felix Westin for his [MinimalAtmosphere](https://github.com/Fewes/MinimalAtmosphere), which this project uses for sky rendering.
 * AMD, especially Dominik Baumeister and Guillaume Boissé for the [FidelityFX Shadow Denoiser](https://gpuopen.com/fidelityfx-denoiser/), which forms the basis of shadow denoising in `kajiya`.
 * Maik Klein for the Vulkan wrapper [ash](https://github.com/MaikKlein/ash), making it easy for `kajiya` to talk to the GPU.
 * Traverse Research and Jasper Bekkers for a number of highly relevant crates:
@@ -174,6 +174,7 @@ Special shout-outs go to:
   * SPIR-V reflection utilities: [rspirv-reflect](https://github.com/Traverse-Research/rspirv-reflect)
   * Vulkan memory management: [gpu-allocator](https://github.com/Traverse-Research/gpu-allocator)
   * Blue noise sampling: [blue-noise-sampler](https://github.com/Jasper-Bekkers/blue-noise-sampler)
+* Troy Sobotka for guidance and mind-bending discussions about color.
 
 ## Contribution
 
