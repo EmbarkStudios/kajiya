@@ -282,7 +282,7 @@ impl SceneElementTransform {
     }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub enum MeshSource {
     File(PathBuf),
     Cache(PathBuf),

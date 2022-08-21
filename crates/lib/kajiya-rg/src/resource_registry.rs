@@ -36,11 +36,13 @@ impl AnyRenderResource {
     pub fn borrow(&self) -> AnyRenderResourceRef {
         match self {
             AnyRenderResource::OwnedImage(inner) => AnyRenderResourceRef::Image(inner),
-            AnyRenderResource::ImportedImage(inner) => AnyRenderResourceRef::Image(&*inner),
+            AnyRenderResource::ImportedImage(inner) => AnyRenderResourceRef::Image(inner.as_ref()),
             AnyRenderResource::OwnedBuffer(inner) => AnyRenderResourceRef::Buffer(inner),
-            AnyRenderResource::ImportedBuffer(inner) => AnyRenderResourceRef::Buffer(&*inner),
+            AnyRenderResource::ImportedBuffer(inner) => {
+                AnyRenderResourceRef::Buffer(inner.as_ref())
+            }
             AnyRenderResource::ImportedRayTracingAcceleration(inner) => {
-                AnyRenderResourceRef::RayTracingAcceleration(&*inner)
+                AnyRenderResourceRef::RayTracingAcceleration(inner.as_ref())
             }
             AnyRenderResource::Pending { .. } => {
                 panic!("AnyRenderResource::borrow called while the resource was in Pending state")

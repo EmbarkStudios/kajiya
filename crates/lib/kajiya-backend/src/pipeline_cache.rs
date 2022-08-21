@@ -305,7 +305,7 @@ impl PipelineCache {
                             entry.desc.source.entry(),
                         );
                         entry.pipeline = Some(Arc::new(create_compute_pipeline(
-                            &*device,
+                            device.as_ref(),
                             &compiled.spirv,
                             &entry.desc,
                         )));
@@ -336,7 +336,7 @@ impl PipelineCache {
 
                         // TODO: defer and handle the error
                         entry.pipeline = Some(Arc::new(
-                            create_raster_pipeline(&*device, &compiled_shaders, &entry.desc)
+                            create_raster_pipeline(device.as_ref(), &compiled_shaders, &entry.desc)
                                 .expect("create_raster_pipeline"),
                         ));
                     }
@@ -366,8 +366,12 @@ impl PipelineCache {
 
                         // TODO: defer and handle the error
                         entry.pipeline = Some(Arc::new(
-                            create_ray_tracing_pipeline(&*device, &compiled_shaders, &entry.desc)
-                                .expect("create_ray_tracing_pipeline"),
+                            create_ray_tracing_pipeline(
+                                device.as_ref(),
+                                &compiled_shaders,
+                                &entry.desc,
+                            )
+                            .expect("create_ray_tracing_pipeline"),
                         ));
                     }
                 }

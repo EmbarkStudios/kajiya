@@ -272,7 +272,7 @@ impl<'a, 'exec_params, 'constants> RenderPassApi<'a, 'exec_params, 'constants> {
             let bindings = bindings?;
 
             bind_descriptor_set(
-                &*self.resources.execution_params.device,
+                self.resources.execution_params.device,
                 self.cb,
                 &pipeline,
                 set_idx,
