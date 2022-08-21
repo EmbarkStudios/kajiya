@@ -35,3 +35,6 @@ debug = 1
 
 #[patch."https://github.com/h3r2tic/rspirv-reflect"]
 #rspirv-reflect = { path = "../rspirv-reflect" }
+
+#[patch."https://github.com/h3r2tic/gpu-profiler.git"]
+#gpu-profiler = { path = "../gpu_profiler", features = ["use-ash"] }

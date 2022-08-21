@@ -17,7 +17,7 @@ derive_builder = { version = "0.9", default-features = false }
 futures = "0.3"
 glam = "0.18"
 gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", rev = "e66d062cbd73a6c98834fc3e3acef98318097156" }
-gpu-profiler = { path = "../../../../gpu_profiler", features = ["use-ash"] }
+gpu-profiler = { git = "https://github.com/h3r2tic/gpu-profiler.git", rev = "70255e819d7eb42161bfe2cfb9c70349da78ac2d", features = ["use-ash"] }
 hassle-rs = "0.5"
 hotwatch = "0.4"
 lazy_static = "1.4"
