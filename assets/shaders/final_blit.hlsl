@@ -16,7 +16,7 @@ struct LinearToSrgbRemap {
     }
 
     float4 remap(float4 v) {
-        return float4(sRGB_EOTF(v.rgb), 1.0);
+        return float4(sRGB_OETF(v.rgb), 1.0);
     }
 };
 
@@ -31,7 +31,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             LinearToSrgbRemap::create()
         ).rgb;
     } else {
-        main = sRGB_EOTF(saturate(main_tex[px].rgb));
+        main = sRGB_OETF(saturate(main_tex[px].rgb));
     }
     float4 gui = gui_tex[px];
 

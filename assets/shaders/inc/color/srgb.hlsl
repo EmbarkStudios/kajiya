@@ -27,20 +27,20 @@ float3 XYZ_to_sRGB(float3 color) {
     ), color);
 }
 
-float sRGB_EOTF(float a) {
-	return .0031308f >= a ? 12.92f * a : 1.055f * pow(a, .4166666666666667f) - .055f;
-}
-
-float3 sRGB_EOTF(float3 a) {
-	return float3(sRGB_EOTF(a.r), sRGB_EOTF(a.g), sRGB_EOTF(a.b));
-}
-
 float sRGB_OETF(float a) {
-	return .04045f < a ? pow((a + .055f) / 1.055f, 2.4f) : a / 12.92f;
+	return .0031308f >= a ? 12.92f * a : 1.055f * pow(a, .4166666666666667f) - .055f;
 }
 
 float3 sRGB_OETF(float3 a) {
 	return float3(sRGB_OETF(a.r), sRGB_OETF(a.g), sRGB_OETF(a.b));
+}
+
+float sRGB_EOTF(float a) {
+	return .04045f < a ? pow((a + .055f) / 1.055f, 2.4f) : a / 12.92f;
+}
+
+float3 sRGB_EOTF(float3 a) {
+	return float3(sRGB_EOTF(a.r), sRGB_EOTF(a.g), sRGB_EOTF(a.b));
 }
 
 #endif  // NOTORIOUS6_SRGB_HLSL
