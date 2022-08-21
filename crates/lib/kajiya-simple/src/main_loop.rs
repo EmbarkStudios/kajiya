@@ -338,7 +338,9 @@ impl SimpleMainLoop {
 
         let mut running = true;
         while running {
+            gpu_profiler::profiler().begin_frame();
             let gpu_frame_start_ns = puffin::now_ns();
+
             puffin::profile_scope!("main loop");
             puffin::GlobalProfiler::lock().new_frame();
 
@@ -492,42 +494,12 @@ impl SimpleMainLoop {
                 }
             }
 
-            report_gpu_stats_to_puffin(&gpu_profiler::get_stats(), gpu_frame_start_ns);
+            gpu_profiler::profiler().end_frame();
+            if let Some(report) = gpu_profiler::profiler().last_report() {
+                report.send_to_puffin(gpu_frame_start_ns);
+            };
         }
 
         Ok(())
     }
-}
-
-fn report_gpu_stats_to_puffin(
-    gpu_stats: &gpu_profiler::GpuProfilerStats,
-    gpu_frame_start_ns: puffin::NanoSecond,
-) {
-    let mut stream = puffin::Stream::default();
-    let gpu_scopes = gpu_stats.get_ordered();
-    let mut gpu_time_accum: puffin::NanoSecond = 0;
-    let mut puffin_scope_count = 0;
-    let main_gpu_scope_offset = stream.begin_scope(gpu_frame_start_ns, "frame", "", "");
-    puffin_scope_count += 1;
-    puffin_scope_count += gpu_scopes.len();
-    for (scope, ms) in gpu_scopes {
-        let ns = (ms * 1_000_000.0) as puffin::NanoSecond;
-        let offset = stream.begin_scope(gpu_frame_start_ns + gpu_time_accum, &scope.name, "", "");
-        gpu_time_accum += ns;
-        stream.end_scope(offset, gpu_frame_start_ns + gpu_time_accum);
-    }
-    stream.end_scope(main_gpu_scope_offset, gpu_frame_start_ns + gpu_time_accum);
-    puffin::global_reporter(
-        puffin::ThreadInfo {
-            start_time_ns: None,
-            name: "gpu".to_owned(),
-        },
-        &puffin::StreamInfo {
-            num_scopes: puffin_scope_count,
-            stream,
-            depth: 1,
-            range_ns: (gpu_frame_start_ns, gpu_frame_start_ns + gpu_time_accum),
-        }
-        .as_stream_into_ref(),
-    );
 }

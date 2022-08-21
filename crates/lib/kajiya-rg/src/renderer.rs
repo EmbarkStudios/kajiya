@@ -160,7 +160,9 @@ impl Renderer {
         {
             let main_cb = &current_frame.main_command_buffer;
 
-            current_frame.profiler_data.begin_frame(device, main_cb.raw);
+            current_frame
+                .profiler_data
+                .begin_frame(&device.raw, main_cb.raw);
 
             executing_rg = {
                 puffin::profile_scope!("rg begin_execute");
@@ -255,7 +257,7 @@ impl Renderer {
 
             current_frame
                 .profiler_data
-                .finish_frame(device, presentation_cb.raw);
+                .end_frame(&device.raw, presentation_cb.raw);
 
             // Record and submit the presentation command buffer
             unsafe {

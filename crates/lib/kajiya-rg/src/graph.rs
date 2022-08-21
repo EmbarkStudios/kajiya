@@ -17,7 +17,6 @@ use kajiya_backend::{
         vk::{self, DebugUtilsLabelEXT},
     },
     dynamic_constants::DynamicConstants,
-    gpu_profiler,
     pipeline_cache::{
         ComputePipelineHandle, PipelineCache, RasterPipelineHandle, RtPipelineHandle,
     },
@@ -29,9 +28,8 @@ use kajiya_backend::{
             get_access_info, image_aspect_mask_from_access_type_and_format, record_image_barrier,
             ImageBarrier,
         },
-        device::{CommandBuffer, Device},
+        device::{CommandBuffer, Device, VkProfilerData},
         image::ImageViewDesc,
-        profiler::VkProfilerData,
         ray_tracing::{RayTracingAcceleration, RayTracingPipelineDesc},
         shader::{ComputePipelineDesc, PipelineShader, PipelineShaderDesc, RasterPipelineDesc},
     },
@@ -122,9 +120,15 @@ pub struct PredefinedDescriptorSet {
     pub bindings: HashMap<u32, rspirv_reflect::DescriptorInfo>,
 }
 
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct RenderDebugHook {
+    pub name: String,
+    pub id: u64,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct GraphDebugHook {
-    pub render_scope: gpu_profiler::RenderScopeDesc,
+    pub render_debug_hook: RenderDebugHook,
 }
 
 pub struct RenderGraph {
@@ -606,7 +610,7 @@ impl RenderGraph {
     }
 
     fn hook_debug_pass(&mut self, pass: &RecordedPass) -> Option<PendingDebugPass> {
-        let scope_hook = &self.debug_hook.as_ref()?.render_scope;
+        let scope_hook = &self.debug_hook.as_ref()?.render_debug_hook;
 
         if pass.name == scope_hook.name && pass.idx as u64 == scope_hook.id {
             fn is_debug_compatible(desc: &ImageDesc) -> bool {
@@ -933,26 +937,11 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
             }
         }
 
-        let vk_query_idx = {
-            let query_id = gpu_profiler::create_gpu_query(
-                gpu_profiler::RenderScopeDesc {
-                    name: pass.name.clone(),
-                    id: pass.idx as _,
-                },
-                pass.idx,
-            );
-            let vk_query_idx = params.profiler_data.get_query_id(query_id);
-
-            unsafe {
-                params.device.raw.cmd_write_timestamp(
-                    cb.raw,
-                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                    params.profiler_data.query_pool,
-                    vk_query_idx * 2,
-                );
-            }
-
-            vk_query_idx
+        let vk_scope = {
+            let query_id = kajiya_backend::gpu_profiler::profiler().create_scope(&pass.name);
+            params
+                .profiler_data
+                .begin_scope(&params.device.raw, cb.raw, query_id)
         };
 
         {
@@ -1005,14 +994,9 @@ impl<'exec_params, 'constants> ExecutingRenderGraph<'exec_params, 'constants> {
 
         let params = &resource_registry.execution_params;
 
-        unsafe {
-            params.device.raw.cmd_write_timestamp(
-                cb.raw,
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                params.profiler_data.query_pool,
-                vk_query_idx * 2 + 1,
-            );
-        }
+        params
+            .profiler_data
+            .end_scope(&params.device.raw, cb.raw, vk_scope);
 
         if let Some(debug_utils) = params.device.debug_utils() {
             unsafe {

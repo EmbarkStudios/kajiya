@@ -414,47 +414,54 @@ impl RuntimeState {
                     .default_open(true)
                     .build(ui)
                 {
-                    let gpu_stats = gpu_profiler::get_stats();
                     ui.text(format!("CPU frame time: {:.3}ms", ctx.dt_filtered * 1000.0));
 
-                    let ordered_scopes = gpu_stats.get_ordered();
-                    let gpu_time_ms: f64 = ordered_scopes.iter().map(|(_, ms)| ms).sum();
+                    if let Some(report) = gpu_profiler::profiler().last_report() {
+                        let ordered_scopes = report.scopes.as_slice();
+                        let gpu_time_ms: f64 =
+                            ordered_scopes.iter().map(|scope| scope.duration.ms()).sum();
 
-                    ui.text(format!("GPU frame time: {:.3}ms", gpu_time_ms));
+                        ui.text(format!("GPU frame time: {:.3}ms", gpu_time_ms));
 
-                    for (scope, ms) in ordered_scopes {
-                        if scope.name == "debug" || scope.name.starts_with('_') {
-                            continue;
-                        }
-
-                        let style = self.locked_rg_debug_hook.as_ref().and_then(|hook| {
-                            if hook.render_scope == scope {
-                                Some(ui.push_style_color(
-                                    imgui::StyleColor::Text,
-                                    [1.0, 1.0, 0.1, 1.0],
-                                ))
-                            } else {
-                                None
+                        for (scope_index, scope) in ordered_scopes.iter().enumerate() {
+                            if scope.name == "debug" || scope.name.starts_with('_') {
+                                continue;
                             }
-                        });
 
-                        ui.text(format!("{}: {:.3}ms", scope.name, ms));
+                            let render_debug_hook = kajiya::rg::RenderDebugHook {
+                                name: scope.name.clone(),
+                                id: scope_index as u64,
+                            };
 
-                        if let Some(style) = style {
-                            style.pop(ui);
-                        }
-
-                        if ui.is_item_hovered() {
-                            ctx.world_renderer.rg_debug_hook = Some(kajiya::rg::GraphDebugHook {
-                                render_scope: scope.clone(),
+                            let style = self.locked_rg_debug_hook.as_ref().and_then(|hook| {
+                                if hook.render_debug_hook == render_debug_hook {
+                                    Some(ui.push_style_color(
+                                        imgui::StyleColor::Text,
+                                        [1.0, 1.0, 0.1, 1.0],
+                                    ))
+                                } else {
+                                    None
+                                }
                             });
 
-                            if ui.is_item_clicked(imgui::MouseButton::Left) {
-                                if self.locked_rg_debug_hook == ctx.world_renderer.rg_debug_hook {
-                                    self.locked_rg_debug_hook = None;
-                                } else {
-                                    self.locked_rg_debug_hook =
-                                        ctx.world_renderer.rg_debug_hook.clone();
+                            ui.text(format!("{}: {:.3}ms", scope.name, scope.duration.ms()));
+
+                            if let Some(style) = style {
+                                style.pop(ui);
+                            }
+
+                            if ui.is_item_hovered() {
+                                ctx.world_renderer.rg_debug_hook =
+                                    Some(kajiya::rg::GraphDebugHook { render_debug_hook });
+
+                                if ui.is_item_clicked(imgui::MouseButton::Left) {
+                                    if self.locked_rg_debug_hook == ctx.world_renderer.rg_debug_hook
+                                    {
+                                        self.locked_rg_debug_hook = None;
+                                    } else {
+                                        self.locked_rg_debug_hook =
+                                            ctx.world_renderer.rg_debug_hook.clone();
+                                    }
                                 }
                             }
                         }

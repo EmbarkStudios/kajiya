@@ -5,7 +5,7 @@ pub mod error;
 pub mod image;
 pub mod instance;
 pub mod physical_device;
-pub mod profiler;
+mod profiler;
 pub mod ray_tracing;
 pub mod shader;
 pub mod surface;

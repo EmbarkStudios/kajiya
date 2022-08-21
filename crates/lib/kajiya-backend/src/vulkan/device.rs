@@ -1,10 +1,11 @@
 use crate::{vulkan::buffer::BufferDesc, BackendError};
 
+pub use super::profiler::VkProfilerData;
 use super::{
     buffer::Buffer,
     error::CrashMarkerNames,
     physical_device::{PhysicalDevice, QueueFamily},
-    profiler::VkProfilerData,
+    profiler::ProfilerBackend,
 };
 use anyhow::Result;
 use ash::{
@@ -12,6 +13,7 @@ use ash::{
     vk,
 };
 use gpu_allocator::{AllocatorDebugSettings, VulkanAllocator, VulkanAllocatorCreateDesc};
+use gpu_profiler::backend::ash::VulkanProfilerFrame;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use parking_lot::Mutex;
@@ -110,6 +112,7 @@ impl CommandBuffer {
 
 impl DeviceFrame {
     pub fn new(
+        pdevice: &PhysicalDevice,
         device: &ash::Device,
         global_allocator: &mut VulkanAllocator,
         queue_family: &QueueFamily,
@@ -127,7 +130,14 @@ impl DeviceFrame {
             main_command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
             presentation_command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
             pending_resource_releases: Default::default(),
-            profiler_data: VkProfilerData::new(device, global_allocator),
+            profiler_data: VulkanProfilerFrame::new(
+                device,
+                ProfilerBackend::new(
+                    device,
+                    global_allocator,
+                    pdevice.properties.limits.timestamp_period,
+                ),
+            ),
         }
     }
 }
@@ -383,8 +393,18 @@ impl Device {
                 family: universal_queue,
             };
 
-            let frame0 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
-            let frame1 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
+            let frame0 = DeviceFrame::new(
+                pdevice,
+                &device,
+                &mut global_allocator,
+                &universal_queue.family,
+            );
+            let frame1 = DeviceFrame::new(
+                pdevice,
+                &device,
+                &mut global_allocator,
+                &universal_queue.family,
+            );
             //let frame2 = DeviceFrame::new(&device, &mut global_allocator, &universal_queue.family);
 
             let immutable_samplers = Self::create_samplers(&device);
@@ -515,24 +535,6 @@ impl Device {
                     )
                     .map_err(|err| self.report_error(err.into()))
                     .expect("Wait for fence failed.");
-            }
-
-            // Report GPU timings
-            {
-                puffin::profile_scope!("retrieve GPU timers");
-
-                let (query_ids, timing_pairs) = frame0.profiler_data.retrieve_previous_result();
-
-                let ns_per_tick = self.pdevice.properties.limits.timestamp_period;
-
-                crate::gpu_profiler::report_durations_ticks(
-                    ns_per_tick,
-                    timing_pairs.chunks_exact(2).enumerate().map(
-                        |(pair_idx, chunk)| -> (crate::gpu_profiler::GpuProfilerQueryId, u64) {
-                            (query_ids[pair_idx], chunk[1] - chunk[0])
-                        },
-                    ),
-                );
             }
 
             puffin::profile_scope!("release pending resources");
