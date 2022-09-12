@@ -1263,7 +1263,7 @@ dependencies = [
 [[package]]
 name = "gpu-profiler"
 version = "0.1.0"
-source = "git+https://github.com/h3r2tic/gpu-profiler.git?rev=70255e819d7eb42161bfe2cfb9c70349da78ac2d#70255e819d7eb42161bfe2cfb9c70349da78ac2d"
+source = "git+https://github.com/h3r2tic/gpu-profiler.git?rev=fac8dd96ceacfb69ec278c9697c3bfd2d8b8a9b7#fac8dd96ceacfb69ec278c9697c3bfd2d8b8a9b7"
 dependencies = [
  "ash",
  "once_cell",
