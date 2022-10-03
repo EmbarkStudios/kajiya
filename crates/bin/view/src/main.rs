@@ -33,7 +33,7 @@ impl AppState {
             .physical_device_index(opt.physical_device_index)
             .temporal_upsampling(opt.temporal_upsampling)
             .default_log_level(log::LevelFilter::Info)
-            .fullscreen(opt.fullscreen.then(|| FullscreenMode::Exclusive))
+            .fullscreen(opt.fullscreen.then_some(FullscreenMode::Exclusive))
             .build(
                 WindowBuilder::new()
                     .with_title("kajiya")

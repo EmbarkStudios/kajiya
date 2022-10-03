@@ -23,7 +23,7 @@ impl<T> MemOption<T> {
     where
         T: Copy,
     {
-        self.is_some.then(|| self.item)
+        self.is_some.then_some(self.item)
     }
 
     pub fn unwrap_or(&self, other: T) -> T
