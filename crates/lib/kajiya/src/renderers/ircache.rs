@@ -30,6 +30,8 @@ const MAX_ENTRIES: usize = 1024 * 64;
 // Must match GPU side
 const IRCACHE_GRID_CELL_DIAMETER: f32 = 0.16 * 0.125;
 const IRCACHE_CASCADE_SIZE: usize = 32;
+const IRCACHE_SAMPLES_PER_FRAME: usize = 4;
+const IRCACHE_VALIDATION_SAMPLES_PER_FRAME: usize = 4;
 
 pub struct IrcacheRenderState {
     ircache_meta_buf: rg::Handle<Buffer>,
@@ -431,7 +433,14 @@ impl IrcacheRenderState {
         .read(&self.ircache_entry_indirection_buf)
         .write_no_sync(&mut self.ircache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, [MAX_ENTRIES as u32, 1, 1]);
+        .trace_rays(
+            tlas,
+            [
+                (MAX_ENTRIES * IRCACHE_VALIDATION_SAMPLES_PER_FRAME) as u32,
+                1,
+                1,
+            ],
+        );
         // TODO: seems rather broken on AMD
         //.trace_rays_indirect(tlas, &indirect_args_buf, 16 * 3);
 
@@ -457,7 +466,10 @@ impl IrcacheRenderState {
         .read(&self.ircache_entry_indirection_buf)
         .write_no_sync(&mut self.ircache_entry_cell_buf)
         .raw_descriptor_set(1, bindless_descriptor_set)
-        .trace_rays(tlas, [MAX_ENTRIES as u32, 1, 1]);
+        .trace_rays(
+            tlas,
+            [(MAX_ENTRIES * IRCACHE_SAMPLES_PER_FRAME) as u32, 1, 1],
+        );
         // TODO: seems rather broken on AMD
         //.trace_rays_indirect(tlas, &indirect_args_buf, 16 * 0);
 
