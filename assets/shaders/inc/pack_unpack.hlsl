@@ -8,7 +8,7 @@ float unpack_unorm(uint pckd, uint bitCount) {
 
 uint pack_unorm(float val, uint bitCount) {
 	uint maxVal = (1u << bitCount) - 1;
-	return uint(clamp(val, 0.0, 1.0) * maxVal);
+	return uint(clamp(val, 0.0, 1.0) * maxVal + 0.5);
 }
 
 float pack_normal_11_10_11(float3 n) {
