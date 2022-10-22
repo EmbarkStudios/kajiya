@@ -118,7 +118,7 @@ float3 project_point_on_plane(float3 pt, float3 normal) {
     return pt - normal * dot(pt, normal);
 }
 
-float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_sample_vs, float4 sample_cs, float3 center_vs, float3 normal_vs, float3 v_vs, float kernel_radius_vs, float theta_cos_max, inout float4 color_accum) {
+float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_sample_vs, float4 sample_cs, float3 center_vs, float3 normal_vs, float3 v_vs, float kernel_radius_ws, float theta_cos_max, inout float4 color_accum) {
     if (sample_cs.z > 0) {
         float4 sample_vs4 = mul(frame_constants.view_constants.sample_to_view, sample_cs);
         float3 sample_vs = sample_vs4.xyz / sample_vs4.w;
@@ -126,11 +126,10 @@ float process_sample(uint i, float intsgn, float n_angle, inout float3 prev_samp
         float sample_vs_offset_len = length(sample_vs_offset);
 
         float sample_theta_cos = dot(sample_vs_offset, v_vs) / sample_vs_offset_len;
-        const float sample_distance_normalized = sample_vs_offset_len / kernel_radius_vs;
+        const float sample_distance_normalized = sample_vs_offset_len / kernel_radius_ws;
 
         if (sample_distance_normalized < 1.0) {
-            //const float sample_influence = 1;
-            const float sample_influence = 1.0 - sample_distance_normalized * sample_distance_normalized;
+            const float sample_influence = smoothstep(1, 0, sample_distance_normalized);
 
             bool sample_visible = sample_theta_cos >= theta_cos_max;
             float theta_cos_prev = theta_cos_max;
@@ -214,7 +213,6 @@ void main(in uint2 px : SV_DispatchThreadID) {
     const float3 normal_vs = normalize(mul(frame_constants.view_constants.world_to_view, float4(gbuffer.normal, 0)).xyz);
 
     float4 col = 0.0.xxxx;
-    float kernel_radius_cs = SSGI_KERNEL_RADIUS;
 
     const ViewRayContext view_ray_context = ViewRayContext::from_uv_and_depth(uv, depth);
     float3 v_vs = -normalize(view_ray_context.ray_dir_vs());
@@ -236,13 +234,18 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     float2 cs_slice_dir = float2(cos(ss_angle) * input_tex_size.y / input_tex_size.x, sin(ss_angle));
 
-    float kernel_radius_shrinkage;
+    float kernel_radius_ws;
+    float kernel_radius_shrinkage = 1;
     {
+        const float ws_to_cs = 0.5 / -ray_hit_vs.z * frame_constants.view_constants.view_to_clip[1][1];
+
         // Convert AO radius into world scale
         #if USE_KERNEL_DISTANCE_SCALING
-            const float cs_kernel_radius_scaled = kernel_radius_cs * frame_constants.view_constants.view_to_clip[1][1] / -ray_hit_vs.z;
+            kernel_radius_ws = SSGI_KERNEL_RADIUS;
+            const float cs_kernel_radius_scaled = kernel_radius_ws * ws_to_cs;
         #else
-            const float cs_kernel_radius_scaled = kernel_radius_cs;
+            const float cs_kernel_radius_scaled = SSGI_KERNEL_RADIUS;
+            kernel_radius_ws = cs_kernel_radius_scaled / ws_to_cs;
         #endif
 
         cs_slice_dir *= cs_kernel_radius_scaled;
@@ -256,8 +259,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
 
     // Shrink the AO radius
     cs_slice_dir *= kernel_radius_shrinkage;
-
-    const float kernel_radius_vs = kernel_radius_cs * kernel_radius_shrinkage * -ray_hit_vs.z;
+    kernel_radius_ws *= kernel_radius_shrinkage;
 
     float3 center_vs = ray_hit_vs.xyz;
 
@@ -292,7 +294,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             [flatten] if (any(sample_px != prev_sample_coord0)) {
                 prev_sample_coord0 = sample_px;
                 sample_cs.z = fetch_depth(sample_px);
-                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius_vs, theta_cos_max1, color_accum);
+                theta_cos_max1 = process_sample(i, 1, n_angle, prev_sample0_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius_ws, theta_cos_max1, color_accum);
             }
         }
 
@@ -305,7 +307,7 @@ void main(in uint2 px : SV_DispatchThreadID) {
             [flatten] if (any(sample_px != prev_sample_coord1)) {
                 prev_sample_coord1 = sample_px;
                 sample_cs.z = fetch_depth(sample_px);
-                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius_vs, theta_cos_max2, color_accum);
+                theta_cos_max2 = process_sample(i, -1, n_angle, prev_sample1_vs, sample_cs, center_vs, normal_vs, v_vs, kernel_radius_ws, theta_cos_max2, color_accum);
             }
         }
     }
