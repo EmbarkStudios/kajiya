@@ -79,7 +79,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         handle: GraphRawResourceHandle,
     ) -> &Image {
         match &self.resources[handle.id as usize].resource.borrow() {
-            AnyRenderResourceRef::Image(img) => *img,
+            AnyRenderResourceRef::Image(img) => img,
             _ => panic!(),
         }
     }
@@ -93,7 +93,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         handle: GraphRawResourceHandle,
     ) -> &Buffer {
         match &self.resources[handle.id as usize].resource.borrow() {
-            AnyRenderResourceRef::Buffer(buffer) => *buffer,
+            AnyRenderResourceRef::Buffer(buffer) => buffer,
             _ => panic!(),
         }
     }
@@ -110,7 +110,7 @@ impl<'exec_params, 'constants> ResourceRegistry<'exec_params, 'constants> {
         handle: GraphRawResourceHandle,
     ) -> &RayTracingAcceleration {
         match &self.resources[handle.id as usize].resource.borrow() {
-            AnyRenderResourceRef::RayTracingAcceleration(acc) => *acc,
+            AnyRenderResourceRef::RayTracingAcceleration(acc) => acc,
             _ => panic!(),
         }
     }

@@ -23,7 +23,7 @@ impl LazyWorker for CompileRustShader {
             .await?;
 
         let compile_result =
-            RustShaderCompileResult::deserialize_json(std::str::from_utf8(&*compile_result)?)?;
+            RustShaderCompileResult::deserialize_json(std::str::from_utf8(&compile_result)?)?;
 
         let shader_file = compile_result
             .entry_to_shader_module

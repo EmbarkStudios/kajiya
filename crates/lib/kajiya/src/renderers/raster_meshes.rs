@@ -111,7 +111,7 @@ pub fn raster_meshes(
                 }));
 
         api.begin_render_pass(
-            &*render_pass,
+            &render_pass,
             [width, height],
             &[
                 (geometric_normal_ref, &ImageViewDesc::default()),

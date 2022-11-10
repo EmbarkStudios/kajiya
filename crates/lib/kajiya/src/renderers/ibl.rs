@@ -116,7 +116,7 @@ fn load_image(path: &Path) -> anyhow::Result<ImageRgba16f> {
 }
 
 fn load_hdr(file_path: &Path) -> anyhow::Result<ImageRgba16f> {
-    let f = File::open(&file_path).context("failed to open specified file")?;
+    let f = File::open(file_path).context("failed to open specified file")?;
     let f = BufReader::new(f);
     let image = radiant::load(f).context("failed to load image data")?;
 

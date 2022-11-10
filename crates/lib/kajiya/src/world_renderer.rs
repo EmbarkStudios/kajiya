@@ -346,7 +346,7 @@ impl WorldRenderer {
         backend: &RenderBackend,
     ) -> Result<Self, BackendError> {
         let raster_simple_render_pass = create_render_pass(
-            &*backend.device,
+            &backend.device,
             RenderPassDesc {
                 color_attachments: &[
                     // view-space geometry normal; * 2 - 1 to decode
