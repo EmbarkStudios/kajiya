@@ -288,7 +288,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             }
         #endif
 
-            relevance *= normal_similarity_dot;
+            relevance *= pow(normal_similarity_dot, 4);
 
             // TODO: this needs fixing with reprojection
             //const ViewRayContext sample_ray_ctx = ViewRayContext::from_uv_and_depth(sample_uv, sample_depth);
@@ -297,10 +297,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float3 sample_hit_ws = sample_hit_ws_and_dist.xyz;
             //const float3 prev_dir_to_sample_hit_unnorm_ws = sample_hit_ws - sample_ray_ctx.ray_hit_ws();
             //const float3 prev_dir_to_sample_hit_ws = normalize(prev_dir_to_sample_hit_unnorm_ws);
-
-            // TODO: Using `prev_dir_to_sample_hit_unnorm_ws` explodes weights.
             const float prev_dist = sample_hit_ws_and_dist.w;
-            //const float prev_dist = length(prev_dir_to_sample_hit_unnorm_ws);
 
             // Note: `hit_normal_history_tex` is not reprojected.
             const float4 sample_hit_normal_ws_dot = decode_hit_normal_and_dot(hit_normal_history_tex[spx]);
@@ -315,12 +312,6 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             const float center_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, dir_to_sample_hit);
             //const float prev_to_hit_vis = -dot(sample_hit_normal_ws_dot.xyz, prev_dir_to_sample_hit_ws);
-
-            // Note: also doing this for sample 0, as under extreme aliasing,
-            // we can easily get bad samples in.
-            if (dot(dir_to_sample_hit, normal_ws) < 1e-3) {
-                continue;
-            }
 
             const float4 prev_rad =
                 radiance_history_tex[spx]
@@ -357,11 +348,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
                 // N of hit dot -L. Needed to avoid leaks. Without it, light "hugs" corners.
                 //
-                // Wrong: must use neighbor's data, not the original ray.
-                // TODO: why does the "wrong" thing work, while the "correct" one has exploding weights?
-                 jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
-                // Correct:
-                //jacobian *= clamp(center_to_hit_vis / prev_to_hit_vis, 0, 1e4);
+                jacobian *= clamp(center_to_hit_vis / sample_hit_normal_ws_dot.w, 0, 1e4);
             }
 
             // Fixes boiling artifacts near edges. Unstable jacobians,

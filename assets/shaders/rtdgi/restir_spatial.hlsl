@@ -179,8 +179,6 @@ void main(uint2 px : SV_DispatchThreadID) {
             sample_radiance = bounced_radiance_input_tex[rpx];
         }
 
-        const float normal_cutoff = 0.1;
-
         const float normal_similarity_dot = dot(sample_normal_vs, center_normal_vs);
         #if ALLOW_REUSE_OF_BACKFACING
             // Allow reuse even with surfaces that face away, but weigh them down.
@@ -224,13 +222,6 @@ void main(uint2 px : SV_DispatchThreadID) {
         const float3 dir_to_sample_hit_unnorm = sample_hit_ws - view_ray_context.ray_hit_ws();
         const float dist_to_sample_hit = length(dir_to_sample_hit_unnorm);
         const float3 dir_to_sample_hit = normalize(dir_to_sample_hit_unnorm);
-
-        // Reject hits below the normal plane
-        const bool is_below_normal_plane = dot(dir_to_sample_hit, center_normal_ws) < 1e-5;
-
-        if ((!is_center_sample && is_below_normal_plane) || !(relevance > 0)) {
-            continue;
-        }
 
         // Reject neighbors with vastly different depths
         if (!is_center_sample) {
