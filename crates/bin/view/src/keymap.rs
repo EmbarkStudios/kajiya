@@ -46,8 +46,8 @@ impl From<Movement> for KeyboardMap {
             .bind(val.left, KeyMap::new("move_right", -1.0))
             .bind(val.up, KeyMap::new("move_up", 1.0))
             .bind(val.down, KeyMap::new("move_up", -1.0))
-            .bind(val.boost, KeyMap::new("boost", 1.0))
-            .bind(val.slow, KeyMap::new("boost", -1.0))
+            .bind(val.boost, KeyMap::new("boost", 1.0).activation_time(0.25))
+            .bind(val.slow, KeyMap::new("boost", -1.0).activation_time(0.5))
     }
 }
 
