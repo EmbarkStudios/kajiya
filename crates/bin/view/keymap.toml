@@ -1,0 +1,24 @@
+[movement]
+forward = "W"
+backward = "S"
+left = "A"
+right = "D"
+up = "Q"
+down = "E"
+boost = "LShift"
+slow = "LControl"
+
+[ui]
+toggle = "Tab"
+
+[sequencer]
+add_keyframe = "K"
+play = "P"
+
+[rendering]
+switch_to_reference_path_tracing = "Space"
+reset_path_tracer = "Back"
+light_enable_emissive = "L"
+
+[misc]
+print_camera_transform = "C"

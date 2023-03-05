@@ -5,6 +5,7 @@ mod persisted;
 mod runtime;
 mod scene;
 mod sequence;
+mod keymap;
 
 use std::{
     fs::File,

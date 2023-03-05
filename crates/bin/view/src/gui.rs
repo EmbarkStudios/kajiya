@@ -9,7 +9,7 @@ use crate::{
 
 impl RuntimeState {
     pub fn do_gui(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
-        if self.keyboard.was_just_pressed(VirtualKeyCode::Tab) {
+        if self.keyboard.was_just_pressed(self.keymap_config.ui.toggle) {
             self.show_gui = !self.show_gui;
         }
 
