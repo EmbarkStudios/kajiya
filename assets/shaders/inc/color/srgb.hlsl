@@ -28,7 +28,7 @@ float3 XYZ_to_sRGB(float3 color) {
 }
 
 float sRGB_OETF(float a) {
-	return .0031308f >= a ? 12.92f * a : 1.055f * pow(a, .4166666666666667f) - .055f;
+	return select(.0031308f >= a, 12.92f * a, 1.055f * pow(a, .4166666666666667f) - .055f);
 }
 
 float3 sRGB_OETF(float3 a) {
@@ -36,7 +36,7 @@ float3 sRGB_OETF(float3 a) {
 }
 
 float sRGB_EOTF(float a) {
-	return .04045f < a ? pow((a + .055f) / 1.055f, 2.4f) : a / 12.92f;
+	return select(.04045f < a, pow((a + .055f) / 1.055f, 2.4f), a / 12.92f);
 }
 
 float3 sRGB_EOTF(float3 a) {

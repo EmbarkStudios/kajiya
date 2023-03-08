@@ -77,7 +77,7 @@ void main() {
 #endif
 
     // TODO: frame consistency
-    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
+    const uint noise_offset = frame_constants.frame_index * select(USE_TEMPORAL_JITTER, 1, 0);
 
     const float3 ray_orig_ws = ray_orig_history_tex[px].xyz + get_prev_eye_position();
     const float3 ray_hit_ws = ray_history_tex[px].xyz + ray_orig_ws;

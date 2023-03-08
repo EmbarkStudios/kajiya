@@ -75,9 +75,9 @@ void main() {
     // Allocate fewer samples for further bounces
     #if 0
         const uint sample_count_divisor = 
-            rank <= 1
-            ? 1
-            : 4;
+            select(rank <= 1
+            , 1
+            , 4);
     #else
         const uint sample_count_divisor = 1;
     #endif
@@ -93,9 +93,9 @@ void main() {
     IrcacheTraceResult traced = ircache_trace(entry, brdf, sample_params, life);
 
     const float self_lighting_limiter = 
-        USE_SELF_LIGHTING_LIMITER
-        ? lerp(0.5, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
-        : 1.0;
+        select(USE_SELF_LIGHTING_LIMITER
+        , lerp(0.5, 1, smoothstep(-0.1, 0, dot(traced.direction, entry.normal)))
+        , 1.0);
 
     const float3 new_value = traced.incident_radiance * self_lighting_limiter;
     const float new_lum = sRGB_to_luminance(new_value);

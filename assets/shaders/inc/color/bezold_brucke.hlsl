@@ -20,14 +20,14 @@ float bb_xy_white_offset_to_lut_coord(float2 offset) {
         return frac((atan2(offset.y, offset.x) / M_PI) * 0.5);
     #elif BB_LUT_LUT_MAPPING == BB_LUT_LUT_MAPPING_QUAD
         offset /= max(abs(offset.x), abs(offset.y));
-        float sgn = (offset.x + offset.y) > 0.0 ? 1.0 : -1.0;
+        float sgn = select((offset.x + offset.y) > 0.0, 1.0, -1.0);
         // NOTE: needs a `frac` if the sampler's U wrap mode is not REPEAT.
         return sgn * (0.125 * (offset.x - offset.y) + 0.25);
     #elif BB_LUT_LUT_MAPPING == BB_LUT_LUT_MAPPING_ROTATED_QUAD
         const float angle = BB_LUT_LUT_MAPPING_ROTATED_QUAD_ANGLE;
         offset = mul(float2x2(cos(angle), sin(angle), -sin(angle), cos(angle)), offset);
         offset /= max(abs(offset.x), abs(offset.y));
-        float sgn = (offset.x + offset.y) > 0.0 ? 1.0 : -1.0;
+        float sgn = select((offset.x + offset.y) > 0.0, 1.0, -1.0);
         // NOTE: needs a `frac` if the sampler's U wrap mode is not REPEAT.
         return sgn * (0.125 * (offset.x - offset.y) + 0.25);
     #endif
@@ -38,14 +38,14 @@ float2 bb_lut_coord_to_xy_white_offset(float coord) {
         const float theta = coord * M_PI * 2.0;
         return float2(cos(theta), sin(theta));
     #elif BB_LUT_LUT_MAPPING == BB_LUT_LUT_MAPPING_QUAD
-        float side = (coord < 0.5 ? 1.0 : -1.0);
+        float side = select(coord < 0.5, 1.0, -1.0);
         float t = frac(coord * 2);
         return side * normalize(
             lerp(float2(-1, 1), float2(1, -1), t)
             + lerp(float2(0, 0), float2(1, 1), 1 - abs(t - 0.5) * 2)
         );
     #elif BB_LUT_LUT_MAPPING == BB_LUT_LUT_MAPPING_ROTATED_QUAD
-        float side = (coord < 0.5 ? 1.0 : -1.0);
+        float side = select(coord < 0.5, 1.0, -1.0);
         float t = frac(coord * 2);
         float2 offset = side * normalize(lerp(float2(-1, 1), float2(1, -1), t) + lerp(float2(0, 0), float2(1, 1), 1 - abs(t - 0.5) * 2));
         const float angle = BB_LUT_LUT_MAPPING_ROTATED_QUAD_ANGLE;

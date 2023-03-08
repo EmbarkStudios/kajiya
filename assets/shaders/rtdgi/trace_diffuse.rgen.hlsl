@@ -103,7 +103,7 @@ void main() {
 
         const float cos_theta = dot(normalize(outgoing_dir - view_ray_context.ray_dir_ws()), normal_ws);
         candidate_irradiance_out_tex[px] = float4(result.out_value, rtr_encode_cos_theta_for_fp16(cos_theta));
-        candidate_hit_out_tex[px] = float4(hit_offset_ws, result.pdf * (is_rtdgi_tracing_frame() ? 1 : -1));
+        candidate_hit_out_tex[px] = float4(hit_offset_ws, result.pdf * select(is_rtdgi_tracing_frame(), 1, -1));
         candidate_normal_out_tex[px] = float4(direction_world_to_view(result.hit_normal_ws), 0);
     } else {
         const float4 reproj = reprojection_tex[hi_px];

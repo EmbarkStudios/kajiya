@@ -8,7 +8,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 	for (int y = 0; y < 16; ++y) {
 		float2 v = input_tex[px * int2(1, 16) + int2(0, y)];
 		float m2 = dot(v, v);
-		largest_velocity = m2 > largest_velocity.z ? float3(v, m2) : largest_velocity;
+		largest_velocity = select(m2 > largest_velocity.z, float3(v, m2), largest_velocity);
 	}
 
     output_tex[px] = largest_velocity.xy;

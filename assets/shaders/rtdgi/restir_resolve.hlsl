@@ -76,7 +76,7 @@ void main(uint2 px : SV_DispatchThreadID) {
         // has limited resolution, and is likely to create artifacts. Opt on the side of shadowing.
         const float near_field_influence = center_ssao;
     #else
-        const float near_field_influence = is_rtdgi_tracing_frame() ? center_ssao : 0;
+        const float near_field_influence = select(is_rtdgi_tracing_frame(), center_ssao, 0);
     #endif
 
     float3 total_irradiance = 0;
@@ -86,12 +86,12 @@ void main(uint2 px : SV_DispatchThreadID) {
     float w_sum = 0;
     float3 weighted_irradiance = 0;
 
-    for (uint sample_i = 0; sample_i < (RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
+    for (uint sample_i = 0; sample_i < select(RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER, 4, 1); ++sample_i) {
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
         const float radius =
-            RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
-            ? (pow(float(sample_i), 0.666) * 1.0 + 0.4)
-            : 0.0;
+            select(RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
+            , (pow(float(sample_i), 0.666) * 1.0 + 0.4)
+            , 0.0);
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
         const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));
 
@@ -136,14 +136,14 @@ void main(uint2 px : SV_DispatchThreadID) {
     float w_sum = 0;
     float3 weighted_irradiance = 0;
 
-    const float kernel_scale = sharpen_gi_kernel ? 0.5 : 1.0;
+    const float kernel_scale = select(sharpen_gi_kernel, 0.5, 1.0);
     
-    for (uint sample_i = 0; sample_i < (RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER ? 4 : 1); ++sample_i) {
+    for (uint sample_i = 0; sample_i < select(RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER, 4, 1); ++sample_i) {
         const float ang = (sample_i + blue.x) * GOLDEN_ANGLE + (px_idx_in_quad / 4.0) * M_TAU;
         const float radius =
-            RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
-            ? (pow(float(sample_i), 0.666) * 1.0 * kernel_scale + 0.4 * kernel_scale)
-            : 0.0;
+            select(RTDGI_RESTIR_USE_RESOLVE_SPATIAL_FILTER
+            , (pow(float(sample_i), 0.666) * 1.0 * kernel_scale + 0.4 * kernel_scale)
+            , 0.0);
 
         const float2 reservoir_px_offset = float2(cos(ang), sin(ang)) * radius;
         const int2 rpx = int2(floor(float2(px) * 0.5 + reservoir_px_offset));

@@ -56,5 +56,5 @@ void main() {
             FLT_MAX
         ));
 
-    output_tex[px] = is_shadowed ? 0.0 : 1.0;
+    output_tex[px] = select(is_shadowed, 0.0, 1.0);
 }

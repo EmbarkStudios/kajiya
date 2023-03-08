@@ -127,7 +127,7 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, SampleParams sa
             }
 
             const float3 brdf_value = brdf.evaluate_directional_light(wo, wi);
-            const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+            const float3 light_radiance = select(is_shadowed, 0.0, SUN_COLOR);
             irradiance_sum += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
             if (USE_EMISSIVE) {
@@ -171,8 +171,8 @@ IrcacheTraceResult ircache_trace(Vertex entry, DiffuseBrdf brdf, SampleParams sa
                             ));
 
                         irradiance_sum +=
-                            is_shadowed ? 0 :
-                                throughput * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf;
+                            select(is_shadowed, 0,
+                                throughput * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf);
                     }
                 }
             }

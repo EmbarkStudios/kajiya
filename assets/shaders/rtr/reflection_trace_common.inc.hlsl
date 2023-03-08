@@ -117,9 +117,9 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
                     #else
                         const float2 urand = blue_noise_for_pixel(
                             px,
-                            USE_SOFT_SHADOWS_TEMPORAL_JITTER
-                            ? frame_constants.frame_index
-                            : 0).xy;
+                            select(USE_SOFT_SHADOWS_TEMPORAL_JITTER
+                            , frame_constants.frame_index
+                            , 0)).xy;
                     #endif
 
                     const float3 to_light_norm = sample_sun_direction(
@@ -140,7 +140,7 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
                     const float3 wi = mul(to_light_norm, tangent_to_world);
 
                     const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-                    const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                    const float3 light_radiance = select(is_shadowed, 0.0, SUN_COLOR);
                     total_radiance += brdf_value * light_radiance;
                 }
 
@@ -196,7 +196,7 @@ RtrTraceResult do_the_thing(uint2 px, float3 normal_ws, float roughness, inout u
                                 #endif
 
                                 total_radiance +=
-                                    !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
+                                    select(!is_shadowed, (triangle_light.radiance() * brdf_value / light_sample.pdf.value), 0);
                             }
                         }
                     }

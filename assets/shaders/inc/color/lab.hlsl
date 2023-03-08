@@ -22,9 +22,9 @@ float3 XYZ_to_LAB(float3 xyz)
     
     xyz /= D65_XYZ;
     xyz = float3(
-        xyz.x > 0.008856 ? pow(abs(xyz.x), 1.0 / 3.0) : xyz.x * 7.787 + 16.0 / 116.0,
-        xyz.y > 0.008856 ? pow(abs(xyz.y), 1.0 / 3.0) : xyz.y * 7.787 + 16.0 / 116.0,
-        xyz.z > 0.008856 ? pow(abs(xyz.z), 1.0 / 3.0) : xyz.z * 7.787 + 16.0 / 116.0
+        select(xyz.x > 0.008856, pow(abs(xyz.x), 1.0 / 3.0), xyz.x * 7.787 + 16.0 / 116.0),
+        select(xyz.y > 0.008856, pow(abs(xyz.y), 1.0 / 3.0), xyz.y * 7.787 + 16.0 / 116.0),
+        select(xyz.z > 0.008856, pow(abs(xyz.z), 1.0 / 3.0), xyz.z * 7.787 + 16.0 / 116.0)
     );
 
     float l = 116.0 * xyz.y - 16.0;
@@ -46,9 +46,9 @@ float3 LABToXYZ(float3 lab)
 
 	float3 xyz = fxyz * fxyz * fxyz;
 	return D65_XYZ * float3(
-        fxyz.x > 0.206893 ? xyz.x : (116.0 * fxyz.x - 16.0) / 903.3,
-        fxyz.y > 0.206893 ? xyz.y : (116.0 * fxyz.y - 16.0) / 903.3,
-        fxyz.z > 0.206893 ? xyz.z : (116.0 * fxyz.z - 16.0) / 903.3
+        select(fxyz.x > 0.206893, xyz.x, (116.0 * fxyz.x - 16.0) / 903.3),
+        select(fxyz.y > 0.206893, xyz.y, (116.0 * fxyz.y - 16.0) / 903.3),
+        select(fxyz.z > 0.206893, xyz.z, (116.0 * fxyz.z - 16.0) / 903.3)
     );
 }
 

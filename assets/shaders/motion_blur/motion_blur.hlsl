@@ -99,8 +99,8 @@ void main(uint2 px: SV_DispatchThreadID) {
             float weight1 = sample_weight(center_depth, d1, length((uv1 - uv) * depth_tex_size.xy), length(center_velocity_px), v1, soft_z);
 
             bool2 mirror = bool2(d0 > d1, v1 > v0);
-            weight0 = all(mirror) ? weight1 : weight0;
-            weight1 = any(mirror) ? weight1 : weight0;
+            weight0 = select(all(mirror), weight1, weight0);
+            weight1 = select(any(mirror), weight1, weight0);
 
             float valid0 = float(all(uv0 == clamp(uv0, 0.0, 1.0)));
             float valid1 = float(all(uv1 == clamp(uv1, 0.0, 1.0)));

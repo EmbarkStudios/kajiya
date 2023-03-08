@@ -42,11 +42,11 @@ IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal, float3 jitter) {
     const float3 center = frame_constants.ircache_grid_center.xyz;
 
     const uint reserved_cells =
-        IRCACHE_USE_NORMAL_BASED_CELL_OFFSET
+        select(IRCACHE_USE_NORMAL_BASED_CELL_OFFSET
         // Make sure we can actually offset towards the edge of a cascade.
-        ? 1
+        , 1
         // Business as usual
-        : 0;
+        , 0);
 
     float3 cell_offset = 0;
 
@@ -63,9 +63,9 @@ IrcacheCoord ws_pos_to_ircache_coord(float3 pos, float3 normal, float3 jitter) {
     const int3 cascade_origin = frame_constants.ircache_cascades[cascade].origin.xyz;
 
     cell_offset +=
-        IRCACHE_USE_NORMAL_BASED_CELL_OFFSET
-        ? normal * cell_diameter * 0.5
-        : 0.0.xxx;
+        select(IRCACHE_USE_NORMAL_BASED_CELL_OFFSET
+        , normal * cell_diameter * 0.5
+        , 0.0.xxx);
 
     const int3 coord = floor((pos + cell_offset) / cell_diameter) - cascade_origin;
 

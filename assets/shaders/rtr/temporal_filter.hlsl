@@ -159,7 +159,7 @@ void main(uint2 px: SV_DispatchThreadID) {
 
     float box_size = 1;
     //float n_deviations = 1;
-    float n_deviations = lerp(reproj.z > 0 ? 2 : 1.25, 0.625, restir_invalidity);
+    float n_deviations = lerp(select(reproj.z > 0, 2, 1.25), 0.625, restir_invalidity);
 
     float wo_similarity;
     {

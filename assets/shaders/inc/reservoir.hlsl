@@ -84,7 +84,7 @@ struct Reservoir1spp {
     ) {
         payload = sample_payload;
         w_sum = p_q * weight;
-        M = weight != 0 ? 1 : 0;
+        M = select(weight != 0, 1, 0);
         W = weight;
 
         stream_state.p_q_sel = p_q;

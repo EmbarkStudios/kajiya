@@ -53,9 +53,9 @@ float3 tricolor_ramp(float3 a, float3 b, float3 c, float x) {
         cw /= ws;
     #else
         const float lobe = pow(smoothstep(1, 0, 2 * abs(x - 0.5)), 2.5254);
-        float aw = x < 0.5 ? 1 - lobe : 0;
+        float aw = select(x < 0.5, 1 - lobe, 0);
         float bw = lobe;
-        float cw = x > 0.5 ? 1 - lobe : 0;
+        float cw = select(x > 0.5, 1 - lobe, 0);
     #endif
 
     return aw * a + bw * b + cw * c;

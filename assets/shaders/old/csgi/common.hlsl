@@ -88,9 +88,9 @@ static const float3 CSGI_DIAGONAL_SUBRAY_TANGENT_WEIGHTS[CSGI_DIAGONAL_SUBRAY_CO
 
 int3 csgi_dispatch_vx_to_local_vx(int3 dti, uint cascade_idx) {
     return
-        dti < frame_constants.gi_cascades[cascade_idx].scroll_frac.xyz
-        ? dti + CSGI_VOLUME_DIMS
-        : dti;
+        select(dti < frame_constants.gi_cascades[cascade_idx].scroll_frac.xyz
+        , dti + CSGI_VOLUME_DIMS
+        , dti);
 }
 
 int3 csgi_dispatch_vx_to_global_vx(int3 dti, uint cascade_idx) {
@@ -109,11 +109,11 @@ int3 gi_volume_get_cascade_outlier_offset(GiCascadeConstants vol, int3 vx) {
     const int3 volume_min = vol.scroll_int.xyz + vol.scroll_frac.xyz;
     const int3 volume_max = volume_min + CSGI_VOLUME_DIMS;
     return
-        vx < volume_min
-        ? -1
-        : vx >= volume_max
-        ? 1
-        : 0;
+        select(vx < volume_min
+        , -1
+        select(vx >= volume_max
+        , 1
+        , 0));
 }
 
 float3 csgi_volume_center(uint cascade_idx) {
@@ -165,7 +165,7 @@ float csgi_blended_voxel_size(float blended_cascade_idx) {
     float t = frac(blended_cascade_idx);
     float a = frame_constants.gi_cascades[floor(blended_cascade_idx)].voxel_size;
     float b = frame_constants.gi_cascades[floor(blended_cascade_idx) + 1].voxel_size;
-    return t == 0.0 ? a : lerp(a, b, t);
+    return select(t == 0.0, a, lerp(a, b, t));
 }
 
 uint3 csgi_wrap_vx_within_cascade(int3 vx) {
@@ -183,9 +183,9 @@ bool csgi_was_dispatch_vx_just_scrolled_in(uint3 dispatch_vx, uint cascade_idx) 
         csgi_dispatch_vx_to_local_vx(dispatch_vx, cascade_idx) - frame_constants.gi_cascades[cascade_idx].scroll_frac.xyz;
     const int3 scroll_offset = frame_constants.gi_cascades[cascade_idx].voxels_scrolled_this_frame.xyz;
     const int3 was_just_scrolled_in =
-        scroll_offset > 0
-        ? (scroll_vx + scroll_offset >= CSGI_VOLUME_DIMS)
-        : (scroll_vx < -scroll_offset);
+        select(scroll_offset > 0
+        , (scroll_vx + scroll_offset >= CSGI_VOLUME_DIMS)
+        , (scroll_vx < -scroll_offset));
 
     return any(was_just_scrolled_in);
 }

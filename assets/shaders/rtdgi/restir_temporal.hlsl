@@ -74,9 +74,9 @@ int2 get_rpx_offset(uint sample_i, uint frame_index) {
         + offsets[(sample_i + (frame_index ^ 1)) & 3];
 
     return
-        sample_i == 0
-        ? 0
-        : int2(reservoir_px_offset_base)
+        select(sample_i == 0
+        , 0
+        , int2(reservoir_px_offset_base))
         ;
 }
 
@@ -165,9 +165,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // 1 (center) plus offset samples
     const uint MAX_RESOLVE_SAMPLE_COUNT =
-        RESTIR_TEMPORAL_USE_PERMUTATIONS
-        ? 5
-        : 1;
+        select(RESTIR_TEMPORAL_USE_PERMUTATIONS
+        , 5
+        , 1);
 
     float center_M = 0;
 
@@ -202,8 +202,8 @@ void main(uint2 px : SV_DispatchThreadID) {
                 xor_seq[frame_constants.frame_index & 3];            
 
             const int2 permuted_reproj_px = floor(
-                (sample_i == 0
-                    ? px
+                select(sample_i == 0
+                    , px
                     // My poor approximation of permutation sampling.
                     // https://twitter.com/more_fps/status/1457749362025459715
                     //
@@ -211,17 +211,17 @@ void main(uint2 px : SV_DispatchThreadID) {
                     // since we're effectively increasing the lifetime of the most attractive samples.
                     // Where it does come in handy though is for boosting convergence rate for newly revealed
                     // locations.
-                    : ((px + rpx_offset) ^ permutation_xor_val))
+                    , ((px + rpx_offset) ^ permutation_xor_val))
                 + gbuffer_tex_size.xy * reproj.xy * 0.5 + reproj_rand_offset + 0.5);
 
             const int2 rpx = permuted_reproj_px + rpx_offset;
             const uint2 rpx_hi = rpx * 2 + hi_px_offset;
 
             const int2 permuted_neighbor_px = floor(
-                (sample_i == 0
-                    ? px
+                select(sample_i == 0
+                    , px
                     // ditto
-                    : ((px + rpx_offset) ^ permutation_xor_val)) + 0.5);
+                    , ((px + rpx_offset) ^ permutation_xor_val)) + 0.5);
 
             const int2 neighbor_px = permuted_neighbor_px + rpx_offset;
             const uint2 neighbor_px_hi = neighbor_px * 2 + hi_px_offset;
@@ -238,7 +238,7 @@ void main(uint2 px : SV_DispatchThreadID) {
             const uint2 spx = reservoir_payload_to_px(r.payload);
 
             float visibility = 1;
-            //float relevance = sample_i == 0 ? 1 : 0.5;
+            //float relevance = select(sample_i == 0, 1, 0.5);
             float relevance = 1;
 
             //const float2 sample_uv = get_uv(rpx_hi, gbuffer_tex_size);

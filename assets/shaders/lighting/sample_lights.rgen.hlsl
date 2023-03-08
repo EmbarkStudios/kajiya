@@ -54,7 +54,7 @@ void main() {
                 dist_to_light - 1e-4
         ));
 
-    out0_tex[px] = float4(is_shadowed ? 0 : triangle_light.radiance(), 1);
+    out0_tex[px] = float4(select(is_shadowed, 0, triangle_light.radiance(), 1));
     out1_tex[px] = float4(
         view_ray_context.ray_hit_vs() + direction_world_to_view(to_light_ws),
         light_sample.pdf.value * light_choice_pmf

@@ -132,7 +132,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
 
     // Index used to calculate a sample set disjoint for all four pixels in the quad
     // Offsetting by frame index reduces small structured artifacts
-    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + select(SHUFFLE_SUBPIXELS, 1, 0) * frame_constants.frame_index) & 3;
     
     const float a2 = max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness) * max(RTR_ROUGHNESS_CLAMP, gbuffer.roughness);
 
@@ -152,7 +152,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
         exponential_squish(surf_to_hit_dist, ray_squish_scale),
         0.1), ray_squish_scale);
 
-    const uint sample_count = BORROW_SAMPLES ? MAX_SAMPLE_COUNT : 1;
+    const uint sample_count = select(BORROW_SAMPLES, MAX_SAMPLE_COUNT, 1);
 
     float4 contrib_accum = 0.0;
     float2 w_accum = 0.0;
@@ -270,9 +270,9 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                 sample_i_with_jitter += blue.y;
             }
 
-            const float radius = BORROW_SAMPLES
-                ? pow(sample_i_with_jitter, KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT
-                : 0;
+            const float radius = select(BORROW_SAMPLES
+                , pow(sample_i_with_jitter, KERNEL_SHARPNESS) * RADIUS_SAMPLE_MULT
+                , 0);
 
             float3 offset_ws = (cos(ang) * kernel_t1 + sin(ang) * kernel_t2) * radius;
             float3 sample_ws = refl_ray_origin_ws + offset_ws;
@@ -412,7 +412,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
                     // TODO: should not be clamped, but clamping reduces some excessive hotness
                     // in corners on smooth surfaces, which is a good trade of the slight darkening this causes.
                     neighbor_sampling_pdf *= max(
-                        RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION ? 1.0 : 1e-5,
+                        select(RTR_MEASURE_CONVERSION_CLAMP_ATTENUATION, 1.0, 1e-5),
                         pow(center_to_hit_dist / sample_to_hit_dist, 2)
                     );
                 }
@@ -536,7 +536,7 @@ void main(uint2 px : SV_DispatchThreadID, uint2 px_tile: SV_GroupID, uint idx_wi
     		const float3 surface_offset = sample_origin_vs - refl_ray_origin_vs;
             #if USE_APPROXIMATE_SAMPLE_SHADOWING
         		if (dot(center_to_hit_vs, normal_vs) * 0.2 / length(center_to_hit_vs) < dot(surface_offset, normal_vs) / length(surface_offset)) {
-        			rejection_bias *= is_center_sample ? 1 : 0;
+        			rejection_bias *= select(is_center_sample, 1, 0);
         		}
             #endif
 

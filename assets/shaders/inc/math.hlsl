@@ -55,10 +55,10 @@ float3 uniform_sample_cone(float2 urand, float cos_theta_max) {
 // FullSimplify[Lerp[a,(b(c (1 -  e)) + d e) /(c + e - c e), 1-(1-c)(1-e)]] == FullSimplify[Lerp[Lerp[a, b, c], d, e]]
 float4 prelerp(float4 b, float4 c) {
     float denom = b.a + c.a * (1.0 - b.a);
-    return denom > 1e-5 ? float4(
+    return select(denom > 1e-5, float4(
         (b.rgb * (b.a * (1.0 - c.a)) + c.rgb * c.a) / denom,
         1.0 - (1.0 - b.a) * (1.0 - c.a)
-    ) : 0.0.xxxx;
+    ), 0.0.xxxx);
 }
 
 float inverse_depth_relative_diff(float primary_depth, float secondary_depth) {

@@ -119,7 +119,7 @@ void find_best_reprojection_in_neighborhood(float2 base_px, inout int2 best_px, 
             += direction_view_to_world(float3(float2(HALFRES_SUBSAMPLE_OFFSET) * offset_scale * z_offset, 0));
     }
 
-    const int start_coord = wide ? -1 : 0;
+    const int start_coord = select(wide, -1, 0);
     for (int y = start_coord; y <= 1; ++y) {
         for (int x = start_coord; x <= 1; ++x) {
             int2 spx = floor(base_px + float2(x, y));
@@ -283,7 +283,7 @@ void main(uint2 px : SV_DispatchThreadID) {
     if (use_resampling) {
         const float ang_offset = ((frame_constants.frame_index + 7) * 11) % 32 * M_TAU;
 
-        for (uint sample_i = 0; sample_i < ((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0) ? 5 : 1) && stream_state.M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
+        for (uint sample_i = 0; sample_i < select((USE_SPATIAL_TAPS_AT_LOW_M && center_reproj.z < 1.0), 5, 1) && stream_state.M_sum < RTR_RESTIR_TEMPORAL_M_CLAMP; ++sample_i) {
         //for (uint sample_i = 0; sample_i < 1; ++sample_i) {
             const float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
             const float rpx_offset_radius = sqrt(
@@ -295,9 +295,9 @@ void main(uint2 px : SV_DispatchThreadID) {
             ) * rpx_offset_radius;
 
             const int2 rpx_offset =
-                sample_i == 0
-                ? int2(0, 0)
-                : int2(reservoir_px_offset_base)
+                select(sample_i == 0
+                , int2(0, 0)
+                , int2(reservoir_px_offset_base))
                 ;
 
             float4 reproj = reprojection_tex[hi_px + rpx_offset * 2];

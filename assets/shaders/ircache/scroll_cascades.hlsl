@@ -41,9 +41,9 @@ void main(uint3 dispatch_thread_id: SV_DispatchThreadID) {
     const uint dst_cell_idx = IrcacheCoord::from_coord_cascade(dst_vx, cascade).cell_idx();
 
     const int3 scroll_by =
-        IRCACHE_FREEZE
-        ? (0).xxx
-        : frame_constants.ircache_cascades[cascade].voxels_scrolled_this_frame.xyz;
+        select(IRCACHE_FREEZE
+        , (0).xxx
+        , frame_constants.ircache_cascades[cascade].voxels_scrolled_this_frame.xyz);
 
     if (!all(uint3(dst_vx - scroll_by) < IRCACHE_CASCADE_SIZE)) {
         // If this entry is about to get overwritten, deallocate it.
