@@ -17,6 +17,7 @@ use crate::{
     PersistedState,
 };
 
+use crate::keymap::KeymapConfig;
 use log::{info, warn};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
@@ -24,7 +25,6 @@ use std::{
     hash::{Hash, Hasher},
     path::PathBuf,
 };
-use crate::keymap::KeymapConfig;
 
 pub const MAX_FPS_LIMIT: u32 = 256;
 
@@ -80,12 +80,11 @@ impl RuntimeState {
         let mouse: MouseState = Default::default();
         let keyboard: KeyboardState = Default::default();
 
-        let keymap_config = KeymapConfig::load(&opt.keymap)
-            .unwrap_or_else(|err| {
-                warn!("Failed to load keymap: {}", err);
-                info!("Using default keymap");
-                KeymapConfig::default()
-            });
+        let keymap_config = KeymapConfig::load(&opt.keymap).unwrap_or_else(|err| {
+            warn!("Failed to load keymap: {}", err);
+            info!("Using default keymap");
+            KeymapConfig::default()
+        });
 
         let sun_direction_interp = persisted.light.sun.controller.towards_sun();
 
@@ -274,7 +273,10 @@ impl RuntimeState {
         persisted.camera.position = self.camera.final_transform.position;
         persisted.camera.rotation = self.camera.final_transform.rotation;
 
-        if self.keyboard.was_just_pressed(self.keymap_config.misc.print_camera_transform) {
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.misc.print_camera_transform)
+        {
             println!(
                 "position: {}, look_at: {}",
                 persisted.camera.position,
@@ -332,7 +334,11 @@ impl RuntimeState {
     }
 
     fn update_lights(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
-        if self.keyboard.was_just_pressed(self.keymap_config.rendering.switch_to_reference_path_tracing) {
+        if self.keyboard.was_just_pressed(
+            self.keymap_config
+                .rendering
+                .switch_to_reference_path_tracing,
+        ) {
             match ctx.world_renderer.render_mode {
                 RenderMode::Standard => {
                     //camera.convergence_sensitivity = 1.0;
@@ -345,7 +351,10 @@ impl RuntimeState {
             };
         }
 
-        if self.keyboard.was_just_pressed(self.keymap_config.rendering.light_enable_emissive) {
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.rendering.light_enable_emissive)
+        {
             persisted.light.enable_emissive = !persisted.light.enable_emissive;
         }
 
@@ -432,13 +441,18 @@ impl RuntimeState {
 
         self.update_camera(persisted, &ctx);
 
-        if self.keyboard.was_just_pressed(self.keymap_config.sequencer.add_keyframe)
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.sequencer.add_keyframe)
             || (self.mouse.buttons_pressed & (1 << 1)) != 0
         {
             self.add_sequence_keyframe(persisted);
         }
 
-        if self.keyboard.was_just_pressed(self.keymap_config.sequencer.play) {
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.sequencer.play)
+        {
             match self.sequence_playback_state {
                 SequencePlaybackState::NotPlaying => {
                     self.play_sequence(persisted);
@@ -466,7 +480,10 @@ impl RuntimeState {
         }
 
         // Reset accumulation of the path tracer whenever the camera moves
-        if (self.reset_path_tracer || self.keyboard.was_just_pressed(self.keymap_config.rendering.reset_path_tracer))
+        if (self.reset_path_tracer
+            || self
+                .keyboard
+                .was_just_pressed(self.keymap_config.rendering.reset_path_tracer))
             && ctx.world_renderer.render_mode == RenderMode::Reference
         {
             ctx.world_renderer.reset_reference_accumulation = true;

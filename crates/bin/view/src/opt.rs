@@ -37,7 +37,7 @@ pub struct Opt {
 
     #[structopt(long)]
     pub physical_device_index: Option<usize>,
-    
+
     #[structopt(long)]
     pub keymap: Option<PathBuf>,
 }

@@ -31,7 +31,8 @@ impl KeymapConfig {
             .with_context(|| "Failed to read keymap.toml")?;
 
         // Don't use anyhow context here because it doesn't show the parsing error.
-        let keymap = from_str(&buffer).map_err(|e| anyhow!("Failed to parse keymap.toml: {}", e.to_string()))?;
+        let keymap = from_str(&buffer)
+            .map_err(|e| anyhow!("Failed to parse keymap.toml: {}", e.to_string()))?;
 
         Ok(keymap)
     }
@@ -129,7 +130,7 @@ impl Default for Rendering {
 impl Default for Misc {
     fn default() -> Self {
         Self {
-            print_camera_transform: C
+            print_camera_transform: C,
         }
     }
 }

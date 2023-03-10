@@ -773,7 +773,9 @@ pub fn create_ray_tracing_pipeline(
 
             match desc.desc.stage {
                 ShaderPipelineStage::RayGen => {
-                    assert!(prev_stage.is_none() || prev_stage == Some(ShaderPipelineStage::RayGen));
+                    assert!(
+                        prev_stage.is_none() || prev_stage == Some(ShaderPipelineStage::RayGen)
+                    );
                     raygen_entry_count += 1;
 
                     let (module, entry_point) = create_shader_module(desc);

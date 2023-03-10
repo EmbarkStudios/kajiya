@@ -1,11 +1,11 @@
 mod gui;
+mod keymap;
 mod misc;
 mod opt;
 mod persisted;
 mod runtime;
 mod scene;
 mod sequence;
-mod keymap;
 
 use std::{
     fs::File,
