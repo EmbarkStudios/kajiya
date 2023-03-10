@@ -19,6 +19,7 @@ pub struct RawRgba8Image {
     pub dimensions: [u32; 2],
 }
 
+#[allow(clippy::large_enum_variant)]
 pub enum RawImage {
     Rgba8(RawRgba8Image),
     Dds(ddsfile::Dds),

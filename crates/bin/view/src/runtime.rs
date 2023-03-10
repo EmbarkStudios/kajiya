@@ -17,6 +17,8 @@ use crate::{
     PersistedState,
 };
 
+use crate::keymap::KeymapConfig;
+use log::{info, warn};
 use std::{
     collections::{hash_map::DefaultHasher, HashMap},
     fs::File,
@@ -30,7 +32,8 @@ pub struct RuntimeState {
     pub camera: CameraRig,
     pub mouse: MouseState,
     pub keyboard: KeyboardState,
-    pub keymap: KeyboardMap,
+    pub keymap_config: KeymapConfig,
+    pub movement_map: KeyboardMap,
 
     pub show_gui: bool,
     pub sun_direction_interp: Vec3,
@@ -61,7 +64,7 @@ impl RuntimeState {
     pub fn new(
         persisted: &mut PersistedState,
         world_renderer: &mut WorldRenderer,
-        _opt: &Opt,
+        opt: &Opt,
     ) -> Self {
         let camera: CameraRig = CameraRig::builder()
             .with(Position::new(persisted.camera.position))
@@ -77,21 +80,11 @@ impl RuntimeState {
         let mouse: MouseState = Default::default();
         let keyboard: KeyboardState = Default::default();
 
-        let keymap = KeyboardMap::new()
-            .bind(VirtualKeyCode::W, KeyMap::new("move_fwd", 1.0))
-            .bind(VirtualKeyCode::S, KeyMap::new("move_fwd", -1.0))
-            .bind(VirtualKeyCode::A, KeyMap::new("move_right", -1.0))
-            .bind(VirtualKeyCode::D, KeyMap::new("move_right", 1.0))
-            .bind(VirtualKeyCode::Q, KeyMap::new("move_up", -1.0))
-            .bind(VirtualKeyCode::E, KeyMap::new("move_up", 1.0))
-            .bind(
-                VirtualKeyCode::LShift,
-                KeyMap::new("boost", 1.0).activation_time(0.25),
-            )
-            .bind(
-                VirtualKeyCode::LControl,
-                KeyMap::new("boost", -1.0).activation_time(0.5),
-            );
+        let keymap_config = KeymapConfig::load(&opt.keymap).unwrap_or_else(|err| {
+            warn!("Failed to load keymap: {}", err);
+            info!("Using default keymap");
+            KeymapConfig::default()
+        });
 
         let sun_direction_interp = persisted.light.sun.controller.towards_sun();
 
@@ -99,7 +92,8 @@ impl RuntimeState {
             camera,
             mouse,
             keyboard,
-            keymap,
+            keymap_config: keymap_config.clone(),
+            movement_map: keymap_config.movement.into(),
 
             show_gui: false,
             sun_direction_interp,
@@ -218,7 +212,7 @@ impl RuntimeState {
             ctx.window.set_cursor_visible(true);
         }
 
-        let input = self.keymap.map(&self.keyboard, ctx.dt_filtered);
+        let input = self.movement_map.map(&self.keyboard, ctx.dt_filtered);
         let move_vec = self.camera.final_transform.rotation
             * Vec3::new(input["move_right"], input["move_up"], -input["move_fwd"])
                 .clamp_length_max(1.0)
@@ -279,7 +273,10 @@ impl RuntimeState {
         persisted.camera.position = self.camera.final_transform.position;
         persisted.camera.rotation = self.camera.final_transform.rotation;
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::C) {
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.misc.print_camera_transform)
+        {
             println!(
                 "position: {}, look_at: {}",
                 persisted.camera.position,
@@ -337,7 +334,11 @@ impl RuntimeState {
     }
 
     fn update_lights(&mut self, persisted: &mut PersistedState, ctx: &mut FrameContext) {
-        if self.keyboard.was_just_pressed(VirtualKeyCode::Space) {
+        if self.keyboard.was_just_pressed(
+            self.keymap_config
+                .rendering
+                .switch_to_reference_path_tracing,
+        ) {
             match ctx.world_renderer.render_mode {
                 RenderMode::Standard => {
                     //camera.convergence_sensitivity = 1.0;
@@ -350,7 +351,10 @@ impl RuntimeState {
             };
         }
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::L) {
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.rendering.light_enable_emissive)
+        {
             persisted.light.enable_emissive = !persisted.light.enable_emissive;
         }
 
@@ -437,13 +441,18 @@ impl RuntimeState {
 
         self.update_camera(persisted, &ctx);
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::K)
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.sequencer.add_keyframe)
             || (self.mouse.buttons_pressed & (1 << 1)) != 0
         {
             self.add_sequence_keyframe(persisted);
         }
 
-        if self.keyboard.was_just_pressed(VirtualKeyCode::P) {
+        if self
+            .keyboard
+            .was_just_pressed(self.keymap_config.sequencer.play)
+        {
             match self.sequence_playback_state {
                 SequencePlaybackState::NotPlaying => {
                     self.play_sequence(persisted);
@@ -471,7 +480,10 @@ impl RuntimeState {
         }
 
         // Reset accumulation of the path tracer whenever the camera moves
-        if (self.reset_path_tracer || self.keyboard.was_just_pressed(VirtualKeyCode::Back))
+        if (self.reset_path_tracer
+            || self
+                .keyboard
+                .was_just_pressed(self.keymap_config.rendering.reset_path_tracer))
             && ctx.world_renderer.render_mode == RenderMode::Reference
         {
             ctx.world_renderer.reset_reference_accumulation = true;

@@ -459,7 +459,7 @@ impl RtdgiRenderer {
                 .constants((
                     gbuffer_desc.extent_inv_extent_2d(),
                     reservoir_output_tex0.desc().extent_inv_extent_2d(),
-                    spatial_reuse_pass_idx as u32,
+                    spatial_reuse_pass_idx,
                     perform_occulsion_raymarch,
                     occlusion_raymarch_importance_only,
                 ))
