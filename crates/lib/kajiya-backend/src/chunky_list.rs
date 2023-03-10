@@ -24,7 +24,7 @@ impl<T> Default for TempList<T> {
 
 impl<T> TempList<T> {
     pub fn new() -> Self {
-        Self(UnsafeCell::new(Box::new(TempListInner::default())))
+        Self(UnsafeCell::new(Box::default()))
     }
 
     pub fn add(&self, item: T) -> &T {

@@ -575,7 +575,7 @@ impl Device {
             .shader_group_handle_size as usize;
         let group_count =
             (desc.raygen_entry_count + desc.miss_entry_count + desc.hit_entry_count) as usize;
-        let group_handles_size = (shader_group_handle_size * group_count) as usize;
+        let group_handles_size = shader_group_handle_size * group_count;
 
         let group_handles: Vec<u8> = unsafe {
             self.ray_tracing_pipeline_ext
@@ -981,7 +981,7 @@ impl GeometryInstance {
     }
 
     fn set_flags(&mut self, flags: ash::vk::GeometryInstanceFlagsKHR) {
-        let flags = flags.as_raw() as u32;
+        let flags = flags.as_raw();
         self.instance_sbt_offset_and_flags |= flags << 24;
     }
 }
