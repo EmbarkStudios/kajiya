@@ -65,10 +65,11 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
     Vertex v2 = unpack_vertex(VertexPacked(asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_core_offset))));
     float3 normal = v0.normal * barycentrics.x + v1.normal * barycentrics.y + v2.normal * barycentrics.z;
 
-    const float3 surf_normal = normalize(cross(v1.position - v0.position, v2.position - v0.position));
+    const float3 surf_normal_os = normalize(cross(v1.position - v0.position, v2.position - v0.position));
+    const float3 surf_normal_ws = normalize(mul(ObjectToWorld3x4(), float4(surf_normal_os, 0.0)));
 
     if (frame_constants.render_overrides.has_flag(RenderOverrideFlags::FORCE_FACE_NORMALS)) {
-        normal = surf_normal;
+        normal = surf_normal_os;
     }
 
     float4 v_color = 1.0.xxxx;
@@ -95,7 +96,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
     float2 albedo_uv = transform_material_uv(material, uv, 0);
     const BindlessTextureWithLod albedo_tex =
-        compute_texture_lod(material.albedo_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+        compute_texture_lod(material.albedo_map, lod_triangle_constant, WorldRayDirection(), surf_normal_ws, cone_width);
 
     float3 albedo =
         albedo_tex.tex.SampleLevel(sampler_llr, albedo_uv, albedo_tex.lod).xyz
@@ -104,7 +105,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
     float2 spec_uv = transform_material_uv(material, uv, 2);
     const BindlessTextureWithLod spec_tex =
-        compute_texture_lod(material.spec_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+        compute_texture_lod(material.spec_map, lod_triangle_constant, WorldRayDirection(), surf_normal_ws, cone_width);
     float4 metalness_roughness = spec_tex.tex.SampleLevel(sampler_llr, spec_uv, spec_tex.lod);
     float perceptual_roughness = material.roughness_mult * metalness_roughness.x;
     float roughness = clamp(perceptual_roughness_to_roughness(perceptual_roughness), 1e-4, 1.0);
@@ -149,7 +150,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
         float2 normal_uv = transform_material_uv(material, uv, 0);
         const BindlessTextureWithLod normal_tex =
-            compute_texture_lod(material.normal_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+            compute_texture_lod(material.normal_map, lod_triangle_constant, WorldRayDirection(), surf_normal_ws, cone_width);
 
         float3 ts_normal = normal_tex.tex.SampleLevel(sampler_llr, normal_uv, normal_tex.lod).xyz * TODO;
 
@@ -167,7 +168,7 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 
     float2 emissive_uv = transform_material_uv(material, uv, 3);
     const BindlessTextureWithLod emissive_tex =
-        compute_texture_lod(material.emissive_map, lod_triangle_constant, WorldRayDirection(), surf_normal, cone_width);
+        compute_texture_lod(material.emissive_map, lod_triangle_constant, WorldRayDirection(), surf_normal_ws, cone_width);
 
     float3 emissive = 0;
 
