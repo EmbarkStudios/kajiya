@@ -76,9 +76,9 @@ void write_subray_indirect_to(float3 radiance, int3 vx, uint dir_idx, uint subra
 
 void diagonal_sweep_volume(const uint2 dispatch_thread_id, const uint indirect_dir_idx, const uint cascade_idx) {
     const int3 indirect_dir = CSGI_INDIRECT_DIRS[indirect_dir_idx];
-    const uint dir_i_idx = 0 + (indirect_dir.x > 0 ? 1 : 0);
-    const uint dir_j_idx = 2 + (indirect_dir.y > 0 ? 1 : 0);
-    const uint dir_k_idx = 4 + (indirect_dir.z > 0 ? 1 : 0);
+    const uint dir_i_idx = 0 + select(indirect_dir.x > 0, 1, 0);
+    const uint dir_j_idx = 2 + select(indirect_dir.y > 0, 1, 0);
+    const uint dir_k_idx = 4 + select(indirect_dir.z > 0, 1, 0);
     const int3 dir_i = CSGI_DIRECT_DIRS[dir_i_idx];
     const int3 dir_j = CSGI_DIRECT_DIRS[dir_j_idx];
     const int3 dir_k = CSGI_DIRECT_DIRS[dir_k_idx];

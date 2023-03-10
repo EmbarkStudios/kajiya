@@ -82,7 +82,7 @@ float3 octa_decode(float2 f) {
     // https://twitter.com/Stubbesaurus/status/937994790553227264
     float3 n = float3( f.x, f.y, 1.0 - abs( f.x ) - abs( f.y ) );
     float t = clamp(-n.z, 0.0, 1.0);
-    //n.xy += n.xy >= 0.0 ? -t : t;
+    //n.xy += select(n.xy >= 0.0, -t, t);
     n.xy -= (step(0.0, n.xy) * 2 - 1) * t;
     return normalize(n);
 }

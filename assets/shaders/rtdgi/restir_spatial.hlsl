@@ -40,9 +40,9 @@ uint2 reservoir_payload_to_px(uint payload) {
 
 // Two-thirds of SmeLU
 float normal_inluence_nonlinearity(float x, float b) {
-    return x < -b
-        ? 0
-        : (x + b) * (x + b) / (4 * b);
+    return select(x < -b
+        , 0
+        , (x + b) * (x + b) / (4 * b));
 }
 
 [numthreads(8, 8, 1)]
@@ -77,7 +77,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     const float MAX_INPUT_M_IN_PASS0 = RESTIR_TEMPORAL_M_CLAMP;
     const float MAX_INPUT_M_IN_PASS1 = MAX_INPUT_M_IN_PASS0 * SAMPLE_COUNT_PASS0;
-    const float MAX_INPUT_M_IN_PASS = spatial_reuse_pass_idx == 0 ? MAX_INPUT_M_IN_PASS0 : MAX_INPUT_M_IN_PASS1;
+    const float MAX_INPUT_M_IN_PASS = select(spatial_reuse_pass_idx == 0, MAX_INPUT_M_IN_PASS0, MAX_INPUT_M_IN_PASS1);
 
     // TODO: consider keeping high in areas of high variance.
     if (RTDGI_RESTIR_SPATIAL_USE_KERNEL_NARROWING) {
@@ -87,9 +87,9 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     float max_kernel_radius =
-        spatial_reuse_pass_idx == 0
-        ? lerp(32.0, 12.0, kernel_tightness)
-        : lerp(16.0, 6.0, kernel_tightness);
+        select(spatial_reuse_pass_idx == 0
+        , lerp(32.0, 12.0, kernel_tightness)
+        , lerp(16.0, 6.0, kernel_tightness));
 
     // TODO: only run more passes where absolutely necessary (dispatch in tiles)
     if (spatial_reuse_pass_idx >= 2) {
@@ -97,22 +97,22 @@ void main(uint2 px : SV_DispatchThreadID) {
     }
 
     const float2 dist_to_edge_xy = min(float2(px), output_tex_size.xy - px);
-    const float allow_edge_overstep = center_r.M < 10 ? 100.0 : 1.25;
+    const float allow_edge_overstep = select(center_r.M < 10, 100.0, 1.25);
     //const float allow_edge_overstep = 1.25;
     const float2 kernel_radius = min(max_kernel_radius, dist_to_edge_xy * allow_edge_overstep);
     //const float2 kernel_radius = max_kernel_radius;
 
-    uint sample_count = DIFFUSE_GI_USE_RESTIR
-        ? (spatial_reuse_pass_idx == 0 ? SAMPLE_COUNT_PASS0 : SAMPLE_COUNT_PASS1)
-        : 1;
+    uint sample_count = select(DIFFUSE_GI_USE_RESTIR
+        , select(spatial_reuse_pass_idx == 0, SAMPLE_COUNT_PASS0, SAMPLE_COUNT_PASS1)
+        , 1);
 
     #if 1
         // Scrambling angles here would be nice, but results in bad cache thrashing.
         // Quantizing the offsets results in mild cache abuse, and fixes most of the artifacts
         // (flickering near edges, e.g. under sofa in the UE5 archviz apartment scene).
-        const uint2 ang_offset_seed = spatial_reuse_pass_idx == 0
-            ? (px >> 3)
-            : (px >> 2);
+        const uint2 ang_offset_seed = select(spatial_reuse_pass_idx == 0
+            , (px >> 3)
+            , (px >> 2));
     #else
         // Haha, cache go brrrrrrr.
         const uint2 ang_offset_seed = px;
@@ -132,9 +132,9 @@ void main(uint2 px : SV_DispatchThreadID) {
         //float ang = M_PI / 2;
         float ang = (sample_i + ang_offset) * GOLDEN_ANGLE;
         float2 radius =
-            0 == sample_i
-            ? 0
-            : (pow(float(sample_i + sample_radius_offset) / sample_count, 0.5) * kernel_radius);
+            select(0 == sample_i
+            , 0
+            , (pow(float(sample_i + sample_radius_offset) / sample_count, 0.5) * kernel_radius));
         int2 rpx_offset = float2(cos(ang), sin(ang)) * radius;
 
         const bool is_center_sample = sample_i == 0;
@@ -229,9 +229,9 @@ void main(uint2 px : SV_DispatchThreadID) {
             const float depth_diff = abs(max(0.3, center_normal_vs.z) * (center_depth / rpx_depth - 1.0));
 
             const float depth_threshold =
-                spatial_reuse_pass_idx == 0
-                ? 0.15
-                : 0.1;
+                select(spatial_reuse_pass_idx == 0
+                , 0.15
+                , 0.1);
 
             relevance *= 1 - smoothstep(0.0, depth_threshold, depth_diff);
         }

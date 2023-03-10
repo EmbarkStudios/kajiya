@@ -40,8 +40,8 @@ void main(int2 px: SV_DispatchThreadID) {
 
     const uint sample_count = clamp(int(8 - center_sample_count / 2), min_sample_count / 4, min_sample_count);
     //const uint sample_count = 8;
-    const uint kernel_scale = center_sample_count < 4 ? 2 : 1;
-    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
+    const uint kernel_scale = select(center_sample_count < 4, 2, 1);
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + select(SHUFFLE_SUBPIXELS, 1, 0) * frame_constants.frame_index) & 3;
 
     for (uint sample_i = 0; sample_i < sample_count; ++sample_i) {
         // TODO: precalculate temporal variants

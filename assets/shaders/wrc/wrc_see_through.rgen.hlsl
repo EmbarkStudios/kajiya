@@ -116,7 +116,7 @@ void main() {
 
             const float3 wi = mul(to_light_norm, tangent_to_world);
             const float3 brdf_value = brdf.evaluate(wo, wi) * max(0.0, wi.z);
-            const float3 light_radiance = is_shadowed ? 0.0 : sun_radiance;
+            const float3 light_radiance = select(is_shadowed, 0.0, sun_radiance);
             total_radiance += brdf_value * light_radiance;
         }
 
@@ -163,7 +163,7 @@ void main() {
                     #endif
 
                     total_radiance +=
-                        !is_shadowed ? (triangle_light.radiance() * brdf_value / light_sample.pdf.value) : 0;
+                        select(!is_shadowed, (triangle_light.radiance() * brdf_value / light_sample.pdf.value), 0);
                 }
             }
 

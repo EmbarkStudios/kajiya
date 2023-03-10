@@ -77,13 +77,13 @@ IrcacheLookupMaybeAllocate IrcacheLookupParams::lookup_maybe_allocate(inout uint
     bool allocated_by_us = false;
     bool just_allocated = false;
 
-    const float3 jitter = stochastic_interpolation
-        ? (float3(
+    const float3 jitter = select(stochastic_interpolation
+        , (float3(
             uint_to_u01_float(hash1_mut(rng)),
             uint_to_u01_float(hash1_mut(rng)),
             uint_to_u01_float(hash1_mut(rng))
         ) - 0.5)
-        : 0.0.xxx;
+        , 0.0.xxx);
 
 #ifndef IRCACHE_LOOKUP_DONT_KEEP_ALIVE
     if (!IRCACHE_FREEZE) {
@@ -93,9 +93,9 @@ IrcacheLookupMaybeAllocate IrcacheLookupParams::lookup_maybe_allocate(inout uint
 
         const int3 scroll_offset = frame_constants.ircache_cascades[rcoord.cascade].voxels_scrolled_this_frame.xyz;
         const int3 was_just_scrolled_in =
-            scroll_offset > 0
-            ? (int3(rcoord.coord) + scroll_offset >= IRCACHE_CASCADE_SIZE)
-            : (int3(rcoord.coord) < -scroll_offset);
+            select(scroll_offset > 0
+            , (int3(rcoord.coord) + scroll_offset >= IRCACHE_CASCADE_SIZE)
+            , (int3(rcoord.coord) < -scroll_offset));
 
         // When a voxel is just scrolled in to a cascade, allocating it via indirect rays
         // has a good chance of creating leaks. Delay the allocation for one frame

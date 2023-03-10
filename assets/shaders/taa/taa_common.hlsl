@@ -16,9 +16,9 @@ float linear_to_perceptual(float a) {
     #elif 4 == TAA_NONLINEARITY_TYPE
         const float k = 0.25;   // Linear part end
 
-        return a < k
-            ? max(0.0, a)
-            : k - 0.5 + sqrt(a - k + 0.25);
+        return select(a < k
+            , max(0.0, a)
+            , k - 0.5 + sqrt(a - k + 0.25));
     #else
         return 0;
     #endif
@@ -37,9 +37,9 @@ float perceptual_to_linear(float a) {
     #elif 4 == TAA_NONLINEARITY_TYPE
         const float k = 0.25;   // Linear part end
 
-        return a < k
-            ? max(0.0, a)
-            : square(a - k + 0.5) + k - 0.25;
+        return select(a < k
+            , max(0.0, a)
+            , square(a - k + 0.5) + k - 0.25);
     #else
         return 0;
     #endif

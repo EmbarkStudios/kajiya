@@ -92,9 +92,9 @@ void main() {
             IrcacheTraceResult prev_traced = ircache_trace(prev_entry, brdf, SampleParams::from_raw(r.payload), life);
 
             const float prev_self_lighting_limiter = 
-                USE_SELF_LIGHTING_LIMITER
-                ? lerp(0.5, 1, smoothstep(-0.1, 0, dot(prev_traced.direction, prev_entry.normal)))
-                : 1.0;
+                select(USE_SELF_LIGHTING_LIMITER
+                , lerp(0.5, 1, smoothstep(-0.1, 0, dot(prev_traced.direction, prev_entry.normal)))
+                , 1.0);
 
             const float3 a = prev_traced.incident_radiance * prev_self_lighting_limiter;
             const float3 b = prev_value_and_count.rgb;

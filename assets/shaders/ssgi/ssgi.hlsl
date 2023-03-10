@@ -57,7 +57,7 @@ float fast_acos(float inX) {
     float x = abs(inX); 
     float res = -0.156583f * x + M_FRAC_PI_2; 
     res *= fast_sqrt(1.0f - x); 
-    return (inX >= 0) ? res : M_PI - res;
+    return select((inX >= 0), res, M_PI - res);
 }
 
 struct Ray {
@@ -105,7 +105,7 @@ float integrate_arc(float h1, float h2, float n) {
 }
 
 float update_horizion_angle(float prev, float cur, float blend) {
-    return cur > prev ? lerp(prev, cur, blend) : prev;
+    return select(cur > prev, lerp(prev, cur, blend), prev);
 }
 
 float intersect_dir_plane_onesided(float3 dir, float3 normal, float3 pt) {

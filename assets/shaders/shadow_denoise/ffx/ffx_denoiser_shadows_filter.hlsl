@@ -215,7 +215,7 @@ void FFX_DNSR_Shadows_DenoiseFromGroupSharedMemory(uint2 did, uint2 gtid, inout 
             float3 normal_neigh = FFX_DNSR_Shadows_LoadNormalsFromGroupSharedMemory(gtid_idx);
             float2 shadow_neigh = FFX_DNSR_Shadows_LoadInputFromGroupSharedMemory(gtid_idx);
 
-            float sky_pixel_multiplier = ((x == 0 && y == 0) || depth_neigh >= 1.0f || depth_neigh <= 0.0f) ? 0 : 1; // Zero weight for sky pixels
+            float sky_pixel_multiplier = select(((x == 0 && y == 0) || depth_neigh >= 1.0f || depth_neigh <= 0.0f), 0, 1); // Zero weight for sky pixels
 
             // Evaluate the edge-stopping function
             float w = kernel[abs(x)] * kernel[abs(y)];  // kernel weight
@@ -272,7 +272,7 @@ float2 FFX_DNSR_Shadows_FilterSoftShadowsPass(uint2 gid, uint2 gtid, uint2 did, 
     {
         if (pass != 1)
         {
-            results.x = all_in_light ? 1.0 : 0.0;
+            results.x = select(all_in_light, 1.0, 0.0);
             bWriteResults = true;
         }
     }

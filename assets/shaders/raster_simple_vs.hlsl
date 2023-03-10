@@ -38,14 +38,14 @@ VsOut main(uint vid: SV_VertexID, uint instance_index: SV_InstanceID) {
     Vertex v = unpack_vertex(vp);
 
     float4 v_color =
-        mesh.vertex_aux_offset != 0
-            ? asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_aux_offset))
-            : 1.0.xxxx;
+        select(mesh.vertex_aux_offset != 0,
+            asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_aux_offset)),
+            1.0.xxxx);
 
     float4 v_tangent_packed =
-        mesh.vertex_tangent_offset != 0
-            ? asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_tangent_offset))
-            : float4(1, 0, 0, 1);            
+        select(mesh.vertex_tangent_offset != 0,
+            asfloat(vertices.Load4(vid * sizeof(float4) + mesh.vertex_tangent_offset)),
+            float4(1, 0, 0, 1));
 
     float2 uv = asfloat(vertices.Load2(vid * sizeof(float2) + mesh.vertex_uv_offset));
     uint material_id = vertices.Load(vid * sizeof(uint) + mesh.vertex_mat_offset);

@@ -39,5 +39,5 @@ float4 get_bilinear_custom_weights(Bilinear f, float4 custom_weights) {
 
 float4 apply_bilinear_custom_weights(float4 s00, float4 s10, float4 s01, float4 s11, float4 w, bool normalize = true) {
 	float4 r = s00 * w.x + s10 * w.y + s01 * w.z + s11 * w.w;
-	return r * (normalize ? rcp(dot(w, 1.0)) : 1.0);
+	return r * select(normalize, rcp(dot(w, 1.0)), 1.0);
 }

@@ -63,7 +63,7 @@ void main(uint dispatch_idx: SV_DispatchThreadID) {
                 dir
             );
 
-            valid_samples += contrib.w > 0 ? 1.0 : 0.0;
+            valid_samples += select(contrib.w > 0, 1.0, 0.0);
         }
 
         contribution_sum.scale(1.0 / max(1.0, valid_samples));

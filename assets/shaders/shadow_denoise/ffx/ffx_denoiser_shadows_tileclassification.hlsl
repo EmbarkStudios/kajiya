@@ -234,18 +234,18 @@ float FFX_DNSR_Shadows_HorizontalNeighborhood(int2 did)
     for (i = 0; i < 8; ++i)
     {
         mask = 1u << i;
-        moment += (mask & neighborhood) ? FFX_DNSR_Shadows_KernelWeight(8 - i) : 0;
+        moment += select((mask & neighborhood), FFX_DNSR_Shadows_KernelWeight(8 - i), 0);
     }
 
     // Center pixel
     mask = 1u << 8;
-    moment += (mask & neighborhood) ? FFX_DNSR_Shadows_KernelWeight(0) : 0;
+    moment += select((mask & neighborhood), FFX_DNSR_Shadows_KernelWeight(0), 0);
 
     // Last 8 bits
     for (i = 1; i <= 8; ++i)
     {
         mask = 1u << (8 + i);
-        moment += (mask & neighborhood) ? FFX_DNSR_Shadows_KernelWeight(i) : 0;
+        moment += select((mask & neighborhood), FFX_DNSR_Shadows_KernelWeight(i), 0);
     }
 
     return moment;
@@ -290,8 +290,8 @@ void FFX_DNSR_Shadows_WriteTileMetaData(uint2 gid, uint2 gtid, bool is_cleared, 
 {
     if (all(gtid == 0))
     {
-        uint light_mask = all_in_light ? TILE_META_DATA_LIGHT_MASK : 0;
-        uint clear_mask = is_cleared ? TILE_META_DATA_CLEAR_MASK : 0;
+        uint light_mask = select(all_in_light, TILE_META_DATA_LIGHT_MASK, 0);
+        uint clear_mask = select(is_cleared, TILE_META_DATA_CLEAR_MASK, 0);
         uint mask = light_mask | clear_mask;
         FFX_DNSR_Shadows_WriteMetadata(gid.y * FFX_DNSR_Shadows_RoundedDivide(FFX_DNSR_Shadows_GetBufferDimensions().x, 8) + gid.x, mask);
     }
@@ -306,7 +306,7 @@ void FFX_DNSR_Shadows_ClearTargets(uint2 did, uint2 gtid, uint2 gid, float shado
     // any previously fully lit tiles stand out as they enter the penumbra
     // due to their different convergence rate.
     // By using a value > 1 here, the pixels are considered (partially) converged.
-    float temporal_sample_count = is_shadow_receiver ? 8 : 0;
+    float temporal_sample_count = select(is_shadow_receiver, 8, 0);
 
     FFX_DNSR_Shadows_WriteMoments(did, float4(shadow_value, 0, temporal_sample_count, shadow_value));// mean, variance, temporal sample count, local neighborhood
 }
@@ -329,7 +329,7 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
     bool all_in_light = false;
     bool all_in_shadow = false;
     FFX_DNSR_Shadows_SearchSpatialRegion(gid, all_in_light, all_in_shadow);
-    float shadow_value = all_in_light ? 1 : 0; // Either all_in_light or all_in_shadow must be true, otherwise we would not skip the tile.
+    float shadow_value = select(all_in_light, 1, 0); // Either all_in_light or all_in_shadow must be true, otherwise we would not skip the tile.
 
     bool can_skip = all_in_light || all_in_shadow;
     // We have to append the entire tile if there is a single lane that we can't skip
@@ -366,7 +366,7 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
     {
         #if 0
             bool hit_light = shadow_tile & FFX_DNSR_Shadows_GetBitMaskFromPixelPosition(did);
-            float shadow_current = hit_light ? 1.0 : 0.0;
+            float shadow_current = select(hit_light, 1.0, 0.0);
         #else
             float shadow_current = FFX_DNSR_Shadows_HitsLight(did);
         #endif
@@ -381,8 +381,8 @@ void FFX_DNSR_Shadows_TileClassification(uint group_index, uint2 gid)
         {
             //bool is_disoccluded = FFX_DNSR_Shadows_IsDisoccluded(did, depth, velocity);
             bool is_disoccluded = dot(quad_reproj_valid, 1.0.xxxx) < 4.0;
-            previous_moments = is_disoccluded ? float4(0.0f, 0.0f, 0.0f, 0.0f) // Can't trust previous moments on disocclusion
-                : FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(history_uv);
+            previous_moments = select(is_disoccluded, float4(0.0f, 0.0f, 0.0f, 0.0f) // Can't trust previous moments on disocclusion
+                , FFX_DNSR_Shadows_ReadPreviousMomentsBuffer(history_uv));
 
             const float old_m = previous_moments.x;
             const float old_s = previous_moments.y;

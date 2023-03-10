@@ -76,9 +76,9 @@ void main(uint2 px : SV_DispatchThreadID) {
 
     // Index used to calculate a sample set disjoint for all four pixels in the quad
     // Offsetting by frame index reduces small structured artifacts
-    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + (SHUFFLE_SUBPIXELS ? 1 : 0) * frame_constants.frame_index) & 3;
+    const uint px_idx_in_quad = (((px.x & 1) | (px.y & 1) * 2) + select(SHUFFLE_SUBPIXELS, 1, 0) * frame_constants.frame_index) & 3;
 
-    const uint sample_count = BORROW_SAMPLES ? 8 : 1;
+    const uint sample_count = select(BORROW_SAMPLES, 8, 1);
     const uint filter_idx = 3;
 
     float4 contrib_accum = 0.0;
@@ -129,7 +129,7 @@ void main(uint2 px : SV_DispatchThreadID) {
                     // be rejected by the bias, thus skewing sample counting.
                     //if (wi.z > 0 && dot(center_to_hit_vs, normal_vs) * 0.2 / length(center_to_hit_vs) < dot(surface_offset, normal_vs) / length(surface_offset)) {
                     if (wi.z > 0 && wi.z * 0.2 < fraction_of_normal_direction_as_offset) {
-            			rejection_bias *= sample_i == 0 ? 1 : 0;
+            			rejection_bias *= select(sample_i == 0, 1, 0);
             		}
                 #endif
             }
@@ -146,7 +146,7 @@ void main(uint2 px : SV_DispatchThreadID) {
 
             // Note: should indeed be step(0, wi.z) since the cosine factor is part
             // of the measure conversion from area to projected solid angle.
-            const float3 contrib_rgb = packed0.rgb * spec.value * energy_preservation_mult * step(0.0, wi.z) * (neighbor_sampling_pdf > 0 ? (1 / neighbor_sampling_pdf) : 0);
+            const float3 contrib_rgb = packed0.rgb * spec.value * energy_preservation_mult * step(0.0, wi.z) * select(neighbor_sampling_pdf > 0, (1 / neighbor_sampling_pdf), 0);
             const float contrib_wt = rejection_bias;
 
             contrib_accum += float4(contrib_rgb, 1) * contrib_wt;

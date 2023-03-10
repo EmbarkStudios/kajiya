@@ -10,9 +10,9 @@ float3 XYZ_to_IPT(float3 xyz) {
         xyz
     );
 
-    lms.x = lms.x >= 0.0 ? pow(lms.x, 0.43) : -pow(-lms.x, 0.43);
-    lms.y = lms.y >= 0.0 ? pow(lms.y, 0.43) : -pow(-lms.y, 0.43);
-    lms.z = lms.z >= 0.0 ? pow(lms.z, 0.43) : -pow(-lms.z, 0.43);
+    lms.x = select(lms.x >= 0.0, pow(lms.x, 0.43), -pow(-lms.x, 0.43));
+    lms.y = select(lms.y >= 0.0, pow(lms.y, 0.43), -pow(-lms.y, 0.43));
+    lms.z = select(lms.z >= 0.0, pow(lms.z, 0.43), -pow(-lms.z, 0.43));
 
     return mul(
         float3x3(
@@ -33,9 +33,9 @@ float3 IPT_to_XYZ(float3 ipt) {
         ipt
     );
 
-    lms.x = lms.x >= 0.0 ? pow(lms.x, 1.0 / 0.43) : -pow(-lms.x, 1.0 / 0.43);
-    lms.y = lms.y >= 0.0 ? pow(lms.y, 1.0 / 0.43) : -pow(-lms.y, 1.0 / 0.43);
-    lms.z = lms.z >= 0.0 ? pow(lms.z, 1.0 / 0.43) : -pow(-lms.z, 1.0 / 0.43);
+    lms.x = select(lms.x >= 0.0, pow(lms.x, 1.0 / 0.43), -pow(-lms.x, 1.0 / 0.43));
+    lms.y = select(lms.y >= 0.0, pow(lms.y, 1.0 / 0.43), -pow(-lms.y, 1.0 / 0.43));
+    lms.z = select(lms.z >= 0.0, pow(lms.z, 1.0 / 0.43), -pow(-lms.z, 1.0 / 0.43));
 
     return mul(
         float3x3(

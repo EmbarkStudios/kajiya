@@ -86,7 +86,7 @@ void main() {
     specular_brdf.albedo = lerp(0.04, gbuffer.albedo, gbuffer.metalness);
     specular_brdf.roughness = gbuffer.roughness;
 
-    const uint noise_offset = frame_constants.frame_index * (USE_TEMPORAL_JITTER ? 1 : 0);
+    const uint noise_offset = frame_constants.frame_index * select(USE_TEMPORAL_JITTER, 1, 0);
     uint rng = hash3(uint3(px, noise_offset));
 
 #if 1

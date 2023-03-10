@@ -73,8 +73,8 @@ struct DiffuseBrdf {
 
     BrdfValue evaluate(float3 _wo, float3 wi) {
 		BrdfValue res;
-		res.pdf = wi.z > 0.0 ? M_FRAC_1_PI : 0.0;
-		res.value_over_pdf = wi.z > 0.0 ? albedo : 0.0.xxx;
+		res.pdf = select(wi.z > 0.0, M_FRAC_1_PI, 0.0);
+		res.value_over_pdf = select(wi.z > 0.0, albedo, 0.0.xxx);
         res.value = res.value_over_pdf * res.pdf;
         res.transmission_fraction = 0.0;
 		return res;
@@ -189,7 +189,7 @@ struct SpecularBrdf {
         float3 Vh = normalize(float3(alpha_x * wo.x, alpha_y * wo.y, wo.z));
 
         // Construct orthonormal basis (Vh,T1,T2).
-        float3 T1 = (Vh.z < 0.9999f) ? normalize(cross(float3(0, 0, 1), Vh)) : float3(1, 0, 0); // TODO: fp32 precision
+        float3 T1 = select((Vh.z < 0.9999f), normalize(cross(float3(0, 0, 1), Vh)), float3(1, 0, 0)); // TODO: fp32 precision
         float3 T2 = cross(Vh, T1);
 
         // Parameterization of the projected area of the hemisphere.

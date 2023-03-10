@@ -80,7 +80,7 @@ void main() {
     if (ROLLING_ACCUMULATION) {
         prev = float4(output_tex[px].rgb, 8);
     } else {
-        prev = RESET_ACCUMULATION ? 0 : output_tex[px];
+        prev = select(RESET_ACCUMULATION, 0, output_tex[px]);
     }
 
     if (prev.w < 1000)
@@ -248,7 +248,7 @@ void main() {
 
                     if (!FURNACE_TEST && !(ONLY_SPECULAR_FIRST_BOUNCE && path_length == 0)) {
                         const float3 brdf_value = brdf.evaluate_directional_light(wo, wi);
-                        const float3 light_radiance = is_shadowed ? 0.0 : SUN_COLOR;
+                        const float3 light_radiance = select(is_shadowed, 0.0, SUN_COLOR);
                         total_radiance += throughput * brdf_value * light_radiance * max(0.0, wi.z);
 
                         if (USE_EMISSIVE) {
@@ -292,8 +292,8 @@ void main() {
                                         ));
 
                                     total_radiance +=
-                                        is_shadowed ? 0 :
-                                            throughput * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf;
+                                        select(is_shadowed, 0,
+                                            throughput * triangle_light.radiance() * brdf.evaluate(wo, wi) / light_sample.pdf.value * to_psa_metric / light_selection_pmf);
                                 }
                             }
                         }

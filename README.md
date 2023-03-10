@@ -85,7 +85,6 @@ Operating systems:
 
 ### (Some) Linux dependencies
 
-* `libtinfo5`
 * `uuid-dev`
 * In case the bundled `libdxcompiler.so` doesn't work: <https://github.com/microsoft/DirectXShaderCompiler#downloads>
 

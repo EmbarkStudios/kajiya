@@ -30,7 +30,7 @@ void FFX_DNSR_Shadows_CopyResult(uint2 gtid, uint2 gid)
     const uint2 did = gid * uint2(8, 4) + gtid;
     const uint linear_tile_index = FFX_DNSR_Shadows_LinearTileIndex(gid, FFX_DNSR_Shadows_GetBufferDimensions().x);
     const bool hit_light = FFX_DNSR_Shadows_HitsLight(did, gtid, gid);
-    const uint lane_mask = hit_light ? FFX_DNSR_Shadows_GetBitMaskFromPixelPosition(did) : 0;
+    const uint lane_mask = select(hit_light, FFX_DNSR_Shadows_GetBitMaskFromPixelPosition(did), 0);
     FFX_DNSR_Shadows_WriteMask(linear_tile_index, WaveActiveBitOr(lane_mask));
 }
  

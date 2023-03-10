@@ -72,7 +72,7 @@ struct OcclusionScreenRayMarch {
     ) {
         const float2 raymarch_end_uv = cs_to_uv(position_world_to_clip(raymarch_end_ws).xy);
         const float2 raymarch_uv_delta = raymarch_end_uv - raymarch_start_uv;
-        const float2 raymarch_len_px = raymarch_uv_delta * (use_halfres_depth ? halfres_depth_tex_size : fullres_depth_tex_size);
+        const float2 raymarch_len_px = raymarch_uv_delta * select(use_halfres_depth, halfres_depth_tex_size, fullres_depth_tex_size);
 
         const uint MIN_PX_PER_STEP = 2;
 

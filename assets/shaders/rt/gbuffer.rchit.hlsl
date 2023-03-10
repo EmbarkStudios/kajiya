@@ -124,17 +124,17 @@ void main(inout GbufferRayPayload payload: SV_RayPayload, in RayHitAttrib attrib
 #if 0
     if (!frame_constants.render_overrides.has_flag(RenderOverrideFlags::NO_NORMAL_MAPS)) {
         float4 v_tangent_packed0 =
-            mesh.vertex_tangent_offset != 0
-                ? asfloat(vertices.Load4(ind.x * sizeof(float4) + mesh.vertex_tangent_offset))
-                : float4(1, 0, 0, 1);            
+            select(mesh.vertex_tangent_offset != 0
+                , asfloat(vertices.Load4(ind.x * sizeof(float4) + mesh.vertex_tangent_offset))
+                , float4(1, 0, 0, 1));
         float4 v_tangent_packed1 =
-            mesh.vertex_tangent_offset != 0
-                ? asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_tangent_offset))
-                : float4(1, 0, 0, 1);            
+            select(mesh.vertex_tangent_offset != 0
+                , asfloat(vertices.Load4(ind.y * sizeof(float4) + mesh.vertex_tangent_offset))
+                , float4(1, 0, 0, 1));
         float4 v_tangent_packed2 =
-            mesh.vertex_tangent_offset != 0
-                ? asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_tangent_offset))
-                : float4(1, 0, 0, 1);            
+            select(mesh.vertex_tangent_offset != 0
+                , asfloat(vertices.Load4(ind.z * sizeof(float4) + mesh.vertex_tangent_offset))
+                , float4(1, 0, 0, 1));
 
         float3 tangent0 = v_tangent_packed0.xyz;
         float3 bitangent0 = normalize(cross(v0.normal, tangent0) * v_tangent_packed0.w);
