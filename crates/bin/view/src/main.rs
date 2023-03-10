@@ -1,4 +1,5 @@
 mod gui;
+mod keymap;
 mod misc;
 mod opt;
 mod persisted;

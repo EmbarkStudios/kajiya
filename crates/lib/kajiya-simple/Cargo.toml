@@ -27,3 +27,6 @@ dear-imgui = [
 puffin-server = [
     "puffin_http",
 ]
+winit_serde = [
+    "winit/serde",
+]

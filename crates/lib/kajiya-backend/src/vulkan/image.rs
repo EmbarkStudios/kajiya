@@ -497,7 +497,7 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> vk::ImageC
             vk::Extent3D {
                 width: desc.extent[0],
                 height: desc.extent[1],
-                depth: desc.extent[2] as u32,
+                depth: desc.extent[2],
             },
             1,
         ),
@@ -533,7 +533,7 @@ pub fn get_image_create_info(desc: &ImageDesc, initial_data: bool) -> vk::ImageC
         format: desc.format,
         extent: image_extent,
         mip_levels: desc.mip_levels as u32,
-        array_layers: image_layers as u32,
+        array_layers: image_layers,
         samples: vk::SampleCountFlags::TYPE_1, // TODO: desc.sample_count
         tiling: desc.tiling,
         usage: image_usage,
