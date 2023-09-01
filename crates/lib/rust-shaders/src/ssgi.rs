@@ -222,7 +222,12 @@ pub fn temporal_filter_cs(
     let ex = vsum / wsum;
     let ex2 = vsum2 / wsum;
     let variance = Vec4::ZERO.max(ex2 - ex * ex);
-    let dev = vec4(variance.x.sqrt(), variance.y.sqrt(), variance.z.sqrt(), variance.w.sqrt());
+    let dev = vec4(
+        variance.x.sqrt(),
+        variance.y.sqrt(),
+        variance.z.sqrt(),
+        variance.w.sqrt(),
+    );
     let box_size = 0.5;
 
     let n_deviations = 5.0;
