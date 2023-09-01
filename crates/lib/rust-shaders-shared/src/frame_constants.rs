@@ -1,5 +1,5 @@
 use crate::{render_overrides::RenderOverrides, view_constants::ViewConstants};
-use macaw::{IVec4, Vec4};
+use glam::{IVec4, Vec4};
 
 pub const IRCACHE_CASCADE_COUNT: usize = 12;
 

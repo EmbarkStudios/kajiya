@@ -1,6 +1,6 @@
 use spirv_std::{Image, Sampler};
 
-use macaw::{UVec3, Vec2, Vec4};
+use glam::{UVec3, Vec2, Vec4};
 
 #[cfg(not(target_arch = "spirv"))]
 use spirv_std::macros::spirv;

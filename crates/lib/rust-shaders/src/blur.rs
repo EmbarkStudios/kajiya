@@ -1,4 +1,4 @@
-use macaw::{IVec2, UVec2, UVec3, Vec4};
+use glam::{IVec2, UVec2, UVec3, Vec4};
 use spirv_std::{
     arch::control_barrier,
     memory::{Scope, Semantics},

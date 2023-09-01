@@ -1,5 +1,5 @@
 use crate::camera::CameraMatrices;
-use macaw::{Mat4, UVec2, Vec2, Vec3};
+use glam::{Mat4, UVec2, Vec2, Vec3};
 
 #[derive(Clone, Copy)]
 #[repr(C, align(16))]

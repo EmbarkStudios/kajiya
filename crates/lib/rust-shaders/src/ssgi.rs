@@ -1,7 +1,7 @@
-use macaw::{
-    ivec2, uvec3, vec2, vec4, FloatExt, IVec3, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Ext,
-    Vec4Swizzles,
+use glam::{
+    ivec2, uvec3, uvec4, vec2, vec4, IVec3, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
 };
+use macaw::FloatExt;
 use rust_shaders_shared::{
     frame_constants::FrameConstants, gbuffer::*, ssgi::SsgiConstants, util::*,
     view_ray::ViewRayContext,
@@ -15,7 +15,7 @@ use spirv_std::macros::spirv;
 use spirv_std::num_traits::Float;
 
 fn ssgi_kernel_radius(constants: &SsgiConstants) -> f32 {
-    if constants.use_ao_only {
+    if constants.use_ao_only == 1 {
         constants.kernel_radius * constants.output_tex_size.w
     } else {
         constants.kernel_radius
@@ -221,8 +221,8 @@ pub fn temporal_filter_cs(
 
     let ex = vsum / wsum;
     let ex2 = vsum2 / wsum;
-    let dev = (Vec4::ZERO.max(ex2 - ex * ex)).sqrt();
-
+    let z = Vec4::ZERO.max(ex2 - ex * ex);
+    let dev = vec4(z.x.sqrt(), z.y.sqrt(), z.z.sqrt(), z.w.sqrt());
     let box_size = 0.5;
 
     let n_deviations = 5.0;
@@ -416,7 +416,13 @@ pub fn ssgi_cs(
     }
 
     let gbuffer_packed: Vec4 = gbuffer_tex.fetch(px.xy() * 2);
-    let gbuffer = GbufferDataPacked::from(gbuffer_packed.to_bits()).unpack();
+    let gbuffer = GbufferDataPacked::from(uvec4(
+        gbuffer_packed.x.to_bits(),
+        gbuffer_packed.y.to_bits(),
+        gbuffer_packed.z.to_bits(),
+        gbuffer_packed.w.to_bits(),
+    ))
+    .unpack();
     let normal_vs = (frame_constants.view_constants.world_to_view * gbuffer.normal.extend(0.0))
         .xyz()
         .normalize();
@@ -435,7 +441,7 @@ pub fn ssgi_cs(
     let spatial_offset_noise = (1.0 / 4.0) * ((px.y - px.x) & 3) as f32;
     let temporal_offset_noise = TEMPORAL_OFFSETS[(frame_constants.frame_index / 6 % 4) as usize];
 
-    if constants.use_random_jitter {
+    if constants.use_random_jitter == 1 {
         let seed0 = hash3(uvec3(frame_constants.frame_index, px.x, px.y));
         spatial_direction_noise += uint_to_u01_float(seed0) * 0.1;
     }
@@ -451,7 +457,7 @@ pub fn ssgi_cs(
 
     let kernel_radius_shrinkage = {
         // Convert AO radius into world scale
-        let cs_kernel_radius_scaled = if constants.use_kernel_distance_scaling {
+        let cs_kernel_radius_scaled = if constants.use_kernel_distance_scaling == 1 {
             kernel_radius_cs
                 * frame_constants
                     .view_constants
@@ -571,7 +577,7 @@ pub fn ssgi_cs(
 
     let inv_ao = integrate_arc(h1p, h2p, n_angle);
 
-    let mut col = if constants.use_ao_only {
+    let mut col = if constants.use_ao_only == 1 {
         Vec4::splat(0.0f32.max(inv_ao))
     } else {
         color_accum.xyz().extend(0.0f32.max(inv_ao))
