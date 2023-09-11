@@ -15,7 +15,7 @@ byte-slice-cast = "0.3"
 bytes = "1.0"
 derive_builder = { version = "0.9", default-features = false }
 futures = "0.3"
-glam = "0.18"
+glam = "0.22"
 gpu-allocator = { git = "https://github.com/Traverse-Research/gpu-allocator.git", rev = "e66d062cbd73a6c98834fc3e3acef98318097156" }
 gpu-profiler = { git = "https://github.com/h3r2tic/gpu-profiler.git", rev = "fac8dd96ceacfb69ec278c9697c3bfd2d8b8a9b7", features = ["use-ash"] }
 hassle-rs = "0.10"

@@ -11,14 +11,14 @@ kajiya-simple = { path = "../../lib/kajiya-simple", features = ["dear-imgui", "w
 kajiya-asset-pipe = { path = "../../lib/kajiya-asset-pipe"}
 
 anyhow = "1.0"
-dolly = "0.3"
+dolly = "=0.4.0"
 imgui = "0.7"
 log = "0.4"
 ron = "0.6.2"
 serde = { version = "1.0", features = ["derive"] }
 structopt = "0.3"
-splines = { git = "https://github.com/h3r2tic/splines.git", rev = "aa0ea829b025d908c8621207764601cb6b059911", features = ["impl-glam"] }
 toml = "0.7.2"
+splines = { version = "4.2.0", features = ["glam"] }
 
 [features]
 dlss = ["kajiya/dlss"]

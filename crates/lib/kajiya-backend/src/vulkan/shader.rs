@@ -448,8 +448,7 @@ pub fn create_compute_pipeline(
         let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
         for bindings in set_layout_info.iter() {
             for ty in bindings.values() {
-                if let Some(mut dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty)
-                {
+                if let Some(dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty) {
                     dps.descriptor_count += 1;
                 } else {
                     descriptor_pool_sizes.push(vk::DescriptorPoolSize {
@@ -984,8 +983,7 @@ pub fn create_raster_pipeline(
         let mut descriptor_pool_sizes: Vec<vk::DescriptorPoolSize> = Vec::new();
         for bindings in set_layout_info.iter() {
             for ty in bindings.values() {
-                if let Some(mut dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty)
-                {
+                if let Some(dps) = descriptor_pool_sizes.iter_mut().find(|item| item.ty == *ty) {
                     dps.descriptor_count += 1;
                 } else {
                     descriptor_pool_sizes.push(vk::DescriptorPoolSize {

@@ -1,5 +1,5 @@
 use crate::util::*;
-use macaw::*;
+use glam::*;
 
 #[cfg(target_arch = "spirv")]
 use spirv_std::float::{f16x2_to_vec2, vec2_to_f16x2};

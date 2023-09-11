@@ -1,4 +1,4 @@
-use macaw::{UVec4, Vec2, Vec3};
+use glam::{UVec4, Vec2, Vec3};
 use rust_shaders_shared::util;
 
 #[repr(C)]

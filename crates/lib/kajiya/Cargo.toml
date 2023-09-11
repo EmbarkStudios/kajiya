@@ -18,7 +18,7 @@ bytemuck = "1.9.1"
 chrono = "0.4"
 exr = "1.4.1"
 fern = { version = "0.6", features = ["colored"] }
-glam = { version = "0.18" }
+glam = "0.22"
 half = { version = "1.8.2", features = ["bytemuck"] }
 image = { version = "0.23.13", default-features = false, features = ["gif", "jpeg", "ico", "png", "pnm", "tga", "tiff", "webp", "bmp", "hdr", "dxt"] }
 lazy_static = "1.4"

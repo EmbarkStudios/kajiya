@@ -1,4 +1,4 @@
-use macaw::{UVec3, Vec4};
+use glam::{UVec3, Vec4};
 use spirv_std::Image;
 
 #[cfg(not(target_arch = "spirv"))]

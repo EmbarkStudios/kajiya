@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Context};
-use kajiya_simple::VirtualKeyCode::*;
-use kajiya_simple::{KeyMap, KeyboardMap, VirtualKeyCode};
+use kajiya_simple::{KeyMap, KeyboardMap, VirtualKeyCode, VirtualKeyCode::*};
 use serde::{Deserialize, Serialize};
-use std::fs::{canonicalize, File};
-use std::io::Read;
-use std::path::PathBuf;
+use std::{
+    fs::{canonicalize, File},
+    io::Read,
+    path::PathBuf,
+};
 use toml::from_str;
 
 #[derive(Serialize, Deserialize, Default, Clone)]

@@ -8,6 +8,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0"
 nanoserde = "0.1"
-spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu", rev = "b692ab5afc7fbdb4599b42ab3e0328dc7e8e0e97" }
+spirv-builder = { git = "https://github.com/EmbarkStudios/rust-gpu", rev = "e87c324bfda6bea144fe2635586281c4ef144f0d" }
 
 [workspace]

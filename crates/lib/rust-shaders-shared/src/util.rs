@@ -1,7 +1,6 @@
 use crate::frame_constants::FrameConstants;
-use macaw::{
-    const_mat3, FloatExt, Mat3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles,
-};
+use glam::{Mat3, UVec2, UVec3, Vec2, Vec3, Vec3Swizzles, Vec4, Vec4Swizzles};
+use macaw::FloatExt;
 #[cfg(target_arch = "spirv")]
 use spirv_std::num_traits::Float;
 
@@ -89,12 +88,12 @@ pub fn depth_to_view_z_vec4(depth: Vec4, frame_constants: &FrameConstants) -> Ve
 // therefore the initializers _appear_ transposed compared to HLSL.
 // The difference is only in the `top` and `bottom` ones; the others are symmetric.
 pub const CUBE_MAP_FACE_ROTATIONS: [Mat3; 6] = [
-    const_mat3!([0.0, 0.0, -1.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0]), // right
-    const_mat3!([0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]),   // left
-    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]),   // top
-    const_mat3!([1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]),   // bottom
-    const_mat3!([1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]),  // back
-    const_mat3!([-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]),  // front
+    Mat3::from_cols_array_2d(&[[0.0, 0.0, -1.0], [0.0, -1.0, 0.0], [-1.0, 0.0, 0.0]]), // right
+    Mat3::from_cols_array_2d(&[[0.0, 0.0, 1.0], [0.0, -1.0, 0.0], [1.0, 0.0, 0.0]]),   // left
+    Mat3::from_cols_array_2d(&[[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, -1.0, 0.0]]),   // top
+    Mat3::from_cols_array_2d(&[[1.0, 0.0, 0.0], [0.0, 0.0, -1.0], [0.0, 1.0, 0.0]]),   // bottom
+    Mat3::from_cols_array_2d(&[[1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, -1.0]]),  // back
+    Mat3::from_cols_array_2d(&[[-1.0, 0.0, 0.0], [0.0, -1.0, 0.0], [0.0, 0.0, 1.0]]),  // front
 ];
 
 pub fn radical_inverse_vdc(mut bits: u32) -> f32 {
