@@ -75,7 +75,7 @@ void main(uint dispatch_idx: SV_DispatchThreadID) {
             ircache_irradiance_buf[entry_idx * IRCACHE_IRRADIANCE_STRIDE + basis_i]
             * frame_constants.pre_exposure_delta;
 
-        const bool should_reset = all(0.0 == prev_value);
+        const bool should_reset = !any(0.0 != prev_value);
         if (should_reset) {
             prev_value = new_value;
         }

@@ -41,7 +41,7 @@ struct Reservoir1spp {
     }
 
     uint2 as_raw() {
-        return uint2(payload, pack_2x16f_uint(float2(M, W)));
+        return uint2(payload, pack_2x16f_uint(float2(M, max(0.0, W))));
     }
 
     bool update(float w, uint sample_payload, inout uint rng) {
