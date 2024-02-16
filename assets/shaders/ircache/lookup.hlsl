@@ -128,14 +128,24 @@ IrcacheLookupMaybeAllocate IrcacheLookupParams::lookup_maybe_allocate(inout uint
                     uint alloc_idx;
                     ircache_meta_buf.InterlockedAdd(IRCACHE_META_ALLOC_COUNT, 1, alloc_idx);
 
-                    uint entry_idx = ircache_pool_buf[alloc_idx];
-                    ircache_meta_buf.InterlockedMax(IRCACHE_META_ENTRY_COUNT, entry_idx + 1);
+                    // Ref: 2af64eb1-745a-4778-8c80-04af6e2225e0
+                    if (alloc_idx >= 1024 * 64) {
+                        ircache_meta_buf.InterlockedAdd(IRCACHE_META_ALLOC_COUNT, -1);
 
-                    // Clear dead state, mark used.
+                        ircache_grid_meta_buf.InterlockedAnd(
+                            sizeof(uint2) * cell_idx + sizeof(uint),
+                            ~(IRCACHE_ENTRY_META_OCCUPIED | IRCACHE_ENTRY_META_JUST_ALLOCATED));
 
-                    ircache_life_buf.Store(entry_idx * 4, ircache_entry_life_for_rank(query_rank));
-                    ircache_entry_cell_buf[entry_idx] = cell_idx;
-                    ircache_grid_meta_buf.Store(sizeof(uint2) * cell_idx + 0, entry_idx);
+                    } else {
+                        uint entry_idx = ircache_pool_buf[alloc_idx];
+                        ircache_meta_buf.InterlockedMax(IRCACHE_META_ENTRY_COUNT, entry_idx + 1);
+
+                        // Clear dead state, mark used.
+
+                        ircache_life_buf.Store(entry_idx * 4, ircache_entry_life_for_rank(query_rank));
+                        ircache_entry_cell_buf[entry_idx] = cell_idx;
+                        ircache_grid_meta_buf.Store(sizeof(uint2) * cell_idx + 0, entry_idx);
+                    }
                 }
             }
         }

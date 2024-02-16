@@ -25,6 +25,8 @@ use super::wrc::WrcRenderState;
 
 const MAX_GRID_CELLS: usize =
     IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_SIZE * IRCACHE_CASCADE_COUNT;
+
+// Ref: 2af64eb1-745a-4778-8c80-04af6e2225e0
 const MAX_ENTRIES: usize = 1024 * 64;
 
 // Must match GPU side
