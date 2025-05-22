@@ -60,8 +60,7 @@ impl PendingResourceReleases {
 
 pub struct DeviceFrame {
     //pub(crate) linear_allocator_pool: vk_mem::AllocatorPool,
-    pub swapchain_acquired_semaphore: Option<vk::Semaphore>,
-    pub rendering_complete_semaphore: Option<vk::Semaphore>,
+    pub swapchain_acquired_semaphore: vk::Semaphore,
     pub main_command_buffer: CommandBuffer,
     pub presentation_command_buffer: CommandBuffer,
     pub pending_resource_releases: Mutex<PendingResourceReleases>,
@@ -125,8 +124,12 @@ impl DeviceFrame {
                 info
             })
             .expect("linear allocator"),*/
-            swapchain_acquired_semaphore: None,
-            rendering_complete_semaphore: None,
+            swapchain_acquired_semaphore:
+                unsafe {
+                    device
+                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
+                }
+                .unwrap(),
             main_command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
             presentation_command_buffer: CommandBuffer::new(device, queue_family).unwrap(),
             pending_resource_releases: Default::default(),
