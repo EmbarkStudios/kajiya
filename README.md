@@ -16,6 +16,19 @@
 [![Build status](https://github.com/EmbarkStudios/kajiya/workflows/CI/badge.svg)](https://github.com/EmbarkStudios/kajiya/actions)
 </div>
 
+_This project is no longer maintained._
+
+It was a spare-time experiment by one guy who worked at Embark at the time (on non-rendering stuff). If you're looking to learn some artisanal hacks, this might be useful - just don't look too deep into the code 🐙
+
+Janky as it may have been, boy, did we render! 🪩🥳  _(Click for YouTube vids)_
+
+[![New global illumination in kajiya 0.2](https://img.youtube.com/vi/_1g-XhlI_5A/0.jpg)](https://www.youtube.com/watch?v=_1g-XhlI_5A)
+[![New irradiance cache (kajiya renderer)](https://img.youtube.com/vi/e7zTtLm2c8A/0.jpg)](https://www.youtube.com/watch?v=e7zTtLm2c8A)
+
+_Original README follows:_
+
+---
+
 Its general goal is to get as close as possible to path-traced reference at real-time rates in dynamic scenes, without any precomputed light transport, or manually placed light probes.
 
 `kajiya` does not currently aim to be a fully-featured renderer used to ship games, support all sorts of scenes, lighting phenomena, or a wide range of hardware. It's a hobby project, takes a lot of shortcuts, and is perpetually a work in progress.
