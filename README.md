@@ -22,8 +22,14 @@ It was a spare-time experiment by one guy who worked at Embark at the time (on n
 
 Janky as it may have been, boy, did we render! 🪩🥳  _(Click for YouTube vids)_
 
-[![New global illumination in kajiya 0.2](https://img.youtube.com/vi/_1g-XhlI_5A/0.jpg)](https://www.youtube.com/watch?v=_1g-XhlI_5A)
-[![New irradiance cache (kajiya renderer)](https://img.youtube.com/vi/e7zTtLm2c8A/0.jpg)](https://www.youtube.com/watch?v=e7zTtLm2c8A)
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=_1g-XhlI_5A">
+    <img src="https://img.youtube.com/vi/_1g-XhlI_5A/0.jpg" width="45%" alt="New global illumination in kajiya 0.2">
+  </a>
+  <a href="https://www.youtube.com/watch?v=e7zTtLm2c8A">
+    <img src="https://img.youtube.com/vi/e7zTtLm2c8A/0.jpg" width="45%" alt="New irradiance cache (kajiya renderer)">
+  </a>
+</p>
 
 _Original README follows:_
 
