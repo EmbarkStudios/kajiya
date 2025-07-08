@@ -19,7 +19,7 @@ use rg::BindMutToSimpleRenderPass;
 use rust_shaders_shared::frame_constants::{IrcacheCascadeConstants, IRCACHE_CASCADE_COUNT};
 use vk::BufferUsageFlags;
 
-use crate::renderers::prefix_scan::inclusive_prefix_scan_u32_1m;
+use crate::renderers::prefix_scan::{self, inclusive_prefix_scan_u32_1m};
 
 use super::wrc::WrcRenderState;
 
@@ -314,7 +314,7 @@ impl IrcacheRenderer {
         };
 
         let mut entry_occupancy_buf = rg.create(BufferDesc::new_gpu_only(
-            size_of::<u32>() * MAX_ENTRIES,
+            size_of::<u32>() * prefix_scan::MIN_BUFFER_ELEMENTS,
             vk::BufferUsageFlags::empty(),
         ));
 

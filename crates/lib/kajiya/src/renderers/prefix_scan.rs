@@ -7,8 +7,11 @@ use kajiya_backend::{
 };
 use kajiya_rg::{self as rg, SimpleRenderPass};
 
+// see `inclusive_prefix_scan.hlsl`
+const SEGMENT_SIZE: usize = 1024;
+pub const MIN_BUFFER_ELEMENTS: usize = SEGMENT_SIZE * SEGMENT_SIZE;
+
 pub fn inclusive_prefix_scan_u32_1m(rg: &mut rg::RenderGraph, input_buf: &mut rg::Handle<Buffer>) {
-    const SEGMENT_SIZE: usize = 1024;
 
     SimpleRenderPass::new_compute(
         rg.add_pass("_prefix scan 1"),

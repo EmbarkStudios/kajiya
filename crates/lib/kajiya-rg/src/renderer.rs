@@ -217,7 +217,7 @@ impl Renderer {
         // This can block, so we're doing it as late as possible.
 
         let swapchain_image = swapchain
-            .acquire_next_image()
+            .acquire_next_image(current_frame.swapchain_acquired_semaphore)
             .ok()
             .expect("swapchain image");
 
@@ -266,7 +266,7 @@ impl Renderer {
                 let submit_info = [vk::SubmitInfo::builder()
                     .wait_semaphores(std::slice::from_ref(&swapchain_image.acquire_semaphore))
                     .signal_semaphores(std::slice::from_ref(
-                        &swapchain_image.rendering_finished_semaphore,
+                        &swapchain_image.ready_for_present_semaphore,
                     ))
                     .wait_dst_stage_mask(&[vk::PipelineStageFlags::COMPUTE_SHADER])
                     .command_buffers(std::slice::from_ref(&presentation_cb.raw))

@@ -17,11 +17,7 @@ pub struct Swapchain {
     pub(crate) raw: vk::SwapchainKHR,
     pub desc: SwapchainDesc,
     pub images: Vec<Arc<crate::Image>>,
-    pub acquire_semaphores: Vec<vk::Semaphore>,
-
-    // TODO: move out of swapchain, make a single semaphore
-    pub rendering_finished_semaphores: Vec<vk::Semaphore>,
-    pub next_semaphore: usize,
+    pub ready_for_present_semaphores: Vec<vk::Semaphore>,
 
     // Keep a reference in order not to drop after the device
     #[allow(dead_code)]
@@ -36,7 +32,7 @@ pub struct SwapchainImage {
     pub image: Arc<crate::Image>,
     pub image_index: u32,
     pub acquire_semaphore: vk::Semaphore,
-    pub rendering_finished_semaphore: vk::Semaphore,
+    pub ready_for_present_semaphore: vk::Semaphore,
 }
 
 pub enum SwapchainAcquireImageErr {
@@ -180,17 +176,6 @@ impl Swapchain {
 
         assert_eq!(desired_image_count, images.len() as u32);
 
-        let acquire_semaphores = (0..images.len())
-            .map(|_| {
-                unsafe {
-                    device
-                        .raw
-                        .create_semaphore(&vk::SemaphoreCreateInfo::default(), None)
-                }
-                .unwrap()
-            })
-            .collect();
-
         let rendering_finished_semaphores = (0..images.len())
             .map(|_| {
                 unsafe {
@@ -207,9 +192,7 @@ impl Swapchain {
             raw: swapchain,
             desc,
             images,
-            acquire_semaphores,
-            rendering_finished_semaphores,
-            next_semaphore: 0,
+            ready_for_present_semaphores: rendering_finished_semaphores,
             device: device.clone(),
             surface: surface.clone(),
         })
@@ -221,11 +204,10 @@ impl Swapchain {
 
     pub fn acquire_next_image(
         &mut self,
+        acquire_semaphore: vk::Semaphore,
     ) -> std::result::Result<SwapchainImage, SwapchainAcquireImageErr> {
         puffin::profile_function!();
 
-        let acquire_semaphore = self.acquire_semaphores[self.next_semaphore];
-        let rendering_finished_semaphore = self.rendering_finished_semaphores[self.next_semaphore];
 
         let present_index = unsafe {
             self.fns.acquire_next_image(
@@ -239,14 +221,13 @@ impl Swapchain {
 
         match present_index {
             Ok(present_index) => {
-                assert_eq!(present_index, self.next_semaphore);
+                let rendering_finished_semaphore = self.ready_for_present_semaphores[present_index];
 
-                self.next_semaphore = (self.next_semaphore + 1) % self.images.len();
                 Ok(SwapchainImage {
                     image: self.images[present_index].clone(),
                     image_index: present_index as u32,
                     acquire_semaphore,
-                    rendering_finished_semaphore,
+                    ready_for_present_semaphore: rendering_finished_semaphore,
                 })
             }
             Err(err)
@@ -265,7 +246,7 @@ impl Swapchain {
         puffin::profile_function!();
 
         let present_info = vk::PresentInfoKHR::builder()
-            .wait_semaphores(std::slice::from_ref(&image.rendering_finished_semaphore))
+            .wait_semaphores(std::slice::from_ref(&image.ready_for_present_semaphore))
             .swapchains(std::slice::from_ref(&self.raw))
             .image_indices(std::slice::from_ref(&image.image_index));
 
